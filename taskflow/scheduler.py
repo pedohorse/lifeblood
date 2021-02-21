@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import importlib.util
 from enum import Enum
 import asyncio
 import aiosqlite
@@ -12,8 +13,9 @@ from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
+from .taskspawn import TaskSpawn
 
-from typing import Optional, Any
+from typing import Optional, Any, AnyStr, List
 
 
 class WorkerState(Enum):
@@ -39,7 +41,7 @@ class TaskState(Enum):
     POST_GENERATING = 5  # task is being post processed by node
     DONE = 6  # done, needs further processing
     ERROR = 7  # some internal error, not allowing to process task. NOT INVOCATION ERROR
-
+    SPAWNED = 8  # spawned tasks are just passed down from node's "spawned" output
 
 class InvocationState(Enum):
     IN_PROGRESS = 0
@@ -48,6 +50,26 @@ class InvocationState(Enum):
 
 class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True, loop=None):
+        print('loading core plugins')
+        self.__plugins = {}
+        core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
+        for filename in os.listdir(core_plugins_path):
+            filebasename, fileext = os.path.splitext(filename)
+            if fileext != '.py':
+                continue
+            mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',
+                                                              os.path.join(core_plugins_path, filename))
+            mod = importlib.util.module_from_spec(mod_spec)
+            mod_spec.loader.exec_module(mod)
+            for requred_attr in ('process_task', 'postprocess_task'):
+                if not hasattr(mod, requred_attr):
+                    print(f'error loading plugin "{filebasename}". '
+                          f'required method {requred_attr} is missing.')
+                    continue
+            self.__plugins[filebasename] = mod
+        print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
+
+
         if loop is None:
             loop = asyncio.get_event_loop()
         self.db_path = db_file_path
@@ -232,54 +254,93 @@ class Scheduler:
                         def _task_imitation_(task_data):
                             td = InvocationJob(['bash', '-c', 'echo "boo" && sleep 2 && date && sleep 2 && date && sleep 6 && echo meow'], None)
                             time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
-                            return td
+                            return td, None
 
                         def _posttask_imitation_(task_data):
                             time.sleep(3.5)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
-                            return {'cat': 1, 'dog': 2}
+                            return {'cat': 1, 'dog': 2}, None
 
+                        # task processing coroutimes
                         async def _awaiter(task_id, processor, *parameters):  # TODO: process task generation errors
                             loop = asyncio.get_event_loop()
-                            result: InvocationJob = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                            try:
+                                result, newtasks = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                            except:  # TODO: save error information into database
+                                async with aiosqlite.connect(self.db_path) as con:
+                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
+                                                      (TaskState.ERROR.value, task_id))
+                                    await con.commit()
+                                return
+                            result: InvocationJob
+                            newtasks: Optional[List[TaskSpawn]]
+
                             result_serialized = await result.serialize()
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
                                                   (result_serialized, TaskState.READY.value, task_id))
+                                if newtasks is None or not isinstance(newtasks, list):
+                                    await con.commit()
+                                    return
+                                for newtask in newtasks:
+                                    await con.execute('INSERT INTO tasks ("name", "attributes") VALUES (?, ?)',
+                                                      (newtask.name(), json.dumps(newtask._attributes())))
                                 await con.commit()
 
-                        async def _post_awaiter(task_id, processor, *parameters):
+                        async def _post_awaiter(task_id, processor, *parameters):  # TODO: this is almost the same as _awaitor - so merge!
                             loop = asyncio.get_event_loop()
-                            result: dict = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                            try:
+                                result, newtasks = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                            except:  # TODO: save error information into database
+                                async with aiosqlite.connect(self.db_path) as con:
+                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
+                                                      (TaskState.ERROR.value, task_id))
+                                    await con.commit()
+                                return
+                            result: dict
+                            newtasks: Optional[List[TaskSpawn]]
+
                             result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, result)
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "attributes" = ?, "state" = ? WHERE "id" = ?',
                                                   (result_serialized, TaskState.DONE.value, task_id))
+                                if newtasks is None or not isinstance(newtasks, list):
+                                    await con.commit()
+                                    return
+                                for newtask in newtasks:
+                                    await con.execute('INSERT INTO tasks ("name", "attributes") VALUES (?, ?)',
+                                                      (newtask.name(), json.dumps(newtask._attributes())))
                                 await con.commit()
 
                         # means task just arrived in the node and is ready to be processed by the node.
                         # processing node generates args,
                         if task_row['state'] == TaskState.WAITING.value:
-
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.GENERATING.value, task_row['id']))
-                            await con.commit()
-                            if task_row['node_type'] == 'test':
-                                asyncio.create_task(_awaiter(task_row['id'], _task_imitation_, dict(task_row)))
+                            if task_row['node_type'] not in self.__plugins:
+                                print(f'plugin to process "P{task_row["node_type"]}" not found!')
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.DONE.value, task_row['id']))
+                                await con.commit()
                             else:
-                                raise NotImplementedError()  # TODO: set task into error state and continue
+
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.GENERATING.value, task_row['id']))
+                                await con.commit()
+
+                                asyncio.create_task(_awaiter(task_row['id'], self.__plugins[task_row['node_type']].process_task, dict(task_row)))
 
                         #
                         # waiting to be post processed
                         elif task_row['state'] == TaskState.POST_WAITING.value:
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.POST_GENERATING.value, task_row['id']))
-                            await con.commit()
-
-                            if task_row['node_type'] == 'test':
-                                print('1')
-                                asyncio.create_task(_post_awaiter(task_row['id'], _posttask_imitation_, dict(task_row)))
+                            if task_row['node_type'] not in self.__plugins:
+                                print(f'plugin to process "P{task_row["node_type"]}" not found!')
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.DONE.value, task_row['id']))
+                                await con.commit()
                             else:
-                                raise NotImplementedError()  # TODO: set task into error state and continue
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.POST_GENERATING.value, task_row['id']))
+                                await con.commit()
+
+                                asyncio.create_task(_post_awaiter(task_row['id'], self.__plugins[task_row['node_type']].postprocess_task, dict(task_row)))
 
                         #
                         # real scheduling should happen here
