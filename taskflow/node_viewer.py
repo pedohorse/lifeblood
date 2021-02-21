@@ -870,21 +870,23 @@ class NodeEditor(QGraphicsView):
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
-            super(NodeEditor, self).mouseMoveEvent(event)
             if self.__ui_panning_lastpos is not None:
                 rect = self.sceneRect()
                 self.setSceneRect(rect.translated(*(self.__ui_panning_lastpos - event.screenPos()).toTuple()))
                 #self.translate(*(event.screenPos() - self.__ui_panning_lastpos).toTuple())
                 self.__ui_panning_lastpos = event.screenPos()
+            else:
+                super(NodeEditor, self).mouseMoveEvent(event)
 
     def mousePressEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
-            super(NodeEditor, self).mousePressEvent(event)
             if event.buttons() & Qt.MiddleButton:
                 self.__ui_panning_lastpos = event.screenPos()
+            else:
+                super(NodeEditor, self).mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
