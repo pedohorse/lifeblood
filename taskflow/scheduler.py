@@ -7,7 +7,7 @@ import asyncio
 import aiosqlite
 
 from .worker_task_protocol import WorkerTaskClient, WorkerPingReply, TaskScheduleStatus
-from .scheduler_task_protocol import SchedulerTaskProtocol
+from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .uidata import create_uidata
@@ -15,7 +15,7 @@ from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
 from .taskspawn import TaskSpawn
 
-from typing import Optional, Any, AnyStr, List
+from typing import Optional, Any, AnyStr, List, Iterable, Union
 
 
 class WorkerState(Enum):
@@ -42,6 +42,7 @@ class TaskState(Enum):
     DONE = 6  # done, needs further processing
     ERROR = 7  # some internal error, not allowing to process task. NOT INVOCATION ERROR
     SPAWNED = 8  # spawned tasks are just passed down from node's "spawned" output
+
 
 class InvocationState(Enum):
     IN_PROGRESS = 0
@@ -281,9 +282,7 @@ class Scheduler:
                                 if newtasks is None or not isinstance(newtasks, list):
                                     await con.commit()
                                     return
-                                for newtask in newtasks:
-                                    await con.execute('INSERT INTO tasks ("name", "attributes") VALUES (?, ?)',
-                                                      (newtask.name(), json.dumps(newtask._attributes())))
+                                await self.spawn_tasks(newtasks, con=con)
                                 await con.commit()
 
                         async def _post_awaiter(task_id, processor, *parameters):  # TODO: this is almost the same as _awaitor - so merge!
@@ -306,9 +305,7 @@ class Scheduler:
                                 if newtasks is None or not isinstance(newtasks, list):
                                     await con.commit()
                                     return
-                                for newtask in newtasks:
-                                    await con.execute('INSERT INTO tasks ("name", "attributes") VALUES (?, ?)',
-                                                      (newtask.name(), json.dumps(newtask._attributes())))
+                                await self.spawn_tasks(newtasks, con=con)
                                 await con.commit()
 
                         # means task just arrived in the node and is ready to be processed by the node.
@@ -482,6 +479,29 @@ class Scheduler:
                 all_tasks = await cur.fetchall()
             data = await create_uidata(all_nodes, all_conns, all_tasks)
         return data
+
+    #
+    # spawning new task callback
+    async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
+        """
+
+        :param newtasks:
+        :param con:
+        :return:
+        """
+        if isinstance(newtasks, TaskSpawn):
+            newtasks = (newtasks,)
+        if con is not None:
+            for newtask in newtasks:
+                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id") VALUES (?, ?, ?)',
+                                  (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id()))
+        else:
+            async with aiosqlite.connect(self.db_path) as con:
+                for newtask in newtasks:
+                    await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id") VALUES (?, ?, ?)',
+                                      (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id()))
+                await con.commit()
+        return SpawnStatus.SUCCEEDED
 
     async def get_log_metadata(self, task_id: int):
         """

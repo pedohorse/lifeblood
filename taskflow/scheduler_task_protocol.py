@@ -1,12 +1,19 @@
 import struct
 import asyncio
 import aiofiles
+from enum import Enum
 
 from . import invocationjob
+from .taskspawn import TaskSpawn
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .scheduler import Scheduler
+
+
+class SpawnStatus(Enum):
+    SUCCEEDED = 0
+    FAILED = 1
 
 
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
@@ -44,11 +51,18 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 addrsize = struct.unpack('>I', addrsize)[0]
                 addr = await reader.readexactly(addrsize)
                 await self.__scheduler.add_worker(addr.decode('UTF-8'))
+            #
+            # spawn a child task for task being processed
+            elif command == b'spawn':
+                tasksize = struct.unpack('>I', await reader.readexactly(4))[0]
+                taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
+                ret: SpawnStatus = await self.__scheduler.spawn_task(taskspawn)
+                writer.write(struct.pack('>I', ret.value))
             elif reader.at_eof():
                 print('connection closed')
                 return
             else:
-                raise NotImplementedError()
+                raise NotImplementedError
             await writer.drain()
 
         except asyncio.exceptions.TimeoutError as e:
@@ -110,3 +124,12 @@ class SchedulerTaskClient:
         self.__writer.write(struct.pack('>I', len(data)))
         self.__writer.write(data)
         await self.__writer.drain()
+
+    async def spawn(self, taskspawn: TaskSpawn) -> SpawnStatus:
+        await self._ensure_conn_open()
+        self.__writer.write(b'spawn\n')
+        data_ser = await taskspawn.serialize()
+        self.__writer.write(struct.pack('>I', len(data_ser)))
+        self.__writer.write(data_ser)
+        await self.__writer.drain()
+        return SpawnStatus(struct.unpack('>I', await self.__reader.readexactly(4)))
