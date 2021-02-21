@@ -2,7 +2,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 import struct
-from . import taskdata
+from . import invocationjob
 from . import nethelpers
 
 import os
@@ -67,7 +67,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     addrsize = await reader.readexactly(4)
                     addrsize = struct.unpack('>I', addrsize)[0]
                     addr = await reader.readexactly(addrsize)
-                    task = taskdata.TaskData.deserialize(task)
+                    task = invocationjob.InvocationJob.deserialize(task)
                     addr = addr.decode('UTF-8')
                     print(f'got task: {task}, reply result to {addr}')
                     try:
@@ -168,7 +168,7 @@ class WorkerTaskClient:
             print('network error')
             raise
 
-    async def give_task(self, task: taskdata.TaskData, reply_address):
+    async def give_task(self, task: invocationjob.InvocationJob, reply_address):
         await self._ensure_conn_open()
         self.__writer.writelines([b'task\n'])
         taskserialized = await task.serialize()

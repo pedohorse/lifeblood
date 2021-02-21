@@ -2,7 +2,7 @@ import struct
 import asyncio
 import aiofiles
 
-from . import taskdata
+from . import invocationjob
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 tasksize = struct.unpack('>I', tasksize)[0]
                 task = await reader.readexactly(tasksize)
                 return_code: int = struct.unpack('>I', await reader.readexactly(4))[0]
-                task = taskdata.TaskData.deserialize(task)  # TODO: async this
+                task = invocationjob.InvocationJob.deserialize(task)  # TODO: async this
                 stdout_size = struct.unpack('>I', await reader.readexactly(4))[0]
                 stdout = (await reader.readexactly(stdout_size)).decode('UTF-8')
                 stderr_size = struct.unpack('>I', await reader.readexactly(4))[0]
@@ -78,7 +78,7 @@ class SchedulerTaskClient:
         self.__reader, self.__writer = await self.__conn_task
         self.__writer.write(b'\0\0\0\0')
 
-    async def report_task_done(self, task: taskdata.TaskData, return_code: int, stdout_file: str, stderr_file: str):
+    async def report_task_done(self, task: invocationjob.InvocationJob, return_code: int, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
         self.__writer.writelines([b'done\n'])
         taskserialized = await task.serialize()

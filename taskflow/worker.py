@@ -8,7 +8,7 @@ from .nethelpers import get_addr_to
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
-from .taskdata import TaskData
+from .invocationjob import InvocationJob
 
 from typing import Optional
 
@@ -47,7 +47,7 @@ class Worker:
             os.makedirs(self.log_root_path)
         self.__status = {}
         self.__running_process = None  # type: Optional[asyncio.subprocess.Process]
-        self.__running_task = None  # type: Optional[TaskData]
+        self.__running_task = None  # type: Optional[InvocationJob]
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
         self.__where_to_report = None
@@ -80,7 +80,7 @@ class Worker:
         else:
             return os.path.join(self.log_root_path, 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
 
-    async def run_task(self, task: TaskData, report_to: str):
+    async def run_task(self, task: InvocationJob, report_to: str):
         assert len(task.args()) > 0
         if self.__running_process is not None:
             raise AlreadyRunning('Task already in progress')

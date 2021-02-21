@@ -8,7 +8,7 @@ import aiosqlite
 from .worker_task_protocol import WorkerTaskClient, WorkerPingReply, TaskScheduleStatus
 from .scheduler_task_protocol import SchedulerTaskProtocol
 from .scheduler_ui_protocol import SchedulerUiProtocol
-from .taskdata import TaskData
+from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
@@ -230,7 +230,7 @@ class Scheduler:
 
                         # for testing purp
                         def _task_imitation_(task_data):
-                            td = TaskData(['bash', '-c', 'echo "boo" && sleep 2 && date && sleep 2 && date && sleep 6 && echo meow'], None)
+                            td = InvocationJob(['bash', '-c', 'echo "boo" && sleep 2 && date && sleep 2 && date && sleep 6 && echo meow'], None)
                             time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
                             return td
 
@@ -240,7 +240,7 @@ class Scheduler:
 
                         async def _awaiter(task_id, processor, *parameters):  # TODO: process task generation errors
                             loop = asyncio.get_event_loop()
-                            result: TaskData = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                            result: InvocationJob = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
                             result_serialized = await result.serialize()
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
@@ -305,7 +305,7 @@ class Scheduler:
 
                                 work_data = task_row['work_data']
                                 assert work_data is not None
-                                task: TaskData = await asyncio.get_event_loop().run_in_executor(None, TaskData.deserialize, work_data)
+                                task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
                                 task.set_invocation_id(invocation_id)
                                 # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
                                 print(f'submitting task to {addr}')
@@ -380,7 +380,7 @@ class Scheduler:
 
     #
     # callbacks
-    async def task_done_reported(self, task: TaskData, return_code: int, stdout: str, stderr: str):
+    async def task_done_reported(self, task: InvocationJob, return_code: int, stdout: str, stderr: str):
         print('task finished reported', task, 'code', return_code)
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row

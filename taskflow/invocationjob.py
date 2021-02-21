@@ -2,7 +2,7 @@ import asyncio
 import pickle
 
 
-class TaskData:
+class InvocationJob:
     """
     serializable data about launching something
     """
@@ -28,8 +28,8 @@ class TaskData:
         self.__invocation_id = invocation_id
 
     def __repr__(self):
-        return 'TaskData: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
+        return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
 
     @classmethod
-    def deserialize(cls, data: bytes) -> "TaskData":
+    def deserialize(cls, data: bytes) -> "InvocationJob":
         return pickle.loads(data)
