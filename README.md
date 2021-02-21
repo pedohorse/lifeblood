@@ -18,4 +18,4 @@ the purpose of this particular task manager is to be:
 - replacement for TOPs for any non-houdini related tasks
 
 ## UNDER DEVELOPMENT
-
+[task tracking in trello](https://trello.com/b/sSbc8u6M/taskflow)
