@@ -1,9 +1,11 @@
 import sys
+import os
 import socket
 import struct
 import time
 import json
 import pickle
+import sqlite3
 import asyncio
 from .uidata import UiData
 from .scheduler import TaskState, InvocationState
@@ -390,10 +392,11 @@ class QGraphicsImguiScene(QGraphicsScene):
     log_has_been_requested = Signal(int, int, int)
     log_meta_has_been_requested = Signal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
         self.__task_dict = {}
         self.__node_dict = {}
+        self.__db_path = db_path
 
         self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
         self.__ui_connection_worker = SchedulerConnectionWorker()
@@ -416,6 +419,17 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_log_meta(self, task_id):
         self.log_meta_has_been_requested.emit(task_id)
+
+    def node_position(self, node_id: int):
+        if self.__db_path is not None:
+            with sqlite3.connect(self.__db_path) as con:
+                con.row_factory = sqlite3.Row
+                cur = con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,))
+                row = cur.fetchone()
+                if row is not None:
+                    return row['posx'], row['posy']
+
+        return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
 
     @Slot(object)
     def full_update(self, uidata):
@@ -451,7 +465,7 @@ class QGraphicsImguiScene(QGraphicsScene):
             if id in existing_node_ids:
                 continue
             new_node = Node(id, f'node #{id}')
-            new_node.setPos(id * 125.79 % 200, id * 357.17 % 200)
+            new_node.setPos(*self.node_position(id))
             existing_node_ids[id] = new_node
             self.addItem(new_node)
 
@@ -512,6 +526,18 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.request_interruption()
         self.__ui_connection_thread.exit()
         self.__ui_connection_thread.wait()
+
+    def save_node_layout(self):
+        if self.__db_path is None:
+            return
+        with sqlite3.connect(self.__db_path) as con:
+            con.row_factory = sqlite3.Row
+            for item in self.items():
+                if not isinstance(item, Node):
+                    continue
+                con.execute('INSERT OR REPLACE INTO "nodes" ("id", "posx", "posy") '
+                            'VALUES (?, ?, ?)', (item.get_id(), *item.pos().toTuple()))
+            con.commit()
 
 
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
@@ -744,9 +770,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
 
 class NodeEditor(QGraphicsView):
-    def __init__(self, parent=None):
+    def __init__(self, db_path: str = None, parent=None):
         super(NodeEditor, self).__init__(parent=parent)
-        self.setBaseSize(800, 600)
 
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
@@ -754,7 +779,9 @@ class NodeEditor(QGraphicsView):
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setCacheMode(QGraphicsView.CacheBackground)
 
-        self.__scene = QGraphicsImguiScene()
+        self.__ui_panning_lastpos = None
+
+        self.__scene = QGraphicsImguiScene(db_path)
         #node1 = Node("first node", 0)
         #node2 = Node("second node", 1)
         #con = NodeConnection(node1, node2)
@@ -769,6 +796,7 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.start()
 
         self.__imgui_init = False
+        self.update()
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         #print('asd')
@@ -843,6 +871,11 @@ class NodeEditor(QGraphicsView):
             event.accept()
         else:
             super(NodeEditor, self).mouseMoveEvent(event)
+            if self.__ui_panning_lastpos is not None:
+                rect = self.sceneRect()
+                self.setSceneRect(rect.translated(*(self.__ui_panning_lastpos - event.screenPos()).toTuple()))
+                #self.translate(*(event.screenPos() - self.__ui_panning_lastpos).toTuple())
+                self.__ui_panning_lastpos = event.screenPos()
 
     def mousePressEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
@@ -850,6 +883,8 @@ class NodeEditor(QGraphicsView):
             event.accept()
         else:
             super(NodeEditor, self).mousePressEvent(event)
+            if event.buttons() & Qt.MiddleButton:
+                self.__ui_panning_lastpos = event.screenPos()
 
     def mouseReleaseEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
@@ -857,6 +892,8 @@ class NodeEditor(QGraphicsView):
             event.accept()
         else:
             super(NodeEditor, self).mouseReleaseEvent(event)
+            if not (event.buttons() & Qt.MiddleButton):
+                self.__ui_panning_lastpos = None
         PySide2.QtCore.QTimer.singleShot(50, self.resetCachedContent)
 
     def wheelEvent(self, event: PySide2.QtGui.QWheelEvent):
@@ -868,17 +905,40 @@ class NodeEditor(QGraphicsView):
 
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
         self.__scene.stop()
+        self.__scene.save_node_layout()
         super(NodeEditor, self).closeEvent(event)
 
 
 def _main():
     qapp = QApplication(sys.argv)
 
-    wgt = NodeEditor()
-    wgt.resize(800, 600)
-    wgt.show()
+    db_path = os.path.join(os.getcwd(), 'node_viewer.db')
+    hgt, wgt = None, None
+    posx, posy = None, None
+    with sqlite3.connect(db_path) as con:
+        con.row_factory = sqlite3.Row
+        cur = con.execute('SELECT * FROM widgets WHERE "name" = ?', ('main',))
+        row = cur.fetchone()
+        if row is not None:
+            hgt = row['height']
+            wgt = row['width']
+            posx = row['posx']
+            posy = row['posy']
+
+    widget = NodeEditor(db_path)
+    if hgt is not None:
+        widget.resize(wgt, hgt)
+    if posx is not None:
+        widget.move(posx, posy)
+    widget.show()
 
     qapp.exec_()
+    with sqlite3.connect(db_path) as con:
+        con.execute('INSERT OR REPLACE INTO widgets ("name", "width", "height", "posx", "posy") '
+                    'VALUES (?, ?, ?, ?, ?)',
+                    ('main', *widget.size().toTuple(), *widget.pos().toTuple()))
+        con.commit()
+
 
 
 if __name__ == '__main__':
