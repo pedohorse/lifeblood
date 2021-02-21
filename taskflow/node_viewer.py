@@ -290,7 +290,7 @@ class Task(NetworkItemWithUI):
                 self.__log[node_id] = invocs
                 continue
             for inv_id, logs in invocs.items():
-                if logs is None:
+                if logs is None and inv_id in self.__log[node_id]:
                     continue
                 self.__log[node_id][inv_id] = logs
 
@@ -373,12 +373,12 @@ class Task(NetworkItemWithUI):
                 if invoc is None:
                     imgui.text('...fetching...')
                 else:
+                    imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
                     if invoc['state'] == InvocationState.IN_PROGRESS.value:
                         if imgui.button('update'):
                             print('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
                                 self.__requested_invocs_while_selected.remove(invoc_id)
-                    imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
 
 
 class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
