@@ -3,3 +3,4 @@ venv
 *.db
 **.pyc
 **/__pycache__
+imgui.ini
