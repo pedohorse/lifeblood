@@ -7,6 +7,7 @@ import json
 import pickle
 import sqlite3
 import asyncio
+from math import sqrt
 from .uidata import UiData
 from .scheduler import TaskState, InvocationState
 from .broadcasting import await_broadcast
@@ -47,7 +48,7 @@ class NetworkItemWithUI(NetworkItem):
 
 
 class TaskAnimation(QAbstractAnimation):
-    def __init__(self, task: "Task",  node2: "Node", pos2: "QPointF", parent):
+    def __init__(self, task: "Task",  node2: "Node", pos2: "QPointF", duration: int, parent):
         super(TaskAnimation, self).__init__(parent)
         self.__task = task
 
@@ -55,10 +56,11 @@ class TaskAnimation(QAbstractAnimation):
         print(self.__node1, self.__pos1)
         self.__node2 = node2
         self.__pos2 = pos2
+        self.__duration = max(duration, 1)
         self.__started = False
 
     def duration(self) -> int:
-        return 1000
+        return self.__duration
 
     def updateCurrentTime(self, currentTime: int) -> None:
         if not self.__started:
@@ -299,7 +301,9 @@ class Task(NetworkItemWithUI):
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF):
         print('set animated called!', node, pos)
-        new_animation = TaskAnimation(self, node, pos, parent=self.scene())
+        dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
+        ldist = sqrt(QPointF.dotProduct(dist, dist))
+        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
         if self.__animation_group is None:
             self.__animation_group = QSequentialAnimationGroup(self.scene())
             self.__animation_group.finished.connect(self._clear_animation_group)
@@ -315,6 +319,12 @@ class Task(NetworkItemWithUI):
             return self.__node, self.__final_pos
         else:
             return self.__node, self.pos()
+
+    def final_scene_position(self) -> QPointF:
+        fnode, fpos = self.final_location()
+        if fnode is not None:
+            fpos = fnode.mapToScene(fpos)
+        return fpos
 
     @Slot()
     def _clear_animation_group(self):
