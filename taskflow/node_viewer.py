@@ -818,9 +818,12 @@ class NodeEditor(QGraphicsView):
         self.__imimpl.render(imgui.get_draw_data())
         painter.endNativePainting()
 
-    def imguiProcessEvents(self, event: PySide2.QtGui.QMouseEvent, do_recache=True):
+    def imguiProcessEvents(self, event: PySide2.QtGui.QInputEvent, do_recache=True):
         io = imgui.get_io()
-        io.mouse_pos = event.windowPos().toTuple()
+        if isinstance(event, PySide2.QtGui.QMouseEvent):
+            io.mouse_pos = event.windowPos().toTuple()
+        elif isinstance(event, PySide2.QtGui.QWheelEvent):
+            io.mouse_wheel = event.angleDelta().y() / 100
         io.mouse_down[0] = event.buttons() & Qt.LeftButton
         io.mouse_down[1] = event.buttons() & Qt.MiddleButton
         io.mouse_down[2] = event.buttons() & Qt.RightButton
@@ -855,6 +858,13 @@ class NodeEditor(QGraphicsView):
         else:
             super(NodeEditor, self).mouseReleaseEvent(event)
         PySide2.QtCore.QTimer.singleShot(50, self.resetCachedContent)
+
+    def wheelEvent(self, event: PySide2.QtGui.QWheelEvent):
+        self.imguiProcessEvents(event)
+        if imgui.get_io().want_capture_mouse:
+            event.accept()
+        else:
+            super(NodeEditor, self).wheelEvent(event)
 
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
         self.__scene.stop()
