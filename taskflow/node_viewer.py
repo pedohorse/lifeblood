@@ -72,7 +72,6 @@ class TaskAnimation(QAbstractAnimation):
 
         t = currentTime / self.duration()
         self.__task.setPos(pos1*(1-t) + pos2*t)
-        print(self.__task.pos())
 
 
 class Node(NetworkItemWithUI):
@@ -470,6 +469,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 existing_task_ids[id] = new_task
                 self.addItem(new_task)
             task = existing_task_ids[id]
+            #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']))
 
