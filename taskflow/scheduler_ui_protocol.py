@@ -28,18 +28,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     writer.write(uidata_ser)
                 elif command in (b'getlogmeta', b'getlog', b'getalllog'):
                     if command == b'getlogmeta':
-                        task_id = struct.unpack('>I', await reader.readexactly(4))[0]
+                        task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                         all_logs = await self.__scheduler.get_log_metadata(task_id)
                     elif command == b'getlog':
-                        task_id, node_id, invocation_id = struct.unpack('>III', await reader.readexactly(12))
+                        task_id, node_id, invocation_id = struct.unpack('>QQQ', await reader.readexactly(24))
                         all_logs = await self.__scheduler.get_logs(task_id, node_id, invocation_id)
                     elif command == b'getalllog':
                         # TODO: instead of getting all invocation logs first get invocation list
                         # TODO: then bring in logs only for required invocation
-                        task_id, node_id = struct.unpack('>II', await reader.readexactly(8))
+                        task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
                         all_logs = await self.__scheduler.get_logs(task_id, node_id)
                     else:
-                        RuntimeError('this error is impossible!')
+                        raise RuntimeError('this error is impossible!')
                     data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)

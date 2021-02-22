@@ -678,7 +678,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__conn is not None
         try:
             self.__conn.sendall(b'getlogmeta\n')
-            self.__conn.sendall(struct.pack('>I', task_id))
+            self.__conn.sendall(struct.pack('>Q', task_id))
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             logmeta = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
@@ -694,7 +694,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__conn is not None
         try:
             self.__conn.sendall(b'getlog\n')
-            self.__conn.sendall(struct.pack('>III', task_id, node_id, invocation_id))
+            self.__conn.sendall(struct.pack('>QQQ', task_id, node_id, invocation_id))
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             alllogs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:

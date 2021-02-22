@@ -94,7 +94,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 #
                 # command to get worker's logs
                 elif command == b'log':
-                    invocation_id = struct.unpack('>I', await reader.readexactly(4))[0]
+                    invocation_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     for logfilepath in (self.__worker.get_log_filepath('output', invocation_id),
                                         self.__worker.get_log_filepath('error', invocation_id)):
                         if not os.path.exists(logfilepath):
@@ -189,7 +189,7 @@ class WorkerTaskClient:
 
     async def get_log(self, invocation_id) -> (str, str):
         self.__writer.write(b'log\n')
-        self.__writer.write(struct.pack('>I', invocation_id))
+        self.__writer.write(struct.pack('>Q', invocation_id))
         await self.__writer.drain()
         stdoutsize = struct.unpack('>I', await self.__reader.readexactly(4))[0]
         stdout = await self.__reader.readexactly(stdoutsize)
