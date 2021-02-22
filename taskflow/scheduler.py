@@ -245,10 +245,10 @@ class Scheduler:
                 con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT tasks.*, nodes.type as node_type FROM tasks INNER JOIN nodes '
                                        'ON tasks.node_id=nodes.id '
-                                       'WHERE state = ? OR state = ? OR state = ? OR state = ? '
+                                       'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ?'
                                        'ORDER BY RANDOM()',
                                        (TaskState.WAITING.value, TaskState.READY.value,
-                                        TaskState.DONE.value, TaskState.POST_WAITING.value)) as cur:
+                                        TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
                     async for task_row in cur:
 
                         # for testing purp
@@ -386,9 +386,14 @@ class Scheduler:
                         #
                         # means task is done being processed by current node,
                         # now it should be passed to the next node
-                        elif task_row['state'] == TaskState.DONE.value:
-                            async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ?',
-                                                   (task_row['node_id'],)) as wire_cur:
+                        elif task_row['state'] == TaskState.DONE.value\
+                                or task_row['state'] == TaskState.SPAWNED.value:
+                            if task_row['state'] == TaskState.DONE.value:
+                                out_plug_name = 'main'
+                            else:
+                                out_plug_name = 'spawned'
+                            async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
+                                                   (task_row['node_id'], out_plug_name)) as wire_cur:
                                 # TODO: treat multiple connections
                                 wire = await wire_cur.fetchone()
                                 if wire is None:
