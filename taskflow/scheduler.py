@@ -413,28 +413,29 @@ class Scheduler:
                                                    (task_row['node_id'], out_plug_name)) as wire_cur:
                                 all_wires = await wire_cur.fetchall()
                                 wire_count = len(all_wires)
-                                if wire_count == 1:
-                                    wire = all_wires[0]
-                                    await con.execute('UPDATE tasks SET node_id = ?, state = ?, work_data = ? '
-                                                      'WHERE "id" = ?',
-                                                      (wire['node_id_in'], TaskState.WAITING.value, None, task_row['id']))
-                                else:
-                                    new_split_level = task_row['split_level'] + 1
-                                    await con.execute('UPDATE tasks SET node_id = ?, state = ?, work_data = ?, split_level = ?'
-                                                      'WHERE "id" = ?',
-                                                      (all_wires[0]['node_id_in'], TaskState.WAITING.value, None, new_split_level,
-                                                       task_row['id']))
-                                    await con.execute('INSERT INTO "task_splits" ("task_id", "split_id", "split_count", "split_level") VALUES (?,?,?,?)',
-                                                      (task_row['id'], 0, wire_count, new_split_level))
-                                    for split_id, wire in enumerate(all_wires[1:], 1):
-                                        async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "work_data", "name", "attributes", "split_level") '
-                                                               'VALUES (?,?,?,?,?,?,?)',
-                                                               (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], None, task_row['name'], task_row['attributes'], new_split_level)) \
-                                                as insert_cur:
-                                            new_task_id = insert_cur.lastrowid
+                                if wire_count > 0:
+                                    if wire_count == 1:
+                                        wire = all_wires[0]
+                                        await con.execute('UPDATE tasks SET node_id = ?, state = ?, work_data = ? '
+                                                          'WHERE "id" = ?',
+                                                          (wire['node_id_in'], TaskState.WAITING.value, None, task_row['id']))
+                                    else:
+                                        new_split_level = task_row['split_level'] + 1
+                                        await con.execute('UPDATE tasks SET node_id = ?, state = ?, work_data = ?, split_level = ?'
+                                                          'WHERE "id" = ?',
+                                                          (all_wires[0]['node_id_in'], TaskState.WAITING.value, None, new_split_level,
+                                                           task_row['id']))
                                         await con.execute('INSERT INTO "task_splits" ("task_id", "split_id", "split_count", "split_level") VALUES (?,?,?,?)',
-                                                          (new_task_id, split_id, wire_count, new_split_level))
-                                await con.commit()
+                                                          (task_row['id'], 0, wire_count, new_split_level))
+                                        for split_id, wire in enumerate(all_wires[1:], 1):
+                                            async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "work_data", "name", "attributes", "split_level") '
+                                                                   'VALUES (?,?,?,?,?,?,?)',
+                                                                   (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], None, task_row['name'], task_row['attributes'], new_split_level)) \
+                                                    as insert_cur:
+                                                new_task_id = insert_cur.lastrowid
+                                            await con.execute('INSERT INTO "task_splits" ("task_id", "split_id", "split_count", "split_level") VALUES (?,?,?,?)',
+                                                              (new_task_id, split_id, wire_count, new_split_level))
+                                    await con.commit()
 
                 await asyncio.sleep(self.__processing_interval)
         # test = 0
