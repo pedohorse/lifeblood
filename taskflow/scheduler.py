@@ -14,8 +14,9 @@ from .uidata import create_uidata
 from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
 from .taskspawn import TaskSpawn
+from .basenode import BaseNode
 
-from typing import Optional, Any, AnyStr, List, Iterable, Union
+from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 
 class WorkerState(Enum):
@@ -53,6 +54,7 @@ class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True, loop=None):
         print('loading core plugins')
         self.__plugins = {}
+        self.__node_objects: Dict[int, BaseNode] = {}
         core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
         for filename in os.listdir(core_plugins_path):
             filebasename, fileext = os.path.splitext(filename)
@@ -62,14 +64,13 @@ class Scheduler:
                                                               os.path.join(core_plugins_path, filename))
             mod = importlib.util.module_from_spec(mod_spec)
             mod_spec.loader.exec_module(mod)
-            for requred_attr in ('process_task', 'postprocess_task'):
+            for requred_attr in ('create_node_object',):
                 if not hasattr(mod, requred_attr):
                     print(f'error loading plugin "{filebasename}". '
                           f'required method {requred_attr} is missing.')
                     continue
             self.__plugins[filebasename] = mod
         print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
-
 
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -93,6 +94,32 @@ class Scheduler:
 
     def ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
+
+    async def get_node_object_by_id(self, node_id: int):
+        if node_id in self.__node_objects:
+            return self.__node_objects[node_id]
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
+                node_row = await nodecur.fetchone()
+            if node_row is None:
+                raise RuntimeError('node id is invalid')
+
+            node_type = node_row['type']
+            if node_type not in self.__plugins:
+                raise RuntimeError('node type is unsupported')
+
+            if node_row['node_object'] is not None:
+                self.__node_objects[node_id] = await asyncio.get_event_loop().run_in_executor(None, self.__plugins[node_type].deserialize, node_row['node_object'])
+                return self.__node_objects[node_id]
+
+            newnode: BaseNode = self.__plugins[node_type].create_node_object(node_row['name'])
+            self.__node_objects[node_id] = newnode
+            await con.execute('UPDATE "nodes" SET node_object = ?',
+                              (await asyncio.get_event_loop().run_in_executor(None, newnode.serialize),))
+            await con.commit()
+
+            return newnode
 
     async def run(self):
         # prepare
@@ -243,7 +270,7 @@ class Scheduler:
         while True:
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
-                async with con.execute('SELECT tasks.*, nodes.type as node_type FROM tasks INNER JOIN nodes '
+                async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id FROM tasks INNER JOIN nodes '
                                        'ON tasks.node_id=nodes.id '
                                        'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ?'
                                        'ORDER BY RANDOM()',
@@ -251,21 +278,11 @@ class Scheduler:
                                         TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
                     async for task_row in cur:
 
-                        # for testing purp
-                        def _task_imitation_(task_data):
-                            td = InvocationJob(['bash', '-c', 'echo "boo" && sleep 2 && date && sleep 2 && date && sleep 6 && echo meow'], None)
-                            time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
-                            return td, None
-
-                        def _posttask_imitation_(task_data):
-                            time.sleep(3.5)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
-                            return {'cat': 1, 'dog': 2}, None
-
                         # task processing coroutimes
-                        async def _awaiter(task_id, processor, *parameters):  # TODO: process task generation errors
+                        async def _awaiter(task_id, node_object, *parameters):  # TODO: process task generation errors
                             loop = asyncio.get_event_loop()
                             try:
-                                result, newtasks = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                                result, newtasks = await loop.run_in_executor(None, node_object.process_task, *parameters)  # TODO: this should have task and node attributes!
                             except:  # TODO: save error information into database
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
@@ -285,10 +302,10 @@ class Scheduler:
                                 await self.spawn_tasks(newtasks, con=con)
                                 await con.commit()
 
-                        async def _post_awaiter(task_id, processor, *parameters):  # TODO: this is almost the same as _awaitor - so merge!
+                        async def _post_awaiter(task_id, node_object, *parameters):  # TODO: this is almost the same as _awaiter - so merge!
                             loop = asyncio.get_event_loop()
                             try:
-                                result, newtasks = await loop.run_in_executor(None, processor, *parameters)  # TODO: this should have task and node attributes!
+                                result, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, *parameters)  # TODO: this should have task and node attributes!
                             except:  # TODO: save error information into database
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
@@ -322,7 +339,7 @@ class Scheduler:
                                                   (TaskState.GENERATING.value, task_row['id']))
                                 await con.commit()
 
-                                asyncio.create_task(_awaiter(task_row['id'], self.__plugins[task_row['node_type']].process_task, dict(task_row)))
+                                asyncio.create_task(_awaiter(task_row['id'], await self.get_node_object_by_id(task_row['node_id']), dict(task_row)))
 
                         #
                         # waiting to be post processed
@@ -337,7 +354,7 @@ class Scheduler:
                                                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 await con.commit()
 
-                                asyncio.create_task(_post_awaiter(task_row['id'], self.__plugins[task_row['node_type']].postprocess_task, dict(task_row)))
+                                asyncio.create_task(_post_awaiter(task_row['id'], await self.get_node_object_by_id(task_row['node_id']), dict(task_row)))
 
                         #
                         # real scheduling should happen here
