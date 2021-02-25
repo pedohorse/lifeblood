@@ -298,17 +298,23 @@ class Scheduler:
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
                                 return
-                            result: InvocationJob
+                            result: Optional[InvocationJob]
                             newtasks: Optional[List[TaskSpawn]]
 
+                            if result is None:  # if no job to do
+                                async with aiosqlite.connect(self.db_path) as con:
+                                    await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                      (TaskState.POST_WAITING.value, task_id))
+                                    if isinstance(newtasks, list):
+                                        await self.spawn_tasks(newtasks, con=con)
+                                    await con.commit()
+                                return
                             result_serialized = await result.serialize()
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
                                                   (result_serialized, TaskState.READY.value, task_id))
-                                if newtasks is None or not isinstance(newtasks, list):
-                                    await con.commit()
-                                    return
-                                await self.spawn_tasks(newtasks, con=con)
+                                if isinstance(newtasks, list):
+                                    await self.spawn_tasks(newtasks, con=con)
                                 await con.commit()
 
                         async def _post_awaiter(task_id, node_object, *parameters):  # TODO: this is almost the same as _awaiter - so merge!
