@@ -127,7 +127,14 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             async with con.execute("SELECT id from workers") as cur:
                 async for row in cur:
-                    await self.set_worker_ping_state(row['id'], WorkerPingState.OFF, con)
+                    await self.set_worker_ping_state(row['id'], WorkerPingState.OFF, con, nocommit=True)
+            await con.commit()
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.WAITING.value, TaskState.GENERATING.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
+            await con.commit()
+
         # run
         await asyncio.gather(self.task_processor(),
                              self.worker_pinger(),
@@ -270,8 +277,10 @@ class Scheduler:
         while True:
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
-                async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id FROM tasks INNER JOIN nodes '
-                                       'ON tasks.node_id=nodes.id '
+                async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
+                                       'task_splits.split_id as split_id, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
+                                       'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
+                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level'
                                        'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ?'
                                        'ORDER BY RANDOM()',
                                        (TaskState.WAITING.value, TaskState.READY.value,
@@ -381,24 +390,30 @@ class Scheduler:
                                 work_data = task_row['work_data']
                                 assert work_data is not None
                                 task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-                                task.set_invocation_id(invocation_id)
-                                # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
-                                print(f'submitting task to {addr}')
-                                try:
-                                    async with WorkerTaskClient(ip, port) as client:
-                                        reply = await client.give_task(task, self.__server_address)
-                                    print(f'got reply {reply}')
-                                except:
-                                    print('some unexpected error')
-                                    reply = TaskScheduleStatus.FAILED
-                                if reply == TaskScheduleStatus.SUCCESS:
-                                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                      (TaskState.IN_PROGRESS.value, task_row['id']))
-                                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                      (WorkerState.BUSY.value, worker['id']))
-                                    await submit_transaction.commit()
-                                else:  # on anything but success - cancel transaction
+                                if not task.args():
                                     await submit_transaction.rollback()
+                                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                                     (TaskState.POST_WAITING.value, task_row['id']))
+                                    await submit_transaction.commit()
+                                else:
+                                    task.set_invocation_id(invocation_id)
+                                    # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
+                                    print(f'submitting task to {addr}')
+                                    try:
+                                        async with WorkerTaskClient(ip, port) as client:
+                                            reply = await client.give_task(task, self.__server_address)
+                                        print(f'got reply {reply}')
+                                    except:
+                                        print('some unexpected error')
+                                        reply = TaskScheduleStatus.FAILED
+                                    if reply == TaskScheduleStatus.SUCCESS:
+                                        await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                                         (TaskState.IN_PROGRESS.value, task_row['id']))
+                                        await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                                         (WorkerState.BUSY.value, worker['id']))
+                                        await submit_transaction.commit()
+                                    else:  # on anything but success - cancel transaction
+                                        await submit_transaction.rollback()
 
                         #
                         # means task is done being processed by current node,
