@@ -15,6 +15,7 @@ from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
+from .exceptions import *
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -287,21 +288,28 @@ class Scheduler:
                                         TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
                     async for task_row in cur:
 
+                        # TODO: this is really fucking unreadeble
                         # task processing coroutimes
-                        async def _awaiter(task_id, node_object, *parameters):  # TODO: process task generation errors
+                        async def _awaiter(task_id, node_object, task_row):  # TODO: process task generation errors
                             loop = asyncio.get_event_loop()
                             try:
-                                result, newtasks = await loop.run_in_executor(None, node_object.process_task, *parameters)  # TODO: this should have task and node attributes!
+                                taskdata, newtasks = await loop.run_in_executor(None, node_object.process_task, task_row)  # TODO: this should have task and node attributes!
+                            except NodeNotReadyToProcess:
+                                async with aiosqlite.connect(self.db_path) as con:
+                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
+                                                      (TaskState.WAITING.value, task_id))
+                                    await con.commit()
+                                return
                             except:  # TODO: save error information into database
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
                                 return
-                            result: Optional[InvocationJob]
+                            taskdata: Optional[InvocationJob]
                             newtasks: Optional[List[TaskSpawn]]
 
-                            if result is None:  # if no job to do
+                            if taskdata is None:  # if no job to do
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                       (TaskState.POST_WAITING.value, task_id))
@@ -309,7 +317,7 @@ class Scheduler:
                                         await self.spawn_tasks(newtasks, con=con)
                                     await con.commit()
                                 return
-                            result_serialized = await result.serialize()
+                            result_serialized = await taskdata.serialize()
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
                                                   (result_serialized, TaskState.READY.value, task_id))
@@ -317,20 +325,29 @@ class Scheduler:
                                     await self.spawn_tasks(newtasks, con=con)
                                 await con.commit()
 
-                        async def _post_awaiter(task_id, node_object, *parameters):  # TODO: this is almost the same as _awaiter - so merge!
+                        async def _post_awaiter(task_id, node_object, task_row):  # TODO: this is almost the same as _awaiter - so merge!
                             loop = asyncio.get_event_loop()
                             try:
-                                result, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, *parameters)  # TODO: this should have task and node attributes!
+                                new_attributes, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, task_row)  # TODO: this should have task and node attributes!
+                            except NodeNotReadyToProcess:
+                                async with aiosqlite.connect(self.db_path) as con:
+                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
+                                                      (TaskState.POST_WAITING.value, task_id))
+                                    await con.commit()
+                                return
                             except:  # TODO: save error information into database
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
                                 return
-                            result: dict
+                            new_attributes: Dict[str, Any]
                             newtasks: Optional[List[TaskSpawn]]
 
-                            result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, result)
+                            attributes = task_row['attributes']
+                            attributes.update(new_attributes)
+                            attributes = {k: v for k, v in attributes.items() if v is not None}
+                            result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                             async with aiosqlite.connect(self.db_path) as con:
                                 await con.execute('UPDATE tasks SET "attributes" = ?, "state" = ? WHERE "id" = ?',
                                                   (result_serialized, TaskState.DONE.value, task_id))

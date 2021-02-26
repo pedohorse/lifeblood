@@ -1,0 +1,3 @@
+
+class NodeNotReadyToProcess(Exception):
+    pass
