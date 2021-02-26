@@ -1,6 +1,10 @@
 import asyncio
 from enum import Enum
-from typing import Dict
+from typing import TYPE_CHECKING, Dict, Optional, List, Any
+
+if TYPE_CHECKING:
+    from .taskspawn import TaskSpawn
+    from .invocationjob import InvocationJob
 
 
 class AttributeType(Enum):
@@ -14,17 +18,17 @@ class BaseNode:
     def attribs(self) -> Dict[str, AttributeType]:
         return {}
 
-    def attrib_value(self, attrib_name):
+    def attrib_value(self, attrib_name) -> Any:
         raise NotImplementedError()
 
-    def set_attrib_value(self, attrib_name, attrib_value):
+    def set_attrib_value(self, attrib_name, attrib_value) -> None:
         raise NotImplementedError()
 
-    def process_task(self, task_dict):
+    def process_task(self, task_dict) -> (InvocationJob, Optional[List[TaskSpawn]]):
         raise NotImplementedError()
 
-    def postprocess_task(self, task_dict):
+    def postprocess_task(self, task_dict) -> (Dict[str, Any], Optional[List[TaskSpawn]]):
         raise NotImplementedError()
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         raise NotImplementedError()
