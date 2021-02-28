@@ -15,6 +15,7 @@ from .broadcasting import create_broadcaster
 from .nethelpers import address_to_ip_port
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
+from .nodethings import ProcessingResult
 from .exceptions import *
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
@@ -44,6 +45,7 @@ class TaskState(Enum):
     DONE = 6  # done, needs further processing
     ERROR = 7  # some internal error, not allowing to process task. NOT INVOCATION ERROR
     SPAWNED = 8  # spawned tasks are just passed down from node's "spawned" output
+    DEAD = 9  # task will not be processed any more
 
 
 class InvocationState(Enum):
@@ -152,6 +154,28 @@ class Scheduler:
     async def update_worker_lastseen(self, wid: int, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False):
         await self._set_value('workers', 'last_seen', wid, int(time.time()), con, nocommit)
 
+    async def reset_invocations_for_worker(self, worker_id: int, con: Optional[aiosqlite.Connection] = None):
+        def _inner_(con):
+            async with con.execute('SELECT * FROM invocations WHERE "worker_id" = ? AND "state" == ?',
+                                   (worker_id, InvocationState.IN_PROGRESS.value)) as incur:
+                need_commit = False
+                async for invoc_row in incur:  # mark all (probably single one) invocations
+                    need_commit = True
+                    print("fixing dangling invocation %d" % (invoc_row['id'],))
+                    await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
+                                      (InvocationState.FINISHED.value, invoc_row['id']))
+                    await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                      (TaskState.READY.value, invoc_row['task_id']))
+            return need_commit
+        if con is None:
+            async with aiosqlite.connect(self.db_path) as con:
+                if _inner_(con):
+                    await con.commit()
+                return False
+        else:
+            return _inner_(con)
+
+
     async def _set_value(self, table: str, field: str, wid: int, value: Any, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         if con is None:
             # TODO: safe check table and field, allow only text
@@ -171,21 +195,8 @@ class Scheduler:
 
             async def _check_lastseen_and_drop_invocations():
                 if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 32:
-                    return
-                await _reset_invocations_for_worker()
-
-            async def _reset_invocations_for_worker():
-                async with con.execute('SELECT * FROM invocations WHERE "worker_id" = ? AND "state" == ?',
-                                       (worker_row['id'], InvocationState.IN_PROGRESS.value)) as incur:
-                    need_commit = False
-                    async for invoc_row in incur:  # mark all (probably single one) invocations
-                        need_commit = True
-                        print("fixing dangling invocation %d" % (invoc_row['id'],))
-                        await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
-                                          (InvocationState.FINISHED.value, invoc_row['id']))
-                        await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                          (TaskState.READY.value, invoc_row['task_id']))
-                return need_commit
+                    return False
+                return await self.reset_invocations_for_worker(worker_row['id'], con)
 
             print('    :: pinger started')
             await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con)
@@ -230,11 +241,10 @@ class Scheduler:
 
             if ping_code == WorkerPingReply.IDLE:
                 workerstate = WorkerState.IDLE
-                if await _reset_invocations_for_worker():
+                if await self.reset_invocations_for_worker(worker_row['id'], con=con):
                     await con.commit()
             else:
                 workerstate = WorkerState.BUSY
-                # TODO: maybe check invocation in progress? though there doesn't seem to be a way to have inconsistency here...
 
             await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
                                  self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
@@ -279,10 +289,10 @@ class Scheduler:
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
-                                       'task_splits.split_id as split_id, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
+                                       'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                        'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
-                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level'
-                                       'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ?'
+                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level AND task_splits.split_sealed=0 '
+                                       'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ? '
                                        'ORDER BY RANDOM()',
                                        (TaskState.WAITING.value, TaskState.READY.value,
                                         TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
@@ -290,72 +300,83 @@ class Scheduler:
 
                         # TODO: this is really fucking unreadeble
                         # task processing coroutimes
-                        async def _awaiter(task_id, node_object, task_row):  # TODO: process task generation errors
+                        async def _awaiter(processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
+                            task_id = task_row['id']
                             loop = asyncio.get_event_loop()
                             try:
-                                taskdata, newtasks = await loop.run_in_executor(None, node_object.process_task, task_row)  # TODO: this should have task and node attributes!
+                                process_result = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
                             except NodeNotReadyToProcess:
-                                async with aiosqlite.connect(self.db_path) as con:
-                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
-                                                      (TaskState.WAITING.value, task_id))
-                                    await con.commit()
-                                return
-                            except:  # TODO: save error information into database
-                                async with aiosqlite.connect(self.db_path) as con:
-                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
-                                                      (TaskState.ERROR.value, task_id))
-                                    await con.commit()
-                                return
-                            taskdata: Optional[InvocationJob]
-                            newtasks: Optional[List[TaskSpawn]]
-
-                            if taskdata is None:  # if no job to do
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                      (TaskState.POST_WAITING.value, task_id))
-                                    if isinstance(newtasks, list):
-                                        await self.spawn_tasks(newtasks, con=con)
+                                                      (abort_state.value, task_id))
                                     await con.commit()
                                 return
-                            result_serialized = await taskdata.serialize()
-                            async with aiosqlite.connect(self.db_path) as con:
-                                await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
-                                                  (result_serialized, TaskState.READY.value, task_id))
-                                if isinstance(newtasks, list):
-                                    await self.spawn_tasks(newtasks, con=con)
-                                await con.commit()
-
-                        async def _post_awaiter(task_id, node_object, task_row):  # TODO: this is almost the same as _awaiter - so merge!
-                            loop = asyncio.get_event_loop()
-                            try:
-                                new_attributes, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, task_row)  # TODO: this should have task and node attributes!
-                            except NodeNotReadyToProcess:
+                            except Exception as e:  # TODO: save error information into database
                                 async with aiosqlite.connect(self.db_path) as con:
-                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
-                                                      (TaskState.POST_WAITING.value, task_id))
-                                    await con.commit()
-                                return
-                            except:  # TODO: save error information into database
-                                async with aiosqlite.connect(self.db_path) as con:
-                                    await con.execute('UPDATE tasks SET"state" = ? WHERE "id" = ?',
+                                    await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
+                                    print('error happened', e)
                                 return
-                            new_attributes: Dict[str, Any]
-                            newtasks: Optional[List[TaskSpawn]]
 
-                            attributes = task_row['attributes']
-                            attributes.update(new_attributes)
-                            attributes = {k: v for k, v in attributes.items() if v is not None}
-                            result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                             async with aiosqlite.connect(self.db_path) as con:
-                                await con.execute('UPDATE tasks SET "attributes" = ?, "state" = ? WHERE "id" = ?',
-                                                  (result_serialized, TaskState.DONE.value, task_id))
-                                if newtasks is None or not isinstance(newtasks, list):
-                                    await con.commit()
-                                    return
-                                await self.spawn_tasks(newtasks, con=con)
+                                if process_result.do_kill_task:
+                                    await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                      (TaskState.DEAD.value, task_id))
+                                else:
+                                    if process_result.invocation_job is None:  # if no job to do
+                                        await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                          (skip_state.value, task_id))
+                                    else:
+                                        taskdada_serialized = await process_result.invocation_job.serialize()
+                                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
+                                                          (taskdada_serialized, TaskState.READY.value, task_id))
+                                if process_result.do_split_remove:
+                                    await con.execute('UPDATE task_splits SET "split_sealed" = 1 '
+                                                      'WHERE "task_id" = ? AND "split_id" = ?',
+                                                      (task_id, task_row['split_id']))
+                                    await con.execute('UPDATE tasks SET "split_level" = "split_level" - 1 WHERE "id" = ?',
+                                                      (task_id,))
+                                if process_result.attributes_to_set:  # not None or {}
+                                    attributes = json.loads(task_row['attributes'])
+                                    attributes.update(process_result.attributes_to_set)
+                                    attributes = {k: v for k, v in attributes.items() if v is not None}
+                                    result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                                    await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
+                                                      (result_serialized, task_id))
+                                if process_result.spawn_list is not None:
+                                    await self.spawn_tasks(process_result.spawn_list, con=con)
                                 await con.commit()
+
+                        # async def _post_awaiter(task_id, node_object, task_row):  # TODO: this is almost the same as _awaiter - so merge!
+                        #     loop = asyncio.get_event_loop()
+                        #     try:
+                        #         new_attributes, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, task_row)  # TODO: this should have task and node attributes!
+                        #     except NodeNotReadyToProcess:
+                        #         async with aiosqlite.connect(self.db_path) as con:
+                        #             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                        #                               (TaskState.POST_WAITING.value, task_id))
+                        #             await con.commit()
+                        #         return
+                        #     except:  # TODO: save error information into database
+                        #         async with aiosqlite.connect(self.db_path) as con:
+                        #             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                        #                               (TaskState.ERROR.value, task_id))
+                        #             await con.commit()
+                        #         return
+                        #
+                        #     attributes = task_row['attributes']
+                        #     attributes.update(new_attributes)
+                        #     attributes = {k: v for k, v in attributes.items() if v is not None}
+                        #     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                        #     async with aiosqlite.connect(self.db_path) as con:
+                        #         await con.execute('UPDATE tasks SET "attributes" = ?, "state" = ? WHERE "id" = ?',
+                        #                           (result_serialized, TaskState.DONE.value, task_id))
+                        #         if newtasks is None or not isinstance(newtasks, list):
+                        #             await con.commit()
+                        #             return
+                        #         await self.spawn_tasks(newtasks, con=con)
+                        #         await con.commit()
 
                         # means task just arrived in the node and is ready to be processed by the node.
                         # processing node generates args,
@@ -371,7 +392,8 @@ class Scheduler:
                                                   (TaskState.GENERATING.value, task_row['id']))
                                 await con.commit()
 
-                                asyncio.create_task(_awaiter(task_row['id'], await self.get_node_object_by_id(task_row['node_id']), dict(task_row)))
+                                asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id'])).process_task, dict(task_row),
+                                                             abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
 
                         #
                         # waiting to be post processed
@@ -386,7 +408,8 @@ class Scheduler:
                                                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 await con.commit()
 
-                                asyncio.create_task(_post_awaiter(task_row['id'], await self.get_node_object_by_id(task_row['node_id']), dict(task_row)))
+                                asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id'])).postprocess_task, dict(task_row),
+                                                             abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
 
                         #
                         # real scheduling should happen here
@@ -463,16 +486,18 @@ class Scheduler:
                                                           'WHERE "id" = ?',
                                                           (all_wires[0]['node_id_in'], TaskState.WAITING.value, None, new_split_level,
                                                            task_row['id']))
-                                        await con.execute('INSERT INTO "task_splits" ("task_id", "split_id", "split_count", "split_level") VALUES (?,?,?,?)',
-                                                          (task_row['id'], 0, wire_count, new_split_level))
-                                        for split_id, wire in enumerate(all_wires[1:], 1):
+                                        async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
+                                            next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
+                                        await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                                                          (next_split_id, task_row['id'], 0, wire_count, new_split_level, task_row['id']))
+                                        for split_element, wire in enumerate(all_wires[1:], 1):
                                             async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "work_data", "name", "attributes", "split_level") '
                                                                    'VALUES (?,?,?,?,?,?,?)',
                                                                    (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], None, task_row['name'], task_row['attributes'], new_split_level)) \
                                                     as insert_cur:
                                                 new_task_id = insert_cur.lastrowid
-                                            await con.execute('INSERT INTO "task_splits" ("task_id", "split_id", "split_count", "split_level") VALUES (?,?,?,?)',
-                                                              (new_task_id, split_id, wire_count, new_split_level))
+                                            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                                                              (next_split_id, new_task_id, split_element, wire_count, new_split_level, task_row['id']))
                                     await con.commit()
 
                 await asyncio.sleep(self.__processing_interval)
@@ -536,11 +561,21 @@ class Scheduler:
     # add new worker to db
     async def add_worker(self, addr: str):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path) as con:
-            await con.execute('INSERT OR REPLACE INTO "workers" '
-                              '(cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state) '
-                              'VALUES '
-                              '(?, ?, ?, ?, ?, ?, ?, ?)',
-                              (1, 1, 1, 1, addr, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value))
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
+                worker_row = await worcur.fetchone()
+            if worker_row is not None:
+                await self.reset_invocations_for_worker(worker_row['id'], con=con)
+                await con.execute('UPDATE "workers" SET '
+                                  'cpu_count=?, mem_size=?, gpu_count=?, gmem_size=?, last_seen=?, ping_state=?, state=? '
+                                  'WHERE last_address=?',
+                                  (1, 1, 1, 1, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value, addr))
+            else:
+                await con.execute('INSERT INTO "workers" '
+                                  '(cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state) '
+                                  'VALUES '
+                                  '(?, ?, ?, ?, ?, ?, ?, ?)',
+                                  (1, 1, 1, 1, addr, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value))
             await con.commit()
 
     #
@@ -604,7 +639,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             logs = {}
             print(f'fetching for {task_id}, {node_id}', '' if invocation_id is None else invocation_id)
-            if invocation_id is None:
+            if invocation_id is None:  # TODO: disable this option
                 async with con.execute('SELECT * from "invocations" WHERE "task_id" = ? AND "node_id" = ?',
                                        (task_id, node_id)) as cur:
                     async for entry in cur:
@@ -614,21 +649,22 @@ class Scheduler:
                                        (task_id, node_id, invocation_id)) as cur:
                     async for entry in cur:  # should be exactly 1 or 0
                         entry = dict(entry)
-                        if entry['state'] == InvocationState.IN_PROGRESS.value:
+                        if entry['state'] == InvocationState.IN_PROGRESS.value or entry['stdout'] is None or entry['stderr'] is None:
                             async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry['worker_id'],)) as worcur:
                                 workrow = await worcur.fetchone()
                             if workrow is None:
                                 print('WARNING! worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
-                            try:
-                                async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
-                                    stdout, stderr = await client.get_log(invocation_id)
-                                await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ?', (stdout, stderr))
-                                await con.commit()
-                            except ConnectionError:
-                                print('could not connect to worker to get freshest logs')
                             else:
-                                entry['stdout'] = stdout
-                                entry['stderr'] = stderr
+                                try:
+                                    async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
+                                        stdout, stderr = await client.get_log(invocation_id)
+                                    await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ?', (stdout, stderr))
+                                    await con.commit()
+                                except ConnectionError:
+                                    print('could not connect to worker to get freshest logs')
+                                else:
+                                    entry['stdout'] = stdout
+                                    entry['stderr'] = stderr
                         logs[entry['id']] = entry
         return {node_id: logs}
 

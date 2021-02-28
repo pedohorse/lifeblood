@@ -1,7 +1,7 @@
 import time
 import json
 from taskflow.basenode import BaseNode, AttributeType
-from taskflow.invocationjob import InvocationJob
+from taskflow.nodethings import ProcessingResult
 from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
 
@@ -13,6 +13,7 @@ from typing import Dict, TypedDict, Set, List, Optional, Any
 class SliceAwaiting(TypedDict):
     arrived: Set[int]
     awaiting: Set[int]
+    first_to_arrive: Optional[int]
 
 
 def create_node_object(name: str):
@@ -32,24 +33,43 @@ class SliceWaiterNode(BaseNode):
 
         self.__wait_for_all = True
 
-    def process_task(self, task_dict) -> (InvocationJob, Optional[List[TaskSpawn]]): #TODO: not finished, attrib not taken into account, rethink return type
-        split_id = task_dict['split_origin_task_id']
-        if split_id is None:  # means no splits - just pass through
-            return None, None
+    def process_task(self, task_dict) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
+        orig_id = task_dict['split_origin_task_id']
+        split_id = task_dict['split_id']
+        task_id = task_dict['id']
+        if orig_id is None:  # means no splits - just pass through
+            return ProcessingResult()
         with self.__main_lock:
             if split_id not in self.__cache:
-                self.__cache[split_id] = {'arrived': set(), 'awaiting': set(range(task_dict['split_count']))}
-            self.__cache[split_id]['arrived'].add(task_dict['split_id'])
+                self.__cache[split_id] = {'arrived': set(),
+                                          'awaiting': set(range(task_dict['split_count'])),
+                                          'first_to_arrive': None}
+            if self.__cache[split_id]['first_to_arrive'] is None and len(self.__cache[split_id]['arrived']) == 0:
+                self.__cache[split_id]['first_to_arrive'] = task_id
+            self.__cache[split_id]['arrived'].add(task_dict['split_element'])
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
-        with self.__main_lock:
-            if self.__cache[split_id]['arrived'] == self.__cache[split_id]['awaiting']:
-                return None, None
+        if self.__wait_for_all:
+            with self.__main_lock:
+                if self.__cache[split_id]['arrived'] == self.__cache[split_id]['awaiting']:
+                    res = ProcessingResult()
+                    res.remove_split()
+                    if orig_id != task_id:
+                        res.kill_task()
+                    return res
+        else:
+            with self.__main_lock:
+                res = ProcessingResult()
+                res.remove_split()
+                if self.__cache[split_id]['first_to_arrive'] != task_id:
+                    res.kill_task()
+                return res
+
         raise NodeNotReadyToProcess()
 
-    def postprocess_task(self, task_dict) -> (Dict[str, Any], Optional[List[TaskSpawn]]):
-        return {}, None
+    def postprocess_task(self, task_dict) -> ProcessingResult:
+        return ProcessingResult()
 
     # attributes
     def attribs(self) -> Dict[str, AttributeType]:
@@ -67,6 +87,6 @@ class SliceWaiterNode(BaseNode):
 
     #serialization
     def serialize(self) -> bytes:
-        attrs = self.__dict__
-        del attrs['_SliceWaiterNode_main_lock']
+        attrs = self.__dict__.copy()
+        del attrs['_SliceWaiterNode__main_lock']
         return json.dumps(attrs).encode('UTF-8')

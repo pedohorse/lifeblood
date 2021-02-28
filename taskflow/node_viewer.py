@@ -240,7 +240,9 @@ class Task(NetworkItemWithUI):
                           TaskState.POST_WAITING: QBrush(QColor(96, 96, 96, 192)),
                           TaskState.POST_GENERATING: QBrush(QColor(128, 32, 128, 192)),
                           TaskState.DONE: QBrush(QColor(32, 192, 32, 192)),
-                          TaskState.ERROR: QBrush(QColor(192, 32, 32, 192))}
+                          TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
+                          TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
+                          TaskState.DEAD: QBrush(QColor(16, 19, 22, 192))}
 
     def boundingRect(self) -> QRectF:
         lw = self.__line_width
@@ -653,7 +655,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'getfullstate\n')
             recvdata = recv_exactly(self.__conn, 4)
-        except ConnectionResetError as e:
+        except ConnectionError as e:
             print('connection reset', e)
             print('scheduler connection lost')
             self.__conn = None
