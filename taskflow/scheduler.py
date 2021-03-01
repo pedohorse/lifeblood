@@ -155,7 +155,7 @@ class Scheduler:
         await self._set_value('workers', 'last_seen', wid, int(time.time()), con, nocommit)
 
     async def reset_invocations_for_worker(self, worker_id: int, con: Optional[aiosqlite.Connection] = None):
-        def _inner_(con):
+        async def _inner_(con):
             async with con.execute('SELECT * FROM invocations WHERE "worker_id" = ? AND "state" == ?',
                                    (worker_id, InvocationState.IN_PROGRESS.value)) as incur:
                 need_commit = False
@@ -169,11 +169,11 @@ class Scheduler:
             return need_commit
         if con is None:
             async with aiosqlite.connect(self.db_path) as con:
-                if _inner_(con):
+                if await _inner_(con):
                     await con.commit()
                 return False
         else:
-            return _inner_(con)
+            return await _inner_(con)
 
 
     async def _set_value(self, table: str, field: str, wid: int, value: Any, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
