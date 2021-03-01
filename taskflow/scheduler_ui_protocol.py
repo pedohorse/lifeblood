@@ -1,6 +1,7 @@
 import struct
 import pickle
 import asyncio
+from .uidata import NodeUi
 
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
@@ -21,6 +22,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 if command.endswith(b'\n'):
                     command = command[:-1]
                 print(f'got command {command}')
+                # get full nodegraph state. only brings in where is which item, no other details
                 if command == b'getfullstate':
                     uidata = await self.__scheduler.get_full_ui_state()
                     uidata_ser = await uidata.serialize()
@@ -41,6 +43,13 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     else:
                         raise RuntimeError('this error is impossible!')
                     data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
+                    writer.write(struct.pack('>I', len(data)))
+                    writer.write(data)
+                # brings in interface data for one particular node
+                elif command == b'getnodeinterface':
+                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_nodeui()
+                    data: bytes = await nodeui.serialize()
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
