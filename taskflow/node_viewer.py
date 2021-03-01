@@ -105,6 +105,7 @@ class Node(NetworkItemWithUI):
 
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
+        self.update_ui()
 
     def boundingRect(self) -> QRectF:
         lw = self.__width + self.__line_width
@@ -249,6 +250,7 @@ class Task(NetworkItemWithUI):
         self.__name = name
         self.__state = TaskState.WAITING
         self.__log: dict = {}
+        self.__ui_attributes: dict = {}
         self.__requested_invocs_while_selected = set()
 
         self.__size = 16
@@ -328,6 +330,11 @@ class Task(NetworkItemWithUI):
 
         self.update_ui()
 
+    def update_attributes(self, attributes: dict):
+        print('attrs updated with', attributes)
+        self.__ui_attributes = attributes
+        self.update_ui()
+
     def set_node_animated(self, node: Optional[Node], pos: QPointF):
         print('set animated called!', node, pos)
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
@@ -377,6 +384,7 @@ class Task(NetworkItemWithUI):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value and self.__node is not None:   # item was just selected
                 self.scene().request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
+                self.scene().request_attributes(self.get_id())
 
                 # if task is in progress - we find that invocation of it that is not finished and null it to force update
                 if self.__state == TaskState.IN_PROGRESS \
@@ -396,6 +404,15 @@ class Task(NetworkItemWithUI):
     # interface
     def draw_imgui_elements(self):
         imgui.text(f'Task {self.get_id()}')
+        # first draw attributes
+        for key, val in self.__ui_attributes:
+            imgui.columns(2, 'node_attributes')
+            imgui.text(key)
+            imgui.next_column()
+            imgui.text(repr(val))
+            imgui.columns(1)
+
+        # now draw log
         if self.__log is None:
             return
         for node_id, invocs in self.__log.items():
@@ -432,6 +449,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     log_has_been_requested = Signal(int, int, int)
     log_meta_has_been_requested = Signal(int)
     node_ui_has_been_requested = Signal(int)
+    task_ui_attributes_has_been_requested = Signal(int)
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -450,10 +468,10 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
 
-
         self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
         self.node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
+        self.task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
         self.__ui_connection_thread.start()
@@ -463,6 +481,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_log_meta(self, task_id):
         self.log_meta_has_been_requested.emit(task_id)
+
+    def request_attributes(self, task_id):
+        task_ui_attributes_has_been_requested.emit(task_id)
 
     def request_node_ui(self, node_id):
         self.node_ui_has_been_requested.emit(node_id)
@@ -599,6 +620,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
+    task_attribs_fetched = Signal(int, dict)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -731,6 +753,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             print('failed ', e)
         else:
             self.log_fetched.emit(task_id, logmeta)
+
+    @Slot(int)
+    def get_task_attribs(self, task_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        raise NotImplementedError()
+        # then emit task_attribs_fetched
 
     @Slot(int, int, int)
     def get_log(self, task_id: int, node_id: int, invocation_id: int):
