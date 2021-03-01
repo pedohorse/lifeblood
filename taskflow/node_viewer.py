@@ -8,16 +8,19 @@ import pickle
 import sqlite3
 import asyncio
 from math import sqrt
-from .uidata import UiData
+from .uidata import UiData, NodeUi
 from .scheduler import TaskState, InvocationState
 from .broadcasting import await_broadcast
 from .nethelpers import recv_exactly
+
+from .enums import NodeAttributeType
 
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
 from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath
+
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -97,6 +100,11 @@ class Node(NetworkItemWithUI):
         self.__borderpen.setWidthF(self.__line_width)
         self.__header_brush = QBrush(QColor(48, 64, 48, 192))
         self.__body_brush = QBrush(QColor(48, 48, 48, 128))
+
+        self.__nodeui: Optional[NodeUi] = None
+
+    def update_nodeui(self, nodeui: NodeUi):
+        self.__nodeui = nodeui
 
     def boundingRect(self) -> QRectF:
         lw = self.__width + self.__line_width
@@ -181,6 +189,25 @@ class Node(NetworkItemWithUI):
     def draw_imgui_elements(self):
         imgui.text(f'Node {self.get_id()}, name {self.__name}')
         _, self.__some_value = imgui.slider_float('foo', self.__some_value, 0, 100, format='%.3f')
+        if self.__nodeui is not None:
+            for attr_name, attr_dict in self.__nodeui.attribute_items():
+                attr_type = attr_dict['type']
+
+                if attr_type == NodeAttributeType.BOOL:
+                    _, attr_dict['value'] = imgui.checkbox(attr_name, attr_dict['value'])
+                elif attr_type == NodeAttributeType.INT:
+                    _, attr_dict['value'] = imgui.slider_int(attr_name, attr_dict['value'], 0, 10)
+                elif attr_type == NodeAttributeType.FLOAT:
+                    _, attr_dict['value'] = imgui.slider_float(attr_name, attr_dict['value'], 0, 10)
+                elif attr_type == NodeAttributeType.STRING:
+                    _, attr_dict['value'] = imgui.input_text(attr_name, attr_dict['value'], 256)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemSelectedHasChanged:
+            if value:   # item was just selected
+                self.scene().request_node_ui(self.get_id())
+                
+        return super(Node, self).itemChange(change, value)
 
 
 class NodeConnection(NetworkItem):
@@ -401,8 +428,10 @@ class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
 
 
 class QGraphicsImguiScene(QGraphicsScene):
+    # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
     log_has_been_requested = Signal(int, int, int)
     log_meta_has_been_requested = Signal(int)
+    node_ui_has_been_requested = Signal(int)
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -419,18 +448,24 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         self.__ui_connection_worker.full_update.connect(self.full_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
+        self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
+
+
         self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
+        self.node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
         self.__ui_connection_thread.start()
 
     def request_log(self, task_id, node_id, invocation_id):
-        #PySide2.QtCore.QMetaObject.invokeMethod(self.__ui_connection_worker, 'get_log', Qt.QueuedConnection)
         self.log_has_been_requested.emit(task_id, node_id, invocation_id)
 
     def request_log_meta(self, task_id):
         self.log_meta_has_been_requested.emit(task_id)
+
+    def request_node_ui(self, node_id):
+        self.node_ui_has_been_requested.emit(node_id)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -508,6 +543,14 @@ class QGraphicsImguiScene(QGraphicsScene):
             return
         task.update_log(log)
 
+    @Slot(object, object)
+    def nodeui_fetched(self, node_id: int, nodeui: NodeUi):
+        try:
+            node = self.get_node(node_id)
+            node.update_nodeui(nodeui)
+        except KeyError:
+            print('node ui fetched for non existant node')
+
     def addItem(self, item):
         super(QGraphicsImguiScene, self).addItem(item)
         if isinstance(item, Task):
@@ -555,6 +598,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
+    nodeui_fetched = Signal(int, NodeUi)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -672,7 +716,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         uidata = UiData.deserialize(uidatabytes)
         self.full_update.emit(uidata)
 
-    @Slot()
+    @Slot(int)
     def get_log_metadata(self, task_id: int):
         if not self.ensure_connected():
             return
@@ -688,7 +732,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         else:
             self.log_fetched.emit(task_id, logmeta)
 
-    @Slot()
+    @Slot(int, int, int)
     def get_log(self, task_id: int, node_id: int, invocation_id: int):
         if not self.ensure_connected():
             return
@@ -703,6 +747,21 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             print('failed ', e)
         else:
             self.log_fetched.emit(task_id, alllogs)
+
+    @Slot()
+    def get_nodeui(self, node_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'getnodeinterface\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+            rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
+            nodeui: NodeUi = pickle.loads(recv_exactly(self.__conn, rcvsize))
+        except ConnectionError as e:
+            print('failed ', e)
+        else:
+            self.nodeui_fetched.emit(node_id, nodeui)
 
 # class SchedulerConnectionThread(QThread):
 #     full_update = Signal(UiData)
