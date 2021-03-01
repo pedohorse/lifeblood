@@ -1,9 +1,11 @@
 import time
 import json
-from taskflow.basenode import BaseNode, AttributeType
+from taskflow.basenode import BaseNode
 from taskflow.nodethings import ProcessingResult
 from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
+from taskflow.enums import NodeAttributeType
+from taskflow.uidata import NodeUi
 
 from threading import Lock
 
@@ -72,8 +74,8 @@ class SliceWaiterNode(BaseNode):
         return ProcessingResult()
 
     # attributes
-    def attribs(self) -> Dict[str, AttributeType]:
-        return {"wait for all": AttributeType.BOOL}
+    def attribs(self) -> Dict[str, NodeAttributeType]:
+        return {"wait for all": NodeAttributeType.BOOL}
 
     def attrib_value(self, attrib_name):
         if attrib_name == 'wait for all':
@@ -84,6 +86,11 @@ class SliceWaiterNode(BaseNode):
         if attrib_name == 'wait for all':
             self.__wait_for_all = attrib_value
         raise KeyError(attrib_name)
+
+    def get_nodeui(self):
+        ui = NodeUi()
+        ui.add_attribute('wait for all', NodeAttributeType.BOOL, self.__wait_for_all)
+        return ui
 
     #serialization
     def serialize(self) -> bytes:
