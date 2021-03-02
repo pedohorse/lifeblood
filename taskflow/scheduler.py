@@ -124,6 +124,15 @@ class Scheduler:
 
             return newnode
 
+    async def get_task_attributes(self, task_id: int):
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+                res = await cur.fetchone()
+            if res is None:
+                raise RuntimeError('task with specified id was not found')
+            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes'])
+
     async def run(self):
         # prepare
         async with aiosqlite.connect(self.db_path) as con:

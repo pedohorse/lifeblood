@@ -52,6 +52,12 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     data: bytes = await nodeui.serialize()
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)
+                elif command == b'gettaskattribs':
+                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    attribs = await self.__scheduler.get_task_attributes(task_id)
+                    data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
+                    writer.write(struct.pack('>I', len(data)))
+                    writer.write(data)
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():

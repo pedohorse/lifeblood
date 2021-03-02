@@ -405,7 +405,7 @@ class Task(NetworkItemWithUI):
     def draw_imgui_elements(self):
         imgui.text(f'Task {self.get_id()}')
         # first draw attributes
-        for key, val in self.__ui_attributes:
+        for key, val in self.__ui_attributes.items():
             imgui.columns(2, 'node_attributes')
             imgui.text(key)
             imgui.next_column()
@@ -467,6 +467,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.full_update.connect(self.full_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
+        self.__ui_connection_worker.task_attribs_fetched.connect(self.task_attribs_fetched)
 
         self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
@@ -483,7 +484,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.log_meta_has_been_requested.emit(task_id)
 
     def request_attributes(self, task_id):
-        task_ui_attributes_has_been_requested.emit(task_id)
+        self.task_ui_attributes_has_been_requested.emit(task_id)
 
     def request_node_ui(self, node_id):
         self.node_ui_has_been_requested.emit(node_id)
@@ -571,6 +572,15 @@ class QGraphicsImguiScene(QGraphicsScene):
             node.update_nodeui(nodeui)
         except KeyError:
             print('node ui fetched for non existant node')
+
+    @Slot(object, object)
+    def task_attribs_fetched(self, task_id: int, attribs: dict):
+        try:
+            task = self.get_task(task_id)
+        except KeyError:
+            print('log fetched, but task not found!')
+            return
+        task.update_attributes(attribs)
 
     def addItem(self, item):
         super(QGraphicsImguiScene, self).addItem(item)
@@ -760,8 +770,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             return
         assert self.__conn is not None
 
-        raise NotImplementedError()
-        # then emit task_attribs_fetched
+        try:
+            self.__conn.sendall(b'gettaskattribs\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+            rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
+            attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
+        except ConnectionError as e:
+            print('failed ', e)
+        else:
+            self.task_attribs_fetched.emit(task_id, attribs)
 
     @Slot(int, int, int)
     def get_log(self, task_id: int, node_id: int, invocation_id: int):
