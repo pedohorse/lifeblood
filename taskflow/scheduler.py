@@ -17,6 +17,7 @@ from .taskspawn import TaskSpawn
 from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
+from . import pluginloader
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -56,24 +57,25 @@ class InvocationState(Enum):
 class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True, loop=None):
         print('loading core plugins')
-        self.__plugins = {}
+        pluginloader.init()  # TODO: move it outside of constructor
         self.__node_objects: Dict[int, BaseNode] = {}
-        core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
-        for filename in os.listdir(core_plugins_path):
-            filebasename, fileext = os.path.splitext(filename)
-            if fileext != '.py':
-                continue
-            mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',
-                                                              os.path.join(core_plugins_path, filename))
-            mod = importlib.util.module_from_spec(mod_spec)
-            mod_spec.loader.exec_module(mod)
-            for requred_attr in ('create_node_object',):
-                if not hasattr(mod, requred_attr):
-                    print(f'error loading plugin "{filebasename}". '
-                          f'required method {requred_attr} is missing.')
-                    continue
-            self.__plugins[filebasename] = mod
-        print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
+        # self.__plugins = {}
+        # core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
+        # for filename in os.listdir(core_plugins_path):
+        #     filebasename, fileext = os.path.splitext(filename)
+        #     if fileext != '.py':
+        #         continue
+        #     mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',
+        #                                                       os.path.join(core_plugins_path, filename))
+        #     mod = importlib.util.module_from_spec(mod_spec)
+        #     mod_spec.loader.exec_module(mod)
+        #     for requred_attr in ('create_node_object',):
+        #         if not hasattr(mod, requred_attr):
+        #             print(f'error loading plugin "{filebasename}". '
+        #                   f'required method {requred_attr} is missing.')
+        #             continue
+        #     self.__plugins[filebasename] = mod
+        # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
 
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -98,7 +100,7 @@ class Scheduler:
     def ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
 
-    async def get_node_object_by_id(self, node_id: int):
+    async def get_node_object_by_id(self, node_id: int) -> BaseNode:
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
         async with aiosqlite.connect(self.db_path) as con:
@@ -109,17 +111,17 @@ class Scheduler:
                 raise RuntimeError('node id is invalid')
 
             node_type = node_row['type']
-            if node_type not in self.__plugins:
+            if node_type not in pluginloader.plugins:
                 raise RuntimeError('node type is unsupported')
 
             if node_row['node_object'] is not None:
-                self.__node_objects[node_id] = await asyncio.get_event_loop().run_in_executor(None, self.__plugins[node_type].deserialize, node_row['node_object'])
+                self.__node_objects[node_id] = await BaseNode.deserialize_async(node_row['node_object'], self)
                 return self.__node_objects[node_id]
 
-            newnode: BaseNode = self.__plugins[node_type].create_node_object(node_row['name'])
+            newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
             self.__node_objects[node_id] = newnode
-            await con.execute('UPDATE "nodes" SET node_object = ?',
-                              (await asyncio.get_event_loop().run_in_executor(None, newnode.serialize),))
+            await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
+                              (await newnode.serialize_async(), node_id))
             await con.commit()
 
             return newnode
