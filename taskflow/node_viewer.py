@@ -191,17 +191,21 @@ class Node(NetworkItemWithUI):
         imgui.text(f'Node {self.get_id()}, name {self.__name}')
         _, self.__some_value = imgui.slider_float('foo', self.__some_value, 0, 100, format='%.3f')
         if self.__nodeui is not None:
-            for attr_name, attr_dict in self.__nodeui.parameters_items():
-                attr_type = attr_dict['type']
+            for param_name, param_dict in self.__nodeui.parameters_items():
+                param_type = param_dict['type']
 
-                if attr_type == NodeParameterType.BOOL:
-                    _, attr_dict['value'] = imgui.checkbox(attr_name, attr_dict['value'])
-                elif attr_type == NodeParameterType.INT:
-                    _, attr_dict['value'] = imgui.slider_int(attr_name, attr_dict['value'], 0, 10)
-                elif attr_type == NodeParameterType.FLOAT:
-                    _, attr_dict['value'] = imgui.slider_float(attr_name, attr_dict['value'], 0, 10)
-                elif attr_type == NodeParameterType.STRING:
-                    _, attr_dict['value'] = imgui.input_text(attr_name, attr_dict['value'], 256)
+                if param_type == NodeParameterType.BOOL:
+                    changed, param_dict['value'] = imgui.checkbox(param_name, param_dict['value'])
+                elif param_type == NodeParameterType.INT:
+                    changed, param_dict['value'] = imgui.slider_int(param_name, param_dict['value'], 0, 10)
+                elif param_type == NodeParameterType.FLOAT:
+                    changed, param_dict['value'] = imgui.slider_float(param_name, param_dict['value'], 0, 10)
+                elif param_type == NodeParameterType.STRING:
+                    changed, param_dict['value'] = imgui.input_text(param_name, param_dict['value'], 256)
+                else:
+                    raise NotImplementedError()
+                if changed:
+                    self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
@@ -450,6 +454,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     log_meta_has_been_requested = Signal(int)
     node_ui_has_been_requested = Signal(int)
     task_ui_attributes_has_been_requested = Signal(int)
+    node_parameter_change_requested = Signal(int, str, dict)
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -473,6 +478,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
         self.node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         self.task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
+        self.node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
         self.__ui_connection_thread.start()
@@ -488,6 +494,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_node_ui(self, node_id):
         self.node_ui_has_been_requested.emit(node_id)
+
+    def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
+        self.node_parameter_change_requested.emit(node_id, param_name, param)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -810,6 +819,33 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             print('failed ', e)
         else:
             self.nodeui_fetched.emit(node_id, nodeui)
+
+    @Slot()
+    def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            param_type = param['type']
+            param_value = param['value']
+            self.__conn.sendall(b'setnodeparam\n')
+            param_name_data = param_name.encode('UTF-8')
+            self.__conn.sendall(struct.pack('>QII', node_id, param_type.value, len(param_name_data)))
+            self.__conn.sendall(param_name_data)
+            if param_type == NodeParameterType.FLOAT:
+                self.__conn.sendall(struct.pack('>d', param_value))
+            elif param_type == NodeParameterType.INT:
+                self.__conn.sendall(struct.pack('>q', param_value))
+            elif param_type == NodeParameterType.BOOL:
+                self.__conn.sendall(struct.pack('>?', param_value))
+            elif param_type == NodeParameterType.STRING:
+                param_str_data = param_value.encode('UTF-8')
+                self.__conn.sendall(struct.pack('>Q', len(param_str_data)))
+                self.__conn.sendall(param_str_data)
+            else:
+                raise NotImplementedError()
+        except ConnectionError as e:
+            print('failed', e)
 
 # class SchedulerConnectionThread(QThread):
 #     full_update = Signal(UiData)

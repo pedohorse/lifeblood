@@ -2,7 +2,11 @@ import struct
 import pickle
 import asyncio
 from .uidata import NodeUi
+from .enums import NodeParameterType
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .basenode import BaseNode
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler):
@@ -48,10 +52,26 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 # brings in interface data for one particular node
                 elif command == b'getnodeinterface':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_nodeui()
-                    data: bytes = await nodeui.serialize()
+                    nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_ui()
+                    data: bytes = await nodeui.serialize_async()
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)
+                elif command == b'setnodeparam':
+                    node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
+                    param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
+                    if param_type == NodeParameterType.FLOAT.value:
+                        param_value = struct.unpack('>d', await reader.readexactly(8))[0]
+                    elif param_type == NodeParameterType.INT.value:
+                        param_value = struct.unpack('>q', await reader.readexactly(8))[0]
+                    elif param_type == NodeParameterType.BOOL.value:
+                        param_value = struct.unpack('>?', await reader.readexactly(1))[0]
+                    elif param_type == NodeParameterType.STRING.value:
+                        param_str_data_length = struct.unpack('>Q', await reader.readexactly(8))[0]
+                        param_value = (await reader.readexactly(param_str_data_length)).decode('UTF-8')
+                    else:
+                        raise NotImplementedError()
+                    node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                    node.set_param_value(param_name, param_value)
                 elif command == b'gettaskattribs':
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     attribs = await self.__scheduler.get_task_attributes(task_id)
