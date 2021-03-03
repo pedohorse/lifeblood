@@ -30,7 +30,8 @@ class SliceWaiterNode(BaseNode):
         super(SliceWaiterNode, self).__init__(name, parent_scheduler)
         self.__cache: Dict[int: SliceAwaiting] = {}
         self.__main_lock = Lock()
-        self._parameters.add_parameter('wait for all', NodeParameterType.BOOL, True)
+        with self._parameters.initizlizing_interface_lock():
+            self._parameters.add_parameter('wait for all', NodeParameterType.BOOL, True)
 
     def process_task(self, task_dict) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
         orig_id = task_dict['split_origin_task_id']
