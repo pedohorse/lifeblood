@@ -58,12 +58,29 @@ class NodeUi:
         self.__parameters: Dict[str: Parameter] = {}
         self.__parameter_order: List[str] = []
         self.__attached_node: Optional[BaseNode] = attached_node
+        self.__block_ui_callbacks = False
+
+    def initizlizing_interface_lock(self):
+        class _iiLock:
+            def __init__(self, lockable):
+                self.__nui = lockable
+
+            def __enter__(self):
+                self.__nui._NodeUi__block_ui_callbacks = True
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.__nui._NodeUi__block_ui_callbacks = False
+
+        return _iiLock(self)
 
     def add_parameter(self, param_name: str, param_type: NodeParameterType, param_val: Any):
         self.__parameter_order.append(param_name)
         self.__parameters[param_name] = {'type': param_type, 'value': param_val}
-        if self.__attached_node is not None:
-            self.__attached_node._ui_changed([param_name])
+        self.__ui_callback([param_name])
+
+    def __ui_callback(self, params: List[str]):
+        if self.__attached_node is not None and not self.__block_ui_callbacks:
+            self.__attached_node._ui_changed(params)
 
     def parameter_order(self):
         return self.__parameter_order
@@ -89,8 +106,7 @@ class NodeUi:
         else:
             raise NotImplementedError()
         self.__parameters[param_name]['value'] = param_value
-        if self.__attached_node is not None:
-            self.__attached_node._ui_changed([param_name])
+        self.__ui_callback([param_name])
 
     def parameters_items(self):
         def _iterator():
