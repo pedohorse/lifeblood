@@ -1,9 +1,12 @@
 import asyncio
 import pickle
-from .enums import NodeAttributeType
+from copy import copy
+from .enums import NodeParameterType
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional
 
+if TYPE_CHECKING:
+    from .basenode import BaseNode
 
 async def create_uidata(raw_nodes, raw_connections, raw_tasks):
     return await asyncio.get_event_loop().run_in_executor(None, UiData, raw_nodes, raw_connections, raw_tasks)
@@ -45,38 +48,71 @@ class UiData:
 
 
 if TYPE_CHECKING:
-    class Attribute(TypedDict):
-        type: NodeAttributeType
+    class Parameter(TypedDict):
+        type: NodeParameterType
         value: Any
 
 
 class NodeUi:
-    def __init__(self):
-        self.__attributes: Dict[str: Attribute] = {}
-        self.__attribute_order: List[str] = []
+    def __init__(self, attached_node: "BaseNode"):
+        self.__parameters: Dict[str: Parameter] = {}
+        self.__parameter_order: List[str] = []
+        self.__attached_node: Optional[BaseNode] = attached_node
 
-    def add_attribute(self, attr_name: str, attr_type: NodeAttributeType, attr_val: Any):
-        self.__attribute_order.append(attr_name)
-        self.__attributes[attr_name] = {'type': attr_type, 'value': attr_val}
+    def add_parameter(self, param_name: str, param_type: NodeParameterType, param_val: Any):
+        self.__parameter_order.append(param_name)
+        self.__parameters[param_name] = {'type': param_type, 'value': param_val}
+        if self.__attached_node is not None:
+            self.__attached_node._ui_changed([param_name])
 
-    def attribute_order(self):
-        return self.__attribute_order
+    def parameter_order(self):
+        return self.__parameter_order
 
-    def attributes(self):
-        return self.__attributes
+    def parameters(self):
+        return self.__parameters
 
-    def attribute_items(self):
+    def parameter_value(self, param_name: str):
+        return self.__parameters[param_name]['value']
+
+    def set_parameter(self, param_name: str, param_value: Any):
+        if param_name not in self.__parameters:
+            raise KeyError('wrong param name! this node does not have such parameter')
+        ptype = self.__parameters[param_name]['type']
+        if ptype == NodeParameterType.FLOAT:
+            param_value = float(param_value)
+        elif ptype == NodeParameterType.INT:
+            param_value = int(param_value)
+        elif ptype == NodeParameterType.BOOL:
+            param_value = bool(param_value)
+        elif ptype == NodeParameterType.STRING:
+            param_value = str(param_value)
+        else:
+            raise NotImplementedError()
+        self.__parameters[param_name]['value'] = param_value
+        if self.__attached_node is not None:
+            self.__attached_node._ui_changed([param_name])
+
+    def parameters_items(self):
         def _iterator():
-            for attr in self.__attribute_order:
-                yield attr, self.__attributes[attr]
+            for param in self.__parameter_order:
+                yield param, self.__parameters[param]
         return _iterator()
 
-    async def serialize(self) -> bytes:
-        return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
+    def serialize(self) -> bytes:
+        obj = copy(self)
+        obj.__attached_node = None
+        return pickle.dumps(obj)
+
+    async def serialize_async(self) -> bytes:
+        return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
 
     def __repr__(self):
-        return 'NodeUi: ' + ', '.join(('%s: %s' % (x, self.__attributes[x]) for x in self.__attribute_order))
+        return 'NodeUi: ' + ', '.join(('%s: %s' % (x, self.__parameters[x]) for x in self.__parameter_order))
 
     @classmethod
     def deserialize(cls, data: bytes) -> "NodeUi":
         return pickle.loads(data)
+
+    @classmethod
+    async def deserialize_async(cls, data: bytes) -> "NodeUi":
+        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)

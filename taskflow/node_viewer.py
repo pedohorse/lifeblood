@@ -13,7 +13,7 @@ from .scheduler import TaskState, InvocationState
 from .broadcasting import await_broadcast
 from .nethelpers import recv_exactly
 
-from .enums import NodeAttributeType
+from .enums import NodeParameterType
 
 import PySide2.QtCore
 import PySide2.QtGui
@@ -191,16 +191,16 @@ class Node(NetworkItemWithUI):
         imgui.text(f'Node {self.get_id()}, name {self.__name}')
         _, self.__some_value = imgui.slider_float('foo', self.__some_value, 0, 100, format='%.3f')
         if self.__nodeui is not None:
-            for attr_name, attr_dict in self.__nodeui.attribute_items():
+            for attr_name, attr_dict in self.__nodeui.parameters_items():
                 attr_type = attr_dict['type']
 
-                if attr_type == NodeAttributeType.BOOL:
+                if attr_type == NodeParameterType.BOOL:
                     _, attr_dict['value'] = imgui.checkbox(attr_name, attr_dict['value'])
-                elif attr_type == NodeAttributeType.INT:
+                elif attr_type == NodeParameterType.INT:
                     _, attr_dict['value'] = imgui.slider_int(attr_name, attr_dict['value'], 0, 10)
-                elif attr_type == NodeAttributeType.FLOAT:
+                elif attr_type == NodeParameterType.FLOAT:
                     _, attr_dict['value'] = imgui.slider_float(attr_name, attr_dict['value'], 0, 10)
-                elif attr_type == NodeAttributeType.STRING:
+                elif attr_type == NodeParameterType.STRING:
                     _, attr_dict['value'] = imgui.input_text(attr_name, attr_dict['value'], 256)
 
     def itemChange(self, change, value):
