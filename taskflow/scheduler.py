@@ -590,6 +590,11 @@ class Scheduler:
             await con.commit()
 
     #
+    # node reports it's interface was changed. not sure why it exists
+    async def node_reports_ui_update(self, node_object):
+        print('suck ur blood, bla, bla', node_object)
+
+    #
     # stuff
     async def get_full_ui_state(self):
         async with aiosqlite.connect(self.db_path) as con:

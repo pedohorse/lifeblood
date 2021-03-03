@@ -51,7 +51,8 @@ class BaseNode:
         :names_changed:
         :return:
         """
-        print('bla bla bla, telling scheduler to update db')
+        if self.__parent is not None:
+            asyncio.get_event_loop().create_task(self.__parent.node_reports_ui_update(self))
 
     def process_task(self, task_dict) -> ProcessingResult:
         raise NotImplementedError()
