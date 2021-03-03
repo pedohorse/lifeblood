@@ -4,13 +4,13 @@ from taskflow.basenode import BaseNode
 from taskflow.invocationjob import InvocationJob
 from taskflow.nodethings import ProcessingResult
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from taskflow.scheduler import Scheduler
 
-def create_node_object(name: str):
-    return Test()
 
-
-def deserialize(data: bytes):
-    return Test()
+def create_node_object(name: str, parent_scheduler: "Scheduler"):
+    return Test(name, parent_scheduler)
 
 
 class Test(BaseNode):
@@ -34,6 +34,3 @@ class Test(BaseNode):
         res.set_attribute('cat', 1)
         res.set_attribute('dog', 2)
         return res
-
-    def serialize(self):
-        return b'_woop_'

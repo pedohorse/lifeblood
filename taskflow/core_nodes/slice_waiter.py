@@ -9,7 +9,10 @@ from taskflow.uidata import NodeUi
 
 from threading import Lock
 
-from typing import Dict, TypedDict, Set, List, Optional, Any
+from typing import Dict, TypedDict, Set, List, Optional, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from taskflow.scheduler import Scheduler
 
 
 class SliceAwaiting(TypedDict):
@@ -18,22 +21,16 @@ class SliceAwaiting(TypedDict):
     first_to_arrive: Optional[int]
 
 
-def create_node_object(name: str):
-    return SliceWaiterNode()
-
-
-def deserialize(data: bytes):
-    obj = SliceWaiterNode()
-    obj.__dict__.update(json.loads(data.decode('UTF-8')))
-    return obj
+def create_node_object(name: str, parent_scheduler):
+    return SliceWaiterNode(name, parent_scheduler)
 
 
 class SliceWaiterNode(BaseNode):
-    def __init__(self):
+    def __init__(self, name: str, parent_scheduler: "Scheduler"):
+        super(SliceWaiterNode, self).__init__(name, parent_scheduler)
         self.__cache: Dict[int: SliceAwaiting] = {}
         self.__main_lock = Lock()
-
-        self.__wait_for_all = True
+        self._parameters.add_parameter('wait for all', NodeParameterType.BOOL, True)
 
     def process_task(self, task_dict) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
         orig_id = task_dict['split_origin_task_id']
@@ -52,7 +49,7 @@ class SliceWaiterNode(BaseNode):
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
-        if self.__wait_for_all:
+        if self._parameters.parameter_value('wait for all'):
             with self.__main_lock:
                 if self.__cache[split_id]['arrived'] == self.__cache[split_id]['awaiting']:
                     res = ProcessingResult()
@@ -73,28 +70,8 @@ class SliceWaiterNode(BaseNode):
     def postprocess_task(self, task_dict) -> ProcessingResult:
         return ProcessingResult()
 
-    # attributes
-    def attribs(self) -> Dict[str, NodeParameterType]:
-        return {"wait for all": NodeParameterType.BOOL}
-
-    def attrib_value(self, attrib_name):
-        if attrib_name == 'wait for all':
-            return self.__wait_for_all
-        raise KeyError(attrib_name)
-
-    def set_attrib_value(self, attrib_name, attrib_value):
-        if attrib_name == 'wait for all':
-            self.__wait_for_all = attrib_value
-            return
-        raise KeyError(attrib_name)
-
-    def get_nodeui(self):
-        ui = NodeUi()
-        ui.add_parameter('wait for all', NodeParameterType.BOOL, self.__wait_for_all)
-        return ui
-
-    #serialization
-    def serialize(self) -> bytes:
-        attrs = self.__dict__.copy()
-        del attrs['_SliceWaiterNode__main_lock']
-        return json.dumps(attrs).encode('UTF-8')
+    def __getstate__(self):
+        d = super(SliceWaiterNode, self).__getstate__()
+        assert '_SliceWaiterNode__main_lock' in d
+        del d['_SliceWaiterNode__main_lock']
+        return d
