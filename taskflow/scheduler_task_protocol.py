@@ -56,7 +56,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             elif command == b'spawn':
                 tasksize = struct.unpack('>I', await reader.readexactly(4))[0]
                 taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
-                ret: SpawnStatus = await self.__scheduler.spawn_task(taskspawn)
+                ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
                 writer.write(struct.pack('>I', ret.value))
             elif reader.at_eof():
                 print('connection closed')
@@ -128,7 +128,7 @@ class SchedulerTaskClient:
     async def spawn(self, taskspawn: TaskSpawn) -> SpawnStatus:
         await self._ensure_conn_open()
         self.__writer.write(b'spawn\n')
-        data_ser = await taskspawn.serialize()
+        data_ser = await taskspawn.serialize_async()
         self.__writer.write(struct.pack('>I', len(data_ser)))
         self.__writer.write(data_ser)
         await self.__writer.drain()

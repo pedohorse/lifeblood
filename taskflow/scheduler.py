@@ -339,7 +339,7 @@ class Scheduler:
                                         await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                           (skip_state.value, task_id))
                                     else:
-                                        taskdada_serialized = await process_result.invocation_job.serialize()
+                                        taskdada_serialized = await process_result.invocation_job.serialize_async()
                                         await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
                                                           (taskdada_serialized, TaskState.READY.value, task_id))
                                 if process_result.do_split_remove:
