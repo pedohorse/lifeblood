@@ -298,6 +298,12 @@ class Task(NetworkItemWithUI):
         return self.__state
 
     def set_node(self, node: Optional[Node], _drop_animation=True):
+        """
+        TODO: describe difference from set_node_animated below. this one curently is not used at all btw.
+        :param node:
+        :param _drop_animation:
+        :return:
+        """
         if _drop_animation and self.__animation_group is not None:
             self.__animation_group.stop()
             assert self.__animation_group is None
@@ -559,6 +565,9 @@ class QGraphicsImguiScene(QGraphicsScene):
             if id not in existing_task_ids:
                 new_task = Task(id, newdata['name'] or '<noname>')
                 existing_task_ids[id] = new_task
+                if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:
+                    origin_task = existing_task_ids[newdata['origin_task_id']]
+                    new_task.setPos(origin_task.pos())
                 self.addItem(new_task)
             task = existing_task_ids[id]
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
