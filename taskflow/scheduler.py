@@ -392,7 +392,7 @@ class Scheduler:
                         # means task just arrived in the node and is ready to be processed by the node.
                         # processing node generates args,
                         if task_row['state'] == TaskState.WAITING.value:
-                            if task_row['node_type'] not in self.__plugins:
+                            if task_row['node_type'] not in pluginloader.plugins:
                                 print(f'plugin to process "P{task_row["node_type"]}" not found!')
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.DONE.value, task_row['id']))
@@ -409,7 +409,7 @@ class Scheduler:
                         #
                         # waiting to be post processed
                         elif task_row['state'] == TaskState.POST_WAITING.value:
-                            if task_row['node_type'] not in self.__plugins:
+                            if task_row['node_type'] not in pluginloader.plugins:
                                 print(f'plugin to process "P{task_row["node_type"]}" not found!')
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.DONE.value, task_row['id']))
@@ -603,7 +603,8 @@ class Scheduler:
                 all_nodes = await cur.fetchall()
             async with con.execute('SELECT * from "node_connections"') as cur:
                 all_conns = await cur.fetchall()
-            async with con.execute('SELECT * from "tasks"') as cur:
+            async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id '
+                                   'FROM "tasks" LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level') as cur:
                 all_tasks = await cur.fetchall()
             data = await create_uidata(all_nodes, all_conns, all_tasks)
         return data
