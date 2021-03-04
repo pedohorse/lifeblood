@@ -4,6 +4,14 @@ worker jobs to spawn new tasks
 """
 import pickle
 import asyncio
+from io import BytesIO
+
+
+class Unpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module == 'taskflow_connection' and name == 'TaskSpawn':
+            return TaskSpawn
+        return super(Unpickler, self).find_class(module, name)
 
 
 class TaskSpawn:
@@ -33,9 +41,17 @@ class TaskSpawn:
     def _attributes(self):
         return self.__attributes
 
-    async def serialize(self) -> bytes:
-        return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
+    def serialize(self) -> bytes:
+        return pickle.dumps(self)
+
+    async def serialize_async(self) -> bytes:
+        return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
 
     @classmethod
-    def deserialize(cls, data) -> "TaskSpawn":
-        return pickle.loads(data)
+    def deserialize(cls, data: bytes) -> "TaskSpawn":
+        deserializer = Unpickler(BytesIO(data))
+        return deserializer.load()
+
+    @classmethod
+    async def deserialize_async(cls, data: bytes) -> "TaskSpawn":
+        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
