@@ -1,7 +1,7 @@
 import time
 
 from taskflow.basenode import BaseNode
-from taskflow.invocationjob import InvocationJob
+from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 from taskflow.nodethings import ProcessingResult
 
 from typing import TYPE_CHECKING
@@ -24,7 +24,7 @@ class Test(BaseNode):
                             '    sleep 1\n'
                             'done\n'
                             'echo "ended"\n'],
-                           None)
+                           InvocationEnvironment())
         time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
         return ProcessingResult(job=td)
 
