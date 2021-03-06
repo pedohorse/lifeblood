@@ -23,3 +23,6 @@ class ProcessingResult:
 
     def remove_attribute(self, key):
         self.attributes_to_set[key] = None
+
+    def add_spawned_task(self, spawn: TaskSpawn):
+        self.spawn_list.append(spawn)
