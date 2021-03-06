@@ -8,7 +8,7 @@ from .nethelpers import get_addr_to
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
-from .invocationjob import InvocationJob
+from .invocationjob import InvocationJob, Environment
 
 from typing import Optional
 
@@ -92,9 +92,13 @@ class Worker:
         try:
             with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
                 with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
-                    self.__running_process = await asyncio.create_subprocess_exec(*task.args(),
-                                                                                  stdout=stdout,
-                                                                                  stderr=stderr)  # type: asyncio.subprocess.Process
+                    self.__running_process: asyncio.subprocess.Process = \
+                        await asyncio.create_subprocess_exec(
+                            *task.args(),
+                            stdout=stdout,
+                            stderr=stderr,
+                            env=task.env().resolve(base_env=Environment(os.environ))
+                        )
         except Exception as e:
             await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
             raise
