@@ -1,6 +1,7 @@
 import asyncio
 from enum import Enum
 import pickle
+import json
 from copy import copy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult
@@ -60,6 +61,13 @@ class BaseNode:
     def postprocess_task(self, task_dict) -> ProcessingResult:
         raise NotImplementedError()
 
+    # some helpers
+    def get_attributes(self, task_row):
+        return json.loads(task_row.get('attributes', '{}'))
+
+    #
+    # Serialize and back
+    #
     def __reduce__(self):
         typename = type(self).__module__
         if '.' in typename:
