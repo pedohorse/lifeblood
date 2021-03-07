@@ -87,6 +87,11 @@ class Worker:
         # prepare logging
         print(f'running task {task}')
         logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
+        env = Environment(os.environ)
+        env.prepend('PYTHONPATH', os.path.join(os.path.dirname(__file__), 'worker_runtime_pythonpath'))
+        env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
+        env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
+        env = task.env().resolve(base_env=env)
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
@@ -97,7 +102,7 @@ class Worker:
                             *task.args(),
                             stdout=stdout,
                             stderr=stderr,
-                            env=task.env().resolve(base_env=Environment(os.environ))
+                            env=env
                         )
         except Exception as e:
             await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
