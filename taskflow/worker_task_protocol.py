@@ -171,7 +171,7 @@ class WorkerTaskClient:
     async def give_task(self, task: invocationjob.InvocationJob, reply_address):
         await self._ensure_conn_open()
         self.__writer.writelines([b'task\n'])
-        taskserialized = await task.serialize()
+        taskserialized = await task.serialize_async()
         self.__writer.write(struct.pack('>I', len(taskserialized)))
         self.__writer.write(taskserialized)
         # now send where to respond

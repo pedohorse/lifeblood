@@ -95,7 +95,7 @@ class SchedulerTaskClient:
     async def report_task_done(self, task: invocationjob.InvocationJob, return_code: int, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
         self.__writer.writelines([b'done\n'])
-        taskserialized = await task.serialize()
+        taskserialized = await task.serialize_async()
         self.__writer.write(struct.pack('>I', len(taskserialized)))
         self.__writer.write(taskserialized)
         self.__writer.write(struct.pack('>I', return_code))
