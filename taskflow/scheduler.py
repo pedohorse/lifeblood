@@ -692,7 +692,8 @@ class Scheduler:
                                 try:
                                     async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
                                         stdout, stderr = await client.get_log(invocation_id)
-                                    await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ?', (stdout, stderr))
+                                    await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',
+                                                      (stdout, stderr, invocation_id))
                                     await con.commit()
                                 except ConnectionError:
                                     print('could not connect to worker to get freshest logs', file=sys.stdout)
