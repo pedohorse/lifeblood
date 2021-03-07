@@ -9,16 +9,28 @@ import threading
 import socket
 import struct
 
+from typing import Optional, Tuple
+
 
 class TaskSpawn:
     """
     this class is a pickle compatible shrunk copy of taskflow.taskspawn.TaskSpawn
     keep it up-to-date
     """
-    def __init__(self, name: str, parent_task_id: int, **attribs):
+    def __init__(self, name: str, source_invocation_id: Optional[int], **attribs):
         self.__name = name
         self.__attributes = attribs
-        self.__parent = parent_task_id
+        self.__forced_node_task_id_pair = None
+        self.__from_invocation_id = source_invocation_id
+
+    def force_set_node_task_id(self, node_id, task_id):
+        self.__forced_node_task_id_pair = (node_id, task_id)
+
+    def forced_node_task_id(self) -> Optional[Tuple[int, int]]:
+        return self.__forced_node_task_id_pair
+
+    def source_invocation_id(self):
+        return self.__from_invocation_id
 
     def name(self) -> str:
         return self.__name
@@ -35,9 +47,6 @@ class TaskSpawn:
     def attribute_value(self, attr_name):
         return self.__attributes.get(attr_name, None)
 
-    def parent_task_id(self) -> int:
-        return self.__parent
-
     def _attributes(self):
         return self.__attributes
 
@@ -46,8 +55,8 @@ class TaskSpawn:
 
 
 def create_task(name, **attributes):
-    task_id = int(os.environ['TASKFLOW_RUNTIME_TID'])
-    spawn = TaskSpawn(name, task_id, **attributes)
+    invocation_id = int(os.environ['TASKFLOW_RUNTIME_IID'])
+    spawn = TaskSpawn(name, invocation_id, **attributes)
 
     def _send():
         addrport = os.environ['TASKFLOW_RUNTIME_SCHEDULER_ADDR']

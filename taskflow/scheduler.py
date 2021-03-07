@@ -1,3 +1,4 @@
+import sys
 import os
 import time
 import json
@@ -327,8 +328,7 @@ class Scheduler:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
-                                    print('error happened', e)
-                                raise
+                                    print('error happened', e, file=sys.stdout)
                                 return
 
                             async with aiosqlite.connect(self.db_path) as con:
@@ -437,7 +437,7 @@ class Scheduler:
                                 ip, port = addr.split(':')
                                 port = int(port)
                             except:
-                                print('error addres converting during unexpected here. ping should have cought it')
+                                print('error addres converting during unexpected here. ping should have cought it', file=sys.stdout)
                                 continue
 
                             async with aiosqlite.connect(self.db_path) as submit_transaction:
@@ -463,7 +463,7 @@ class Scheduler:
                                             reply = await client.give_task(task, self.__server_address)
                                         print(f'got reply {reply}')
                                     except Exception as e:
-                                        print('some unexpected error', e)
+                                        print('some unexpected error', e, file=sys.stdout)
                                         reply = TaskScheduleStatus.FAILED
                                     if reply == TaskScheduleStatus.SUCCESS:
                                         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
@@ -623,21 +623,20 @@ class Scheduler:
 
         async def _inner_shit():
             for newtask in newtasks:
-                if newtask.from_invocation() is not None:
-                    async with con.execute('SELECT node_id FROM invocations WHERE "id" = ?',
-                                           (newtask.from_invocation(),)) as incur:
+                if newtask.source_invocation_id() is not None:
+                    async with con.execute('SELECT node_id, task_id FROM invocations WHERE "id" = ?',
+                                           (newtask.source_invocation_id(),)) as incur:
                         invocrow = await incur.fetchone()
                         assert invocrow is not None
-                        node_id = invocrow['node_id']
-                else:  # get node id from parent node. This is dangerous in case anything does this in parallel with task being moved around. TODO: ensure safety!
-                    # for now this is only happens when called from _awaitor, and that one waits, state won't be changed
-                    # but who knows in future
-                    async with con.execute('SELECT node_id FROM tasks WHERE "id" = ?', (newtask.parent_task_id(),)) as tacur:
-                        tarow = await tacur.fetchone()
-                        assert tarow is not None
-                        node_id = tarow['node_id']
+                        node_id: int = invocrow['node_id']
+                        parent_task_id: int = invocrow['task_id']
+                elif newtask.forced_node_task_id() is not None:
+                    node_id, parent_task_id = newtask.forced_node_task_id()
+                else:
+                    print('ERROR CREATING SPAWN TASK: Malformed source', file=sys.stdout)
+                    continue
                 await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id") VALUES (?, ?, ?, ?, ?)',
-                                  (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id(), TaskState.SPAWNED.value, node_id))
+                                  (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id))
 
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
@@ -696,7 +695,7 @@ class Scheduler:
                                     await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ?', (stdout, stderr))
                                     await con.commit()
                                 except ConnectionError:
-                                    print('could not connect to worker to get freshest logs')
+                                    print('could not connect to worker to get freshest logs', file=sys.stdout)
                                 else:
                                     entry['stdout'] = stdout
                                     entry['stderr'] = stderr

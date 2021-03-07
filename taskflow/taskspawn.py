@@ -6,6 +6,8 @@ import pickle
 import asyncio
 from io import BytesIO
 
+from typing import Optional, Tuple
+
 
 class Unpickler(pickle.Unpickler):
     def find_class(self, module, name):
@@ -15,16 +17,19 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, parent_task_id: int, **attribs):
+    def __init__(self, name: str, source_invocation_id: Optional[int], **attribs):
         self.__name = name
         self.__attributes = attribs
-        self.__parent = parent_task_id
-        self.__from_invocation_id = None
+        self.__forced_node_task_id_pair = None
+        self.__from_invocation_id = source_invocation_id
 
-    def set_from_invocation(self, invocation_id: int):
-        self.__from_invocation_id = invocation_id
+    def force_set_node_task_id(self, node_id, task_id):
+        self.__forced_node_task_id_pair = (node_id, task_id)
 
-    def from_invocation(self):
+    def forced_node_task_id(self) -> Optional[Tuple[int, int]]:
+        return self.__forced_node_task_id_pair
+
+    def source_invocation_id(self):
         return self.__from_invocation_id
 
     def name(self) -> str:
@@ -41,9 +46,6 @@ class TaskSpawn:
 
     def attribute_value(self, attr_name):
         return self.__attributes.get(attr_name, None)
-
-    def parent_task_id(self) -> int:
-        return self.__parent
 
     def _attributes(self):
         return self.__attributes
