@@ -19,6 +19,13 @@ class TaskSpawn:
         self.__name = name
         self.__attributes = attribs
         self.__parent = parent_task_id
+        self.__from_invocation_id = None
+
+    def set_from_invocation(self, invocation_id: int):
+        self.__from_invocation_id = invocation_id
+
+    def from_invocation(self):
+        return self.__from_invocation_id
 
     def name(self) -> str:
         return self.__name
