@@ -25,4 +25,6 @@ class ProcessingResult:
         self.attributes_to_set[key] = None
 
     def add_spawned_task(self, spawn: TaskSpawn):
+        if self.spawn_list is None:
+            self.spawn_list = []
         self.spawn_list.append(spawn)
