@@ -328,9 +328,11 @@ class Scheduler:
                                                       (TaskState.ERROR.value, task_id))
                                     await con.commit()
                                     print('error happened', e)
+                                raise
                                 return
 
                             async with aiosqlite.connect(self.db_path) as con:
+                                con.row_factory = aiosqlite.Row
                                 if process_result.do_kill_task:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                       (TaskState.DEAD.value, task_id))
@@ -460,8 +462,8 @@ class Scheduler:
                                         async with WorkerTaskClient(ip, port) as client:
                                             reply = await client.give_task(task, self.__server_address)
                                         print(f'got reply {reply}')
-                                    except:
-                                        print('some unexpected error')
+                                    except Exception as e:
+                                        print('some unexpected error', e)
                                         reply = TaskScheduleStatus.FAILED
                                     if reply == TaskScheduleStatus.SUCCESS:
                                         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
@@ -618,17 +620,33 @@ class Scheduler:
         :param con:
         :return:
         """
+
+        async def _inner_shit():
+            for newtask in newtasks:
+                if newtask.from_invocation() is not None:
+                    async with con.execute('SELECT node_id FROM invocations WHERE "id" = ?',
+                                           (newtask.from_invocation(),)) as incur:
+                        invocrow = await incur.fetchone()
+                        assert invocrow is not None
+                        node_id = invocrow['node_id']
+                else:  # get node id from parent node. This is dangerous in case anything does this in parallel with task being moved around. TODO: ensure safety!
+                    # for now this is only happens when called from _awaitor, and that one waits, state won't be changed
+                    # but who knows in future
+                    async with con.execute('SELECT node_id FROM tasks WHERE "id" = ?', (newtask.parent_task_id(),)) as tacur:
+                        tarow = await tacur.fetchone()
+                        assert tarow is not None
+                        node_id = tarow['node_id']
+                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id") VALUES (?, ?, ?, ?, ?)',
+                                  (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id(), TaskState.SPAWNED.value, node_id))
+
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
         if con is not None:
-            for newtask in newtasks:
-                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id") VALUES (?, ?, ?)',
-                                  (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id()))
+            await _inner_shit()
         else:
             async with aiosqlite.connect(self.db_path) as con:
-                for newtask in newtasks:
-                    await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id") VALUES (?, ?, ?)',
-                                      (newtask.name(), json.dumps(newtask._attributes()), newtask.parent_task_id()))
+                con.row_factory = aiosqlite.Row
+                await _inner_shit()
                 await con.commit()
         return SpawnStatus.SUCCEEDED
 
