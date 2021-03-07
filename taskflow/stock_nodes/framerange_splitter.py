@@ -27,7 +27,7 @@ class FramerangeSplitter(BaseNode):
             return ProcessingResult()
 
         res.set_attribute('frames', frames[:chunksize])
-        for i in range(1, 1 + len(frames) // chunksize):
+        for i in range(1, 1 + (len(frames) - 1) // chunksize):
             newattrs = copy(attrs)
             newattrs['frames'] = frames[chunksize*i:chunksize*(i+1)]
             spawn = TaskSpawn((task_row.get('name', None) or '') + '_part%d' % i, None, **newattrs)
