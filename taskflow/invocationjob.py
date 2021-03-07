@@ -94,9 +94,9 @@ class InvocationJob:
     """
     serializable data about launching something
     """
-    def __init__(self, args: list, env: InvocationEnvironment, invocation_id=None):
+    def __init__(self, args: list, env: Optional[InvocationEnvironment] = None, invocation_id=None):
         self.__args = args
-        self.__env = env
+        self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
         # TODO: add here also all kind of resource requirements information
 
