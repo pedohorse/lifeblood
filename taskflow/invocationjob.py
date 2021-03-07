@@ -79,8 +79,8 @@ class InvocationEnvironment:
             value = str(value)
         self.__action_queue.append((method, key, value))
 
-    def __getattr__(self, item):
-        return lambda k, v: self._enqueue_kv_method(item, k, v)
+    # def __getattr__(self, item):
+    #     return lambda k, v: self._enqueue_kv_method(item, k, v)
 
     # these 2 guys are explicitly added only for IDE popup hints
     def prepend(self, key: str, value):
@@ -109,7 +109,7 @@ class InvocationJob:
     def invocation_id(self):
         return self.__invocation_id
 
-    async def serialize(self) -> bytes:
+    async def serialize_async(self) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
 
     def set_invocation_id(self, invocation_id):
