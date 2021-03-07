@@ -1,0 +1,38 @@
+from copy import copy
+from taskflow.basenode import BaseNode
+from taskflow.enums import NodeParameterType
+from taskflow.nodethings import ProcessingResult, TaskSpawn
+
+
+def create_node_object(name: str, parent_scheduler):
+    return FramerangeSplitter(name, parent_scheduler)
+
+
+class FramerangeSplitter(BaseNode):
+    def __init__(self, name, scheduler):
+        super(FramerangeSplitter, self).__init__(name, scheduler)
+        with self.get_ui().initizlizing_interface_lock():
+            self.get_ui().add_parameter('chunk size', NodeParameterType.INT, 10)
+
+    def process_task(self, task_row):
+        attrs = self.get_attributes(task_row)
+        if 'frames' not in attrs:
+            return ProcessingResult()
+        frames = attrs['frames']
+        if not isinstance(frames, list):
+            return ProcessingResult()
+        res = ProcessingResult()
+        chunksize = self.get_ui().parameter_value('chunk size')
+        if len(frames) < chunksize:
+            return ProcessingResult()
+
+        res.set_attribute('frames', frames[:chunksize])
+        for i in range(1, 1 + len(frames) // chunksize):
+            newattrs = copy(attrs)
+            newattrs['frames'] = frames[chunksize*i:chunksize*(i+1)]
+            spawn = TaskSpawn(task_row.get('name', None) or '_part%d' % i, task_row['id'], **newattrs)
+            res.add_spawned_task(spawn)
+        return res
+
+    def postprocess_task(self, task_row):
+        return ProcessingResult()
