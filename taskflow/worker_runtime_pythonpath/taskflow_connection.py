@@ -9,15 +9,14 @@ import threading
 import socket
 import struct
 
-from typing import Optional, Tuple
-
 
 class TaskSpawn:
     """
     this class is a pickle compatible shrunk copy of taskflow.taskspawn.TaskSpawn
     keep it up-to-date
+    and keep it 2-3 compatible!!
     """
-    def __init__(self, name: str, source_invocation_id: Optional[int], **attribs):
+    def __init__(self, name, source_invocation_id, **attribs):
         self.__name = name
         self.__attributes = attribs
         self.__forced_node_task_id_pair = None
@@ -26,13 +25,13 @@ class TaskSpawn:
     def force_set_node_task_id(self, node_id, task_id):
         self.__forced_node_task_id_pair = (node_id, task_id)
 
-    def forced_node_task_id(self) -> Optional[Tuple[int, int]]:
+    def forced_node_task_id(self):
         return self.__forced_node_task_id_pair
 
     def source_invocation_id(self):
         return self.__from_invocation_id
 
-    def name(self) -> str:
+    def name(self):
         return self.__name
 
     def set_name(self, name):
@@ -50,7 +49,7 @@ class TaskSpawn:
     def _attributes(self):
         return self.__attributes
 
-    def serialize(self) -> bytes:
+    def serialize(self):
         return pickle.dumps(self)
 
 
@@ -64,6 +63,7 @@ def create_task(name, **attributes):
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
         data = spawn.serialize()
+        sock.sendall(b'\0\0\0\0')
         sock.sendall(b'spawn\n')
         sock.sendall(struct.pack('>I', len(data)))
         sock.sendall(data)
