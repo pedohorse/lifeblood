@@ -11,7 +11,7 @@ def create_node_object(name: str, parent_scheduler):
 class FramerangeSplitter(BaseNode):
     def __init__(self, name, scheduler):
         super(FramerangeSplitter, self).__init__(name, scheduler)
-        with self.get_ui().initizlizing_interface_lock():
+        with self.get_ui().initializing_interface_lock():
             self.get_ui().add_parameter('chunk size', NodeParameterType.INT, 10)
 
     def process_task(self, task_row):
