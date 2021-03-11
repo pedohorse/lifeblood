@@ -21,7 +21,7 @@ class Mantra(BaseNode):
         env = InvocationEnvironment()
         env.prepend('PATH', '/opt/hfs18.5/bin/')  # TODO: !!! this is hardcoded here purely for short lived test purposes
 
-        invoc = InvocationJob(['mantra', args['ifdpath']], env)
+        invoc = InvocationJob(['mantra', '-V', '2a', args['ifdpath']], env)
         res = ProcessingResult(invoc)
         return res
 
