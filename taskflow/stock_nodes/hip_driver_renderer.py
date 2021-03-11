@@ -12,6 +12,9 @@ def create_node_object(name: str, parent_scheduler):
 class HipDriverRenderer(BaseNode):
     def __init__(self, name, scheduler):
         super(HipDriverRenderer, self).__init__(name, scheduler)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_output_for_spawned_tasks()
 
     def process_task(self, task_dict) -> ProcessingResult:
         """
