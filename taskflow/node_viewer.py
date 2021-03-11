@@ -565,9 +565,12 @@ class QGraphicsImguiScene(QGraphicsScene):
             if id not in existing_task_ids:
                 new_task = Task(id, newdata['name'] or '<noname>')
                 existing_task_ids[id] = new_task
-                if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:
+                if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
                     origin_task = existing_task_ids[newdata['origin_task_id']]
-                    new_task.setPos(origin_task.pos())
+                    new_task.setPos(origin_task.scenePos())
+                elif newdata['parent_id'] is not None and newdata['parent_id'] in existing_task_ids:
+                    origin_task = existing_task_ids[newdata['parent_id']]
+                    new_task.setPos(origin_task.scenePos())
                 self.addItem(new_task)
             task = existing_task_ids[id]
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
@@ -992,7 +995,7 @@ class NodeEditor(QGraphicsView):
         imgui.core.show_metrics_window()
 
         # open new window context
-        imgui.begin("Your first window!", True)
+        imgui.begin("Parameters", True)
 
         # draw text label inside of current window
         imgui.text("Hello world!")
