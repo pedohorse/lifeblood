@@ -3,7 +3,7 @@ import pickle
 from copy import copy
 from .enums import NodeParameterType
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -59,8 +59,10 @@ class NodeUi:
         self.__parameter_order: List[str] = []
         self.__attached_node: Optional[BaseNode] = attached_node
         self.__block_ui_callbacks = False
+        self.__inputs_names = ('main',)
+        self.__outputs_names = ('main',)
 
-    def initizlizing_interface_lock(self):
+    def initializing_interface_lock(self):
         class _iiLock:
             def __init__(self, lockable):
                 self.__nui = lockable
@@ -74,19 +76,42 @@ class NodeUi:
         return _iiLock(self)
 
     def add_parameter(self, param_name: str, param_type: NodeParameterType, param_val: Any):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         self.__parameter_order.append(param_name)
         self.__parameters[param_name] = {'type': param_type, 'value': param_val}
         self.__ui_callback([param_name])
+
+    def add_input(self, input_name):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if input_name not in self.__outputs_names:
+            self.__outputs_names += (input_name,)
+
+    def add_output(self, output_name):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if output_name not in self.__outputs_names:
+            self.__outputs_names += (output_name,)
+
+    def add_output_for_spawned_tasks(self):
+        return self.add_output('spawned')
 
     def __ui_callback(self, params: List[str]):
         if self.__attached_node is not None and not self.__block_ui_callbacks:
             self.__attached_node._ui_changed(params)
 
-    def parameter_order(self):
+    def parameter_order(self) -> List[str]:
         return self.__parameter_order
 
-    def parameters(self):
+    def parameters(self) -> Dict[str: Parameter]:
         return self.__parameters
+
+    def inputs_names(self) -> Tuple[str]:
+        return self.__inputs_names
+
+    def outputs_names(self) -> Tuple[str]:
+        return self.__outputs_names
 
     def parameter_value(self, param_name: str):
         return self.__parameters[param_name]['value']
