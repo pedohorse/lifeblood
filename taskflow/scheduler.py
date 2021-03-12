@@ -316,7 +316,7 @@ class Scheduler:
                             task_id = task_row['id']
                             loop = asyncio.get_event_loop()
                             try:
-                                process_result = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
+                                process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
                             except NodeNotReadyToProcess:
                                 async with aiosqlite.connect(self.db_path) as con:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
@@ -333,6 +333,8 @@ class Scheduler:
 
                             async with aiosqlite.connect(self.db_path) as con:
                                 con.row_factory = aiosqlite.Row
+                                await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
+                                                  (process_result.output_name, task_id))
                                 if process_result.do_kill_task:
                                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                       (TaskState.DEAD.value, task_id))
@@ -480,9 +482,9 @@ class Scheduler:
                         elif task_row['state'] == TaskState.DONE.value\
                                 or task_row['state'] == TaskState.SPAWNED.value:
                             if task_row['state'] == TaskState.DONE.value:
-                                out_plug_name = 'main'
+                                out_plug_name = task_row['node_output_name'] or 'main'
                             else:
-                                out_plug_name = 'spawned'
+                                out_plug_name = task_row['node_output_name'] or 'spawned'
                             async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
                                                    (task_row['node_id'], out_plug_name)) as wire_cur:
                                 all_wires = await wire_cur.fetchall()
@@ -637,8 +639,8 @@ class Scheduler:
                 else:
                     print('ERROR CREATING SPAWN TASK: Malformed source', file=sys.stderr)
                     continue
-                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id") VALUES (?, ?, ?, ?, ?)',
-                                  (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id))
+                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
+                                  (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id, newtask.node_output_name()))
 
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)

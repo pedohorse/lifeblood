@@ -21,6 +21,7 @@ class TaskSpawn:
         self.__attributes = attribs
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
+        self.__output = 'spawned'
 
     def force_set_node_task_id(self, node_id, task_id):
         self.__forced_node_task_id_pair = (node_id, task_id)
@@ -30,6 +31,12 @@ class TaskSpawn:
 
     def source_invocation_id(self):
         return self.__from_invocation_id
+
+    def set_node_output_name(self, new_name):
+        self.__output = new_name
+
+    def node_output_name(self):
+        return self.__output
 
     def name(self):
         return self.__name

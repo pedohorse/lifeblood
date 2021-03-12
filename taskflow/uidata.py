@@ -104,7 +104,7 @@ class NodeUi:
     def parameter_order(self) -> List[str]:
         return self.__parameter_order
 
-    def parameters(self) -> Dict[str: Parameter]:
+    def parameters(self) -> Dict[str, "Parameter"]:
         return self.__parameters
 
     def inputs_names(self) -> Tuple[str]:
