@@ -616,6 +616,31 @@ class Scheduler:
         return data
 
     #
+    # change connection callback
+    async def change_node_connection(self, node_connection_id: int, new_out_node_id: Optional[int], new_out_name: Optional[str],
+                                     new_in_node_id: Optional[int], new_in_name: Optional[str]):
+        parts = []
+        vals = []
+        if new_out_node_id is not None:
+            parts.append('node_id_out = ?')
+            vals.append(new_out_node_id)
+        if new_out_name is not None:
+            parts.append('out_name = ?')
+            vals.append(new_out_name)
+        if new_in_node_id is not None:
+            parts.append('node_id_in = ?')
+            vals.append(new_in_node_id)
+        if new_out_name is not None:
+            parts.append('in_name = ?')
+            vals.append(new_in_name)
+        if len(vals) == 0:  # nothing to do
+            return
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            vals.append(node_connection_id)
+            await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE id = ?', vals)
+            
+    #
     # spawning new task callback
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
         """
