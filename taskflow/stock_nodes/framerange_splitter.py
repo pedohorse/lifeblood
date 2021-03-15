@@ -31,6 +31,7 @@ class FramerangeSplitter(BaseNode):
             newattrs = copy(attrs)
             newattrs['frames'] = frames[chunksize*i:chunksize*(i+1)]
             spawn = TaskSpawn((task_row.get('name', None) or '') + '_part%d' % i, None, **newattrs)
+            spawn.set_node_output_name('main')
             spawn.force_set_node_task_id(task_row['node_id'], task_row['id'])
             res.add_spawned_task(spawn)
         return res
