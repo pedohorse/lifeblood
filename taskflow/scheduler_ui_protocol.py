@@ -56,6 +56,12 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     data: bytes = await nodeui.serialize_async()
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)
+                elif command == b'gettaskattribs':
+                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    attribs = await self.__scheduler.get_task_attributes(task_id)
+                    data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
+                    writer.write(struct.pack('>I', len(data)))
+                    writer.write(data)
                 elif command == b'setnodeparam':
                     node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
                     param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
@@ -72,12 +78,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         raise NotImplementedError()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
                     node.set_param_value(param_name, param_value)
-                elif command == b'gettaskattribs':
-                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    attribs = await self.__scheduler.get_task_attributes(task_id)
-                    data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
-                    writer.write(struct.pack('>I', len(data)))
-                    writer.write(data)
+                elif command == b'changeconnection':
+                    connection_id, change_out, change_in, new_id_out, new_id_in = struct.unpack('>Q??QQ', await reader.readexactly(26))
+                    in_name, out_name = None, None
+                    if change_out:
+                        out_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
+                        out_name = (await reader.readexactly(out_name_len)).decode('UTF-8')
+                    if change_in:
+                        in_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
+                        in_name = (await reader.readexactly(out_name_len)).decode('UTF-8')
+                    raise NotImplementedError()  # TODO: finish this
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
