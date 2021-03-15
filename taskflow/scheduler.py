@@ -616,7 +616,7 @@ class Scheduler:
         return data
 
     #
-    # change connection callback
+    # change node connection callback
     async def change_node_connection(self, node_connection_id: int, new_out_node_id: Optional[int], new_out_name: Optional[str],
                                      new_in_node_id: Optional[int], new_in_name: Optional[str]):
         parts = []
@@ -638,8 +638,24 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             vals.append(node_connection_id)
-            await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE id = ?', vals)
-            
+            await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE "id" = ?', vals)
+
+    #
+    # add node connection callback
+    async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str):
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
+                                   (out_node_id, out_name, in_node_id, in_name)) as cur:
+                return cur.lastrowid
+
+    #
+    # remove node connection callback
+    async def remove_node_connection(self, node_connection_id: int):
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
+
     #
     # spawning new task callback
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
