@@ -7,10 +7,11 @@ from .enums import NodeParameterType
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .basenode import BaseNode
+    from .scheduler import Scheduler
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler):
-        self.__scheduler = scheduler
+        self.__scheduler: "Scheduler" = scheduler
         self.__reader = asyncio.StreamReader()
         super(SchedulerUiProtocol, self).__init__(self.__reader, self.connection_cb)
 
@@ -84,10 +85,21 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     if change_out:
                         out_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
                         out_name = (await reader.readexactly(out_name_len)).decode('UTF-8')
+                    else:
+                        new_id_out = None
                     if change_in:
                         in_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
-                        in_name = (await reader.readexactly(out_name_len)).decode('UTF-8')
-                    raise NotImplementedError()  # TODO: finish this
+                        in_name = (await reader.readexactly(in_name_len)).decode('UTF-8')
+                    else:
+                        new_id_in = None
+                    await self.__scheduler.change_node_connection(connection_id, new_id_out, out_name, new_id_in, in_name)
+                elif command == b'addconnection':
+                    id_out, id_in = struct.unpack('>QQ', await reader.readexactly(16))
+                    name_len = struct.unpack('>I', await reader.readexactly(4))[0]
+                    out_name = (await reader.readexactly(name_len)).decode('UTF-8')
+                    name_len = struct.unpack('>I', await reader.readexactly(4))[0]
+                    in_name = (await reader.readexactly(name_len)).decode('UTF-8')
+                    await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
