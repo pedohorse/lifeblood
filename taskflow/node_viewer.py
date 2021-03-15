@@ -25,7 +25,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
 
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict, Set
 
 
 class NetworkItem(QGraphicsItem):
@@ -82,14 +82,18 @@ class TaskAnimation(QAbstractAnimation):
 
 
 class Node(NetworkItemWithUI):
-    def __init__(self, id, name):
+    # cache node type-2-inputs/outputs names, not to ask a million times for every node
+    _node_inputs_outputs_cached: Dict[str, Tuple[List[str], List[str]]] = {}
+
+    def __init__(self, id: int, type: str, name: str):
         super(Node, self).__init__(id)
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
+        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
         self.__height = 75
         self.__width = 150
         self.__line_width = 1
         self.__name = name
         self.__tasks: List["Task"] = []
+        self.__node_type = type
 
         self.__some_value = 50
 
@@ -102,9 +106,20 @@ class Node(NetworkItemWithUI):
         self.__body_brush = QBrush(QColor(48, 48, 48, 128))
 
         self.__nodeui: Optional[NodeUi] = None
+        self.__connections: Set[NodeConnection] = set()
+
+        self.__inputs, self.__outputs = None, None
+        self.__node_ui_for_io_requested = False
+        if self.__node_type in Node._node_inputs_outputs_cached:
+            self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
+
+    def node_type(self) -> str:
+        return self.__node_type
 
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
+        Node._node_inputs_outputs_cached[self.__node_type] = (list(nodeui.inputs_names()), list(nodeui.outputs_names()))
+        self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
         self.update_ui()
 
     def boundingRect(self) -> QRectF:
@@ -116,10 +131,33 @@ class Node(NetworkItemWithUI):
         painter.pen().setWidthF(self.__line_width)
         lw = self.__width + self.__line_width
         lh = self.__height + self.__line_width
+
         nodeshape = QPainterPath()
+        nodeshape.addRoundedRect(QRectF(-0.5 * lw, -0.5 * lh, lw, lh), 5, 5)
+
+        if not self.__node_ui_for_io_requested:
+            assert self.scene() is not None
+            self.__node_ui_for_io_requested = True
+            self.scene().request_node_ui(self.get_id())
+        if self.__inputs is not None and self.__outputs is not None:
+            ninputs = len(self.__inputs)
+            noutputs = len(self.__outputs)
+            for i in range(len(self.__inputs)):
+                path = QPainterPath()
+                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(ninputs + 1), -0.5 * self.__height), 7, 7)
+                path -= nodeshape
+                painter.setPen(self.__borderpen)
+                painter.drawPath(path)
+            for i in range(len(self.__outputs)):
+                path = QPainterPath()
+                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(noutputs + 1), 0.5 * self.__height), 7, 7)
+                path -= nodeshape
+                painter.setPen(self.__borderpen)
+                painter.drawPath(path)
+
+
         bodymask = QPainterPath()
         bodymask.addRect(-0.5 * lw, -0.5 * lh + 16, lw, lh - 16)
-        nodeshape.addRoundedRect(QRectF(-0.5 * lw, -0.5 * lh, lw, lh), 5, 5)
         headershape = nodeshape - bodymask
         bodyshape = nodeshape & bodymask
 
@@ -133,11 +171,29 @@ class Node(NetworkItemWithUI):
         painter.setPen(self.__caption_pen)
         painter.drawText(self.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
 
-    def get_input_position(self, idx=0) -> QPointF:
-        return self.mapToScene(0, -0.5 * self.__height)
+    def get_input_position(self, name: str = 'main') -> QPointF:
+        if self.__inputs is None:
+            idx = 0
+            cnt = 1
+        elif name not in self.__inputs:
+            raise RuntimeError(f'unexpected input name {name}')
+        else:
+            idx = self.__inputs.index(name)
+            cnt = len(self.__inputs)
+        assert cnt > 0
+        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1), -0.5 * self.__height)
 
-    def get_output_position(self, idx=0) -> QPointF:
-        return self.mapToScene(0, 0.5 * self.__height)
+    def get_output_position(self, name: str = 'main') -> QPointF:
+        if self.__outputs is None:
+            idx = 0
+            cnt = 1
+        elif name not in self.__outputs:
+            raise RuntimeError(f'unexpected output name {name} , {self.__outputs}')
+        else:
+            idx = self.__outputs.index(name)
+            cnt = len(self.__outputs)
+        assert cnt > 0
+        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1), 0.5 * self.__height)
 
     # def sceneEvent(self, event: PySide2.QtCore.QEvent) -> bool:
     #     print('qqq', event)
@@ -207,44 +263,160 @@ class Node(NetworkItemWithUI):
                 if changed:
                     self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
 
+    def add_connection(self, new_connection: "NodeConnection"):
+        self.__connections.add(new_connection)
+
+    def remove_connection(self, connection: "NodeConnection"):
+        self.__connections.remove(connection)
+
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value:   # item was just selected
                 self.scene().request_node_ui(self.get_id())
-                
+        elif change == QGraphicsItem.ItemSceneChange:
+            conns = self.__connections.copy()
+            for connection in conns:
+                if self.scene() is not None and value != self.scene():
+                    print('removing connections...')
+                    assert connection.scene() is not None
+                    connection.scene().removeItem(self)
+            assert len(self.__connections) == 0
+        elif change == QGraphicsItem.ItemPositionHasChanged:
+            for connection in self.__connections:
+                connection.prepareGeometryChange()
+        print(change, value)
+
         return super(Node, self).itemChange(change, value)
 
 
 class NodeConnection(NetworkItem):
-    def __init__(self, id: int, nodeout: Node, nodein: Node):
+    def __init__(self, id: int, nodeout: Node, nodein: Node, outname: str, inname: str):
         super(NodeConnection, self).__init__(id)
         self.__nodeout = nodeout
         self.__nodein = nodein
+        self.__outname = outname
+        self.__inname = inname
         self.setZValue(-1)
         self.__line_width = 4
 
+        self.__ui_is_interacting = False
+        self.__ui_last_pos = QPointF()
+        self.__ui_grabbed_beginning = True
+
         self.__pen = QPen(QColor(64, 64, 64, 192))
         self.__pen.setWidthF(3)
+        self.__last_drawn_path: Optional[QPainterPath] = None
 
     def boundingRect(self) -> QRectF:
-        hlw = self.__line_width * 0.5
-        return QRectF(self.__nodeout.get_output_position(), self.__nodein.get_input_position()).adjusted(-hlw, -hlw, hlw, hlw)
+        hlw = self.__line_width
+        if self.__ui_is_interacting:
+            if self.__ui_grabbed_beginning:
+                inputpos = self.__ui_last_pos
+                outputpos = self.__nodein.get_input_position(self.__inname)
+            else:
+                inputpos = self.__nodeout.get_output_position(self.__outname)
+                outputpos = self.__ui_last_pos
+        else:
+            inputpos = self.__nodeout.get_output_position(self.__outname)
+            outputpos = self.__nodein.get_input_position(self.__inname)
+        return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
+                      QPointF(max(inputpos.x(), outputpos.x()) + hlw, max(inputpos.y(), outputpos.y()) + hlw))
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         line = QPainterPath()
-        p0 = self.__nodeout.get_output_position()
-        p1 = self.__nodein.get_input_position()
+        if self.__ui_is_interacting:
+            if self.__ui_grabbed_beginning:
+                p0 = self.__ui_last_pos
+                p1 = self.__nodein.get_input_position(self.__inname)
+            else:
+                p0 = self.__nodeout.get_output_position(self.__outname)
+                p1 = self.__ui_last_pos
+        else:
+            p0 = self.__nodeout.get_output_position(self.__outname)
+            p1 = self.__nodein.get_input_position(self.__inname)
         line.moveTo(p0)
         line.cubicTo(p0 + QPointF(0, 150), p1 - QPointF(0, 150), p1)
-
         painter.setPen(self.__pen)
         painter.drawPath(line)
+        painter.drawRect(self.boundingRect())
+        self.__last_drawn_path = line
 
-    def out_node(self):
-        return self.__nodeout
+    def output(self) -> (Node, str):
+        return self.__nodeout, self.__outname
 
-    def in_node(self):
-        return self.__nodein
+    def input(self) -> (Node, str):
+        return self.__nodein, self.__inname
+
+    def set_output(self, node: Node, output_name: str = 'main'):
+        print(f'reassigning NodeConnection output to {node.get_id()}, {output_name}')
+        assert node is not None
+        if node != self.__nodeout:
+            self.__nodeout.remove_connection(self)
+            self.__nodeout = node
+            self.__nodeout.add_connection(self)
+        self.__outname = output_name
+
+    def set_input(self, node: Node, input_name: str = 'main'):
+        print(f'reassigning NodeConnection input to {node.get_id()}, {input_name}')
+        assert node is not None
+        if node != self.__nodein:
+            self.__nodein.remove_connection(self)
+            self.__nodein = node
+            self.__nodein.add_connection(self)
+        self.__inname = input_name
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        print('beep', self)
+        if self.__last_drawn_path is None:
+            return
+        if self.__ui_is_interacting:
+            self.__ui_last_pos = event.scenePos()
+            event.accept()
+        elif self.__last_drawn_path.intersects(QRectF(event.scenePos().x() - 0.5 * self.__line_width, event.scenePos().y() - 0.5 * self.__line_width,
+                                                      self.__line_width, self.__line_width)):
+            print('---GOT A PEAK AT MY DICK---')
+            wgt = event.widget()
+            if wgt is None:
+                return
+
+            node_viewer = wgt.parent()
+            assert isinstance(node_viewer, NodeEditor)
+            if node_viewer.request_ui_focus(self):
+                event.accept()
+                self.__ui_last_pos = event.scenePos()
+                self.__ui_is_interacting = True
+
+    def mouseMoveEvent(self, event):
+        if self.__ui_is_interacting:
+            self.__ui_last_pos = event.scenePos()
+            event.accept()
+        event.ignore()
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+        if not self.__ui_is_interacting:
+            return
+        wgt = event.widget()
+        if wgt is None:
+            return
+        node_viewer = wgt.parent()
+        assert isinstance(node_viewer, NodeEditor)
+        if not node_viewer.release_ui_focus(self):
+            return
+        self.__ui_is_interacting = False
+        event.accept()
+        # TODO: send command to reconnect the connector
+
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
+        if change == QGraphicsItem.ItemSceneChange:
+            if value == self.__nodein.scene():
+                self.__nodein.add_connection(self)
+            else:
+                self.__nodein.remove_connection(self)
+            if value == self.__nodeout.scene():
+                self.__nodeout.add_connection(self)
+            else:
+                self.__nodeout.remove_connection(self)
+        return super(NodeConnection, self).itemChange(change, value)
 
 
 class Task(NetworkItemWithUI):
@@ -516,17 +688,16 @@ class QGraphicsImguiScene(QGraphicsScene):
         return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
 
     @Slot(object)
-    def full_update(self, uidata):
+    def full_update(self, uidata: UiData):
         print(uidata)
 
         to_del = []
-        existing_node_ids = {}
-        existing_conn_ids = {}
-        existing_task_ids = {}
+        existing_node_ids: Dict[int, Node] = {}
+        existing_conn_ids: Dict[int, NodeConnection] = {}
+        existing_task_ids: Dict[int, Task] = {}
         for item in self.items():
-            if isinstance(item,
-                          Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
-                if item.get_id() not in uidata.nodes():
+            if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
+                if item.get_id() not in uidata.nodes() or item.node_type() != uidata.nodes()[item.get_id()]['type']:
                     to_del.append(item)
                     continue
                 existing_node_ids[item.get_id()] = item
@@ -542,22 +713,40 @@ class QGraphicsImguiScene(QGraphicsScene):
                     to_del.append(item)
                     continue
                 existing_task_ids[item.get_id()] = item
+
         for item in to_del:
             self.removeItem(item)
+        # removing items might cascade things, like removing node will remove connections to that node
+        # so now we need to recheck existing items validity
+        # though not consistent scene states should not come in uidata at all
+        for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
+            for item_id, item in tuple(existings.items()):
+                if item.scene() != self:
+                    del existings[item_id]
 
         for id, newdata in uidata.nodes().items():
             if id in existing_node_ids:
                 continue
-            new_node = Node(id, f'node #{id}')
+            new_node = Node(id, newdata['type'], f'{newdata["type"]}: ' + (newdata['name'] or f'node #{id}'))
             new_node.setPos(*self.node_position(id))
             existing_node_ids[id] = new_node
             self.addItem(new_node)
 
         for id, newdata in uidata.connections().items():
             if id in existing_conn_ids:
+                # ensure connections
+                innode, inname = existing_conn_ids[id].input()
+                outnode, outname = existing_conn_ids[id].output()
+                if innode.get_id() != newdata['node_id_in'] or inname != newdata['in_name']:
+                    existing_conn_ids[id].set_input(existing_node_ids[newdata['node_id_in']], newdata['in_name'])
+                    existing_conn_ids[id].update()
+                if outnode.get_id() != newdata['node_id_out'] or outname != newdata['out_name']:
+                    existing_conn_ids[id].set_output(existing_node_ids[newdata['node_id_out']], newdata['out_name'])
+                    existing_conn_ids[id].update()
                 continue
             new_conn = NodeConnection(id, existing_node_ids[newdata['node_id_out']],
-                                      existing_node_ids[newdata['node_id_in']])
+                                      existing_node_ids[newdata['node_id_in']],
+                                      newdata['out_name'], newdata['in_name'])
             existing_conn_ids[id] = new_conn
             self.addItem(new_conn)
 
@@ -948,14 +1137,9 @@ class NodeEditor(QGraphicsView):
 
         self.__ui_panning_lastpos = None
 
+        self.__ui_focused_item = None
+
         self.__scene = QGraphicsImguiScene(db_path)
-        #node1 = Node("first node", 0)
-        #node2 = Node("second node", 1)
-        #con = NodeConnection(node1, node2)
-        #self.__scene.addItem(node1)
-        #self.__scene.addItem(node2)
-        #self.__scene.addItem(con)
-        #node2.setPos(100, 150)
         self.setScene(self.__scene)
         #self.__update_timer = PySide2.QtCore.QTimer(self)
         #self.__update_timer.timeout.connect(lambda: self.__scene.invalidate(layers=QGraphicsScene.ForegroundLayer))
@@ -1024,6 +1208,20 @@ class NodeEditor(QGraphicsView):
         io.mouse_down[2] = event.buttons() & Qt.RightButton
         if do_recache:
             self.resetCachedContent()
+
+    def request_ui_focus(self, item: NetworkItem):
+        if self.__ui_focused_item is not None and self.__ui_focused_item.scene() != self.__scene:
+            self.__ui_focused_item = None
+
+        if self.__ui_focused_item is not None:
+            return False
+        self.__ui_focused_item = item
+        return True
+
+    def release_ui_focus(self, item: NetworkItem):
+        assert item == self.__ui_focused_item, "ui focus was released by not the item that got focus"
+        self.__ui_focused_item = None
+        return True
 
     def mouseDoubleClickEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
