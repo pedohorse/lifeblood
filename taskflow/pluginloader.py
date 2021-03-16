@@ -33,6 +33,10 @@ def init():
 
 
 def create_node(plugin_name: str, name, scheduler_parent):
+    """
+    this function is a global node creation point.
+    it has to be available somewhere global, so plugins loaded from dynamically created modules have an entry point for pickle
+    """
     if plugin_name not in plugins:
         if plugin_name == 'basenode':  # debug case! base class should never be created directly!
             print('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
