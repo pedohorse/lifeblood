@@ -17,6 +17,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         print('UI connected')
+
+        async def read_string() -> str:
+            strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
+            return (await reader.readexactly(strlen)).decode('UTF-8')
+
         try:
             proto = await reader.readexactly(4)
             if proto != b'\0\0\0\0':
@@ -63,6 +68,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
                     writer.write(struct.pack('>I', len(data)))
                     writer.write(data)
+                #
+                # node related commands
+                elif command == b'removenode':
+                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    await self.__scheduler.remove_node(node_id)
+                elif command == b'addnode':
+                    node_type = await read_string()
+                    node_name = await read_string()
+                    node_id = await self.__scheduler.add_node(node_type, node_name)
+                    writer.write(struct.pack('>Q', node_id))
                 elif command == b'setnodeparam':
                     node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
                     param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
@@ -73,8 +88,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     elif param_type == NodeParameterType.BOOL.value:
                         param_value = struct.unpack('>?', await reader.readexactly(1))[0]
                     elif param_type == NodeParameterType.STRING.value:
-                        param_str_data_length = struct.unpack('>Q', await reader.readexactly(8))[0]
-                        param_value = (await reader.readexactly(param_str_data_length)).decode('UTF-8')
+                        param_value = await read_string()
                     else:
                         raise NotImplementedError()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
@@ -85,22 +99,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     connection_id, change_out, change_in, new_id_out, new_id_in = struct.unpack('>Q??QQ', await reader.readexactly(26))
                     in_name, out_name = None, None
                     if change_out:
-                        out_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
-                        out_name = (await reader.readexactly(out_name_len)).decode('UTF-8')
+                        out_name = await read_string()
                     else:
                         new_id_out = None
                     if change_in:
-                        in_name_len = struct.unpack('>I', await reader.readexactly(4))[0]
-                        in_name = (await reader.readexactly(in_name_len)).decode('UTF-8')
+                        in_name = await read_string()
                     else:
                         new_id_in = None
                     await self.__scheduler.change_node_connection(connection_id, new_id_out, out_name, new_id_in, in_name)
                 elif command == b'addconnection':
                     id_out, id_in = struct.unpack('>QQ', await reader.readexactly(16))
-                    name_len = struct.unpack('>I', await reader.readexactly(4))[0]
-                    out_name = (await reader.readexactly(name_len)).decode('UTF-8')
-                    name_len = struct.unpack('>I', await reader.readexactly(4))[0]
-                    in_name = (await reader.readexactly(name_len)).decode('UTF-8')
+                    out_name = await read_string()
+                    in_name = await read_string()
                     connection_id = await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
                     writer.write(struct.pack('>Q', connection_id))
                 elif command == b'removeconnection':
