@@ -3,6 +3,7 @@ import pickle
 import asyncio
 from .uidata import NodeUi
 from .enums import NodeParameterType
+from . import pluginloader
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -21,6 +22,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
             return (await reader.readexactly(strlen)).decode('UTF-8')
+
+        async def write_string(s: str):
+            b = s.encode('UTF-8')
+            writer.write(struct.pack('>Q', len(b)))
+            writer.write(b)
 
         try:
             proto = await reader.readexactly(4)
@@ -70,6 +76,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     writer.write(data)
                 #
                 # node related commands
+                elif command == b'listnodetypes':
+                    typenames = list(pluginloader.plugins.keys())
+                    writer.write(struct.pack('>Q', len(typenames)))
+                    for typename in typenames:
+                        await write_string(typename)
                 elif command == b'removenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node(node_id)
