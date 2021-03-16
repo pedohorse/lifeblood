@@ -106,6 +106,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'removeconnection':
                     connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node_connection(connection_id)
+                #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
