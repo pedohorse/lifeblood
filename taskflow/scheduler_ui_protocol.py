@@ -79,6 +79,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         raise NotImplementedError()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
                     node.set_param_value(param_name, param_value)
+                #
+                # node connection related commands
                 elif command == b'changeconnection':
                     connection_id, change_out, change_in, new_id_out, new_id_in = struct.unpack('>Q??QQ', await reader.readexactly(26))
                     in_name, out_name = None, None
@@ -99,7 +101,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     out_name = (await reader.readexactly(name_len)).decode('UTF-8')
                     name_len = struct.unpack('>I', await reader.readexactly(4))[0]
                     in_name = (await reader.readexactly(name_len)).decode('UTF-8')
-                    await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
+                    connection_id = await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
+                    writer.write(struct.pack('>Q', connection_id))
+                elif command == b'removeconnection':
+                    connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    await self.__scheduler.remove_node_connection(connection_id)
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
