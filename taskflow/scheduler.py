@@ -642,7 +642,7 @@ class Scheduler:
 
     #
     # add node connection callback
-    async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str):
+    async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str) -> int:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
@@ -655,6 +655,22 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
+
+    #
+    # add node
+    async def add_node(self, node_type: str, node_name: str) -> int:
+        if node_type not in pluginloader.plugins:
+            raise RuntimeError('unknown node type')
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('INSERT INTO "nodes" ("type", "name") VALUES (?,?)',
+                                   (node_type, node_name)) as cur:
+                return cur.lastrowid
+
+    async def remove_node(self, node_id: int):
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
 
     #
     # spawning new task callback
