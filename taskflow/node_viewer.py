@@ -18,7 +18,7 @@ from .enums import NodeParameterType
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
+from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup, QEvent
 from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath
 
 
@@ -1070,6 +1070,13 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
 
+        self.__create_menu_popup_toopen = False
+        self.__node_type_input = ''
+        self.__node_types = {'node wow': {},
+                             'cat dog': {},
+                             'foo bar': {}}
+
+
         self.__imgui_init = False
         self.update()
 
@@ -1082,6 +1089,7 @@ class NodeEditor(QGraphicsView):
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
             imgui.get_io().display_size = 400, 400
+            self._map_keys()
 
         imgui.get_io().display_size = rect.size().toTuple()
         # start new frame context
@@ -1114,6 +1122,35 @@ class NodeEditor(QGraphicsView):
         # close current window context
         imgui.end()
 
+        if self.__create_menu_popup_toopen:
+            imgui.open_popup('create node')
+            self.__node_type_input = ''
+        if imgui.begin_popup('create node'):
+            #if self.__create_menu_popup_toopen:
+            imgui.set_keyboard_focus_here()
+            _, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
+            for type_name in self.__node_types:
+                if self.__node_type_input in type_name:  # TODO: this can be cached
+                    imgui.text(type_name)
+
+            imguio = imgui.get_io()
+            if imguio.keys_down[imgui.KEY_ENTER]:
+                imgui.close_current_popup()
+                for type_name in self.__node_types:
+                    if self.__node_type_input in type_name:
+                        self.__node_type_input = type_name
+                        break
+                else:
+                    self.__node_type_input = ''
+                print('saoijjaoioijasfafs', self.__node_type_input)
+            elif imguio.keys_down[imgui.KEY_ESCAPE]:
+                imgui.close_current_popup()
+                self.__node_type_input = ''
+            imgui.end_popup()
+
+
+
+        self.__create_menu_popup_toopen = False
         # pass all drawing comands to the rendering pipeline
         # and close frame context
         imgui.render()
@@ -1122,16 +1159,77 @@ class NodeEditor(QGraphicsView):
         painter.endNativePainting()
 
     def imguiProcessEvents(self, event: PySide2.QtGui.QInputEvent, do_recache=True):
+        if not self.__imgui_init:
+            return
         io = imgui.get_io()
         if isinstance(event, PySide2.QtGui.QMouseEvent):
             io.mouse_pos = event.windowPos().toTuple()
         elif isinstance(event, PySide2.QtGui.QWheelEvent):
             io.mouse_wheel = event.angleDelta().y() / 100
-        io.mouse_down[0] = event.buttons() & Qt.LeftButton
-        io.mouse_down[1] = event.buttons() & Qt.MiddleButton
-        io.mouse_down[2] = event.buttons() & Qt.RightButton
+        elif isinstance(event, PySide2.QtGui.QKeyEvent):
+            print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
+            if event.key() in imgui_key_map:
+                if event.type() == QEvent.KeyPress:
+                    print('qwe')
+                    io.keys_down[imgui_key_map[event.key()]] = True  # TODO: figure this out
+                    #io.keys_down[event.key()] = True
+                elif event.type() == QEvent.KeyRelease:
+                    io.keys_down[imgui_key_map[event.key()]] = False
+            if event.type() == QEvent.KeyPress and len(event.text()) > 0:
+                io.add_input_character(ord(event.text()))
+
+        if isinstance(event, (PySide2.QtGui.QMouseEvent, PySide2.QtGui.QWheelEvent)):
+            io.mouse_down[0] = event.buttons() & Qt.LeftButton
+            io.mouse_down[1] = event.buttons() & Qt.MiddleButton
+            io.mouse_down[2] = event.buttons() & Qt.RightButton
         if do_recache:
             self.resetCachedContent()
+
+    # def _map_keys(self):
+    #     key_map = imgui.get_io().key_map
+    #
+    #     key_map[imgui.KEY_TAB] = Qt.Key_Tab
+    #     key_map[imgui.KEY_LEFT_ARROW] = Qt.Key_Left
+    #     key_map[imgui.KEY_RIGHT_ARROW] = Qt.Key_Right
+    #     key_map[imgui.KEY_UP_ARROW] = Qt.Key_Up
+    #     key_map[imgui.KEY_DOWN_ARROW] = Qt.Key_Down
+    #     key_map[imgui.KEY_PAGE_UP] = Qt.Key_PageUp
+    #     key_map[imgui.KEY_PAGE_DOWN] = Qt.Key_PageDown
+    #     key_map[imgui.KEY_HOME] = Qt.Key_Home
+    #     key_map[imgui.KEY_END] = Qt.Key_End
+    #     key_map[imgui.KEY_DELETE] = Qt.Key_Delete
+    #     key_map[imgui.KEY_BACKSPACE] = Qt.Key_Backspace
+    #     key_map[imgui.KEY_ENTER] = Qt.Key_Enter
+    #     key_map[imgui.KEY_ESCAPE] = Qt.Key_Escape
+    #     key_map[imgui.KEY_A] = Qt.Key_A
+    #     key_map[imgui.KEY_C] = Qt.Key_C
+    #     key_map[imgui.KEY_V] = Qt.Key_V
+    #     key_map[imgui.KEY_X] = Qt.Key_X
+    #     key_map[imgui.KEY_Y] = Qt.Key_Y
+    #     key_map[imgui.KEY_Z] = Qt.Key_Z
+
+    def _map_keys(self):
+        key_map = imgui.get_io().key_map
+
+        key_map[imgui.KEY_TAB] = imgui.KEY_TAB
+        key_map[imgui.KEY_LEFT_ARROW] = imgui.KEY_LEFT_ARROW
+        key_map[imgui.KEY_RIGHT_ARROW] = imgui.KEY_RIGHT_ARROW
+        key_map[imgui.KEY_UP_ARROW] = imgui.KEY_UP_ARROW
+        key_map[imgui.KEY_DOWN_ARROW] = imgui.KEY_DOWN_ARROW
+        key_map[imgui.KEY_PAGE_UP] = imgui.KEY_PAGE_UP
+        key_map[imgui.KEY_PAGE_DOWN] = imgui.KEY_PAGE_DOWN
+        key_map[imgui.KEY_HOME] = imgui.KEY_HOME
+        key_map[imgui.KEY_END] = imgui.KEY_END
+        key_map[imgui.KEY_DELETE] = imgui.KEY_DELETE
+        key_map[imgui.KEY_BACKSPACE] = imgui.KEY_BACKSPACE
+        key_map[imgui.KEY_ENTER] = imgui.KEY_ENTER
+        key_map[imgui.KEY_ESCAPE] = imgui.KEY_ESCAPE
+        key_map[imgui.KEY_A] = imgui.KEY_A
+        key_map[imgui.KEY_C] = imgui.KEY_C
+        key_map[imgui.KEY_V] = imgui.KEY_V
+        key_map[imgui.KEY_X] = imgui.KEY_X
+        key_map[imgui.KEY_Y] = imgui.KEY_Y
+        key_map[imgui.KEY_Z] = imgui.KEY_Z
 
     def request_ui_focus(self, item: NetworkItem):
         if self.__ui_focused_item is not None and self.__ui_focused_item.scene() != self.__scene:
@@ -1194,11 +1292,50 @@ class NodeEditor(QGraphicsView):
         else:
             super(NodeEditor, self).wheelEvent(event)
 
+    def keyPressEvent(self, event: PySide2.QtGui.QKeyEvent):
+        self.imguiProcessEvents(event)
+        if imgui.get_io().want_capture_keyboard:
+            event.accept()
+        else:
+            if event.key() == Qt.Key_Tab:
+                self.__create_menu_popup_toopen = True
+                PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)
+            super(NodeEditor, self).keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: PySide2.QtGui.QKeyEvent):
+        self.imguiProcessEvents(event)
+        if imgui.get_io().want_capture_keyboard:
+            event.accept()
+        else:
+            super(NodeEditor, self).keyReleaseEvent(event)
+
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
         self.__scene.stop()
         self.__scene.save_node_layout()
         super(NodeEditor, self).closeEvent(event)
 
+
+imgui_key_map = {
+    Qt.Key_Tab: imgui.KEY_TAB,
+    Qt.Key_Left: imgui.KEY_LEFT_ARROW,
+    Qt.Key_Right: imgui.KEY_RIGHT_ARROW,
+    Qt.Key_Up: imgui.KEY_UP_ARROW,
+    Qt.Key_Down: imgui.KEY_DOWN_ARROW,
+    Qt.Key_PageUp: imgui.KEY_PAGE_UP,
+    Qt.Key_PageDown: imgui.KEY_PAGE_DOWN,
+    Qt.Key_Home: imgui.KEY_HOME,
+    Qt.Key_End: imgui.KEY_END,
+    Qt.Key_Delete: imgui.KEY_DELETE,
+    Qt.Key_Backspace: imgui.KEY_BACKSPACE,
+    Qt.Key_Return: imgui.KEY_ENTER,
+    Qt.Key_Escape: imgui.KEY_ESCAPE,
+    Qt.Key_A: imgui.KEY_A,
+    Qt.Key_C: imgui.KEY_C,
+    Qt.Key_V: imgui.KEY_V,
+    Qt.Key_X: imgui.KEY_X,
+    Qt.Key_Y: imgui.KEY_Y,
+    Qt.Key_Z: imgui.KEY_Z,
+}
 
 def _main():
     qapp = QApplication(sys.argv)
