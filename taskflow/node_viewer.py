@@ -634,6 +634,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     task_ui_attributes_has_been_requested = Signal(int)
     node_parameter_change_requested = Signal(int, str, dict)
     nodetypes_update_requested = Signal()
+    _signal_create_node_requested = Signal(str, str, QPointF)
+
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
 
     def __init__(self, db_path: str = None, parent=None):
@@ -655,6 +657,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
         self.__ui_connection_worker.task_attribs_fetched.connect(self.task_attribs_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
+        self.__ui_connection_worker.node_created.connect(self._node_created)
 
         self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
@@ -662,6 +665,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self.node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self.nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
+        self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
         self.__ui_connection_thread.start()
@@ -694,6 +698,9 @@ class QGraphicsImguiScene(QGraphicsScene):
                     return row['posx'], row['posy']
 
         return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
+
+    def create_node(self, typename: str, nodename: str, pos: QPointF):
+        self._signal_create_node_requested.emit(typename, nodename, pos)
 
     @Slot(object)
     def full_update(self, uidata: UiData):
@@ -800,6 +807,12 @@ class QGraphicsImguiScene(QGraphicsScene):
             return
         task.update_attributes(attribs)
 
+    @Slot(int)
+    def _node_created(self, node_id, node_type, node_name, pos):
+        node = Node(node_id, node_type, node_name)
+        node.setPos(pos)
+        self.addItem(node)
+
     @Slot(object)
     def _nodetypes_fetched(self, nodetypes):
         self.__cached_nodetypes = nodetypes
@@ -855,6 +868,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, dict)
     nodetypes_fetched = Signal(dict)
+    node_created = Signal(int, str, str, QPointF)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -936,6 +950,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__conn is not None
         self.__conn.sendall(b'\0\0\0\0')
         return True
+
+    def _send_string(self, text: str):
+        bts = text.encode('UTF-8')
+        self.__conn.sendall(struct.pack('>Q', len(bts)))
+        self.__conn.sendall(bts)
+
+    def _recv_string(self):
+        btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+        return recv_exactly(self.__conn, btlen).decode('UTF-8')
 
     @Slot()
     def check_scheduler(self):
@@ -1073,14 +1096,27 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'listnodetypes\n')
             elemcount = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
             for i in range(elemcount):
-                msglen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
-                msg = recv_exactly(self.__conn, msglen).decode('UTF-8')
-                names.append(msg)
+                names.append(self._recv_string())
             nodetypes = {n: {} for n in names}
         except ConnectionError as e:
             print('failed', e)
         else:
             self.nodetypes_fetched.emit(nodetypes)
+
+    @Slot()
+    def create_node(self, node_type, node_name, pos):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'addnode\n')
+            self._send_string(node_type)
+            self._send_string(node_name)
+            node_id = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+        except ConnectionError as e:
+            print('failed', e)
+        else:
+            self.node_created.emit(node_id, node_type, node_name, pos)
 
 
 class NodeEditor(QGraphicsView):
@@ -1170,6 +1206,7 @@ class NodeEditor(QGraphicsView):
         if self.__create_menu_popup_toopen:
             imgui.open_popup('create node')
             self.__node_type_input = ''
+
         if imgui.begin_popup('create node'):
             #if self.__create_menu_popup_toopen:
             imgui.set_keyboard_focus_here()
@@ -1187,6 +1224,8 @@ class NodeEditor(QGraphicsView):
                         break
                 else:
                     self.__node_type_input = ''
+                if self.__node_type_input:
+                    self.__scene.create_node(self.__node_type_input, 'bark foof', QPointF(0, 0))  #imguio.mouse_pos
                 print('saoijjaoioijasfafs', self.__node_type_input)
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
@@ -1344,6 +1383,7 @@ class NodeEditor(QGraphicsView):
         else:
             if event.key() == Qt.Key_Tab:
                 self.__create_menu_popup_toopen = True
+                self.__scene.request_node_types_update()
                 PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)
             super(NodeEditor, self).keyPressEvent(event)
 
