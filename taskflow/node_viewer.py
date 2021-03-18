@@ -1080,6 +1080,12 @@ class NodeEditor(QGraphicsView):
         self.__imgui_init = False
         self.update()
 
+    def call_later(self, callable, *args, **kwargs):
+        if len(args) == 0 and len(kwargs) == 0:
+            PySide2.QtCore.QTimer.singleShot(0, callable)
+        else:
+            PySide2.QtCore.QTimer.singleShot(0, lambda: callable(*args, **kwargs))
+
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         #print('asd')
         painter.beginNativePainting()
