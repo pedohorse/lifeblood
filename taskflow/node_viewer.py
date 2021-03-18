@@ -1225,14 +1225,12 @@ class NodeEditor(QGraphicsView):
                 else:
                     self.__node_type_input = ''
                 if self.__node_type_input:
-                    self.__scene.create_node(self.__node_type_input, 'bark foof', QPointF(0, 0))  #imguio.mouse_pos
+                    self.__scene.create_node(self.__node_type_input, 'bark foof', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
                 print('saoijjaoioijasfafs', self.__node_type_input)
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
                 self.__node_type_input = ''
             imgui.end_popup()
-
-
 
         self.__create_menu_popup_toopen = False
         # pass all drawing comands to the rendering pipeline
