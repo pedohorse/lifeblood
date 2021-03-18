@@ -633,12 +633,15 @@ class QGraphicsImguiScene(QGraphicsScene):
     node_ui_has_been_requested = Signal(int)
     task_ui_attributes_has_been_requested = Signal(int)
     node_parameter_change_requested = Signal(int, str, dict)
+    nodetypes_update_requested = Signal()
+    nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
         self.__task_dict = {}
         self.__node_dict = {}
         self.__db_path = db_path
+        self.__cached_nodetypes = None
 
         self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
         self.__ui_connection_worker = SchedulerConnectionWorker()
@@ -651,12 +654,14 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
         self.__ui_connection_worker.task_attribs_fetched.connect(self.task_attribs_fetched)
+        self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
 
         self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
         self.node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         self.task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self.node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
+        self.nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
         self.__ui_connection_thread.start()
@@ -675,6 +680,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
         self.node_parameter_change_requested.emit(node_id, param_name, param)
+
+    def request_node_types_update(self):
+        self.nodetypes_update_requested.emit()
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -792,6 +800,11 @@ class QGraphicsImguiScene(QGraphicsScene):
             return
         task.update_attributes(attribs)
 
+    @Slot(object)
+    def _nodetypes_fetched(self, nodetypes):
+        self.__cached_nodetypes = nodetypes
+        self.nodetypes_updated.emit(nodetypes)
+
     def addItem(self, item):
         super(QGraphicsImguiScene, self).addItem(item)
         if isinstance(item, Task):
@@ -841,6 +854,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, dict)
+    nodetypes_fetched = Signal(dict)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -1048,6 +1062,26 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except ConnectionError as e:
             print('failed', e)
 
+    @Slot()
+    def get_nodetypes(self):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        nodetypes = {}
+        try:
+            names = []
+            self.__conn.sendall(b'listnodetypes\n')
+            elemcount = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            for i in range(elemcount):
+                msglen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+                msg = recv_exactly(self.__conn, msglen).decode('UTF-8')
+                names.append(msg)
+            nodetypes = {n: {} for n in names}
+        except ConnectionError as e:
+            print('failed', e)
+        else:
+            self.nodetypes_fetched.emit(nodetypes)
+
 
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, parent=None):
@@ -1072,13 +1106,18 @@ class NodeEditor(QGraphicsView):
 
         self.__create_menu_popup_toopen = False
         self.__node_type_input = ''
-        self.__node_types = {'node wow': {},
-                             'cat dog': {},
-                             'foo bar': {}}
+        self.__node_types = {}
 
+        self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
+
+        self.__scene.request_node_types_update()
 
         self.__imgui_init = False
         self.update()
+
+    @Slot()
+    def _nodetypes_updated(self, nodetypes):
+        self.__node_types = nodetypes
 
     def call_later(self, callable, *args, **kwargs):
         if len(args) == 0 and len(kwargs) == 0:
