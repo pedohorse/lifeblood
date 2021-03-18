@@ -639,6 +639,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             vals.append(node_connection_id)
             await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE "id" = ?', vals)
+            await con.commit()
 
     #
     # add node connection callback
@@ -647,7 +648,9 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
                                    (out_node_id, out_name, in_node_id, in_name)) as cur:
-                return cur.lastrowid
+                ret = cur.lastrowid
+            await con.commit()
+            return ret
 
     #
     # remove node connection callback
@@ -655,6 +658,7 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
+            await con.commit()
 
     #
     # add node
@@ -665,12 +669,15 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO "nodes" ("type", "name") VALUES (?,?)',
                                    (node_type, node_name)) as cur:
-                return cur.lastrowid
+                ret = cur.lastrowid
+            await con.commit()
+            return ret
 
     async def remove_node(self, node_id: int):
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
+            await con.commit()
 
     #
     # spawning new task callback
