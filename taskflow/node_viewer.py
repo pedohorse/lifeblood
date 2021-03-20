@@ -366,6 +366,7 @@ class NodeConnection(NetworkItem):
         self.__inname = input_name
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        return
         print('beep', self)
         if self.__last_drawn_path is None:
             return
@@ -618,6 +619,96 @@ class Task(NetworkItemWithUI):
                             print('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
                                 self.__requested_invocs_while_selected.remove(invoc_id)
+
+
+class SnapPoint:
+    def __init__(self, node: Node, connection_name: str, connection_is_input: bool):
+        self.__node = node
+        self.__conn_name = connection_name
+        self.__isinput = connection_is_input
+
+    def node(self) -> Node:
+        return self.__node
+
+    def pos(self) -> QPointF:
+        if self.__isinput:
+            return self.__node.get_input_position(self.__conn_name)
+        return self.__node.get_output_position(self.__conn_name)
+
+
+class NodeConnectionCreatePreview(QGraphicsItem):
+    interaction_done = Signal(SnapPoint)
+
+    def __init__(self, nodeout: Optional[Node], nodein: Optional[Node], outname: str, inname: str, snap_points: List[SnapPoint], snap_radius: float):
+        super(NodeConnectionCreatePreview, self).__init__()
+        assert nodeout is None and nodein is not None or \
+               nodeout is not None and nodein is None
+        self.__nodeout = nodeout
+        self.__nodein = nodein
+        self.__outname = outname
+        self.__inname = inname
+        self.__snappoints = snap_points
+        self.__snap_radius = snap_radius
+        self.setZValue(-1)
+        self.__line_width = 4
+
+        self.__ui_last_pos = QPointF()
+
+        self.__pen = QPen(QColor(64, 64, 64, 192))
+        self.__pen.setWidthF(3)
+
+    def get_painter_path(self):
+        if self.__nodein is not None:
+            p0 = self.__ui_last_pos
+            p1 = self.__nodein.get_input_position(self.__inname)
+        else:
+            p0 = self.__nodeout.get_output_position(self.__outname)
+            p1 = self.__ui_last_pos
+
+        line = QPainterPath()
+        line.moveTo(p0)
+        line.cubicTo(p0 + QPointF(0, 150), p1 - QPointF(0, 150), p1)
+        return line
+
+    def boundingRect(self) -> QRectF:
+        hlw = self.__line_width
+
+        if self.__nodein is not None:
+            inputpos = self.__ui_last_pos
+            outputpos = self.__nodein.get_input_position(self.__inname)
+        else:
+            inputpos = self.__nodeout.get_output_position(self.__outname)
+            outputpos = self.__ui_last_pos
+
+        return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
+                      QPointF(max(inputpos.x(), outputpos.x()) + hlw, max(inputpos.y(), outputpos.y()) + hlw))
+
+    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        line = self.get_painter_path()
+        painter.setPen(self.__pen)
+        painter.drawPath(line)
+        painter.drawRect(self.boundingRect())
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        pos = event.scenePos()
+        closest_snap = self.get_closest_snappoint(pos)
+        if closest_snap is not None:
+            pos = closest_snap.pos()
+        self.__ui_last_pos = pos
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        self.__ui_last_pos = event.scenePos()
+        event.accept()
+
+    def get_closest_snappoint(self, pos: QPointF) -> Optional[SnapPoint]:
+        if len(self.__snappoints) == 0:
+            return None
+        return min(self.__snappoints, key=lambda x: x.pos - pos)
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+        self.interaction_done.emit(self.get_closest_snappoint(event.scenePos()))
+        event.accept()
 
 
 class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
