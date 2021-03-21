@@ -42,7 +42,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 if command == b'getfullstate':
                     uidata = await self.__scheduler.get_full_ui_state()
                     uidata_ser = await uidata.serialize()
-                    writer.write(struct.pack('>I', len(uidata_ser)))
+                    writer.write(struct.pack('>Q', len(uidata_ser)))
                     writer.write(uidata_ser)
                 elif command in (b'getlogmeta', b'getlog', b'getalllog'):
                     if command == b'getlogmeta':
