@@ -335,10 +335,12 @@ class NodeConnection(NetworkItem):
 
     def boundingRect(self) -> QRectF:
         hlw = self.__line_width
-        inputpos = self.__nodeout.get_output_position(self.__outname)
-        outputpos = self.__nodein.get_input_position(self.__inname)
-        return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
-                      QPointF(max(inputpos.x(), outputpos.x()) + hlw, max(inputpos.y(), outputpos.y()) + hlw))
+        line = self.get_painter_path()
+        return line.boundingRect().adjusted(-hlw, -hlw, hlw, hlw)
+        # inputpos = self.__nodeout.get_output_position(self.__outname)
+        # outputpos = self.__nodein.get_input_position(self.__inname)
+        # return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
+        #               QPointF(max(inputpos.x(), outputpos.x()) + hlw, max(inputpos.y(), outputpos.y()) + hlw))
 
     def get_painter_path(self, close_path=False):
         line = QPainterPath()
@@ -394,20 +396,24 @@ class NodeConnection(NetworkItem):
         if self.__ui_interactor is None and line.intersects(circle):
             print('---GOT A PEAK AT MY DICK---')
             wgt = event.widget()
-            event.accept()
             if wgt is None:
                 return
 
             node_viewer = wgt.parent()
             assert isinstance(node_viewer, NodeEditor)
             if node_viewer.request_ui_focus(self):
-                #event.accept()
-                output_picked = True
+                event.accept()
+                p = event.scenePos()
+                p0 = self.__nodeout.get_output_position(self.__outname)
+                p1 = self.__nodein.get_input_position(self.__inname)
+                output_picked = QPointF.dotProduct(p0 - p, p0 - p) < QPointF.dotProduct(p1 - p, p1 - p)
                 if output_picked:
                     snap_points = [y for x in self.scene().nodes() if x != self.__nodein for y in x.output_snap_points() ]
                 else:
                     snap_points = [y for x in self.scene().nodes() if x != self.__nodeout for y in x.input_snap_points()]
-                self.__ui_interactor = NodeConnectionCreatePreview(None, self.__nodein, self.__outname, self.__inname,
+                self.__ui_interactor = NodeConnectionCreatePreview(None if output_picked else self.__nodeout,
+                                                                   self.__nodein if output_picked else None,
+                                                                   self.__outname, self.__inname,
                                                                    snap_points, 15, self._ui_interactor_finished)
                 self.__ui_widget = node_viewer
                 self.scene().addItem(self.__ui_interactor)
@@ -1297,7 +1303,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             print(connection_id, outnode_id, outname, innode_id, inname)
             self.__conn.sendall(b'changeconnection\n')
-            self.__conn.sendall(struct.pack('>Q??QQ', connection_id, outnode_id is not None, innode_id is not None, outnode_id or 0, outnode_id or 0))
+            self.__conn.sendall(struct.pack('>Q??QQ', connection_id, outnode_id is not None, innode_id is not None, outnode_id or 0, innode_id or 0))
             if outnode_id is not None:
                 self._send_string(outname)
             if innode_id is not None:
