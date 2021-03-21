@@ -630,7 +630,7 @@ class Scheduler:
         if new_in_node_id is not None:
             parts.append('node_id_in = ?')
             vals.append(new_in_node_id)
-        if new_out_name is not None:
+        if new_in_name is not None:
             parts.append('in_name = ?')
             vals.append(new_in_name)
         if len(vals) == 0:  # nothing to do
