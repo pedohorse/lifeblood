@@ -311,7 +311,7 @@ class Node(NetworkItemWithUI):
                     assert connection.scene() is not None
                     connection.scene().removeItem(self)
             assert len(self.__connections) == 0
-        elif change == QGraphicsItem.ItemPositionHasChanged:
+        elif change == QGraphicsItem.ItemPositionChange:
             for connection in self.__connections:
                 connection.prepareGeometryChange()
         #print(change, value)
