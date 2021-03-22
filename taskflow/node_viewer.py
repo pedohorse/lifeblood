@@ -388,11 +388,17 @@ class Node(NetworkItemWithUI):
                                           snap_point.node().get_id() if not setting_out else self.get_id(),
                                           snap_point.connection_name() if not setting_out else grabbed_conn)
 
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Delete:
+            pass
+            #self.scene().request_node_connection_remove(self.get_id())
+        event.accept()
+
 
 class NodeConnection(NetworkItem):
     def __init__(self, id: int, nodeout: Node, nodein: Node, outname: str, inname: str):
         super(NodeConnection, self).__init__(id)
-        self.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
+        self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.__nodeout = nodeout
         self.__nodein = nodein
         self.__outname = outname
@@ -883,12 +889,12 @@ class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
 
 class QGraphicsImguiScene(QGraphicsScene):
     # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
-    log_has_been_requested = Signal(int, int, int)
-    log_meta_has_been_requested = Signal(int)
-    node_ui_has_been_requested = Signal(int)
-    task_ui_attributes_has_been_requested = Signal(int)
-    node_parameter_change_requested = Signal(int, str, dict)
-    nodetypes_update_requested = Signal()
+    _signal_log_has_been_requested = Signal(int, int, int)
+    _signal_log_meta_has_been_requested = Signal(int)
+    _signal_node_ui_has_been_requested = Signal(int)
+    _signal_task_ui_attributes_has_been_requested = Signal(int)
+    _signal_node_parameter_change_requested = Signal(int, str, dict)
+    _signal_nodetypes_update_requested = Signal()
     _signal_create_node_requested = Signal(str, str, QPointF)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
     _signal_remove_node_connection_requested = Signal(int)
@@ -918,12 +924,12 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
         self.__ui_connection_worker.node_created.connect(self._node_created)
 
-        self.log_has_been_requested.connect(self.__ui_connection_worker.get_log)
-        self.log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
-        self.node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
-        self.task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
-        self.node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
-        self.nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
+        self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
+        self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
+        self._signal_node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
+        self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
+        self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
+        self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
@@ -933,22 +939,22 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_thread.start()
 
     def request_log(self, task_id, node_id, invocation_id):
-        self.log_has_been_requested.emit(task_id, node_id, invocation_id)
+        self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
 
     def request_log_meta(self, task_id):
-        self.log_meta_has_been_requested.emit(task_id)
+        self._signal_log_meta_has_been_requested.emit(task_id)
 
     def request_attributes(self, task_id):
-        self.task_ui_attributes_has_been_requested.emit(task_id)
+        self._signal_task_ui_attributes_has_been_requested.emit(task_id)
 
     def request_node_ui(self, node_id):
-        self.node_ui_has_been_requested.emit(node_id)
+        self._signal_node_ui_has_been_requested.emit(node_id)
 
     def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
-        self.node_parameter_change_requested.emit(node_id, param_name, param)
+        self._signal_node_parameter_change_requested.emit(node_id, param_name, param)
 
     def request_node_types_update(self):
-        self.nodetypes_update_requested.emit()
+        self._signal_nodetypes_update_requested.emit()
 
     def request_node_connection_change(self,  connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
         self._signal_change_node_connection_requested.emit(connection_id, outnode_id, outname, innode_id, inname)
@@ -970,7 +976,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
 
-    def create_node(self, typename: str, nodename: str, pos: QPointF):
+    def request_create_node(self, typename: str, nodename: str, pos: QPointF):
         self._signal_create_node_requested.emit(typename, nodename, pos)
 
 
@@ -1553,7 +1559,7 @@ class NodeEditor(QGraphicsView):
                 else:
                     self.__node_type_input = ''
                 if self.__node_type_input:
-                    self.__scene.create_node(self.__node_type_input, 'bark foof', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    self.__scene.request_create_node(self.__node_type_input, 'bark foof', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
                 print('saoijjaoioijasfafs', self.__node_type_input)
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
@@ -1577,10 +1583,9 @@ class NodeEditor(QGraphicsView):
         elif isinstance(event, PySide2.QtGui.QWheelEvent):
             io.mouse_wheel = event.angleDelta().y() / 100
         elif isinstance(event, PySide2.QtGui.QKeyEvent):
-            print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
+            # print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
             if event.key() in imgui_key_map:
                 if event.type() == QEvent.KeyPress:
-                    print('qwe')
                     io.keys_down[imgui_key_map[event.key()]] = True  # TODO: figure this out
                     #io.keys_down[event.key()] = True
                 elif event.type() == QEvent.KeyRelease:
