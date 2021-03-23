@@ -676,6 +676,7 @@ class Scheduler:
     async def remove_node(self, node_id: int):
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
+            await con.execute('PRAGMA FOREIGN_KEYS = on')
             await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
             await con.commit()
 
