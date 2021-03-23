@@ -309,7 +309,7 @@ class Node(NetworkItemWithUI):
                 if self.scene() is not None and value != self.scene():
                     print('removing connections...')
                     assert connection.scene() is not None
-                    connection.scene().removeItem(self)
+                    connection.scene().removeItem(connection)
             assert len(self.__connections) == 0
         elif change == QGraphicsItem.ItemPositionChange:
             for connection in self.__connections:
@@ -390,8 +390,7 @@ class Node(NetworkItemWithUI):
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Delete:
-            pass
-            #self.scene().request_node_connection_remove(self.get_id())
+            self.scene().request_remove_node(self.get_id())
         event.accept()
 
 
@@ -896,6 +895,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_parameter_change_requested = Signal(int, str, dict)
     _signal_nodetypes_update_requested = Signal()
     _signal_create_node_requested = Signal(str, str, QPointF)
+    _signal_remove_node_requested = Signal(int)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
     _signal_remove_node_connection_requested = Signal(int)
     _signal_add_node_connection_requested = Signal(int, str, int, str)
@@ -931,6 +931,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
+        self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
@@ -965,6 +966,12 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_node_connection_add(self, outnode_id:int , outname: str, innode_id: int, inname: str):
         self._signal_add_node_connection_requested.emit(outnode_id, outname, innode_id, inname)
 
+    def request_create_node(self, typename: str, nodename: str, pos: QPointF):
+        self._signal_create_node_requested.emit(typename, nodename, pos)
+
+    def request_remove_node(self, node_id: int):
+        self._signal_remove_node_requested.emit(node_id)
+
     def node_position(self, node_id: int):
         if self.__db_path is not None:
             with sqlite3.connect(self.__db_path) as con:
@@ -975,10 +982,6 @@ class QGraphicsImguiScene(QGraphicsScene):
                     return row['posx'], row['posy']
 
         return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
-
-    def request_create_node(self, typename: str, nodename: str, pos: QPointF):
-        self._signal_create_node_requested.emit(typename, nodename, pos)
-
 
     @Slot(object)
     def full_update(self, uidata: UiData):
@@ -1107,10 +1110,15 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def removeItem(self, item):
         print('removing item', item)
-        super(QGraphicsImguiScene, self).removeItem(item)
+        if item.scene() != self:
+            print('item was already removed, just removing ids from internal caches')
+        else:
+            super(QGraphicsImguiScene, self).removeItem(item)
         if isinstance(item, Task):
+            assert item.get_id() in self.__task_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
             del self.__task_dict[item.get_id()]
         elif isinstance(item, Node):
+            assert item.get_id() in self.__node_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
             del self.__node_dict[item.get_id()]
         print('item removed')
 
@@ -1416,6 +1424,17 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             print('failed', e)
         else:
             self.node_created.emit(node_id, node_type, node_name, pos)
+
+    @Slot()
+    def remove_node(self, node_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'removenode\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+        except ConnectionError as e:
+            print('failed', e)
 
     @Slot()
     def change_node_connection(self, connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
