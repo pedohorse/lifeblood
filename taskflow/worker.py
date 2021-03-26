@@ -2,8 +2,10 @@ import os
 import errno
 import traceback
 import asyncio
+import subprocess
 import aiofiles
 import json
+import datetime
 from .nethelpers import get_addr_to
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
@@ -95,27 +97,60 @@ class Worker:
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
-            with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
-                with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
-                    self.__running_process: asyncio.subprocess.Process = \
-                        await asyncio.create_subprocess_exec(
-                            *task.args(),
-                            stdout=stdout,
-                            stderr=stderr,
-                            env=env
-                        )
+            #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
+            #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
+            self.__running_process: asyncio.subprocess.Process = \
+                await asyncio.create_subprocess_exec(  # TODO: process subprocess exceptions
+                    *task.args(),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env
+                )
         except Exception as e:
             await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
             raise
 
-        # callback awaiter
-        async def _awaiter():
-            await self.__running_process.wait()
-            await self.task_finished()
-
-        self.__running_awaiter = asyncio.create_task(_awaiter())
         self.__running_task = task
         self.__where_to_report = report_to
+        self.__running_awaiter = asyncio.create_task(self._awaiter())
+
+    # callback awaiter
+    async def _awaiter(self):
+        async with aiofiles.open(self.get_log_filepath('output', self.__running_task.invocation_id()), 'ab') as stdout:
+            async with aiofiles.open(self.get_log_filepath('error', self.__running_task.invocation_id()), 'ab') as stderr:
+
+                async def _flush():
+                    await asyncio.sleep(1)  # ensure to flush every 1 second
+                    await stdout.flush()
+                    await stderr.flush()
+
+                await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task initialized\n').encode('UTF-8'))
+                rout_task = asyncio.create_task(self.__running_process.stdout.readline())
+                rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
+                done_task = asyncio.create_task(self.__running_process.wait())
+                flush_task = asyncio.create_task(_flush())
+                tasks_to_wait = {rout_task, rerr_task, done_task, flush_task}
+                while len(tasks_to_wait) != 0:
+                    done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
+                    if rout_task in done:
+                        str = rout_task.result()  # TODO: analyze output first, pick out all kind of progress crap
+                        if str != b'':  # this can only happen at eof
+                            await asyncio.create_task(stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str))
+                            rout_task = asyncio.create_task(self.__running_process.stdout.readline())
+                            tasks_to_wait.add(rout_task)
+                    if rerr_task in done:
+                        str = rerr_task.result()
+                        if str != b'':  # this can only happen at eof
+                            await asyncio.create_task(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
+                            rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
+                            tasks_to_wait.add(rerr_task)
+                    if flush_task in done and not done_task.done():
+                        flush_task = asyncio.create_task(_flush())
+                        tasks_to_wait.add(flush_task)
+                await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task finished\n').encode('UTF-8'))
+
+        await self.__running_process.wait()
+        await self.task_finished()
 
     def is_task_running(self) -> bool:
         return self.__running_task is not None
