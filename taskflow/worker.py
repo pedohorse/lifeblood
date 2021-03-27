@@ -135,13 +135,14 @@ class Worker:
                     if rout_task in done:
                         str = rout_task.result()  # TODO: analyze output first, pick out all kind of progress crap
                         if str != b'':  # this can only happen at eof
-                            await asyncio.create_task(stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str))
+                            await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str)
                             rout_task = asyncio.create_task(self.__running_process.stdout.readline())
                             tasks_to_wait.add(rout_task)
                     if rerr_task in done:
                         str = rerr_task.result()
                         if str != b'':  # this can only happen at eof
-                            await asyncio.create_task(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
+                            await asyncio.gather(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str),
+                                                 stdout.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
                             rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
                             tasks_to_wait.add(rerr_task)
                     if flush_task in done and not done_task.done():
