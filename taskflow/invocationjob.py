@@ -99,6 +99,38 @@ class InvocationJob:
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
         # TODO: add here also all kind of resource requirements information
+        self.__out_progress_regex = re.compile(r'ALF_PROGRESS\s+(\d+)%')
+        self.__err_progress_regex = None
+
+    def set_stdout_progress_regex(self, regex: Optional[str]):
+        if regex is None:
+            self.__out_progress_regex = None
+            return
+        self.__out_progress_regex = re.compile(regex)
+
+    def set_stderr_progress_regex(self, regex: Optional[str]):
+        if regex is None:
+            self.__err_progress_regex = None
+            return
+        self.__err_progress_regex = re.compile(regex)
+
+    def match_stdout_progress(self, line: str) -> Optional[float]:
+        if self.__out_progress_regex is None:
+            return
+        match = self.__out_progress_regex.match(line)
+        if match is not None and len(match.groups()) == 0:
+            self.__out_progress_regex = None
+            return
+        return float(match.group(1))
+
+    def match_stderr_progress(self, line: str) -> Optional[float]:
+        if self.__err_progress_regex is None:
+            return
+        match = self.__err_progress_regex.match(line)
+        if match is not None and len(match.groups()) == 0:
+            self.__err_progress_regex = None
+            return
+        return float(match.group(1))
 
     def args(self):
         return self.__args
