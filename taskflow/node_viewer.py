@@ -119,6 +119,7 @@ class Node(NetworkItemWithUI):
 
         self.__nodeui: Optional[NodeUi] = None
         self.__connections: Set[NodeConnection] = set()
+        self.__expanded = False
 
         self.__inputs, self.__outputs = None, None
         self.__node_ui_for_io_requested = False
@@ -325,6 +326,9 @@ class Node(NetworkItemWithUI):
             node_viewer = event.widget().parent()
             assert isinstance(node_viewer, NodeEditor)
 
+            # check expand button
+
+
             for input in self.__inputs:
                 inpos = self.get_input_position(input)
                 if QPointF.dotProduct(inpos - pos, inpos - pos) <= r2 and node_viewer.request_ui_focus(self):
@@ -445,7 +449,7 @@ class NodeConnection(NetworkItem):
             painter.drawPath(line)
         painter.setPen(self.__pen)
         painter.drawPath(line)
-        painter.drawRect(self.boundingRect())
+        # painter.drawRect(self.boundingRect())
         self.__last_drawn_path = line
 
     def output(self) -> (Node, str):
@@ -725,6 +729,10 @@ class Task(NetworkItemWithUI):
             elif not value:
                 pass
                 #self.__log = None
+        elif change == QGraphicsItem.ItemSceneChange:
+            if value is None:  # removing item from scene
+                if self.__node is not None:
+                    self.__node.remove_task(self)
         return super(Task, self).itemChange(change, value)
 
     #
@@ -843,7 +851,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         line = self.get_painter_path()
         painter.setPen(self.__pen)
         painter.drawPath(line)
-        painter.drawRect(self.boundingRect())
+        # painter.drawRect(self.boundingRect())
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
         pos = event.scenePos()
