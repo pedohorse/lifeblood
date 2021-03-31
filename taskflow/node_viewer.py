@@ -135,6 +135,18 @@ class Node(NetworkItemWithUI):
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
         self.update_ui()
 
+    def set_expanded(self, expanded: bool):
+        if self.__expanded == expanded:
+            return
+        self.__expanded = expanded
+        self.prepareGeometryChange()
+        self.__height = 75
+        if expanded:
+            self.__height += 225
+
+        for i, task in enumerate(self.__tasks):
+            task.setPos(self.get_task_pos(task, i))
+
     def input_snap_points(self):
         # TODO: cache snap points, don't recalc them every time
         if self.__nodeui is None:
@@ -158,13 +170,42 @@ class Node(NetworkItemWithUI):
         lh = self.__height + self.__line_width
         return QRectF(-0.5 * lw, -0.5 * lh - self.__input_radius, lw, lh + 2 * self.__input_radius)
 
-    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
-        painter.pen().setWidthF(self.__line_width)
+    def _get_nodeshape(self):
         lw = self.__width + self.__line_width
         lh = self.__height + self.__line_width
-
         nodeshape = QPainterPath()
         nodeshape.addRoundedRect(QRectF(-0.5 * lw, -0.5 * lh, lw, lh), 5, 5)
+        return nodeshape
+
+    def _get_bodymask(self):
+        lw = self.__width + self.__line_width
+        lh = self.__height + self.__line_width
+        bodymask = QPainterPath()
+        bodymask.addRect(-0.5 * lw, -0.5 * lh + 16, lw, lh - 16)
+        return bodymask
+
+    def _get_headershape(self):
+        return self._get_nodeshape() - self._get_bodymask()
+
+    def _get_bodyshape(self):
+        return self._get_nodeshape() & self._get_bodymask()
+
+    def _get_expandbutton_shape(self):
+        bodyshape = self._get_bodyshape()
+        mask = QPainterPath()
+        body_bound = bodyshape.boundingRect()
+        corner = body_bound.bottomRight() + QPointF(15, 15)
+        top = corner + QPointF(0, -60)
+        left = corner + QPointF(-60, 0)
+        mask.moveTo(corner)
+        mask.lineTo(top)
+        mask.lineTo(left)
+        mask.lineTo(corner)
+        return bodyshape & mask
+
+    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        painter.pen().setWidthF(self.__line_width)
+        nodeshape = self._get_nodeshape()
 
         if not self.__node_ui_for_io_requested:
             assert self.scene() is not None
@@ -186,11 +227,8 @@ class Node(NetworkItemWithUI):
                 painter.setPen(self.__borderpen)
                 painter.drawPath(path)
 
-
-        bodymask = QPainterPath()
-        bodymask.addRect(-0.5 * lw, -0.5 * lh + 16, lw, lh - 16)
-        headershape = nodeshape - bodymask
-        bodyshape = nodeshape & bodymask
+        headershape = self._get_headershape()
+        bodyshape = self._get_bodyshape()
 
         if self.isSelected():
             painter.setPen(self.__borderpen_selected)
@@ -198,6 +236,7 @@ class Node(NetworkItemWithUI):
             painter.setPen(self.__borderpen)
         painter.fillPath(headershape, self.__header_brush)
         painter.fillPath(bodyshape, self.__body_brush)
+        painter.fillPath(self._get_expandbutton_shape(), self.__header_brush)
         painter.drawPath(nodeshape)
         painter.setPen(self.__caption_pen)
         painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
@@ -257,13 +296,13 @@ class Node(NetworkItemWithUI):
 
     def get_task_pos(self, task: "Task", pos_id: int) -> QPointF:
         #assert task in self.__tasks
-        x, y = self.boundingRect().topLeft().toTuple()
-        w, h = self.boundingRect().size().toTuple()
+        rect = self._get_bodyshape().boundingRect()
+        x, y = rect.topLeft().toTuple()
+        w, h = rect.size().toTuple()
         d = task.draw_size()  # TODO: this assumes size is same, so dont make it an instance method
         r = d * 0.5
-        y += 16  # hardcoded header
-        h -= 16
-        w *= 0.5
+
+        #w *= 0.5
         x += r
         y += r
         h -= d
@@ -327,7 +366,10 @@ class Node(NetworkItemWithUI):
             assert isinstance(node_viewer, NodeEditor)
 
             # check expand button
-
+            expand_button_shape = self._get_expandbutton_shape()
+            if expand_button_shape.contains(event.pos()):
+                self.set_expanded(not self.__expanded)
+                return
 
             for input in self.__inputs:
                 inpos = self.get_input_position(input)
@@ -733,7 +775,7 @@ class Task(NetworkItemWithUI):
             if value is None:  # removing item from scene
                 if self.__node is not None:
                     self.__node.remove_task(self)
-        return super(Task, self).itemChange(change, value)
+        return super(Task, self).itemChange(change, value)  # TODO: maybe move this to scene's remove item?
 
     #
     # interface
