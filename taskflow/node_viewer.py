@@ -126,6 +126,11 @@ class Node(NetworkItemWithUI):
         if self.__node_type in Node._node_inputs_outputs_cached:
             self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
 
+    def prepareGeometryChange(self):
+        super(Node, self).prepareGeometryChange()
+        for conn in self.__connections:
+            conn.prepareGeometryChange()
+
     def node_type(self) -> str:
         return self.__node_type
 
@@ -143,6 +148,9 @@ class Node(NetworkItemWithUI):
         self.__height = 75
         if expanded:
             self.__height += 225
+            self.setPos(self.pos() + QPointF(0, 225*0.5))
+        else:
+            self.setPos(self.pos() - QPointF(0, 225 * 0.5))
 
         for i, task in enumerate(self.__tasks):
             task.setPos(self.get_task_pos(task, i))
