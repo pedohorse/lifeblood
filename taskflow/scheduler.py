@@ -2,7 +2,7 @@ import sys
 import os
 import time
 import json
-import importlib.util
+import itertools
 from enum import Enum
 import asyncio
 import aiosqlite
@@ -736,8 +736,14 @@ class Scheduler:
                 else:
                     print('ERROR CREATING SPAWN TASK: Malformed source', file=sys.stderr)
                     continue
-                await con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
-                                  (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id, newtask.node_output_name()))
+                async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
+                    groups = [x['group'] for x in await gcur.fetchall()]
+                async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
+                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id, newtask.node_output_name())) as newcur:
+                    new_id = newcur.lastrowid
+                if len(groups) > 0:
+                    await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                                          zip(itertools.repeat(new_id, len(groups)), groups))
 
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
@@ -782,7 +788,7 @@ class Scheduler:
             else:
                 async with con.execute('SELECT * from "invocations" WHERE "task_id" = ? AND "node_id" = ? AND "id" = ?',
                                        (task_id, node_id, invocation_id)) as cur:
-                    all_entries = cur.fetchall()  # should be exactly 1 or 0
+                    all_entries = await cur.fetchall()  # should be exactly 1 or 0
                 for entry in all_entries:
                     entry = dict(entry)
                     if entry['state'] == InvocationState.IN_PROGRESS.value or entry['stdout'] is None or entry['stderr'] is None:
