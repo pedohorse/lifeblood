@@ -1678,7 +1678,7 @@ class NodeEditor(QGraphicsView):
             return
         io = imgui.get_io()
         if isinstance(event, PySide2.QtGui.QMouseEvent):
-            io.mouse_pos = event.windowPos().toTuple()
+            io.mouse_pos = event.pos().toTuple()
         elif isinstance(event, PySide2.QtGui.QWheelEvent):
             io.mouse_wheel = event.angleDelta().y() / 100
         elif isinstance(event, PySide2.QtGui.QKeyEvent):
@@ -1825,9 +1825,36 @@ class NodeEditor(QGraphicsView):
             super(NodeEditor, self).keyReleaseEvent(event)
 
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
+        self.finalize()
+        super(NodeEditor, self).closeEvent(event)
+
+    def finalize(self):
         self.__scene.stop()
         self.__scene.save_node_layout()
-        super(NodeEditor, self).closeEvent(event)
+
+
+class TaskflowViewer(QMainWindow):
+    def __init__(self, db_path: str, parent=None):
+        super(TaskflowViewer, self).__init__(parent)
+        self.__central_widget = QWidget()
+        self.setCentralWidget(self.__central_widget)
+        self.__main_layout = QHBoxLayout(self.centralWidget())
+        self.__node_editor = NodeEditor(db_path)
+        self.__group_list = QListView()
+        self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+
+        self.__main_layout.addWidget(self.__group_list)
+        self.__main_layout.addWidget(self.__node_editor)
+
+    def setSceneRect(self, *args, **kwargs):
+        return self.__node_editor.setSceneRect(*args, **kwargs)
+
+    def sceneRect(self):
+        return self.__node_editor.sceneRect()
+
+    def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
+        self.__node_editor.finalize()
+        super(TaskflowViewer, self).closeEvent(event)
 
 
 imgui_key_map = {
@@ -1852,6 +1879,7 @@ imgui_key_map = {
     Qt.Key_Z: imgui.KEY_Z,
 }
 
+
 def _main():
     qapp = QApplication(sys.argv)
 
@@ -1872,7 +1900,7 @@ def _main():
             else:
                 scene_rect = None
 
-    widget = NodeEditor(db_path)
+    widget = TaskflowViewer(db_path)
     if hgt is not None:
         widget.resize(wgt, hgt)
     if posx is not None:
@@ -1891,7 +1919,6 @@ def _main():
                     ('main', *widget.size().toTuple(), *widget.pos().toTuple(),
                      *scene_rect.topLeft().toTuple(), *scene_rect.size().toTuple()))
         con.commit()
-
 
 
 if __name__ == '__main__':
