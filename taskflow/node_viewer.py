@@ -377,6 +377,7 @@ class Node(NetworkItemWithUI):
             expand_button_shape = self._get_expandbutton_shape()
             if expand_button_shape.contains(event.pos()):
                 self.set_expanded(not self.__expanded)
+                event.ignore()
                 return
 
             for input in self.__inputs:
@@ -654,10 +655,14 @@ class Task(NetworkItemWithUI):
         return QRectF(QPointF(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw)),
                       QSizeF(self.__size + lw, self.__size + lw))
 
-    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+    def _get_mainpath(self) -> QPainterPath:
         path = QPainterPath()
         path.addEllipse(-0.5 * self.__size, -0.5 * self.__size,
                         self.__size, self.__size)
+        return path
+
+    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        path = self._get_mainpath()
         brush = self.__brushes[self.__state]
         painter.fillPath(path, brush)
         painter.setPen(self.__borderpen[int(self.isSelected())])
@@ -794,6 +799,10 @@ class Task(NetworkItemWithUI):
                 if self.__node is not None:
                     self.__node.remove_task(self)
         return super(Task, self).itemChange(change, value)  # TODO: maybe move this to scene's remove item?
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if not self._get_mainpath().contains(event.pos()):
+            event.ignore()
 
     #
     # interface
