@@ -1,5 +1,3 @@
-import sys
-import os
 import socket
 import struct
 import time
@@ -8,12 +6,12 @@ import pickle
 import sqlite3
 import asyncio
 from math import sqrt
-from .uidata import UiData, NodeUi
-from .scheduler import TaskState, InvocationState
-from .broadcasting import await_broadcast
-from .nethelpers import recv_exactly
+from ..uidata import UiData, NodeUi
+from ..scheduler import TaskState, InvocationState
+from ..broadcasting import await_broadcast
+from ..nethelpers import recv_exactly
 
-from .enums import NodeParameterType
+from ..enums import NodeParameterType
 
 import PySide2.QtCore
 import PySide2.QtGui
@@ -1833,30 +1831,6 @@ class NodeEditor(QGraphicsView):
         self.__scene.save_node_layout()
 
 
-class TaskflowViewer(QMainWindow):
-    def __init__(self, db_path: str, parent=None):
-        super(TaskflowViewer, self).__init__(parent)
-        self.__central_widget = QWidget()
-        self.setCentralWidget(self.__central_widget)
-        self.__main_layout = QHBoxLayout(self.centralWidget())
-        self.__node_editor = NodeEditor(db_path)
-        self.__group_list = QListView()
-        self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
-
-        self.__main_layout.addWidget(self.__group_list)
-        self.__main_layout.addWidget(self.__node_editor)
-
-    def setSceneRect(self, *args, **kwargs):
-        return self.__node_editor.setSceneRect(*args, **kwargs)
-
-    def sceneRect(self):
-        return self.__node_editor.sceneRect()
-
-    def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
-        self.__node_editor.finalize()
-        super(TaskflowViewer, self).closeEvent(event)
-
-
 imgui_key_map = {
     Qt.Key_Tab: imgui.KEY_TAB,
     Qt.Key_Left: imgui.KEY_LEFT_ARROW,
@@ -1878,48 +1852,3 @@ imgui_key_map = {
     Qt.Key_Y: imgui.KEY_Y,
     Qt.Key_Z: imgui.KEY_Z,
 }
-
-
-def _main():
-    qapp = QApplication(sys.argv)
-
-    db_path = os.path.join(os.getcwd(), 'node_viewer.db')
-    hgt, wgt = None, None
-    posx, posy = None, None
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        cur = con.execute('SELECT * FROM widgets WHERE "name" = ?', ('main',))
-        row = cur.fetchone()
-        if row is not None:
-            hgt = row['height']
-            wgt = row['width']
-            posx = row['posx']
-            posy = row['posy']
-            if row['scene_x'] is not None:
-                scene_rect = QRectF(row['scene_x'], row['scene_y'], row['scene_w'], row['scene_h'])
-            else:
-                scene_rect = None
-
-    widget = TaskflowViewer(db_path)
-    if hgt is not None:
-        widget.resize(wgt, hgt)
-    if posx is not None:
-        widget.move(posx, posy)
-    if scene_rect is not None:
-        widget.setSceneRect(scene_rect)
-    widget.show()
-
-    qapp.exec_()
-    with sqlite3.connect(db_path) as con:
-        scene_rect = widget.sceneRect()
-        con.execute('INSERT OR REPLACE INTO widgets ("name", "width", "height", "posx", "posy", '
-                    '"scene_x", "scene_y", "scene_w", "scene_h") '
-                    'VALUES (?, ?, ?, ?, ?, '
-                    '?, ?, ?, ?)',
-                    ('main', *widget.size().toTuple(), *widget.pos().toTuple(),
-                     *scene_rect.topLeft().toTuple(), *scene_rect.size().toTuple()))
-        con.commit()
-
-
-if __name__ == '__main__':
-    _main()
