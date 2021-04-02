@@ -25,7 +25,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
 
-from typing import Optional, List, Tuple, Dict, Set, Callable
+from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable
 
 
 def call_later(callable, *args, **kwargs):
@@ -619,11 +619,12 @@ class NodeConnection(NetworkItem):
 
 
 class Task(NetworkItemWithUI):
-    def __init__(self, id, name):
+    def __init__(self, id, name: str, groups=None):
         super(Task, self).__init__(id)
         self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.__name = name
         self.__state = TaskState.WAITING
+        self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
         self.__requested_invocs_while_selected = set()
@@ -668,6 +669,12 @@ class Task(NetworkItemWithUI):
     def state(self):
         return self.__state
 
+    def groups(self):
+        return self.__groups
+
+    def in_group(self, group_name):
+        return group_name in self.__groups
+
     def set_node(self, node: Optional[Node], _drop_animation=True):
         """
         TODO: describe difference from set_node_animated below. this one curently is not used at all btw.
@@ -695,6 +702,9 @@ class Task(NetworkItemWithUI):
             return
         self.__state = state
         self.update()
+
+    def set_groups(self, groups: Iterable[str]):
+        self.__groups = set(groups)
 
     def update_log(self, alllog):
         #self.__log = alllog
@@ -788,7 +798,9 @@ class Task(NetworkItemWithUI):
     #
     # interface
     def draw_imgui_elements(self):
-        imgui.text(f'Task {self.get_id()}')
+        imgui.text(f'Task {self.get_id()} {self.__name}')
+        imgui.text(f'groups: {", ".join(self.__groups)}')
+
         # first draw attributes
         for key, val in self.__ui_attributes.items():
             imgui.columns(2, 'node_attributes')
@@ -1043,7 +1055,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(object)
     def full_update(self, uidata: UiData):
-        print(uidata)
+        print('full_update')
 
         to_del = []
         existing_node_ids: Dict[int, Node] = {}
@@ -1106,7 +1118,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         for id, newdata in uidata.tasks().items():
             if id not in existing_task_ids:
-                new_task = Task(id, newdata['name'] or '<noname>')
+                new_task = Task(id, newdata['name'] or '<noname>', newdata['groups'])
                 existing_task_ids[id] = new_task
                 if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
                     origin_task = existing_task_ids[newdata['origin_task_id']]
@@ -1119,6 +1131,7 @@ class QGraphicsImguiScene(QGraphicsScene):
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']))
+            task.set_groups(newdata['groups'])
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):
