@@ -606,16 +606,44 @@ class Scheduler:
 
     #
     # stuff
-    async def get_full_ui_state(self):
+    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT * from "nodes"') as cur:
-                all_nodes = await cur.fetchall()
+                all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
             async with con.execute('SELECT * from "node_connections"') as cur:
-                all_conns = await cur.fetchall()
-            async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id '
-                                   'FROM "tasks" LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level') as cur:
-                all_tasks = await cur.fetchall()
+                all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
+            if task_groups is None:
+                all_tasks = dict()
+                async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups '
+                                       'FROM "tasks" '
+                                       'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
+                                       'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
+                                       'GROUP BY tasks."id"') as cur:
+                    all_tasks_rows = await cur.fetchall()
+                for task_row in all_tasks_rows:
+                    task = dict(task_row)
+                    if task['groups'] is None:
+                        task['groups'] = set()
+                    else:
+                        task['groups'] = set(task['groups'].split(','))  # TODO: enforce no commas (,) in group names
+                    all_tasks[task['id']] = task
+            else:
+                for group in task_groups:
+                    all_tasks = {}
+                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, task_groups."group" as groups '
+                                           'FROM "tasks" '
+                                           'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
+                                           'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
+                                           'WHERE task_groups."group" = ?', group) as cur:
+                        grp_tasks = await cur.fetchall()
+                    for task_row in grp_tasks:
+                        task = dict(task_row)
+                        task['groups'] = {task['groups']}
+                        if task['id'] in all_tasks:
+                            all_tasks[task['id']]['groups'].update(task['groups'])
+                        else:
+                            all_tasks[task['id']] = task
             data = await create_uidata(all_nodes, all_conns, all_tasks)
         return data
 

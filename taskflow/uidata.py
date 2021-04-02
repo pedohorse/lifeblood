@@ -8,15 +8,16 @@ from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional, Tuple
 if TYPE_CHECKING:
     from .basenode import BaseNode
 
-async def create_uidata(raw_nodes, raw_connections, raw_tasks):
-    return await asyncio.get_event_loop().run_in_executor(None, UiData, raw_nodes, raw_connections, raw_tasks)
+
+async def create_uidata(ui_nodes, ui_connections, ui_tasks):
+    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks)
 
 
 class UiData:
-    def __init__(self, raw_nodes, raw_connections, raw_tasks):
-        self.__nodes = {x['id']: dict(x) for x in raw_nodes}
-        self.__conns = {x['id']: dict(x) for x in raw_connections}
-        self.__tasks = {x['id']: dict(x) for x in raw_tasks}
+    def __init__(self, ui_nodes, ui_connections, ui_tasks):
+        self.__nodes = ui_nodes
+        self.__conns = ui_connections
+        self.__tasks = ui_tasks
         # self.__conns = {}
         # for conn in raw_connections:
         #     id_out = conn['node_id_out']
