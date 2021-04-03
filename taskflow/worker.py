@@ -48,8 +48,8 @@ class Worker:
         if not os.path.exists(self.log_root_path):
             os.makedirs(self.log_root_path)
         self.__status = {}
-        self.__running_process = None  # type: Optional[asyncio.subprocess.Process]
-        self.__running_task = None  # type: Optional[InvocationJob]
+        self.__running_process: Optional[asyncio.subprocess.Process] = None
+        self.__running_task: Optional[InvocationJob] = None
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
         self.__where_to_report = None
@@ -184,11 +184,11 @@ class Worker:
         """
         print('task finished')
         print(f'reporting back to {self.__where_to_report}')
+        self.__running_task.finish(await self.__running_process.wait())
         try:
             ip, port = self.__where_to_report.split(':', 1)
             async with SchedulerTaskClient(ip, int(port)) as client:
                 await client.report_task_done(self.__running_task,
-                                              await self.__running_process.wait(),
                                               self.get_log_filepath('output', self.__running_task.invocation_id()),
                                               self.get_log_filepath('error', self.__running_task.invocation_id()))
         except Exception as e:
