@@ -607,13 +607,14 @@ class Scheduler:
     #
     # stuff
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
+        print(task_groups)
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT * from "nodes"') as cur:
                 all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
             async with con.execute('SELECT * from "node_connections"') as cur:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
-            if task_groups is None:
+            if not task_groups:  # None or []
                 all_tasks = dict()
                 async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups '
                                        'FROM "tasks" '
@@ -635,7 +636,7 @@ class Scheduler:
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
-                                           'WHERE task_groups."group" = ?', group) as cur:
+                                           'WHERE task_groups."group" = ?', (group,)) as cur:
                         grp_tasks = await cur.fetchall()
                     for task_row in grp_tasks:
                         task = dict(task_row)
@@ -644,7 +645,9 @@ class Scheduler:
                             all_tasks[task['id']]['groups'].update(task['groups'])
                         else:
                             all_tasks[task['id']] = task
-            data = await create_uidata(all_nodes, all_conns, all_tasks)
+            async with con.execute('SELECT DISTINCT "group" FROM task_groups') as cur:
+                all_task_groups = [x['group'] for x in await cur.fetchall()]
+            data = await create_uidata(all_nodes, all_conns, all_tasks, all_task_groups)
         return data
 
     #
