@@ -976,8 +976,10 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
     _signal_remove_node_connection_requested = Signal(int)
     _signal_add_node_connection_requested = Signal(int, str, int, str)
+    _signal_set_task_group_filter = Signal(set)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
+    task_groups_updated = Signal(set)
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -986,6 +988,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__node_dict: Dict[int, Node] = {}
         self.__db_path = db_path
         self.__cached_nodetypes = None
+        self.__all_task_groups = set()
+        self.__task_group_filter = None
 
         self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
         self.__ui_connection_worker = SchedulerConnectionWorker()
@@ -1012,9 +1016,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
+        self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
-
-        self.__ui_connection_thread.start()
 
     def request_log(self, task_id, node_id, invocation_id):
         self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
@@ -1048,6 +1051,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_remove_node(self, node_id: int):
         self._signal_remove_node_requested.emit(node_id)
+
+    def set_task_group_filter(self, groups):
+        self._signal_set_task_group_filter.emit(groups)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -1139,6 +1145,11 @@ class QGraphicsImguiScene(QGraphicsScene):
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']))
             task.set_groups(newdata['groups'])
+            # new_task_groups.update(task.groups())
+
+        if self.__all_task_groups != uidata.task_groups():
+            self.__all_task_groups = uidata.task_groups()
+            self.task_groups_updated.emit(uidata.task_groups())
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):
@@ -1217,6 +1228,9 @@ class QGraphicsImguiScene(QGraphicsScene):
     def tasks(self) -> Tuple[Task]:
         return tuple(self.__task_dict.values())
 
+    def start(self):
+        self.__ui_connection_thread.start()
+
     def stop(self):
         # self.__ui_connection_thread.requestInterruption()
         self.__ui_connection_worker.request_interruption()
@@ -1247,6 +1261,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         event.accept()
         #return super(QGraphicsImguiScene, self).keyReleaseEvent(event)
 
+
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
@@ -1260,6 +1275,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self.__started = False
         self.__timer = None
         self.__to_stop = False
+        self.__task_group_filter: Optional[Set[str]] = None
         self.__conn: Optional[socket.socket] = None
 
     def request_interruption(self):
@@ -1290,6 +1306,11 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         :return:
         """
         self.__timer.stop()
+
+    @Slot(set)
+    def set_task_group_filter(self, groups: Set[str]):
+        self.__task_group_filter = groups
+        # TODO: force update
 
     def ensure_connected(self) -> bool:
         if self.__conn is not None:
@@ -1362,6 +1383,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         try:
             self.__conn.sendall(b'getfullstate\n')
+            if not self.__task_group_filter:
+                self.__conn.sendall(struct.pack('>I', 0))
+            else:
+                self.__conn.sendall(struct.pack('>I', len(self.__task_group_filter)))
+                for group in self.__task_group_filter:
+                    self._send_string(group)
             recvdata = recv_exactly(self.__conn, 8)
         except ConnectionError as e:
             print('connection reset', e)
@@ -1823,10 +1850,13 @@ class NodeEditor(QGraphicsView):
             super(NodeEditor, self).keyReleaseEvent(event)
 
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
-        self.finalize()
+        self.stop()
         super(NodeEditor, self).closeEvent(event)
 
-    def finalize(self):
+    def start(self):
+        self.__scene.start()
+
+    def stop(self):
         self.__scene.stop()
         self.__scene.save_node_layout()
 
