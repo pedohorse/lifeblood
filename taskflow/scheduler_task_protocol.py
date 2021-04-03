@@ -39,13 +39,12 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 tasksize = await reader.readexactly(4)
                 tasksize = struct.unpack('>I', tasksize)[0]
                 task = await reader.readexactly(tasksize)
-                return_code: int = struct.unpack('>I', await reader.readexactly(4))[0]
                 task = invocationjob.InvocationJob.deserialize(task)  # TODO: async this
                 stdout_size = struct.unpack('>I', await reader.readexactly(4))[0]
                 stdout = (await reader.readexactly(stdout_size)).decode('UTF-8')
                 stderr_size = struct.unpack('>I', await reader.readexactly(4))[0]
                 stderr = (await reader.readexactly(stderr_size)).decode('UTF-8')
-                await self.__scheduler.task_done_reported(task, return_code, stdout, stderr)
+                await self.__scheduler.task_done_reported(task, stdout, stderr)
             elif command == b'hello':
                 addrsize = await reader.readexactly(4)
                 addrsize = struct.unpack('>I', addrsize)[0]
@@ -92,13 +91,12 @@ class SchedulerTaskClient:
         self.__reader, self.__writer = await self.__conn_task
         self.__writer.write(b'\0\0\0\0')
 
-    async def report_task_done(self, task: invocationjob.InvocationJob, return_code: int, stdout_file: str, stderr_file: str):
+    async def report_task_done(self, task: invocationjob.InvocationJob,stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
         self.__writer.writelines([b'done\n'])
         taskserialized = await task.serialize_async()
         self.__writer.write(struct.pack('>I', len(taskserialized)))
         self.__writer.write(taskserialized)
-        self.__writer.write(struct.pack('>I', return_code))
         for std_file in (stdout_file, stderr_file):
             async with aiofiles.open(std_file, 'r') as f:
                 filedata = (await f.read()).encode('UTF-8')
