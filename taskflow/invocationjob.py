@@ -4,7 +4,11 @@ from copy import copy
 import asyncio
 import pickle
 
-from typing import Optional
+from typing import Optional, Iterable
+
+
+class InvocationNotFinished(RuntimeError):
+    pass
 
 
 class Environment(dict):
@@ -94,13 +98,19 @@ class InvocationJob:
     """
     serializable data about launching something
     """
-    def __init__(self, args: list, env: Optional[InvocationEnvironment] = None, invocation_id=None):
+    def __init__(self, args: list, env: Optional[InvocationEnvironment] = None, invocation_id=None,
+                 good_exitcodes: Optional[Iterable[int]] = None,
+                 retry_exitcodes: Optional[Iterable[int]] = None):
         self.__args = args
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
         # TODO: add here also all kind of resource requirements information
         self.__out_progress_regex = re.compile(r'ALF_PROGRESS\s+(\d+)%')
         self.__err_progress_regex = None
+
+        self.__exitcode = None
+        self.__good_exitcodes = set(good_exitcodes or [0])
+        self.__retry_exitcodes = set(retry_exitcodes or [])
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
@@ -140,6 +150,25 @@ class InvocationJob:
 
     def invocation_id(self):
         return self.__invocation_id
+
+    def finish(self, exitcode: int):
+        self.__exitcode = exitcode
+
+    def is_finished(self):
+        return self.__exitcode is not None
+
+    def exit_code(self):
+        return self.__exitcode
+
+    def finished_with_error(self):
+        if self.__exitcode is None:
+            raise InvocationNotFinished()
+        return self.__exitcode not in self.__good_exitcodes
+
+    def finished_needs_retry(self):
+        if self.__exitcode is None:
+            raise InvocationNotFinished()
+        return self.__exitcode in self.__retry_exitcodes
 
     async def serialize_async(self) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
