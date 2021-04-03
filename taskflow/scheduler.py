@@ -561,21 +561,31 @@ class Scheduler:
 
     #
     # callbacks
-    async def task_done_reported(self, task: InvocationJob, return_code: int, stdout: str, stderr: str):
-        print('task finished reported', task, 'code', return_code)
+    async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
+        print('task finished reported', task, 'code', task.exit_code())
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ? WHERE "id" = ?',
-                              (InvocationState.FINISHED.value, return_code, task.invocation_id()))
+                              (InvocationState.FINISHED.value, task.exit_code(), task.invocation_id()))
             async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
                 invocation = await incur.fetchone()
             assert invocation is not None
-            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                              (TaskState.POST_WAITING.value, invocation['task_id']))
+
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
             await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
                               (stdout, stderr, task.invocation_id()))
+
+            if task.finished_needs_retry():
+                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                  (TaskState.READY.value, invocation['task_id']))
+            elif task.finished_with_error():
+                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                  (TaskState.ERROR.value, invocation['task_id']))
+            else:
+                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                  (TaskState.POST_WAITING.value, invocation['task_id']))
+
             await con.commit()
 
     #
