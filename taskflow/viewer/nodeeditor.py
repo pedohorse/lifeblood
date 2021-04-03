@@ -151,7 +151,7 @@ class Node(NetworkItemWithUI):
             self.setPos(self.pos() - QPointF(0, 225 * 0.5))
 
         for i, task in enumerate(self.__tasks):
-            task.setPos(self.get_task_pos(task, i))
+            task.set_node_animated(self, self.get_task_pos(task, i))
 
     def input_snap_points(self):
         # TODO: cache snap points, don't recalc them every time
