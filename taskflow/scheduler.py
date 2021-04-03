@@ -576,7 +576,7 @@ class Scheduler:
             await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
                               (stdout, stderr, task.invocation_id()))
 
-            if task.finished_needs_retry():
+            if task.finished_needs_retry():  # TODO: max retry count!
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
             elif task.finished_with_error():
