@@ -9,15 +9,16 @@ if TYPE_CHECKING:
     from .basenode import BaseNode
 
 
-async def create_uidata(ui_nodes, ui_connections, ui_tasks):
-    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks)
+async def create_uidata(ui_nodes, ui_connections, ui_tasks, all_task_groups):
+    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks, all_task_groups)
 
 
 class UiData:
-    def __init__(self, ui_nodes, ui_connections, ui_tasks):
+    def __init__(self, ui_nodes, ui_connections, ui_tasks, all_task_groups):
         self.__nodes = ui_nodes
         self.__conns = ui_connections
         self.__tasks = ui_tasks
+        self.__task_groups = all_task_groups
         # self.__conns = {}
         # for conn in raw_connections:
         #     id_out = conn['node_id_out']
@@ -36,6 +37,9 @@ class UiData:
 
     def tasks(self):
         return self.__tasks
+
+    def task_groups(self):
+        return self.__task_groups
 
     async def serialize(self) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
