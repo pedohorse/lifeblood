@@ -18,10 +18,11 @@ class GroupsView(QListView):
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
+        self.setSelectionMode(GroupsView.ExtendedSelection)
 
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
-        self.selection_changed.emit(set(index.data() for index in selected.indexes()))
+        self.selection_changed.emit(set(index.data() for index in self.selectedIndexes()))
 
 
 class TaskflowViewer(QMainWindow):
