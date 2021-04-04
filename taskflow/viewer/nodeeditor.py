@@ -623,6 +623,8 @@ class Task(NetworkItemWithUI):
         self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.__name = name
         self.__state = TaskState.WAITING
+        self.__paused = False
+
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
@@ -672,6 +674,9 @@ class Task(NetworkItemWithUI):
     def state(self):
         return self.__state
 
+    def paused(self):
+        return self.__paused
+
     def groups(self):
         return self.__groups
 
@@ -700,10 +705,11 @@ class Task(NetworkItemWithUI):
     def draw_size(self):
         return self.__size
 
-    def set_state(self, state: TaskState):
-        if state == self.__state:
+    def set_state(self, state: TaskState, paused: bool):
+        if state == self.__state and self.__paused == paused:
             return
         self.__state = state
+        self.__paused = paused
         self.update()
 
     def set_groups(self, groups: Iterable[str]):
@@ -801,6 +807,13 @@ class Task(NetworkItemWithUI):
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if not self._get_mainpath().contains(event.pos()):
             event.ignore()
+            return
+
+        if event.button() == Qt.RightButton:
+            # context menu time
+            view = event.widget().parent()
+            assert isinstance(view, NodeEditor)
+            view.show_task_menu(self)
 
     #
     # interface
@@ -1143,7 +1156,7 @@ class QGraphicsImguiScene(QGraphicsScene):
             task = existing_task_ids[id]
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
-            task.set_state(TaskState(newdata['state']))
+            task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
             task.set_groups(newdata['groups'])
             # new_task_groups.update(task.groups())
 
@@ -1614,6 +1627,28 @@ class NodeEditor(QGraphicsView):
 
         self.__imgui_init = False
         self.update()
+
+    def show_task_menu(self, task):
+        menu = QMenu(self)
+        menu.addAction(f'task {task.get_id()}').setEnabled(False)
+        menu.addSeparator()
+        menu.addAction(f'{task.state().name}').setEnabled(False)
+        menu.addAction('-paused-' if task.paused() else 'active').setEnabled(False)
+
+        menu.addSeparator()
+
+        if task.paused():
+            menu.addAction('resume')
+        else:
+            menu.addAction('pause')
+
+        state_submenu = menu.addMenu('force state')
+        for state in TaskState:
+            state_submenu.addAction(state.name)
+
+        pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
+        menu.aboutToHide.connect(menu.deleteLater)
+        menu.popup(pos)
 
     @Slot()
     def _nodetypes_updated(self, nodetypes):
