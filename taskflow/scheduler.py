@@ -358,7 +358,8 @@ class Scheduler:
                                        'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                        'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
                                        'LEFT JOIN task_splits ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level AND task_splits.split_sealed=0 '
-                                       'WHERE state = ? OR state = ? OR state = ? OR state = ? OR state = ? '
+                                       'WHERE (state = ? OR state = ? OR state = ? OR state = ? OR state = ? ) '
+                                       'AND paused = 0 '
                                        'ORDER BY RANDOM()',
                                        (TaskState.WAITING.value, TaskState.READY.value,
                                         TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
