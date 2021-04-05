@@ -7,6 +7,8 @@ from enum import Enum
 import asyncio
 import aiosqlite
 
+from . import paths
+from .db_misc import sql_init_script
 from .worker_task_protocol import WorkerTaskClient, WorkerPingReply, TaskScheduleStatus
 from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
@@ -815,14 +817,20 @@ class Scheduler:
         return {node_id: logs}
 
 
-async def main_async():
-    scheduler = Scheduler(os.path.realpath('main.db'))
+async def main_async(db_path=None):
+    if db_path is None:
+        db_path = str(paths.default_main_database_location())
+    # ensure database is initialized
+    async with aiosqlite.connect(db_path) as con:
+        await con.executescript(sql_init_script)
+
+    scheduler = Scheduler(db_path)
     await scheduler.run()
 
 
-def main():
-    asyncio.run(main_async())
+def main(db_path=None):
+    asyncio.run(main_async(db_path))
 
 
 if __name__ == '__main__':
-    main()
+    main(os.path.realpath('main.db'))
