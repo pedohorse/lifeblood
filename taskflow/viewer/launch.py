@@ -8,16 +8,19 @@ from PySide2.QtCore import QRectF
 from .taskflow_viewer import TaskflowViewer
 from .db_misc import sql_init_script
 
+from .. import paths
 
-def main():
+
+def main(config_path=None):
     qapp = QApplication(sys.argv)
 
-    db_path = os.path.join(os.getcwd(), 'node_viewer.db')
+    if config_path is None:
+        config_path = paths.config_path('node_viewer.db', 'viewer')
 
     hgt, wgt = None, None
     posx, posy = None, None
     scene_rect = None
-    with sqlite3.connect(db_path) as con:
+    with sqlite3.connect(config_path) as con:
         con.executescript(sql_init_script)
 
         con.row_factory = sqlite3.Row
@@ -31,7 +34,7 @@ def main():
             if row['scene_x'] is not None:
                 scene_rect = QRectF(row['scene_x'], row['scene_y'], row['scene_w'], row['scene_h'])
 
-    widget = TaskflowViewer(db_path)
+    widget = TaskflowViewer(config_path)
     if hgt is not None:
         widget.resize(wgt, hgt)
     if posx is not None:
@@ -41,7 +44,7 @@ def main():
     widget.show()
 
     qapp.exec_()
-    with sqlite3.connect(db_path) as con:
+    with sqlite3.connect(config_path) as con:
         scene_rect = widget.sceneRect()
         con.execute('INSERT OR REPLACE INTO widgets ("name", "width", "height", "posx", "posy", '
                     '"scene_x", "scene_y", "scene_w", "scene_h") '
@@ -53,4 +56,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(config_path=os.path.join(os.getcwd(), 'node_viewer.db'))
