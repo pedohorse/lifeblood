@@ -4,3 +4,5 @@ venv
 **.pyc
 **/__pycache__
 imgui.ini
+build
+dist
