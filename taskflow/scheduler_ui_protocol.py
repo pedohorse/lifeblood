@@ -2,13 +2,14 @@ import struct
 import pickle
 import asyncio
 from .uidata import NodeUi
-from .enums import NodeParameterType
+from .enums import NodeParameterType, TaskState
 from . import pluginloader
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .basenode import BaseNode
     from .scheduler import Scheduler
+
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler):
@@ -131,6 +132,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'removeconnection':
                     connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node_connection(connection_id)
+                elif command == b'tpause':  # pause tasks
+                    task_ids = [-1]
+                    numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
+                    if numtasks > 1:
+                        task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
+                    await self.__scheduler.set_task_paused(task_ids, bool(paused))
+                elif command == b'tcstate':  # change task state
+                    task_ids = [-1]
+                    numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
+                    if numtasks > 1:
+                        task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
+                    await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
