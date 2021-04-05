@@ -19,40 +19,9 @@ from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
+from .enums import WorkerState, WorkerPingState, TaskState, InvocationState
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
-
-
-class WorkerState(Enum):
-    OFF = 0
-    IDLE = 1
-    BUSY = 2
-    ERROR = 3
-
-
-class WorkerPingState(Enum):
-    OFF = 0
-    CHECKING = 1
-    ERROR = 2
-    WORKING = 3
-
-
-class TaskState(Enum):
-    WAITING = 0  # arrived at node, does not know what to do
-    GENERATING = 1  # node is generating work load
-    READY = 2  # ready to be scheduled
-    IN_PROGRESS = 3  # is being worked on by a worker
-    POST_WAITING = 4  # task is waiting to be post processed by node
-    POST_GENERATING = 5  # task is being post processed by node
-    DONE = 6  # done, needs further processing
-    ERROR = 7  # some internal error, not allowing to process task. NOT INVOCATION ERROR
-    SPAWNED = 8  # spawned tasks are just passed down from node's "spawned" output
-    DEAD = 9  # task will not be processed any more
-
-
-class InvocationState(Enum):
-    IN_PROGRESS = 0
-    FINISHED = 1
 
 
 class Scheduler:
@@ -608,6 +577,26 @@ class Scheduler:
                                   'VALUES '
                                   '(?, ?, ?, ?, ?, ?, ?, ?)',
                                   (1, 1, 1, 1, addr, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value))
+            await con.commit()
+
+    #
+    # force change task state
+    async def force_change_task_state(self, task_ids: Union[int, Iterable[int]], state: TaskState):
+        if isinstance(task_ids, int):
+            task_ids = [task_ids]
+        query = 'UPDATE "tasks" SET "state" = %d WHERE "id" = ?' % state.value
+        async with aiosqlite.connect(self.db_path) as con:
+            await con.executemany(query, ((x,) for x in task_ids))
+            await con.commit()
+
+    #
+    # change task's paused state
+    async def set_task_paused(self, task_ids: Union[int, Iterable[int]], paused: bool):
+        if isinstance(task_ids, int):
+            task_ids = [task_ids]
+        query = 'UPDATE "tasks" SET "paused" = %d WHERE "id" = ?' % int(paused)
+        async with aiosqlite.connect(self.db_path) as con:
+            await con.executemany(query, ((x,) for x in task_ids))
             await con.commit()
 
     #
