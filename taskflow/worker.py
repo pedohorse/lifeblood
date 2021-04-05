@@ -232,7 +232,7 @@ class Worker:
         #                      self.__scheduler_pinger)
 
 
-async def main():
+async def main_async():
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -253,5 +253,9 @@ async def main():
         print('worker quited')
 
 
+def main():
+    asyncio.run(main_async())
+
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
