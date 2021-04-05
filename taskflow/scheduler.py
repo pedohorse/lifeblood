@@ -814,14 +814,15 @@ class Scheduler:
                     logs[entry['id']] = entry
         return {node_id: logs}
 
-async def main():
+
+async def main_async():
     scheduler = Scheduler(os.path.realpath('main.db'))
     await scheduler.run()
 
 
-def _main():
-    asyncio.run(main())
+def main():
+    asyncio.run(main_async())
 
 
 if __name__ == '__main__':
-    _main()
+    main()
