@@ -6,15 +6,20 @@ from PySide2.QtWidgets import QApplication
 from PySide2.QtCore import QRectF
 
 from .taskflow_viewer import TaskflowViewer
+from .db_misc import sql_init_script
 
 
 def main():
     qapp = QApplication(sys.argv)
 
     db_path = os.path.join(os.getcwd(), 'node_viewer.db')
+
     hgt, wgt = None, None
     posx, posy = None, None
+    scene_rect = None
     with sqlite3.connect(db_path) as con:
+        con.executescript(sql_init_script)
+
         con.row_factory = sqlite3.Row
         cur = con.execute('SELECT * FROM widgets WHERE "name" = ?', ('main',))
         row = cur.fetchone()
@@ -25,8 +30,6 @@ def main():
             posy = row['posy']
             if row['scene_x'] is not None:
                 scene_rect = QRectF(row['scene_x'], row['scene_y'], row['scene_w'], row['scene_h'])
-            else:
-                scene_rect = None
 
     widget = TaskflowViewer(db_path)
     if hgt is not None:
