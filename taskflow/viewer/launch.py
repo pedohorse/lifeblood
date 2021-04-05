@@ -7,7 +7,8 @@ from PySide2.QtCore import QRectF
 
 from .taskflow_viewer import TaskflowViewer
 
-def _main():
+
+def main():
     qapp = QApplication(sys.argv)
 
     db_path = os.path.join(os.getcwd(), 'node_viewer.db')
@@ -49,4 +50,4 @@ def _main():
 
 
 if __name__ == '__main__':
-    _main()
+    main()
