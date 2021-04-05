@@ -7,7 +7,7 @@ import sqlite3
 import asyncio
 from math import sqrt
 from ..uidata import UiData, NodeUi
-from ..scheduler import TaskState, InvocationState
+from ..enums import TaskState, InvocationState
 from ..broadcasting import await_broadcast
 from ..nethelpers import recv_exactly
 
@@ -990,6 +990,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_remove_node_connection_requested = Signal(int)
     _signal_add_node_connection_requested = Signal(int, str, int, str)
     _signal_set_task_group_filter = Signal(set)
+    _signal_set_task_state = Signal(list, TaskState)
+    _signal_set_task_paused = Signal(list, bool)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -1029,6 +1031,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
+        self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
+        self._signal_set_task_paused.connect(self.__ui_connection_worker.set_task_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
@@ -1067,6 +1071,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def set_task_group_filter(self, groups):
         self._signal_set_task_group_filter.emit(groups)
+
+    def set_task_state(self, task_ids: List[int], state: TaskState):
+        self._signal_set_task_state.emit(task_ids, state)
+
+    def set_task_paused(self, task_ids: List[int], paused: bool):
+        self._signal_set_task_paused.emit(task_ids, paused)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -1595,6 +1605,39 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except ConnectionError as e:
             print('failed', e)
 
+    # task control things
+    @Slot()
+    def set_task_paused(self, task_ids: List[int], paused: bool):
+        numtasks = len(task_ids)
+        if numtasks == 0:
+            return
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tpause\n')
+            self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids[0]))
+            if numtasks > 1:
+                self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), task_ids[1:]))
+        except ConnectionError as e:
+            print('failed', e)
+
+    @Slot()
+    def set_task_state(self, task_ids: List[int], state: TaskState):
+        numtasks = len(task_ids)
+        if numtasks == 0:
+            return
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tcstate\n')
+            self.__conn.sendall(struct.pack('>QIQ', numtasks, state.value, task_ids[0]))
+            if numtasks > 1:
+                self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), task_ids[1:]))
+        except ConnectionError as e:
+            print('failed', e)
+
 
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, parent=None):
@@ -1638,13 +1681,13 @@ class NodeEditor(QGraphicsView):
         menu.addSeparator()
 
         if task.paused():
-            menu.addAction('resume')
+            menu.addAction('resume').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_paused([x], False))
         else:
-            menu.addAction('pause')
+            menu.addAction('pause').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_paused([x], True))
 
         state_submenu = menu.addMenu('force state')
         for state in TaskState:
-            state_submenu.addAction(state.name)
+            state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
 
         pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
         menu.aboutToHide.connect(menu.deleteLater)
