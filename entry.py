@@ -18,13 +18,13 @@ def main(argv):
 
     if opts.command == 'scheduler':
         from taskflow.scheduler import main
-        main()
+        return main()
     elif opts.command == 'worker':
         from taskflow.worker import main
-        main()
+        return main()
     elif opts.command == 'viewer':
         from taskflow.viewer.launch import main
-        main()
+        return main()
 
 
 if __name__ == '__main__':
