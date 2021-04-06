@@ -24,6 +24,15 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         super(SchedulerTaskProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        async def read_string() -> str:
+            strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
+            return (await reader.readexactly(strlen)).decode('UTF-8')
+
+        async def write_string(s: str):
+            b = s.encode('UTF-8')
+            writer.write(struct.pack('>Q', len(b)))
+            writer.write(b)
+
         try:
             # TODO: see same todo in worker_task_protocol
             prot = await asyncio.wait_for(reader.readexactly(4), self.__timeout)
@@ -57,6 +66,12 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
                 ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
                 writer.write(struct.pack('>I', ret.value))
+            #
+            elif command == b'tasknametoid':
+                taskname = await read_string()
+                ids = await self.__scheduler.task_name_to_id(taskname)
+                writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
+
             elif reader.at_eof():
                 print('connection closed')
                 return
