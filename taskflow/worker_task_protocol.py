@@ -42,6 +42,15 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
         super(WorkerTaskServerProtocol, self).__init__(self.__reader, self.client_connected_cb)
 
     async def client_connected_cb(self, reader, writer):
+        async def read_string() -> str:
+            strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
+            return (await reader.readexactly(strlen)).decode('UTF-8')
+
+        async def write_string(s: str):
+            b = s.encode('UTF-8')
+            writer.write(struct.pack('>Q', len(b)))
+            writer.write(b)
+
         try:
             prot = await asyncio.wait_for(reader.readexactly(4), timeout=self.__timeout)
             if prot == b'\0\0\0\0':
