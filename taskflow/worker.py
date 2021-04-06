@@ -6,11 +6,15 @@ import subprocess
 import aiofiles
 import json
 import datetime
+import tempfile
 from .nethelpers import get_addr_to
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
+
+from .worker_runtime_pythonpath import taskflow_connection
+import inspect
 
 from typing import Optional
 
@@ -59,6 +63,21 @@ class Worker:
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
         self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
 
+        # deploy a copy of runtime module somewhere in temp
+        rtmodule_code = inspect.getsource(taskflow_connection)
+
+        filepath = os.path.join(tempfile.gettempdir(), 'taskflow', 'taskflow_runtime', 'taskflow_connection.py')
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        existing_code = None
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                existing_code = f.read()
+
+        if existing_code != rtmodule_code:
+            with open(filepath, 'w') as f:
+                f.write(rtmodule_code)
+        self.__rt_module_dir = os.path.dirname(filepath)
+
     def _set_working_server(self, server: asyncio.AbstractServer):  # TODO: i dont like this unclear way of creating worker. either hide constructor somehow, or use it
         self.__server = server
 
@@ -90,7 +109,8 @@ class Worker:
         print(f'running task {task}')
         logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
         env = Environment(os.environ)
-        env.prepend('PYTHONPATH', os.path.join(os.path.dirname(__file__), 'worker_runtime_pythonpath'))
+
+        env.prepend('PYTHONPATH', self.__rt_module_dir)
         env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
         env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
         env = task.env().resolve(base_env=env)
