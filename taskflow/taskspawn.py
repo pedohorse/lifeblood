@@ -71,3 +71,10 @@ class TaskSpawn:
     @classmethod
     async def deserialize_async(cls, data: bytes) -> "TaskSpawn":
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
+
+
+class NewTaskSpawn(TaskSpawn):
+    def __init__(self, name: str, node_id: int, **attribs):
+        super(NewTaskSpawn, self).__init__(name, None, **attribs)
+        self.set_node_output_name('main')
+        self.force_set_node_task_id(node_id, None)
