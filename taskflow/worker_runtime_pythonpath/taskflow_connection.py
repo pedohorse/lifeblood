@@ -1,6 +1,6 @@
 """
 this module is supposed to be accessible for tasks ran by worker.
-this module shuld be kept minimal, with only standard modules and maximum compatibility
+this module should be kept minimal, with only standard modules and maximum compatibility
 """
 from __future__ import print_function
 import os
