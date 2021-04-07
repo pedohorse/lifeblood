@@ -765,7 +765,6 @@ class Task(NetworkItemWithUI):
     @Slot()
     def _clear_animation_group(self):
         if self.__animation_group is not None:
-            print('anim finished!')
             ag, self.__animation_group = self.__animation_group, None
             ag.stop()  # just in case some recursion occures
             self.setParentItem(self.__node)
