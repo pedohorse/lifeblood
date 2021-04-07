@@ -72,7 +72,7 @@ def create_task(name, **attributes):
         data = spawn.serialize()
         sock.sendall(b'\0\0\0\0')
         sock.sendall(b'spawn\n')
-        sock.sendall(struct.pack('>I', len(data)))
+        sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         res = sock.recv(4)  # 4 should be small enough to ensure receiving in one call
         # ignore result?
