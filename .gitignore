@@ -6,3 +6,5 @@ venv
 imgui.ini
 build
 dist
+**/otls/backup
+**/houdini/houdini.project
