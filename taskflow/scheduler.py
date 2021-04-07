@@ -762,14 +762,14 @@ class Scheduler:
         return SpawnStatus.SUCCEEDED
 
     #
-    async def task_name_to_id(self, name: str) -> List[int]:
+    async def node_name_to_id(self, name: str) -> List[int]:
         """
-        get the list of task ids that have specified name
+        get the list of node ids that have specified name
         :param name:
         :return:
         """
         async with aiosqlite.connect(self.db_path) as con:
-            async with con.execute('SELECT "id" FROM "tasks" WHERE "name" = ?', (name,)) as cur:
+            async with con.execute('SELECT "id" FROM "nodes" WHERE "name" = ?', (name,)) as cur:
                 return list(x[0] for x in await cur.fetchall())
 
     #
