@@ -11,8 +11,12 @@ from typing import Optional, Tuple
 
 class Unpickler(pickle.Unpickler):
     def find_class(self, module, name):
-        if module == 'taskflow_connection' and name == 'TaskSpawn':
-            return TaskSpawn
+        if module in ('taskflow_connection', 'taskflow_runtime.submitting'):  # TODO: this becomes dirty as it scales... make this more generic!
+            if name == 'TaskSpawn':
+                return TaskSpawn
+            elif name == 'NewTask':
+                return NewTask
+        print(module, name)
         return super(Unpickler, self).find_class(module, name)
 
 
@@ -73,8 +77,8 @@ class TaskSpawn:
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
 
 
-class NewTaskSpawn(TaskSpawn):
+class NewTask(TaskSpawn):
     def __init__(self, name: str, node_id: int, **attribs):
-        super(NewTaskSpawn, self).__init__(name, None, **attribs)
+        super(NewTask, self).__init__(name, None, **attribs)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
