@@ -38,49 +38,62 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             prot = await asyncio.wait_for(reader.readexactly(4), self.__timeout)
             if prot != b'\0\0\0\0':
                 raise NotImplementedError()
-            command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
-            if command.endswith(b'\n'):
-                command = command[:-1]
-            print(f'scheduler got command: {command.decode("UTF-8")}')
-            if command == b'ping':
-                writer.write(b'p')
-            elif command == b'done':
-                tasksize = await reader.readexactly(4)
-                tasksize = struct.unpack('>I', tasksize)[0]
-                task = await reader.readexactly(tasksize)
-                task = invocationjob.InvocationJob.deserialize(task)  # TODO: async this
-                stdout_size = struct.unpack('>I', await reader.readexactly(4))[0]
-                stdout = (await reader.readexactly(stdout_size)).decode('UTF-8')
-                stderr_size = struct.unpack('>I', await reader.readexactly(4))[0]
-                stderr = (await reader.readexactly(stderr_size)).decode('UTF-8')
-                await self.__scheduler.task_done_reported(task, stdout, stderr)
-            elif command == b'hello':
-                addrsize = await reader.readexactly(4)
-                addrsize = struct.unpack('>I', addrsize)[0]
-                addr = await reader.readexactly(addrsize)
-                await self.__scheduler.add_worker(addr.decode('UTF-8'))
-            #
-            # spawn a child task for task being processed
-            elif command == b'spawn':
-                tasksize = struct.unpack('>I', await reader.readexactly(4))[0]
-                taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
-                ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
-                writer.write(struct.pack('>I', ret.value))
-            #
-            elif command == b'tasknametoid':
-                taskname = await read_string()
-                ids = await self.__scheduler.task_name_to_id(taskname)
-                writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
 
-            elif reader.at_eof():
-                print('connection closed')
-                return
-            else:
-                raise NotImplementedError
-            await writer.drain()
+            while True:
+                command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
+                if command.endswith(b'\n'):
+                    command = command[:-1]
+                print(f'scheduler got command: {command.decode("UTF-8")}')
+                if command == b'ping':
+                    writer.write(b'p')
+                elif command == b'done':
+                    tasksize = await reader.readexactly(4)
+                    tasksize = struct.unpack('>I', tasksize)[0]
+                    task = await reader.readexactly(tasksize)
+                    task = invocationjob.InvocationJob.deserialize(task)  # TODO: async this
+                    stdout_size = struct.unpack('>I', await reader.readexactly(4))[0]
+                    stdout = (await reader.readexactly(stdout_size)).decode('UTF-8')
+                    stderr_size = struct.unpack('>I', await reader.readexactly(4))[0]
+                    stderr = (await reader.readexactly(stderr_size)).decode('UTF-8')
+                    await self.__scheduler.task_done_reported(task, stdout, stderr)
+                elif command == b'hello':
+                    addrsize = await reader.readexactly(4)
+                    addrsize = struct.unpack('>I', addrsize)[0]
+                    addr = await reader.readexactly(addrsize)
+                    await self.__scheduler.add_worker(addr.decode('UTF-8'))
+                #
+                # spawn a child task for task being processed
+                elif command == b'spawn':
+                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
+                    ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
+                    writer.write(struct.pack('>I', ret.value))
+                #
+                elif command == b'nodenametoid':
+                    nodename = await read_string()
+                    print(f'got {nodename}')
+                    ids = await self.__scheduler.node_name_to_id(nodename)
+                    print(f'sending {ids}')
+                    writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
+                #
+                # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
+                # so lets just catch all
+                elif reader.at_eof():
+                    print('connection closed')
+                    return
+                else:
+                    raise NotImplementedError()
+                await writer.drain()
 
         except asyncio.exceptions.TimeoutError as e:
             pass
+        except ConnectionResetError as e:
+            print('connection was reset. disconnected', e)
+        except ConnectionError as e:
+            print('connection error. disconnected', e)
+        except Exception as e:
+            print('unknown error. disconnected', e)
+            raise
 
 
 class SchedulerTaskClient:
@@ -142,7 +155,7 @@ class SchedulerTaskClient:
         await self._ensure_conn_open()
         self.__writer.write(b'spawn\n')
         data_ser = await taskspawn.serialize_async()
-        self.__writer.write(struct.pack('>I', len(data_ser)))
+        self.__writer.write(struct.pack('>Q', len(data_ser)))
         self.__writer.write(data_ser)
         await self.__writer.drain()
         return SpawnStatus(struct.unpack('>I', await self.__reader.readexactly(4)))
