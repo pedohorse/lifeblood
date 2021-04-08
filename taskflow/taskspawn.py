@@ -27,6 +27,10 @@ class TaskSpawn:
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
+        self._create_as_spawned = True
+
+    def create_as_spawned(self):
+        return self._create_as_spawned
 
     def force_set_node_task_id(self, node_id, task_id):
         self.__forced_node_task_id_pair = (node_id, task_id)
@@ -82,3 +86,4 @@ class NewTask(TaskSpawn):
         super(NewTask, self).__init__(name, None, **attribs)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
+        self._create_as_spawned = False
