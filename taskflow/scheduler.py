@@ -744,7 +744,9 @@ class Scheduler:
                 async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
                     groups = [x['group'] for x in await gcur.fetchall()]
                 async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
-                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id, TaskState.SPAWNED.value, node_id, newtask.node_output_name())) as newcur:
+                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,
+                                        TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
+                                        node_id, newtask.node_output_name())) as newcur:
                     new_id = newcur.lastrowid
                 if len(groups) > 0:
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
