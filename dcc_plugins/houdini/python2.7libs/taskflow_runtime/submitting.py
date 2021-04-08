@@ -24,6 +24,10 @@ class TaskSpawn(object):
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
+        self._create_as_spawned = True
+
+    def create_as_spawned(self):
+        return self._create_as_spawned
 
     def force_set_node_task_id(self, node_id, task_id):
         self.__forced_node_task_id_pair = (node_id, task_id)
@@ -67,17 +71,32 @@ class NewTask(TaskSpawn):
         super(NewTask, self).__init__(name, None, **attribs)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
+        self._create_as_spawned = False
+
+    def submit(self):
+        scheduler_address = ('127.0.0.1', 7979)  # for test
+        addr, sport = scheduler_address
+        port = int(sport)
+        sock = socket.create_connection((addr, port), timeout=30)
+        sock.sendall(b'\0\0\0\0')
+        data = self.serialize()
+
+        sock.sendall(b'spawn\n')
+        sock.sendall(struct.pack('>Q', len(data)))
+        sock.sendall(data)
+        res = struct.unpack('>I', sock.recv(4))[0]
+        if res != 0:
+            raise RuntimeError('scheduler failed to create task')
 
 
 def create_task(name, node_id_or_name, **attributes):
-    scheduler_address = ('127.0.0.1', 7979)  # for test
-    addr, sport = scheduler_address
-    port = int(sport)
-    sock = socket.create_connection((addr, port), timeout=30)
-
-    sock.sendall(b'\0\0\0\0')
-
     if isinstance(node_id_or_name, str):
+        scheduler_address = ('127.0.0.1', 7979)  # for test
+        addr, sport = scheduler_address
+        port = int(sport)
+        sock = socket.create_connection((addr, port), timeout=30)
+
+        sock.sendall(b'\0\0\0\0')
         sock.sendall(b'nodenametoid\n')
         send_string(sock, node_id_or_name)
         print('foo')
@@ -92,14 +111,5 @@ def create_task(name, node_id_or_name, **attributes):
         assert isinstance(node_id_or_name, int)
         node_id = node_id_or_name
 
-    print(node_id)
-
     task = NewTask(name, node_id, **attributes)
-    data = task.serialize()
-
-    sock.sendall(b'spawn\n')
-    sock.sendall(struct.pack('>Q', len(data)))
-    sock.sendall(data)
-    res = struct.unpack('>I', sock.recv(4))[0]
-    if res != 0:
-        raise RuntimeError('scheduler failed to create task')
+    return task
