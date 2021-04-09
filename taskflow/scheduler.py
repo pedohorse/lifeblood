@@ -758,6 +758,11 @@ class Scheduler:
                     await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                       (new_id, '{name}#{id:d}'.format(name=newtask.name(), id=new_id)))
 
+                if newtask.extra_group_names():
+                    groups = newtask.extra_group_names()
+                    await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                                          zip(itertools.repeat(new_id, len(groups)), groups))
+
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
         if con is not None:
