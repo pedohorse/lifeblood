@@ -25,6 +25,7 @@ class TaskSpawn(object):
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
         self._create_as_spawned = True
+        self.__extra_groups = []
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -46,6 +47,12 @@ class TaskSpawn(object):
 
     def name(self):
         return self.__name
+
+    def add_extra_group_name(self, group_name):
+        self.__extra_groups.append(group_name)
+
+    def extra_group_names(self):
+        return self.__extra_groups
 
     def set_name(self, name):
         self.__name = name

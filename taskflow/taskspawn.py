@@ -6,7 +6,7 @@ import pickle
 import asyncio
 from io import BytesIO
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 
 class Unpickler(pickle.Unpickler):
@@ -28,6 +28,7 @@ class TaskSpawn:
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
         self._create_as_spawned = True
+        self.__extra_groups = []
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -44,11 +45,17 @@ class TaskSpawn:
     def set_node_output_name(self, new_name):
         self.__output = new_name
 
-    def node_output_name(self):
+    def node_output_name(self) -> str:
         return self.__output
 
     def name(self) -> str:
         return self.__name
+
+    def add_extra_group_name(self, group_name: str) -> None:
+        self.__extra_groups.append(group_name)
+
+    def extra_group_names(self) -> List[str]:
+        return self.__extra_groups
 
     def set_name(self, name):
         self.__name = name
