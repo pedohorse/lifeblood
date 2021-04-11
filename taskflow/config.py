@@ -7,8 +7,32 @@ from . import paths
 from typing import Any
 
 
+_conf_cache = {}
+_glock = Lock()
+
+
+def get_config(subname: str) -> "Config":
+    global _glock, _conf_cache
+    with _glock:
+        if subname not in _conf_cache:
+            _conf_cache[subname] = Config(subname)
+        return _conf_cache[subname]
+
+
+def set_config_overrides(subname: str, overrides=None):
+    global _glock, _conf_cache
+    with _glock:
+        if subname not in _conf_cache:
+            _conf_cache[subname] = Config(subname, overrides)
+        else:
+            _conf_cache[subname].set_overrides(overrides)
+
+
 class Config:
-    def __init__(self, subname: str, kwargs=None):
+    class OverrideNotFound(RuntimeError):
+        pass
+
+    def __init__(self, subname: str, overrides=None):
         config_path = paths.config_path('config.toml', subname)
         self.__config_path = config_path
         self.__conf_lock = Lock()
@@ -20,15 +44,32 @@ class Config:
         else:
             self.__stuff = {}
 
-        if kwargs is not None:
-            self.__overrides = kwargs
+        self.__overrides = {}
+        self.set_overrides(overrides)
+
+    def set_overrides(self, overrides):
+        if overrides is not None:
+            self.__overrides = overrides
         else:
             self.__overrides = {}
 
     async def get_option(self, option_name: str, default_val: Any = None) -> Any:
         return await asyncio.get_event_loop().run_in_executor(None, self.get_option_noasync, option_name, default_val)
 
+    def _get_option_in_overrides(self, option_name: str):
+        names = option_name.split('.')
+        clevel = self.__overrides
+        for name in names:
+            if name not in clevel:
+                raise Config.OverrideNotFound()
+            clevel = clevel[name]
+        return clevel
+
     def get_option_noasync(self, option_name: str, default_val: Any = None) -> Any:
+        try:
+            return self._get_option_in_overrides(option_name)
+        except Config.OverrideNotFound:
+            pass
         with self.__conf_lock:  # to prevent config corruption when running in parallel in executor
             names = option_name.split('.')
             clevel = self.__stuff
