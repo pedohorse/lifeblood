@@ -9,7 +9,8 @@ from math import sqrt
 from ..uidata import UiData, NodeUi
 from ..enums import TaskState, InvocationState
 from ..broadcasting import await_broadcast
-from ..nethelpers import recv_exactly
+from ..nethelpers import recv_exactly, get_default_addr
+from ..config import get_config
 
 from ..enums import NodeParameterType
 
@@ -1344,22 +1345,27 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                     return None
                 await asyncio.sleep(0.5)
 
-        print('waiting for scheduler broadcast...')
-        tasks = asyncio.run(asyncio.wait((
-            await_broadcast('taskflow_scheduler'),
-            _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
+        config = get_config('viewer')
+        if config.get_option_noasync('viewer.listen_to_broadcast', True):
+            print('waiting for scheduler broadcast...')
+            tasks = asyncio.run(asyncio.wait((
+                await_broadcast('taskflow_scheduler'),
+                _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
 
-        print(tasks)
-        message = list(tasks[0])[0].result()
+            print(tasks)
+            message = list(tasks[0])[0].result()
 
-        print(message)
-        if message is None:
-            return False
-        print('received broadcast:', message)
-        schedata = json.loads(message)
-        sche_addr, sche_port = schedata['ui'].split(':')
-        sche_port = int(sche_port)
-        print('connecting to scheduler...')
+            print(message)
+            if message is None:
+                return False
+            print('received broadcast:', message)
+            schedata = json.loads(message)
+            sche_addr, sche_port = schedata['ui'].split(':')
+            sche_port = int(sche_port)
+        else:
+            sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
+            sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
+        print(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
 
         while not self.interruption_requested():
             try:
