@@ -111,15 +111,3 @@ def recv_exactly(sock: socket.socket, numbytes) -> bytes:
 def address_to_ip_port(addr_str: str) -> (str, int):
     addr, sport = addr_str.split(':')
     return addr, int(sport)
-
-
-def get_main_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('10.11.12.13', 1))  # random addr, port
-        addr = s.getsockname()[0]
-    except:
-        addr = '127.0.0.1'
-    finally:
-        s.close()
-    return addr
