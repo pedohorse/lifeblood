@@ -22,7 +22,7 @@ from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState
-from .config import Config
+from .config import get_config
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -53,7 +53,7 @@ class Scheduler:
         if loop is None:
             loop = asyncio.get_event_loop()
         self.db_path = db_file_path
-        config = Config('scheduler')
+        config = get_config('scheduler')
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
@@ -850,7 +850,9 @@ class Scheduler:
 
 async def main_async(db_path=None):
     if db_path is None:
-        db_path = str(paths.default_main_database_location())
+        config = get_config('scheduler')
+        db_path = await config.get_option('scheduler.db_path', str(paths.default_main_database_location()))
+    db_path = os.path.realpath(os.path.expanduser(db_path))
     # ensure database is initialized
     async with aiosqlite.connect(db_path) as con:
         await con.executescript(sql_init_script)
@@ -859,9 +861,11 @@ async def main_async(db_path=None):
     await scheduler.run()
 
 
-def main(db_path=None):
+def main():
+    config = get_config('scheduler')
+    db_path = config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
     asyncio.run(main_async(db_path))
 
 
 if __name__ == '__main__':
-    main(os.path.realpath('main.db'))
+    main()
