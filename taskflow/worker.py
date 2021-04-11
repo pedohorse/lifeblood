@@ -12,7 +12,7 @@ from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
-from .config import Config
+from .config import get_config
 
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
@@ -264,8 +264,8 @@ async def main_async():
     and listenting for broadcast starts again
     :return: Never!
     """
-    config = Config('worker')
-    if await config.get_option('worker.listen_to_pings', True):
+    config = get_config('worker')
+    if await config.get_option('worker.listen_to_broadcast', True):
         while True:
             print('listening for scheduler broadcasts...')
             message = await await_broadcast('taskflow_scheduler')
