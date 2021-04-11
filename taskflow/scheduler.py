@@ -15,13 +15,14 @@ from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
-from .nethelpers import address_to_ip_port
+from .nethelpers import address_to_ip_port, get_default_addr
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState
+from .config import Config
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -52,10 +53,15 @@ class Scheduler:
         if loop is None:
             loop = asyncio.get_event_loop()
         self.db_path = db_file_path
-        self.__server = loop.create_server(self.scheduler_protocol_factory, '127.0.0.1', 7979, backlog=16)
-        self.__server_address = '127.0.0.1:7979'
-        self.__ui_address = '127.0.0.1:7989'
-        self.__ui_server = loop.create_server(self.ui_protocol_factory, '127.0.0.1', 7989, backlog=16)
+        config = Config('scheduler')
+        server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
+        server_port = config.get_option_noasync('core.server_port', 7979)
+        ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
+        ui_port = config.get_option_noasync('core.ui_port', 7989)
+        self.__server = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
+        self.__server_address = ':'.join((server_ip, str(server_port)))
+        self.__ui_server = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
+        self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting:
             broadcast_info = json.dumps({'worker': self.__server_address, 'ui': self.__ui_address})
             self.__broadcasting_server_task = create_broadcaster('taskflow_scheduler', broadcast_info)
