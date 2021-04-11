@@ -7,11 +7,12 @@ import aiofiles
 import json
 import datetime
 import tempfile
-from .nethelpers import get_addr_to
+from .nethelpers import get_addr_to, get_default_addr
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
+from .config import Config
 
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
@@ -41,7 +42,7 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
     async with SchedulerTaskClient(scheduler_ip, scheduler_port) as client:
         await client.say_hello(addr)
     #
-
+    worker._start()
     return worker
 
 
@@ -61,7 +62,7 @@ class Worker:
         self.__ping_missed_threshold = 2
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
-        self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
+        self.__scheduler_pinger = None
 
         # deploy a copy of runtime module somewhere in temp
         rtmodule_code = inspect.getsource(taskflow_connection)
@@ -77,6 +78,9 @@ class Worker:
             with open(filepath, 'w') as f:
                 f.write(rtmodule_code)
         self.__rt_module_dir = os.path.dirname(filepath)
+
+    def _start(self):
+        self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
 
     def _set_working_server(self, server: asyncio.AbstractServer):  # TODO: i dont like this unclear way of creating worker. either hide constructor somehow, or use it
         self.__server = server
@@ -246,10 +250,10 @@ class Worker:
                 return
 
     async def wait_to_finish(self):
-        await self.__scheduler_pinger
+        if self.__scheduler_pinger is not None:
+            await self.__scheduler_pinger
+            self.__scheduler_pinger = None
         await self.__server.wait_closed()
-        # await asyncio.gather(self.__server.wait_closed(),
-        #                      self.__scheduler_pinger)
 
 
 async def main_async():
@@ -260,17 +264,31 @@ async def main_async():
     and listenting for broadcast starts again
     :return: Never!
     """
-    while True:
-        print('listening for scheduler broadcasts...')
-        message = await await_broadcast('taskflow_scheduler')
-        scheduler_info = json.loads(message)
-        print('received', scheduler_info)
-        addr = scheduler_info['worker']
-        ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
-        port = int(sport)
-        worker = await create_worker(ip, port)
-        await worker.wait_to_finish()
-        print('worker quited')
+    config = Config('worker')
+    if await config.get_option('worker.listen_to_pings', True):
+        while True:
+            print('listening for scheduler broadcasts...')
+            message = await await_broadcast('taskflow_scheduler')
+            scheduler_info = json.loads(message)
+            print('received', scheduler_info)
+            addr = scheduler_info['worker']
+            ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
+            port = int(sport)
+            worker = await create_worker(ip, port)
+            await worker.wait_to_finish()
+            print('worker quited')
+    else:
+        while True:
+            ip = await config.get_option('worker.scheduler_ip', get_default_addr())
+            port = await config.get_option('worker.scheduler_port', 7979)
+            try:
+                worker = await create_worker(ip, port)
+            except ConnectionRefusedError as e:
+                print('Connection error', str(e))
+                await asyncio.sleep(10)
+                continue
+            await worker.wait_to_finish()
+            print('worker quited')
 
 
 def main():
