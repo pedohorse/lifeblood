@@ -7,7 +7,11 @@ basename = 'taskflow'
 
 
 def config_path(config_name: str, subname: Optional[str] = None) -> Path:
-    base = Path.home()
+    return config_unexpanded_path(config_name, subname).expanduser()
+
+
+def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> Path:
+    base = Path('~')
     if subname is None:
         subname = 'common'
     if sys.platform.startswith('linux'):
@@ -25,4 +29,4 @@ def config_path(config_name: str, subname: Optional[str] = None) -> Path:
 
 
 def default_main_database_location() -> Path:
-    return config_path('main.db', 'scheduler')
+    return config_unexpanded_path('main.db', 'scheduler')
