@@ -50,6 +50,7 @@ class Config:
                     clevel[name] = {}
                 else:
                     clevel[name] = value
+            clevel = clevel[name]
         self.write_config()
 
     def set_option_noasync(self, option_name: str, value: Any) -> None:
@@ -61,8 +62,10 @@ class Config:
 
     def write_config(self):
         with self.__write_file_lock:
+            if not os.path.exists(self.__config_path):
+                os.makedirs(os.path.dirname(self.__config_path), exist_ok=True)
             with open(self.__config_path, 'w') as f:
-                toml.dump(f, self.__stuff)
+                toml.dump(self.__stuff, f)
 
     async def write_config_async(self):
         return await asyncio.get_event_loop().run_in_executor(None, self.write_config)
