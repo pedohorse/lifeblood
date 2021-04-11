@@ -74,15 +74,15 @@ class TaskSpawn(object):
 
 
 class NewTask(TaskSpawn):
-    def __init__(self, name, node_id, **attribs):
+    def __init__(self, name, node_id, scheduler_addr, **attribs):
         super(NewTask, self).__init__(name, None, **attribs)
+        self.__scheduler_addr = scheduler_addr
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
         self._create_as_spawned = False
 
     def submit(self):
-        scheduler_address = ('127.0.0.1', 7979)  # for test
-        addr, sport = scheduler_address
+        addr, sport = self.__scheduler_addr
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
         sock.sendall(b'\0\0\0\0')
@@ -96,10 +96,9 @@ class NewTask(TaskSpawn):
             raise RuntimeError('scheduler failed to create task')
 
 
-def create_task(name, node_id_or_name, **attributes):
+def create_task(name, node_id_or_name, scheduler_addr, **attributes):
     if isinstance(node_id_or_name, str):
-        scheduler_address = ('127.0.0.1', 7979)  # for test
-        addr, sport = scheduler_address
+        addr, sport = scheduler_addr
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
 
@@ -118,5 +117,5 @@ def create_task(name, node_id_or_name, **attributes):
         assert isinstance(node_id_or_name, int)
         node_id = node_id_or_name
 
-    task = NewTask(name, node_id, **attributes)
+    task = NewTask(name, node_id, scheduler_addr, **attributes)
     return task
