@@ -93,10 +93,11 @@ class Scheduler:
                 raise RuntimeError('node type is unsupported')
 
             if node_row['node_object'] is not None:
-                self.__node_objects[node_id] = await BaseNode.deserialize_async(node_row['node_object'], self)
+                self.__node_objects[node_id] = await BaseNode.deserialize_async(node_row['node_object'], self, node_id)
                 return self.__node_objects[node_id]
 
-            newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
+            #newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
+            newnode: BaseNode = pluginloader.create_node(node_type, node_row['name'], self, node_id)
             self.__node_objects[node_id] = newnode
             await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
                               (await newnode.serialize_async(), node_id))
@@ -722,6 +723,32 @@ class Scheduler:
             await con.execute('PRAGMA FOREIGN_KEYS = on')
             await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
             await con.commit()
+
+    #
+    # query connections
+    async def get_node_input_connections(self, node_id: int, input_name: Optional[str] = None):
+        return await self.get_node_connections(node_id, True, input_name)
+
+    async def get_node_output_connections(self, node_id: int, output_name: Optional[str] = None):
+        return await self.get_node_connections(node_id, False, output_name)
+
+    async def get_node_connections(self, node_id: int, query_input: bool = True, name: Optional[str] = None):
+        if query_input:
+            nodecol = 'node_id_in'
+            namecol = 'in_name'
+        else:
+            nodecol = 'node_id_out'
+            namecol = 'out_name'
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            if name is None:
+                async with con.execute('SELECT * FROM node_connections WHERE "%s" = ?' % (nodecol,),
+                                       (node_id,)) as cur:
+                    return [dict(x) for x in await cur.fetchall()]
+            else:
+                async with con.execute('SELECT * FROM node_connections WHERE "%s" = ? AND "%s" = ?' % (nodecol, namecol),
+                                       (node_id, name)) as cur:
+                    return [dict(x) for x in await cur.fetchall()]
 
     #
     # spawning new task callback
