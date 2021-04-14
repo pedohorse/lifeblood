@@ -32,7 +32,7 @@ def init():
     print('loaded plugins:\n', '\n\t'.join(plugins.keys()))
 
 
-def create_node(plugin_name: str, name, scheduler_parent):
+def create_node(plugin_name: str, name, scheduler_parent, node_id):
     """
     this function is a global node creation point.
     it has to be available somewhere global, so plugins loaded from dynamically created modules have an entry point for pickle
@@ -41,7 +41,8 @@ def create_node(plugin_name: str, name, scheduler_parent):
         if plugin_name == 'basenode':  # debug case! base class should never be created directly!
             print('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
             from .basenode import BaseNode
-            return BaseNode(name, scheduler_parent)
+            node = BaseNode(name)
         raise RuntimeError('unknown plugin')
-    return plugins[plugin_name].create_node_object(name, scheduler_parent)
-
+    node = plugins[plugin_name].create_node_object(name)
+    node._set_parent(scheduler_parent, node_id)
+    return node
