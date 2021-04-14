@@ -15,11 +15,16 @@ if TYPE_CHECKING:
 
 
 class BaseNode:
-    def __init__(self, name: str, parent_scheduler: "Scheduler"):
-        self.__parent: Scheduler = parent_scheduler
+    def __init__(self, name: str):
+        self.__parent: Scheduler = None
+        self.__parent_nid: int = None
         self._parameters: NodeUi = NodeUi(self)
         self.__name = name
         # subclass is expected to add parameters at this point
+
+    def _set_parent(self, parent_scheduler, node_id):
+        self.__parent = parent_scheduler
+        self.__parent_nid = node_id
 
     def name(self):
         return self.__name
@@ -45,6 +50,12 @@ class BaseNode:
 
     def get_ui(self) -> NodeUi:
         return self._parameters
+
+    def is_input_connected(self, input_name: str):
+        return len(asyncio.get_event_loop().run_until_complete(self.__parent.get_node_input_connections(self.__parent_nid, input_name))) > 0
+
+    def is_output_connected(self, output_name: str):
+        return len(asyncio.get_event_loop().run_until_complete(self.__parent.get_node_output_connections(self.__parent_nid, output_name))) > 0
 
     def _ui_changed(self, names_changed: Optional[List[str]] = None):
         """
@@ -72,12 +83,13 @@ class BaseNode:
         typename = type(self).__module__
         if '.' in typename:
             typename = typename.rsplit('.', 1)[-1]
-        return create_node, (typename, '', None), self.__getstate__()
+        return create_node, (typename, '', None, None), self.__getstate__()
 
     def __getstate__(self):
         d = copy(self.__dict__)
         assert '_BaseNode__parent' in d
         d['_BaseNode__parent'] = None
+        d['_BaseNode__parent_nid'] = None
         return d
 
     def serialize(self) -> bytes:
@@ -91,11 +103,12 @@ class BaseNode:
         return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
 
     @classmethod
-    def deserialize(cls, data: bytes, parent_scheduler):
+    def deserialize(cls, data: bytes, parent_scheduler, node_id):
         newobj = pickle.loads(data)
         newobj.__parent = parent_scheduler
+        newobj.__parent_nid = node_id
         return newobj
 
     @classmethod
-    async def deserialize_async(cls, data: bytes, parent_scheduler):
-        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data, parent_scheduler)
+    async def deserialize_async(cls, data: bytes, parent_scheduler, node_id):
+        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data, parent_scheduler, node_id)
