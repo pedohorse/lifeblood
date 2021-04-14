@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from taskflow.scheduler import Scheduler
 
 
-def create_node_object(name: str, parent_scheduler: "Scheduler"):
-    return Test(name, parent_scheduler)
+def create_node_object(name: str):
+    return Test(name)
 
 
 class Test(BaseNode):

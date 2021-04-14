@@ -5,13 +5,13 @@ from taskflow.nodethings import ProcessingResult, TaskSpawn
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
 
-def create_node_object(name: str, parent_scheduler):
-    return HipDriverRenderer(name, parent_scheduler)
+def create_node_object(name: str):
+    return HipDriverRenderer(name)
 
 
 class HipDriverRenderer(BaseNode):
-    def __init__(self, name, scheduler):
-        super(HipDriverRenderer, self).__init__(name, scheduler)
+    def __init__(self, name):
+        super(HipDriverRenderer, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_output_for_spawned_tasks()

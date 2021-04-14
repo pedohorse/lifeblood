@@ -21,13 +21,13 @@ class SliceAwaiting(TypedDict):
     first_to_arrive: Optional[int]
 
 
-def create_node_object(name: str, parent_scheduler):
-    return SliceWaiterNode(name, parent_scheduler)
+def create_node_object(name: str):
+    return SliceWaiterNode(name)
 
 
 class SliceWaiterNode(BaseNode):
-    def __init__(self, name: str, parent_scheduler: "Scheduler"):
-        super(SliceWaiterNode, self).__init__(name, parent_scheduler)
+    def __init__(self, name: str):
+        super(SliceWaiterNode, self).__init__(name)
         self.__cache: Dict[int: SliceAwaiting] = {}
         self.__main_lock = Lock()
         with self._parameters.initializing_interface_lock():

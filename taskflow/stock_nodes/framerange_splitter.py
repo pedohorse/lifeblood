@@ -4,13 +4,13 @@ from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult, TaskSpawn
 
 
-def create_node_object(name: str, parent_scheduler):
-    return FramerangeSplitter(name, parent_scheduler)
+def create_node_object(name: str):
+    return FramerangeSplitter(name)
 
 
 class FramerangeSplitter(BaseNode):
-    def __init__(self, name, scheduler):
-        super(FramerangeSplitter, self).__init__(name, scheduler)
+    def __init__(self, name):
+        super(FramerangeSplitter, self).__init__(name)
         with self.get_ui().initializing_interface_lock():
             self.get_ui().add_parameter('chunk size', NodeParameterType.INT, 10)
 

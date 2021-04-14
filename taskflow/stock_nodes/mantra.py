@@ -5,13 +5,13 @@ from taskflow.nodethings import ProcessingResult
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
 
-def create_node_object(name: str, parent_scheduler):
-    return Mantra(name, parent_scheduler)
+def create_node_object(name: str):
+    return Mantra(name)
 
 
 class Mantra(BaseNode):
-    def __init__(self, name, scheduler):
-        super(Mantra, self).__init__(name, scheduler)
+    def __init__(self, name):
+        super(Mantra, self).__init__(name)
 
     def process_task(self, task_dict) -> ProcessingResult:
         args = self.get_attributes(task_dict)
