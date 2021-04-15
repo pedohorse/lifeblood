@@ -13,6 +13,8 @@ from .scheduler_task_protocol import SchedulerTaskClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config
+from .environment_wrapper import TrivialEnvironmentWrapper
+
 
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
@@ -64,6 +66,8 @@ class Worker:
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
         self.__scheduler_pinger = None
 
+        self.__env_writer = TrivialEnvironmentWrapper()
+
         # deploy a copy of runtime module somewhere in temp
         rtmodule_code = inspect.getsource(taskflow_connection)
 
@@ -112,12 +116,11 @@ class Worker:
         # prepare logging
         print(f'running task {task}')
         logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
-        env = Environment(os.environ)
+        env = self.__env_writer.get_environment(None, task.env())
 
         env.prepend('PYTHONPATH', self.__rt_module_dir)
         env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
         env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
-        env = task.env().resolve(base_env=env)
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
