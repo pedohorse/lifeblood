@@ -51,11 +51,27 @@ class BaseNode:
     def get_ui(self) -> NodeUi:
         return self._parameters
 
-    def is_input_connected(self, input_name: str):
-        return len(asyncio.get_event_loop().run_until_complete(self.__parent.get_node_input_connections(self.__parent_nid, input_name))) > 0
+    def is_input_connected(self, input_name: str) -> bool:
+        """
+        returns wether or not specified input is connected to the node
+        note that these methods are supposed to be called both from main thread AND from within executor pool thread
+        so creating tasks becomes tricky.
+        :param input_name:
+        :return:
+        """
+        fut = asyncio.run_coroutine_threadsafe(self.__parent.get_node_input_connections(self.__parent_nid, input_name), self.__parent.get_event_loop())
+        conns = fut.result(60)
+        return len(conns) > 0
 
     def is_output_connected(self, output_name: str):
-        return len(asyncio.get_event_loop().run_until_complete(self.__parent.get_node_output_connections(self.__parent_nid, output_name))) > 0
+        """
+        returns wether or not specified output is connected to the node
+        :param output_name:
+        :return:
+        """
+        fut = asyncio.run_coroutine_threadsafe(self.__parent.get_node_output_connections(self.__parent_nid, output_name), self.__parent.get_event_loop())
+        conns = fut.result(60)
+        return len(conns) > 0
 
     def _ui_changed(self, names_changed: Optional[List[str]] = None):
         """
