@@ -72,6 +72,12 @@ class Scheduler:
         self.__ping_interval = 5
         self.__processing_interval = 2
 
+        self.__event_loop = asyncio.get_running_loop()
+        assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
+
+    def get_event_loop(self):
+        return self.__event_loop
+
     def scheduler_protocol_factory(self):
         return SchedulerTaskProtocol(self)
 
