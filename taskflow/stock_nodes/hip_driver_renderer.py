@@ -33,15 +33,28 @@ class HipDriverRenderer(BaseNode):
         frames = attrs['frames']
 
         env = InvocationEnvironment()
-        env.prepend('PATH', '/opt/hfs18.5/bin/')  # TODO: !!! this is hardcoded here purely for short lived test purposes
+
+        spawnlines = \
+            "    kwargs = {frames=[frame]}\n" \
+            "    if node.parm('filename'):\n" \
+            "        kwargs['file'] = node.evalParm('filename')\n" \
+            "    if node.parm('sopoutput'):\n" \
+            "        kwargs['file'] = node.evalParm('sopoutput')\n" \
+            "    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, frames=[frame], ifdpath=)\n"
+
+        if not self.is_output_connected('spawned'):
+            spawnlines = ''
 
         script = \
+            f'import hou\n' \
+            f'import taskflow_connection\n' \
             f'print("opening file" + {repr(hippath)})\n' \
             f'hou.hipFile.load("{hippath}")\n' \
             f'node = hou.node("{driverpath}")\n' \
             f'for frame in {repr(frames)}:\n' \
             f'    print("rendering frame %d" % frame)\n' \
             f'    node.render(frame_range=(frame, frame))\n' \
+            f'{spawnlines}' \
             f'print("all done!")\n'
 
         inv = InvocationJob(['hython', '-c', script], env)
