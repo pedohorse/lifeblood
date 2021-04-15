@@ -15,12 +15,12 @@ class Mantra(BaseNode):
 
     def process_task(self, task_dict) -> ProcessingResult:
         args = self.get_attributes(task_dict)
-        if 'ifdpath' not in args:
+        if 'file' not in args:
             return ProcessingResult()
 
         env = InvocationEnvironment()
 
-        invoc = InvocationJob(['mantra', '-V', '2a', args['ifdpath']], env)
+        invoc = InvocationJob(['mantra', '-V', '2a', args['file']], env)
         res = ProcessingResult(invoc)
         return res
 
