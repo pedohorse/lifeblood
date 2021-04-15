@@ -40,6 +40,8 @@ class TaskflowViewer(QMainWindow):
 
         self.__main_layout.addWidget(self.__group_list)
         self.__main_layout.addWidget(self.__node_editor)
+        self.__group_list.setFocusPolicy(Qt.ClickFocus)
+        self.__node_editor.setFocusPolicy(Qt.ClickFocus)
 
         # cOnNeC1
         scene = self.__node_editor.scene()
