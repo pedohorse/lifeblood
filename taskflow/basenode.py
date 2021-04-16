@@ -80,7 +80,7 @@ class BaseNode:
         :return:
         """
         if self.__parent is not None:
-            asyncio.get_event_loop().create_task(self.__parent.node_reports_ui_update(self))
+            asyncio.get_event_loop().create_task(self.__parent.node_reports_ui_update(self.__parent_nid))
 
     def process_task(self, task_dict) -> ProcessingResult:
         raise NotImplementedError()
