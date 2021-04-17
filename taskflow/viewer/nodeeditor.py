@@ -102,8 +102,6 @@ class Node(NetworkItemWithUI):
         self.__tasks: List["Task"] = []
         self.__node_type = type
 
-        self.__some_value = 50
-
         self.__ui_interactor = None
         self.__ui_widget: Optional[NodeEditor] = None
         self.__ui_grabbed_conn = None
@@ -321,8 +319,7 @@ class Node(NetworkItemWithUI):
     #
     # interface
     def draw_imgui_elements(self):
-        imgui.text(f'Node {self.get_id()}, name {self.__name}')
-        _, self.__some_value = imgui.slider_float('foo', self.__some_value, 0, 100, format='%.3f')
+        imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
         if self.__nodeui is not None:
             for param_name, param_dict in self.__nodeui.parameters_items():
                 param_type = param_dict['type']
