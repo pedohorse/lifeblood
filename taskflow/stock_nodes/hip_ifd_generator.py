@@ -15,6 +15,9 @@ class HipIfdGenerator(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_output_for_spawned_tasks()
+            ui.add_output_for_spawned_tasks()
+            ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, '')
+            ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
 
     def process_task(self, task_dict) -> ProcessingResult:
         """
@@ -26,17 +29,20 @@ class HipIfdGenerator(BaseNode):
         :return:
         """
         attrs = self.get_attributes(task_dict)
-        if any(x not in attrs for x in ('hipfile', 'hipdriver', 'frames')):
+        if any(x not in attrs for x in ('hipfile', 'frames')):
             return ProcessingResult()
         hippath = attrs['hipfile']
-        driverpath = attrs['hipdriver']
+        if self.param_value('override') and 'hipdriver' in attrs:
+            driverpath = attrs['hipdriver']
+        else:
+            driverpath = self.param_value('driver path')
         frames = attrs['frames']
 
         env = InvocationEnvironment()
 
         spawnlines = \
-            "    filepath = node.evalParm('soho_diskfile')\n" \
-            "    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, frames=[frame], file=filepath)\n"
+            f"    filepath = node.evalParm('soho_diskfile')\n" \
+            f"    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, frames=[frame], file=filepath, hipfile='{hippath}')\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''
@@ -50,6 +56,7 @@ class HipIfdGenerator(BaseNode):
             f'if node.parm("soho_outputmode").evalAsInt() != 1:\n' \
             f'    node.parm("soho_outputmode").set(1)\n' \
             f'for frame in {repr(frames)}:\n' \
+            f'    hou.setFrame(frame)\n' \
             f'    print("rendering frame %d" % frame)\n' \
             f'    node.render(frame_range=(frame, frame))\n' \
             f'{spawnlines}' \
