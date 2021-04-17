@@ -15,6 +15,8 @@ class HipDriverRenderer(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_output_for_spawned_tasks()
+            ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, '')
+            ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
 
     def process_task(self, task_dict) -> ProcessingResult:
         """
@@ -26,21 +28,24 @@ class HipDriverRenderer(BaseNode):
         :return:
         """
         attrs = self.get_attributes(task_dict)
-        if any(x not in attrs for x in ('hipfile', 'hipdriver', 'frames')):
+        if any(x not in attrs for x in ('hipfile', 'frames')):
             return ProcessingResult()
         hippath = attrs['hipfile']
-        driverpath = attrs['hipdriver']
+        if self.param_value('override') and 'hipdriver' in attrs:
+            driverpath = attrs['hipdriver']
+        else:
+            driverpath = self.param_value('driver path')
         frames = attrs['frames']
 
         env = InvocationEnvironment()
 
         spawnlines = \
-            "    kwargs = {frames=[frame]}\n" \
-            "    if node.parm('filename'):\n" \
-            "        kwargs['file'] = node.evalParm('filename')\n" \
-            "    if node.parm('sopoutput'):\n" \
-            "        kwargs['file'] = node.evalParm('sopoutput')\n" \
-            "    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, frames=[frame], ifdpath=)\n"
+            f"    kwargs = {{'frames':[frame], 'hipfile':'{hippath}'}}\n" \
+            f"    if node.parm('filename'):\n" \
+            f"        kwargs['file'] = node.evalParm('filename')\n" \
+            f"    if node.parm('sopoutput'):\n" \
+            f"        kwargs['file'] = node.evalParm('sopoutput')\n" \
+            f"    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, **kwargs)\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''
@@ -52,6 +57,7 @@ class HipDriverRenderer(BaseNode):
             f'hou.hipFile.load("{hippath}")\n' \
             f'node = hou.node("{driverpath}")\n' \
             f'for frame in {repr(frames)}:\n' \
+            f'    hou.setFrame(frame)\n' \
             f'    print("rendering frame %d" % frame)\n' \
             f'    node.render(frame_range=(frame, frame))\n' \
             f'{spawnlines}' \
