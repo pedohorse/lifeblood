@@ -80,11 +80,13 @@ class NodeUi:
 
         return _iiLock(self)
 
-    def add_parameter(self, param_name: str, param_type: NodeParameterType, param_val: Any):
+    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if param_label is None:
+            param_label = param_name
         self.__parameter_order.append(param_name)
-        self.__parameters[param_name] = {'type': param_type, 'value': param_val}
+        self.__parameters[param_name] = {'label': param_label, 'type': param_type, 'value': param_val}
         self.__ui_callback([param_name])
 
     def add_input(self, input_name):
