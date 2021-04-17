@@ -284,9 +284,11 @@ class Node(NetworkItemWithUI):
             return
         print(f"adding task {task.get_id()} to node {self.get_id()}")
         pos_id = len(self.__tasks)
-        task.set_node_animated(self, self.get_task_pos(task, pos_id))
-        if task.node():
-            task.node().remove_task(task)
+        if task.node() is None:
+            task.set_node(self, self.get_task_pos(task, pos_id))
+        else:
+            task.set_node_animated(self, self.get_task_pos(task, pos_id))
+
         self.__tasks.append(task)
         task._Task__node = self
 
@@ -681,22 +683,6 @@ class Task(NetworkItemWithUI):
     def in_group(self, group_name):
         return group_name in self.__groups
 
-    def set_node(self, node: Optional[Node], _drop_animation=True):
-        """
-        TODO: describe difference from set_node_animated below. this one curently is not used at all btw.
-        :param node:
-        :param _drop_animation:
-        :return:
-        """
-        if _drop_animation and self.__animation_group is not None:
-            self.__animation_group.stop()
-            assert self.__animation_group is None
-        if node is not None:
-            node.add_task(self)
-        else:
-            if self.__node:
-                self.__node.remove_task(self)
-
     def node(self):
         return self.__node
 
@@ -733,6 +719,22 @@ class Task(NetworkItemWithUI):
         self.__ui_attributes = attributes
         self.update_ui()
 
+    def set_node(self, node: Optional[Node], pos: QPointF):
+        """
+        :param pos:
+        :param node:
+        :param _drop_animation:
+        :return:
+        """
+        if self.__node and self.__node != node:
+            self.__node.remove_task(self)
+        if self.__animation_group is not None:
+            self.__animation_group.stop()
+            self.__animation_group = None
+        self.__node = node
+        self.setParentItem(self.__node)
+        self.setPos(pos)
+
     def set_node_animated(self, node: Optional[Node], pos: QPointF):
         print('set animated called!', node, pos)
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
@@ -746,6 +748,9 @@ class Task(NetworkItemWithUI):
         self.__animation_group.addAnimation(new_animation)
         if self.__animation_group.state() != QAbstractAnimation.Running:
             self.__animation_group.start()
+        if self.__node and self.__node != node:
+            self.__node.remove_task(self)
+        self.__node = node
 
     def final_location(self) -> (Node, QPointF):
         if self.__animation_group is not None:
