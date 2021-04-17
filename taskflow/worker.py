@@ -49,9 +49,10 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
 
 
 class Worker:
-    log_root_path = '/tmp/workerlogs'  # TODO: !!! this is a placeholder
-
     def __init__(self, scheduler_addr: str, scheduler_ip: int):
+        config = get_config('worker')
+        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
+
         if not os.path.exists(self.log_root_path):
             os.makedirs(self.log_root_path)
         self.__status = {}
