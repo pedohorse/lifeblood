@@ -16,7 +16,6 @@ class Unpickler(pickle.Unpickler):
                 return TaskSpawn
             elif name == 'NewTask':
                 return NewTask
-        print(module, name)
         return super(Unpickler, self).find_class(module, name)
 
 
