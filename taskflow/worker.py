@@ -58,6 +58,7 @@ class Worker:
         self.__status = {}
         self.__running_process: Optional[asyncio.subprocess.Process] = None
         self.__running_task: Optional[InvocationJob] = None
+        self.__running_task_progress: Optional[float] = None
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
         self.__where_to_report = None
@@ -141,6 +142,7 @@ class Worker:
         self.__running_task = task
         self.__where_to_report = report_to
         self.__running_awaiter = asyncio.create_task(self._awaiter())
+        self.__running_task_progress = 0
 
     # callback awaiter
     async def _awaiter(self):
@@ -161,13 +163,19 @@ class Worker:
                 while len(tasks_to_wait) != 0:
                     done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
                     if rout_task in done:
-                        str = rout_task.result()  # TODO: analyze output first, pick out all kind of progress crap
+                        str = rout_task.result()
+                        progress = self.__running_task.match_stdout_progress(str)
+                        if progress is not None:
+                            self.__running_task_progress = progress
                         if str != b'':  # this can only happen at eof
                             await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str)
                             rout_task = asyncio.create_task(self.__running_process.stdout.readline())
                             tasks_to_wait.add(rout_task)
                     if rerr_task in done:
                         str = rerr_task.result()
+                        progress = self.__running_task.match_stderr_progress(str)
+                        if progress is not None:
+                            self.__running_task_progress = progress
                         if str != b'':  # this can only happen at eof
                             await asyncio.gather(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str),
                                                  stdout.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
@@ -201,6 +209,7 @@ class Worker:
         self.__running_task = None
         self.__running_process = None
         self.__where_to_report = None
+        self.__running_task_progress = None
 
     async def task_status(self):
         raise NotImplementedError()
@@ -227,6 +236,7 @@ class Worker:
         self.__running_task = None
         self.__running_process = None
         self.__running_awaiter = None
+        self.__running_task_progress = None
 
     #
     # simply ping scheduler once in a while
