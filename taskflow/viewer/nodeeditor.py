@@ -132,6 +132,16 @@ class Node(NetworkItemWithUI):
     def node_type(self) -> str:
         return self.__node_type
 
+    def node_name(self) -> str:
+        return self.__name
+
+    def set_name(self, new_name: str):
+        if new_name == self.__name:
+            return
+        self.__name = new_name
+        self.update()
+        self.update_ui()
+
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
         self.__nodeui_menucache = {}
@@ -428,7 +438,14 @@ class Node(NetworkItemWithUI):
                     event.accept()
                     self.__ui_interactor.mousePressEvent(event)
                     return
+
         super(Node, self).mousePressEvent(event)
+
+        if event.button() == Qt.RightButton:
+            # context menu time
+            view = event.widget().parent()
+            assert isinstance(view, NodeEditor)
+            view.show_node_menu(self)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
         if self.__ui_interactor is not None:
@@ -1011,6 +1028,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_task_ui_attributes_has_been_requested = Signal(int)
     _signal_node_parameter_change_requested = Signal(int, str, dict)
     _signal_nodetypes_update_requested = Signal()
+    _signal_set_node_name_requested = Signal(int, str)
     _signal_create_node_requested = Signal(str, str, QPointF)
     _signal_remove_node_requested = Signal(int)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
@@ -1053,6 +1071,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
+        self._signal_set_node_name_requested.connect(self.__ui_connection_worker.set_node_name)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
@@ -1063,16 +1082,16 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
-    def request_log(self, task_id, node_id, invocation_id):
+    def request_log(self, task_id: int, node_id: int, invocation_id: int):
         self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
 
-    def request_log_meta(self, task_id):
+    def request_log_meta(self, task_id: int):
         self._signal_log_meta_has_been_requested.emit(task_id)
 
-    def request_attributes(self, task_id):
+    def request_attributes(self, task_id: int):
         self._signal_task_ui_attributes_has_been_requested.emit(task_id)
 
-    def request_node_ui(self, node_id):
+    def request_node_ui(self, node_id: int):
         self._signal_node_ui_has_been_requested.emit(node_id)
 
     def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
@@ -1080,6 +1099,10 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
+
+    def request_set_node_name(self, node_id: int, name: str):
+        print('qqqqqqqqqqqq', name)
+        self._signal_set_node_name_requested.emit(node_id, name)
 
     def request_node_connection_change(self,  connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
         self._signal_change_node_connection_requested.emit(connection_id, outnode_id, outname, innode_id, inname)
@@ -1155,8 +1178,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         for id, newdata in uidata.nodes().items():
             if id in existing_node_ids:
+                existing_node_ids[id].set_name(newdata['name'])
                 continue
-            new_node = Node(id, newdata['type'], f'{newdata["type"]}: ' + (newdata['name'] or f'node #{id}'))
+            new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
             new_node.setPos(*self.node_position(id))
             existing_node_ids[id] = new_node
             self.addItem(new_node)
@@ -1597,6 +1621,19 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             print('failed', e)
 
     @Slot()
+    def set_node_name(self, node_id: int, node_name: str):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'renamenode\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+            self._send_string(node_name)
+            _ = self._recv_string()
+        except ConnectionError as e:
+            print('failed', e)
+
+    @Slot()
     def change_node_connection(self, connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
         if not self.ensure_connected():
             return
@@ -1724,6 +1761,30 @@ class NodeEditor(QGraphicsView):
         pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
+
+    def show_node_menu(self, node: Node, pos=None):
+        menu = QMenu(self)
+        menu.addAction(f'node {node.node_name()}').setEnabled(False)
+        menu.addSeparator()
+        menu.addAction('rename').triggered.connect(lambda checked=False, x=node: self._popup_node_rename_widget(x))
+
+        if pos is None:
+            pos = self.mapToGlobal(self.mapFromScene(node.mapToScene(node.boundingRect().topRight())))
+        menu.aboutToHide.connect(menu.deleteLater)
+        menu.popup(pos)
+
+    def _popup_node_rename_widget(self, node: Node):
+        assert node.scene() == self.__scene
+        lpos = self.mapFromScene(node.mapToScene(node.boundingRect().topLeft()))
+        wgt = QLineEdit(self)
+        wgt.setMinimumWidth(256)  # TODO: user-befriend this shit
+        wgt.move(lpos)
+        wgt.editingFinished.connect(lambda i=node.get_id(), w=wgt: self.__scene.request_set_node_name(i, w.text()))
+        wgt.editingFinished.connect(wgt.deleteLater)
+        wgt.textChanged.connect(lambda x: print('sh', self.sizeHint()))
+        wgt.setText(node.node_name())
+        wgt.show()
+        wgt.setFocus()
 
     @Slot()
     def _nodetypes_updated(self, nodetypes):
