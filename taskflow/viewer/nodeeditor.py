@@ -115,6 +115,7 @@ class Node(NetworkItemWithUI):
         self.__body_brush = QBrush(QColor(48, 48, 48, 128))
 
         self.__nodeui: Optional[NodeUi] = None
+        self.__nodeui_menucache = {}
         self.__connections: Set[NodeConnection] = set()
         self.__expanded = False
 
@@ -133,6 +134,7 @@ class Node(NetworkItemWithUI):
 
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
+        self.__nodeui_menucache = {}
         Node._node_inputs_outputs_cached[self.__node_type] = (list(nodeui.inputs_names()), list(nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
         self.update_ui()
@@ -325,19 +327,42 @@ class Node(NetworkItemWithUI):
         if self.__nodeui is not None:
             for param_name, param_dict in self.__nodeui.parameters_items():
                 param_type = param_dict['type']
+                param_label = param_dict.get('label', param_name)
 
-                if param_type == NodeParameterType.BOOL:
-                    changed, param_dict['value'] = imgui.checkbox(param_name, param_dict['value'])
-                elif param_type == NodeParameterType.INT:
-                    changed, param_dict['value'] = imgui.slider_int(param_name, param_dict['value'], 0, 10)
-                elif param_type == NodeParameterType.FLOAT:
-                    changed, param_dict['value'] = imgui.slider_float(param_name, param_dict['value'], 0, 10)
-                elif param_type == NodeParameterType.STRING:
-                    changed, param_dict['value'] = imgui.input_text(param_name, param_dict['value'], 256)
+                if not param_dict.get('is_ui_modifier', False):
+                    imgui.push_item_width(imgui.get_window_width() * param_dict.get('widthmult', 2.0/3))
+
+                    if 'menu_items' in param_dict:
+                        menu_items: dict = param_dict['menu_items']
+                        menu_order: list = param_dict['_menu_items_order']
+
+                        if param_name not in self.__nodeui_menucache:
+                            self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
+                                                                   'menu_order_inv': {v: i for i, v in enumerate(menu_order)}}
+
+                        menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
+                        menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
+                        changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[param_dict['value']]], menu_order)
+                        param_dict['value'] = menu_items[menu_order[val]]
+                    else:
+                        if param_type == NodeParameterType.BOOL:
+                            changed, param_dict['value'] = imgui.checkbox(param_label, param_dict['value'])
+                        elif param_type == NodeParameterType.INT:
+                            changed, param_dict['value'] = imgui.slider_int(param_label, param_dict['value'], 0, 10)
+                        elif param_type == NodeParameterType.FLOAT:
+                            changed, param_dict['value'] = imgui.slider_float(param_label, param_dict['value'], 0, 10)
+                        elif param_type == NodeParameterType.STRING:
+                            changed, param_dict['value'] = imgui.input_text(param_label, param_dict['value'], 256)
+                        else:
+                            raise NotImplementedError()
+                    imgui.pop_item_width()
+                    if changed:
+                        self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
                 else:
-                    raise NotImplementedError()
-                if changed:
-                    self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
+                    if param_type == 'sameline':
+                        imgui.same_line()
+                    else:
+                        raise NotImplementedError()
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
