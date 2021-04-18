@@ -615,6 +615,22 @@ class Scheduler:
             await con.commit()
 
     #
+    # node stuff
+    async def set_node_name(self, node_id: int, node_name: str) -> str:
+        """
+        rename node. node_name may undergo validation and change. final node name that was set is returned
+        :param node_id: node id
+        :param node_name: proposed node name
+        :return: actual node name set
+        """
+        async with aiosqlite.connect(self.db_path) as con:
+            await con.execute('UPDATE "nodes" SET "name" = ? WHERE "id" = ?', (node_name, node_id))
+            if node_id in self.__node_objects:
+                self.__node_objects[node_id].set_name(node_name)
+            await con.commit()
+        return node_name
+
+    #
     # node reports it's interface was changed. not sure why it exists
     async def node_reports_ui_update(self, node_id):
         assert node_id in self.__node_objects, 'this may be caused by race condition with node deletion'
