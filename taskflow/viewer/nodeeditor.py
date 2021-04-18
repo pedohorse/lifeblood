@@ -88,14 +88,16 @@ class TaskAnimation(QAbstractAnimation):
 
 
 class Node(NetworkItemWithUI):
+    base_height = 100
+    base_width = 150
     # cache node type-2-inputs/outputs names, not to ask a million times for every node
     _node_inputs_outputs_cached: Dict[str, Tuple[List[str], List[str]]] = {}
 
     def __init__(self, id: int, type: str, name: str):
         super(Node, self).__init__(id)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
-        self.__height = 75
-        self.__width = 150
+        self.__height = self.base_height
+        self.__width = self.base_width
         self.__input_radius = 7
         self.__line_width = 1
         self.__name = name
@@ -110,6 +112,7 @@ class Node(NetworkItemWithUI):
         self.__borderpen= QPen(QColor(96, 96, 96, 255))
         self.__borderpen_selected = QPen(QColor(144, 144, 144, 255))
         self.__caption_pen = QPen(QColor(192, 192, 192, 255))
+        self.__typename_pen = QPen(QColor(128, 128, 128, 192))
         self.__borderpen.setWidthF(self.__line_width)
         self.__header_brush = QBrush(QColor(48, 64, 48, 192))
         self.__body_brush = QBrush(QColor(48, 48, 48, 128))
@@ -154,7 +157,7 @@ class Node(NetworkItemWithUI):
             return
         self.__expanded = expanded
         self.prepareGeometryChange()
-        self.__height = 75
+        self.__height = self.base_height
         if expanded:
             self.__height += 225
             self.setPos(self.pos() + QPointF(0, 225*0.5))
@@ -198,7 +201,7 @@ class Node(NetworkItemWithUI):
         lw = self.__width + self.__line_width
         lh = self.__height + self.__line_width
         bodymask = QPainterPath()
-        bodymask.addRect(-0.5 * lw, -0.5 * lh + 16, lw, lh - 16)
+        bodymask.addRect(-0.5 * lw, -0.5 * lh + 32, lw, lh - 32)
         return bodymask
 
     def _get_headershape(self):
@@ -257,6 +260,8 @@ class Node(NetworkItemWithUI):
         painter.drawPath(nodeshape)
         painter.setPen(self.__caption_pen)
         painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
+        painter.setPen(self.__typename_pen)
+        painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.__node_type)
 
     def get_input_position(self, name: str = 'main') -> QPointF:
         if self.__inputs is None:
@@ -737,6 +742,7 @@ class Task(NetworkItemWithUI):
         self.__state = state
         self.__paused = paused
         self.update()
+        self.refresh_ui()
 
     def set_groups(self, groups: Iterable[str]):
         self.__groups = set(groups)
@@ -776,9 +782,10 @@ class Task(NetworkItemWithUI):
         self.__node = node
         self.setParentItem(self.__node)
         self.setPos(pos)
+        self.refresh_ui()
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF):
-        print('set animated called!', node, pos)
+        #print('set animated called!', node, pos)
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
         new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
@@ -793,6 +800,7 @@ class Task(NetworkItemWithUI):
         if self.__node and self.__node != node:
             self.__node.remove_task(self)
         self.__node = node
+        self.refresh_ui()
 
     def final_location(self) -> (Node, QPointF):
         if self.__animation_group is not None:
@@ -824,21 +832,38 @@ class Task(NetworkItemWithUI):
         """
         super(Task, self).setParentItem(item)
 
+    def refresh_ui(self):
+        """
+        unlike update - this method actually queries new task ui status
+        if task is not selected - does nothing
+        :return:
+        """
+        if not self.isSelected():
+            return
+        self.scene().request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
+        self.scene().request_attributes(self.get_id())
+
+        for nid, invocs in self.__log.items():
+            for invoc_id, invoc_dict in invocs.items():
+                if invoc_dict is None:
+                    continue
+                if invoc_dict['state'] != InvocationState.FINISHED.value and invoc_id in self.__requested_invocs_while_selected:
+                    self.__requested_invocs_while_selected.remove(invoc_id)
+
+        # # if task is in progress - we find that invocation of it that is not finished and null it to force update
+        # if self.__state == TaskState.IN_PROGRESS \
+        #         and self.__node.get_id() in self.__log \
+        #         and self.__log[self.__node.get_id()] is not None:
+        #     for invoc_id, invoc in self.__log[self.__node.get_id()].items():
+        #         if (invoc is None or
+        #             invoc['state'] != InvocationState.FINISHED.value) \
+        #                 and invoc_id in self.__requested_invocs_while_selected:
+        #             self.__requested_invocs_while_selected.remove(invoc_id)
+
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value and self.__node is not None:   # item was just selected
-                self.scene().request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
-                self.scene().request_attributes(self.get_id())
-
-                # if task is in progress - we find that invocation of it that is not finished and null it to force update
-                if self.__state == TaskState.IN_PROGRESS \
-                        and self.__node.get_id() in self.__log \
-                        and self.__log[self.__node.get_id()] is not None:
-                    for invoc_id, invoc in self.__log[self.__node.get_id()].items():
-                        if (invoc is None or
-                                invoc['state'] != InvocationState.FINISHED.value) \
-                                and invoc_id in self.__requested_invocs_while_selected:
-                            self.__requested_invocs_while_selected.remove(invoc_id)
+                self.refresh_ui()
             elif not value:
                 pass
                 #self.__log = None
