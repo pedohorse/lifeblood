@@ -14,7 +14,7 @@ class Mantra(BaseNode):
         super(Mantra, self).__init__(name)
 
     def process_task(self, task_dict) -> ProcessingResult:
-        args = self.get_attributes(task_dict)
+        args = self._get_task_attributes(task_dict)
         if 'file' not in args:
             return ProcessingResult()
 

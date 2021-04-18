@@ -15,7 +15,7 @@ class FramerangeSplitter(BaseNode):
             self.get_ui().add_parameter('chunk size', None, NodeParameterType.INT, 10)
 
     def process_task(self, task_row):
-        attrs = self.get_attributes(task_row)
+        attrs = self._get_task_attributes(task_row)
         if 'frames' not in attrs:
             return ProcessingResult()
         frames = attrs['frames']

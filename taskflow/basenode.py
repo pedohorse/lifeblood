@@ -89,7 +89,7 @@ class BaseNode:
         raise NotImplementedError()
 
     # some helpers
-    def get_attributes(self, task_row):
+    def _get_task_attributes(self, task_row):
         return json.loads(task_row.get('attributes', '{}'))
 
     #

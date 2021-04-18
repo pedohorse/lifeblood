@@ -28,7 +28,7 @@ class HipIfdGenerator(BaseNode):
         :param task_dict:
         :return:
         """
-        attrs = self.get_attributes(task_dict)
+        attrs = self._get_task_attributes(task_dict)
         if any(x not in attrs for x in ('hipfile', 'frames')):
             return ProcessingResult()
         hippath = attrs['hipfile']
