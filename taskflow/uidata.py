@@ -80,13 +80,86 @@ class NodeUi:
 
         return _iiLock(self)
 
+    def _make_unique_parm_name(self, name: str) -> str:
+        i = 1
+        param_name = name + str(i)
+        while param_name in self.__parameters:
+            i += 1
+            param_name = name + str(i)
+        return param_name
+
     def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if param_name in self.__parameters:
+            raise RuntimeError(f'parameter "{param_name}" already exists on the node')
         if param_label is None:
             param_label = param_name
+
+        # analyze parm line and adjust width
+        widthmult = None
+        if len(self.__parameter_order) > 0 and self.__parameters[self.__parameter_order[-1]].get('is_ui_modifier', False) \
+                                           and self.__parameters[self.__parameter_order[-1]].get('type', None) == 'sameline':
+            psep = False
+            pcnt = 1
+            pparams = []
+            for pname in reversed(self.__parameter_order):
+                psep = not psep
+                if psep:
+                    if not self.__parameters[pname].get('is_ui_modifier', False) or self.__parameters[pname].get('type', None) != 'sameline':
+                        break
+                else:
+                    pcnt += 1
+                    pparams.append(self.__parameters[pname])
+            widthmult = 1.0 / pcnt
+            for param in pparams:
+                param['widthmult'] = widthmult
+        #
         self.__parameter_order.append(param_name)
-        self.__parameters[param_name] = {'label': param_label, 'type': param_type, 'value': param_val}
+        self.__parameters[param_name] = {'label': param_label, 'type': param_type, 'value': param_val, 'is_ui_modifier': False}
+        if widthmult:
+            self.__parameters[param_name]['widthmult'] = widthmult
+        self.__ui_callback([param_name])
+
+    def next_parameter_same_line(self):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        param_name = self._make_unique_parm_name('__next_same_line')
+        self.__parameter_order.append(param_name)
+        self.__parameters[param_name] = {'label': None, 'type': 'sameline', 'value': None, 'is_ui_modifier': True}
+        self.__ui_callback([param_name])
+
+    def add_menu_to_parameter(self, param_name: str, menu_items_pairs):
+        """
+        adds UI menu to parameter param_name
+        :param param_name: parameter to add menu to. Must already exist on the node
+        :param menu_items: dict of label -> value for parameter menu. type of value MUST match type of parameter param_name. type of label MUST be string
+        :return:
+        """
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if param_name not in self.__parameters:
+            raise RuntimeError(f'parameter "{param_name}" does not exists on the node')
+        # sanity check and regroup
+        param_type = self.__parameters[param_name]['type']
+        menu_items = {}
+        menu_order = []
+        for key, value in menu_items_pairs:
+            menu_items[key] = value
+            menu_order.append(key)
+            if not isinstance(key, str):
+                raise RuntimeError('menu label type must be string')
+            if param_type == NodeParameterType.INT and not isinstance(value, int):
+                raise RuntimeError(f'wrong menu value for int parameter "{param_name}"')
+            elif param_type == NodeParameterType.BOOL and not isinstance(value, bool):
+                raise RuntimeError(f'wrong menu value for bool parameter "{param_name}"')
+            elif param_type == NodeParameterType.FLOAT and not isinstance(value, float):
+                raise RuntimeError(f'wrong menu value for float parameter "{param_name}"')
+            elif param_type == NodeParameterType.STRING and not isinstance(value, str):
+                raise RuntimeError(f'wrong menu value for string parameter "{param_name}"')
+
+        self.__parameters[param_name]['menu_items'] = menu_items
+        self.__parameters[param_name]['_menu_items_order'] = menu_order
         self.__ui_callback([param_name])
 
     def add_input(self, input_name):
