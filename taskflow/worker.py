@@ -211,8 +211,8 @@ class Worker:
         self.__where_to_report = None
         self.__running_task_progress = None
 
-    async def task_status(self):
-        raise NotImplementedError()
+    async def task_status(self) -> Optional[float]:
+        return self.__running_task_progress
 
     async def task_finished(self):
         """
