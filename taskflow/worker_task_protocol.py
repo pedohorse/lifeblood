@@ -64,8 +64,13 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 #
                 # command ping
                 if command == b'ping':  # routine ping, report worker status
-                    pstatus: int = (WorkerPingReply.BUSY if self.__worker.is_task_running() else WorkerPingReply.IDLE).value
-                    writer.write(bytes([pstatus]))
+                    if self.__worker.is_task_running():
+                        pstatus = WorkerPingReply.BUSY.value
+                        pvalue = int(await self.__worker.task_status() or 0)
+                    else:
+                        pstatus = WorkerPingReply.IDLE.value
+                        pvalue = 0
+                    writer.write(struct.pack('>Bl', pstatus, pvalue))
                     await asyncio.wait_for(writer.drain(), timeout=self.__timeout)
                 #
                 # command enqueue task
@@ -169,10 +174,11 @@ class WorkerTaskClient:
 
     async def ping(self):
         await self._ensure_conn_open()
-        self.__writer.writelines([b'ping\n'])
+        self.__writer.write(b'ping\n')
         try:
             await asyncio.wait_for(self.__writer.drain(), self.__timeout)
-            return WorkerPingReply(ord(await asyncio.wait_for(self.__reader.read(1), self.__timeout)))
+            pstatus, pvalue = struct.unpack('>Bl', await asyncio.wait_for(self.__reader.readexactly(5), self.__timeout))
+            return WorkerPingReply(pstatus), pvalue
         except asyncio.exceptions.TimeoutError:
             print('network error')
             raise
