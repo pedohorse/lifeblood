@@ -211,7 +211,7 @@ class Scheduler:
                 return
             try:
                 async with WorkerTaskClient(ip, int(port)) as client:
-                    ping_code = await client.ping()
+                    ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
                 print('    :: network error')
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
@@ -241,7 +241,9 @@ class Scheduler:
                 if await self.reset_invocations_for_worker(worker_row['id'], con=con):
                     await con.commit()
             else:
-                workerstate = WorkerState.BUSY
+                workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
+                # TODO: think, can there be race condition here so that worker is already doing something else?
+                await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
 
             await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
                                  self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
