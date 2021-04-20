@@ -671,6 +671,7 @@ class Task(NetworkItemWithUI):
         self.__name = name
         self.__state = TaskState.WAITING
         self.__paused = False
+        self.__progress = None
 
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
@@ -712,6 +713,12 @@ class Task(NetworkItemWithUI):
         path = self._get_mainpath()
         brush = self.__brushes[self.__state]
         painter.fillPath(path, brush)
+        if self.__progress:
+            arcpath = QPainterPath()
+            arcpath.arcTo(QRectF(-0.5*self.__size, -0.5*self.__size, self.__size, self.__size),
+                          90, -3.6*self.__progress)
+            arcpath.closeSubpath()
+            painter.fillPath(arcpath, self.__brushes[TaskState.DONE])
         painter.setPen(self.__borderpen[int(self.isSelected())])
         painter.drawPath(path)
 
@@ -741,8 +748,16 @@ class Task(NetworkItemWithUI):
             return
         self.__state = state
         self.__paused = paused
+        if state != TaskState.IN_PROGRESS:
+            self.__progress = None
         self.update()
         self.refresh_ui()
+
+    def set_progress(self, progress: float):
+        self.__progress = progress
+        print('progress', progress)
+        self.update()
+        self.update_ui()
 
     def set_groups(self, groups: Iterable[str]):
         self.__groups = set(groups)
@@ -1243,6 +1258,8 @@ class QGraphicsImguiScene(QGraphicsScene):
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
+            if newdata['progress'] is not None:
+                task.set_progress(newdata['progress'])
             task.set_groups(newdata['groups'])
             # new_task_groups.update(task.groups())
 
