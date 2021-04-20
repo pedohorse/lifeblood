@@ -69,7 +69,7 @@ class Scheduler:
             self.__broadcasting_server_task = loop.create_future()
             self.__broadcasting_server_task.set_result('noop')
 
-        self.__ping_interval = 5
+        self.__ping_interval = 1
         self.__processing_interval = 2
 
         self.__event_loop = asyncio.get_running_loop()
@@ -196,10 +196,14 @@ class Scheduler:
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
             print('    :: pinger started')
-            await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con)
+            await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
+            await self._set_value('workers', 'last_checked', worker_row['id'], int(time.time()), con, nocommit=True)
+            await con.commit()
+
             addr = worker_row['last_address']
             ip, port = addr.split(':')  # type: str, str
             print('    :: checking', ip, port)
+
             if not port.isdigit():
                 print('    :: malformed address')
                 await asyncio.gather(
@@ -262,18 +266,26 @@ class Scheduler:
         :return: NEVER !!
         """
 
-        async with aiosqlite.connect(self.db_path, timeout=30) as con:
+        async with aiosqlite.connect(self.db_path, timeout=30) as con:  # TODO: is it good to keep con always open?
             con.row_factory = aiosqlite.Row
 
             tasks = []
             while True:
+                nowtime = time.time()
 
                 print('    ::selecting workers...')
                 async with con.execute("SELECT * from workers WHERE ping_state != 1") as cur:
                     # TODO: don't scan the errored and off ones as often?
 
                     async for row in cur:
-                        tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                        time_delta = nowtime - (row['last_checked'] or 0)
+                        if row['state'] == WorkerState.BUSY.value:
+                            tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                        elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval:
+                            tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                        else:  # worker state is error or off
+                            if time_delta > 15 * self.__ping_interval:
+                                tasks.append(asyncio.create_task(self._iter_iter_func(row)))
 
                 # now clean the list
                 tasks = [x for x in tasks if not x.done()]
@@ -655,11 +667,12 @@ class Scheduler:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
             if not task_groups:  # None or []
                 all_tasks = dict()
-                async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups '
+                async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                        'FROM "tasks" '
                                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
                                        'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
-                                       'GROUP BY tasks."id"') as cur:
+                                       'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
+                                       'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value) as cur:
                     all_tasks_rows = await cur.fetchall()
                 for task_row in all_tasks_rows:
                     task = dict(task_row)
@@ -671,11 +684,13 @@ class Scheduler:
             else:
                 for group in task_groups:
                     all_tasks = {}
-                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, task_groups."group" as groups '
+                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, task_groups."group" as groups, invocations.progress '
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
-                                           'WHERE task_groups."group" = ?', (group,)) as cur:
+                                           'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
+                                           'WHERE task_groups."group" = ? '
+                                           'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value, (group,)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
                     for task_row in grp_tasks:
                         task = dict(task_row)
