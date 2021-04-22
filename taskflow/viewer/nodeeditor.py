@@ -538,6 +538,8 @@ class NodeConnection(NetworkItem):
         return line
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        if self.__ui_interactor is not None:  # if interactor exists - it does all the drawing
+            return
         line = self.get_painter_path()
 
         if self.isSelected():
@@ -610,6 +612,7 @@ class NodeConnection(NetworkItem):
                                                                    self.__nodein if output_picked else None,
                                                                    self.__outname, self.__inname,
                                                                    snap_points, 15, self._ui_interactor_finished)
+                self.update()
                 self.__ui_widget = node_viewer
                 self.scene().addItem(self.__ui_interactor)
                 self.__ui_interactor.mouseMoveEvent(event)
@@ -640,6 +643,7 @@ class NodeConnection(NetworkItem):
         self.__ui_widget.release_ui_focus(self)
         self.__ui_widget = None
         self.__ui_interactor = None
+        self.update()
 
         # actual node reconection
         if snap_point is None:
@@ -1789,6 +1793,8 @@ class NodeEditor(QGraphicsView):
 
         self.__scene.request_node_types_update()
 
+        self.__imgui_input_blocked = False
+
         self.__imgui_init = False
         self.update()
 
@@ -1831,12 +1837,19 @@ class NodeEditor(QGraphicsView):
         wgt = QLineEdit(self)
         wgt.setMinimumWidth(256)  # TODO: user-befriend this shit
         wgt.move(lpos)
+        self.__imgui_input_blocked = True
         wgt.editingFinished.connect(lambda i=node.get_id(), w=wgt: self.__scene.request_set_node_name(i, w.text()))
         wgt.editingFinished.connect(wgt.deleteLater)
+        wgt.editingFinished.connect(lambda: PySide2.QtCore.QTimer.singleShot(0, self.__unblock_imgui_input))  # polish trick to make this be called after current events are processed, events where keypress might be that we need to skip
+
         wgt.textChanged.connect(lambda x: print('sh', self.sizeHint()))
         wgt.setText(node.node_name())
         wgt.show()
         wgt.setFocus()
+
+    @Slot()
+    def __unblock_imgui_input(self):
+        self.__imgui_input_blocked = False
 
     @Slot()
     def _nodetypes_updated(self, nodetypes):
@@ -1924,6 +1937,10 @@ class NodeEditor(QGraphicsView):
         painter.endNativePainting()
 
     def imguiProcessEvents(self, event: PySide2.QtGui.QInputEvent, do_recache=True):
+        if self.__imgui_input_blocked:
+            return
+        if isinstance(event, PySide2.QtGui.QKeyEvent):
+            print(event.type(), event.key())
         if not self.__imgui_init:
             return
         io = imgui.get_io()
@@ -2066,6 +2083,10 @@ class NodeEditor(QGraphicsView):
             event.accept()
         else:
             if event.key() == Qt.Key_Tab:
+                # in case enter or escape is pressed at this time - force unpress it
+                self.imguiProcessEvents(PySide2.QtGui.QKeyEvent(QEvent.KeyRelease, Qt.Key_Return, Qt.NoModifier))
+                self.imguiProcessEvents(PySide2.QtGui.QKeyEvent(QEvent.KeyRelease, Qt.Key_Escape, Qt.NoModifier))
+
                 self.__create_menu_popup_toopen = True
                 self.__scene.request_node_types_update()
                 PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)
