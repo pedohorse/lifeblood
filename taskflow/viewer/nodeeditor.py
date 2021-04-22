@@ -1891,7 +1891,6 @@ class NodeEditor(QGraphicsView):
         imgui.begin("Parameters", True)
 
         # draw text label inside of current window
-        imgui.text("Hello world!")
         sel = self.__scene.selectedItems()
         if len(sel) > 0 and isinstance(sel[0], NetworkItemWithUI):
             sel[0].draw_imgui_elements()
