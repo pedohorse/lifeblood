@@ -32,7 +32,7 @@ def main(config_path=None):
             posx = row['posx']
             posy = row['posy']
             if row['scene_x'] is not None:
-                scene_rect = QRectF(row['scene_x'], row['scene_y'], row['scene_w'], row['scene_h'])
+                scene_rect = QRectF(row['scene_x'], row['scene_y'], 1, 1)
 
     widget = TaskflowViewer(config_path)
     if hgt is not None:
