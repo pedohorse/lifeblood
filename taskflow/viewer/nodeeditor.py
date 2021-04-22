@@ -18,7 +18,7 @@ import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup, QEvent
-from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent
+from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent, QSurfaceFormat, QPainter, QTransform
 
 
 import imgui
@@ -1055,6 +1055,12 @@ class NodeConnectionCreatePreview(QGraphicsItem):
 
 
 class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
+    def __init__(self, *args, **kwargs):
+        super(QOpenGLWidgetWithSomeShit, self).__init__(*args, **kwargs)
+        fmt = QSurfaceFormat()
+        fmt.setSamples(4)
+        self.setFormat(fmt)
+
     def initializeGL(self) -> None:
         super(QOpenGLWidgetWithSomeShit, self).initializeGL()
         print('init')
@@ -1756,9 +1762,11 @@ class NodeEditor(QGraphicsView):
 
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
+        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.setMouseTracking(True)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setCacheMode(QGraphicsView.CacheBackground)
+        self.__view_scale = 1.0
 
         self.__ui_panning_lastpos = None
 
@@ -1843,7 +1851,9 @@ class NodeEditor(QGraphicsView):
             imgui.get_io().display_size = 400, 400
             self._map_keys()
 
-        imgui.get_io().display_size = rect.size().toTuple()
+        #print(rect.size().toTuple())
+        #print()
+        imgui.get_io().display_size = self.rect().size().toTuple()  # rect.size().toTuple()
         # start new frame context
         imgui.new_frame()
 
@@ -2011,7 +2021,7 @@ class NodeEditor(QGraphicsView):
         else:
             if self.__ui_panning_lastpos is not None:
                 rect = self.sceneRect()
-                self.setSceneRect(rect.translated(*(self.__ui_panning_lastpos - event.screenPos()).toTuple()))
+                self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * self.__view_scale).toTuple()))
                 #self.translate(*(event.screenPos() - self.__ui_panning_lastpos).toTuple())
                 self.__ui_panning_lastpos = event.screenPos()
             else:
@@ -2042,6 +2052,10 @@ class NodeEditor(QGraphicsView):
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
+            self.__view_scale = max(0.1, self.__view_scale - event.angleDelta().y()*0.001)
+
+            iz = 1.0/self.__view_scale
+            self.setTransform(QTransform.fromScale(iz, iz))
             super(NodeEditor, self).wheelEvent(event)
 
     def keyPressEvent(self, event: PySide2.QtGui.QKeyEvent):
