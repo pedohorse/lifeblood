@@ -613,6 +613,8 @@ class NodeConnection(NetworkItem):
                 self.__ui_widget = node_viewer
                 self.scene().addItem(self.__ui_interactor)
                 self.__ui_interactor.mouseMoveEvent(event)
+        else:
+            event.ignore()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
