@@ -6,6 +6,7 @@ import itertools
 from enum import Enum
 import asyncio
 import aiosqlite
+import logging
 
 from . import paths
 from .db_misc import sql_init_script
@@ -29,7 +30,8 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True, loop=None):
-        print('loading core plugins')
+        self.__logger = logging.getLogger('Scheduler')
+        self.__logger.info('loading core plugins')
         pluginloader.init()  # TODO: move it outside of constructor
         self.__node_objects: Dict[int, BaseNode] = {}
         # self.__plugins = {}
@@ -158,7 +160,7 @@ class Scheduler:
             need_commit = False
             for invoc_row in all_invoc_rows:  # mark all (probably single one) invocations
                 need_commit = True
-                print("fixing dangling invocation %d" % (invoc_row['id'],))
+                self.__logger.debug("fixing dangling invocation %d" % (invoc_row['id'],))
                 await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
                                   (InvocationState.FINISHED.value, invoc_row['id']))
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
@@ -195,17 +197,17 @@ class Scheduler:
                     return False
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
-            print('    :: pinger started')
+            self.__logger.debug('    :: pinger started')
             await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
             await self._set_value('workers', 'last_checked', worker_row['id'], int(time.time()), con, nocommit=True)
             await con.commit()
 
             addr = worker_row['last_address']
             ip, port = addr.split(':')  # type: str, str
-            print('    :: checking', ip, port)
+            self.__logger.debug('    :: checking %s, %s', ip, port)
 
             if not port.isdigit():
-                print('    :: malformed address')
+                self.__logger.debug('    :: malformed address')
                 await asyncio.gather(
                     self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                     self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
@@ -217,7 +219,7 @@ class Scheduler:
                 async with WorkerTaskClient(ip, int(port)) as client:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
-                print('    :: network error')
+                self.__logger.debug('    :: network error')
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
                                      )
@@ -225,7 +227,7 @@ class Scheduler:
                 await con.commit()
                 return
             except ConnectionRefusedError as e:
-                print('    :: host down', e)
+                self.__logger.debug('    :: host down %s', str(e))
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
                                      )
@@ -233,7 +235,7 @@ class Scheduler:
                 await con.commit()
                 return
             except Exception as e:
-                print('    :: ping failed', type(e), e)
+                self.__logger.debug('    :: ping failed %s %s', type(e), e)
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
                                      )
@@ -254,7 +256,7 @@ class Scheduler:
                                  self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
                                  )
             await con.commit()
-            print('    ::', ping_code)
+            self.__logger.debug('    :: %s', ping_code)
 
     #
     # pinger "thread"
@@ -273,7 +275,7 @@ class Scheduler:
             while True:
                 nowtime = time.time()
 
-                print('    ::selecting workers...')
+                self.__logger.debug('    ::selecting workers...')
                 async with con.execute("SELECT * from workers WHERE ping_state != 1") as cur:
                     # TODO: don't scan the errored and off ones as often?
 
@@ -289,7 +291,7 @@ class Scheduler:
 
                 # now clean the list
                 tasks = [x for x in tasks if not x.done()]
-                print('    :: remaining ping tasks:', len(tasks))
+                self.__logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
                 await asyncio.sleep(self.__ping_interval)
 
@@ -314,7 +316,7 @@ class Scheduler:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value, task_id))
                     await con.commit()
-                    print('error happened', e, file=sys.stderr)
+                    self.__logger.error('error happened %s', e)
                 return
 
             async with aiosqlite.connect(self.db_path) as con:
@@ -400,7 +402,7 @@ class Scheduler:
                     # processing node generates args,
                     if task_row['state'] == TaskState.WAITING.value:
                         if task_row['node_type'] not in pluginloader.plugins:
-                            print(f'plugin to process "P{task_row["node_type"]}" not found!')
+                            self.__logger.error(f'plugin to process "P{task_row["node_type"]}" not found!')
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.DONE.value, task_row['id']))
                             await con.commit()
@@ -417,7 +419,7 @@ class Scheduler:
                     # waiting to be post processed
                     elif task_row['state'] == TaskState.POST_WAITING.value:
                         if task_row['node_type'] not in pluginloader.plugins:
-                            print(f'plugin to process "P{task_row["node_type"]}" not found!')
+                            self.__logger.error(f'plugin to process "P{task_row["node_type"]}" not found!')
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.DONE.value, task_row['id']))
                             await con.commit()
@@ -442,7 +444,7 @@ class Scheduler:
                             ip, port = addr.split(':')
                             port = int(port)
                         except:
-                            print('error addres converting during unexpected here. ping should have cought it', file=sys.stderr)
+                            self.__logger.error('error addres converting during unexpected here. ping should have cought it')
                             continue
 
                         async with aiosqlite.connect(self.db_path) as submit_transaction:
@@ -462,13 +464,13 @@ class Scheduler:
                             else:
                                 task.set_invocation_id(invocation_id)
                                 # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
-                                print(f'submitting task to {addr}')
+                                self.__logger.debug(f'submitting task to {addr}')
                                 try:
                                     async with WorkerTaskClient(ip, port) as client:
                                         reply = await client.give_task(task, self.__server_address)
-                                    print(f'got reply {reply}')
+                                    self.__logger.debug(f'got reply {reply}')
                                 except Exception as e:
-                                    print('some unexpected error', e, file=sys.stderr)
+                                    self.__logger.error('some unexpected error %s', e)
                                     reply = TaskScheduleStatus.FAILED
                                 if reply == TaskScheduleStatus.SUCCESS:
                                     await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
@@ -561,7 +563,7 @@ class Scheduler:
     #
     # callbacks
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
-        print('task finished reported', task, 'code', task.exit_code())
+        self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ? WHERE "id" = ?',
@@ -658,7 +660,7 @@ class Scheduler:
     #
     # stuff
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
-        print(task_groups)
+        self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT * from "nodes"') as cur:
@@ -817,7 +819,7 @@ class Scheduler:
                 elif newtask.forced_node_task_id() is not None:
                     node_id, parent_task_id = newtask.forced_node_task_id()
                 else:
-                    print('ERROR CREATING SPAWN TASK: Malformed source', file=sys.stderr)
+                    self.__logger.error('ERROR CREATING SPAWN TASK: Malformed source')
                     continue
 
                 async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
@@ -873,7 +875,7 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             logs = {}
-            print(f'fetching log metadata for {task_id}')
+            self.__logger.debug(f'fetching log metadata for {task_id}')
             async with con.execute('SELECT "id", node_id from "invocations" WHERE "task_id" = ?',
                                    (task_id, )) as cur:
                 async for entry in cur:
@@ -887,7 +889,7 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             logs = {}
-            print(f'fetching for {task_id}, {node_id}', '' if invocation_id is None else invocation_id)
+            self.__logger.debug(f"fetching for {task_id}, {node_id} {'' if invocation_id is None else invocation_id}")
             if invocation_id is None:  # TODO: disable this option
                 async with con.execute('SELECT * from "invocations" WHERE "task_id" = ? AND "node_id" = ?',
                                        (task_id, node_id)) as cur:
@@ -903,7 +905,7 @@ class Scheduler:
                         async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry['worker_id'],)) as worcur:
                             workrow = await worcur.fetchone()
                         if workrow is None:
-                            print('WARNING! worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
+                            self.__logger.error('Worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
                         else:
                             try:
                                 async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
@@ -912,7 +914,7 @@ class Scheduler:
                                                   (stdout, stderr, invocation_id))
                                 await con.commit()
                             except ConnectionError:
-                                print('could not connect to worker to get freshest logs', file=sys.stderr)
+                                self.__logger.warning('could not connect to worker to get freshest logs')
                             else:
                                 entry['stdout'] = stdout
                                 entry['stderr'] = stderr
