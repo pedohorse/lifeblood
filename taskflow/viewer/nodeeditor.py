@@ -1853,6 +1853,12 @@ class NodeEditor(QGraphicsView):
     def _nodetypes_updated(self, nodetypes):
         self.__node_types = nodetypes
 
+    def _set_clipboard(self, text: str):
+        QApplication.clipboard().setText(text)
+
+    def _get_clipboard(self) -> str:
+        return QApplication.clipboard().text()
+
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         painter.beginNativePainting()
         if not self.__imgui_init:
@@ -1860,7 +1866,10 @@ class NodeEditor(QGraphicsView):
             self.__imgui_init = True
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
-            imgui.get_io().display_size = 400, 400
+            imguio = imgui.get_io()
+            imguio.display_size = 400, 400
+            imguio.set_clipboard_text_fn = self._set_clipboard
+            imguio.get_clipboard_text_fn = self._get_clipboard
             self._map_keys()
 
         imgui.get_io().display_size = self.rect().size().toTuple()  # rect.size().toTuple()
@@ -1941,13 +1950,16 @@ class NodeEditor(QGraphicsView):
         elif isinstance(event, PySide2.QtGui.QWheelEvent):
             io.mouse_wheel = event.angleDelta().y() / 100
         elif isinstance(event, PySide2.QtGui.QKeyEvent):
-            # print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
+            #print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
             if event.key() in imgui_key_map:
                 if event.type() == QEvent.KeyPress:
                     io.keys_down[imgui_key_map[event.key()]] = True  # TODO: figure this out
                     #io.keys_down[event.key()] = True
                 elif event.type() == QEvent.KeyRelease:
                     io.keys_down[imgui_key_map[event.key()]] = False
+            elif event.key() == Qt.Key_Control:
+                io.key_ctrl = event.type() == QEvent.KeyPress
+
             if event.type() == QEvent.KeyPress and len(event.text()) > 0:
                 io.add_input_character(ord(event.text()))
 
