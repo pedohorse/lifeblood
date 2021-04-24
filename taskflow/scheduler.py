@@ -6,8 +6,8 @@ import itertools
 from enum import Enum
 import asyncio
 import aiosqlite
-import logging
 
+from . import logging
 from . import paths
 from .db_misc import sql_init_script
 from .worker_task_protocol import WorkerTaskClient, WorkerPingReply, TaskScheduleStatus
@@ -746,10 +746,14 @@ class Scheduler:
     #
     # remove node connection callback
     async def remove_node_connection(self, node_connection_id: int):
-        async with aiosqlite.connect(self.db_path) as con:
-            con.row_factory = aiosqlite.Row
-            await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
-            await con.commit()
+        try:
+            async with aiosqlite.connect(self.db_path) as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
+                await con.commit()
+        except aiosqlite.IntegrityError as e:
+            self.__logger.error('could not remove node connection because of database integrity check')
 
     #
     # add node
@@ -765,11 +769,14 @@ class Scheduler:
             return ret
 
     async def remove_node(self, node_id: int):
-        async with aiosqlite.connect(self.db_path) as con:
-            con.row_factory = aiosqlite.Row
-            await con.execute('PRAGMA FOREIGN_KEYS = on')
-            await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
-            await con.commit()
+        try:
+            async with aiosqlite.connect(self.db_path) as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
+                await con.commit()
+        except aiosqlite.IntegrityError as e:
+            self.__logger.error('could not remove node connection because of database integrity check')
 
     #
     # query connections
