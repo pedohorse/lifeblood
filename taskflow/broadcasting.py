@@ -3,6 +3,9 @@ import socket
 from string import ascii_letters
 import random
 import struct
+
+from . import logging
+
 from typing import Tuple, Union
 
 Address = Tuple[str, int]
@@ -35,6 +38,7 @@ async def await_broadcast(identifier, broad_port=9000):
 
 class BroadcastProtocol(asyncio.DatagramProtocol):
     def __init__(self, identifier: str, information: str, target: Address, count=None, *, loop: asyncio.AbstractEventLoop = None):
+        self.__logger = logging.getLogger('broadcast')
         self.__target = target
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__transport = None
@@ -46,7 +50,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         # TODO: raise on dgram size too big
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
-        print('started broadcasting')
+        self.__logger.info('started broadcasting')
         self.__transport = transport
         sock = transport.get_extra_info("socket")  # type: socket.socket
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -54,11 +58,11 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         self.__loop.create_task(self.broadcast())
 
     def datagram_received(self, data: Union[bytes, str], addr: Address):
-        print('data received:', len(data), data[:128], addr)
+        self.__logger.debug(f'data received: {len(data)}, {data[:64]}, {addr}')
 
     async def broadcast(self):
         while True:
-            print('sending broadcast for', self.__identifier)
+            self.__logger.info(f'sending broadcast for {self.__identifier}')
             bitent = self.__identifier.encode('UTF-8')
             binfo = self.__information.encode('UTF-8')
             data: bytes = b''.join((_magic, struct.pack('>I', len(bitent)), struct.pack('>I', len(binfo)), bitent, binfo))
@@ -77,13 +81,14 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
 
 class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
     def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None):
+        self.__logger = logging.getLogger('broadcast_catcher')
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__transport = None
         self.__identifier = identifier
         self.__closed_future = self.__loop.create_future()
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
-        print('started listening')
+        self.__logger.info('started listening')
         self.__transport = transport
         sock = transport.get_extra_info("socket")  # type: socket.socket
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -91,22 +96,19 @@ class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
     def datagram_received(self, data: Union[bytes, str], addr: Address):
-        print('data received:', len(data), data[:128], addr)
+        self.__logger.debug(f'data received: {len(data)}, {data[:64]}, {addr}')
         if not data.startswith(_magic):
             return
         data = data[len(_magic):]
         identlen, bodylen = struct.unpack('>II', data[:8])
         identifier = data[8:8+identlen].decode('UTF-8')
         message = data[8+identlen:8+identlen+bodylen].decode('UTF-8')
-        print(identifier, message)
+        self.__logger.debug(f'received: {identifier}, {message}')
         self.__transport.close()
         self.__closed_future.set_result(message)
 
     async def till_done(self):
         return await self.__closed_future
-
-
-
 
 
 if __name__ == '__main__':

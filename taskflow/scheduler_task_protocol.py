@@ -3,6 +3,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 
+from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
 
@@ -18,6 +19,7 @@ class SpawnStatus(Enum):
 
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler: "Scheduler", limit=2**16):
+        self.__logger = logging.getLogger('scheduler')
         self.__timeout = 5.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__scheduler = scheduler
@@ -43,7 +45,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
                 if command.endswith(b'\n'):
                     command = command[:-1]
-                print(f'scheduler got command: {command.decode("UTF-8")}')
+                self.__logger.debug(f'scheduler got command: {command.decode("UTF-8")}')
                 if command == b'ping':
                     writer.write(b'p')
                 elif command == b'done':
@@ -71,15 +73,15 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 #
                 elif command == b'nodenametoid':
                     nodename = await read_string()
-                    print(f'got {nodename}')
+                    self.__logger.debug(f'got {nodename}')
                     ids = await self.__scheduler.node_name_to_id(nodename)
-                    print(f'sending {ids}')
+                    self.__logger.debug(f'sending {ids}')
                     writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
-                    print('connection closed')
+                    self.__logger.debug('connection closed')
                     return
                 else:
                     raise NotImplementedError()
@@ -88,16 +90,17 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         except asyncio.exceptions.TimeoutError as e:
             pass
         except ConnectionResetError as e:
-            print('connection was reset. disconnected', e)
+            self.__logger.exception('connection was reset. disconnected %s', e)
         except ConnectionError as e:
-            print('connection error. disconnected', e)
+            self.__logger.exception('connection error. disconnected %s', e)
         except Exception as e:
-            print('unknown error. disconnected', e)
+            self.__logger.exception('unknown error. disconnected %s', e)
             raise
 
 
 class SchedulerTaskClient:
     def __init__(self, ip: str, port: int):
+        self.__logger = logging.getLogger('worker')
         self.__conn_task = asyncio.open_connection(ip, port)
         self.__reader = None  # type: Optional[asyncio.StreamReader]
         self.__writer = None  # type: Optional[asyncio.StreamWriter]
@@ -140,7 +143,7 @@ class SchedulerTaskClient:
             await self.__writer.drain()
             retcode = await self.__reader.readexactly(1)
         except ConnectionResetError as e:
-            print('ping failed.', e)
+            self.__logger.error('ping failed. %s', e)
         # ignore retcode
 
     async def say_hello(self, address_to_advertise: str):

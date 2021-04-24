@@ -11,6 +11,7 @@ from ..enums import TaskState, InvocationState
 from ..broadcasting import await_broadcast
 from ..nethelpers import recv_exactly, get_default_addr
 from ..config import get_config
+from .. import logging
 
 from ..enums import NodeParameterType
 
@@ -25,6 +26,8 @@ import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
 
 from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable
+
+logger = logging.getLogger('viewer')
 
 
 def call_later(callable, *args, **kwargs):
@@ -62,7 +65,6 @@ class TaskAnimation(QAbstractAnimation):
         self.__task = task
 
         self.__node1, self.__pos1 = task.final_location()
-        print(self.__node1, self.__pos1)
         self.__node2 = node2
         self.__pos2 = pos2
         self.__duration = max(duration, 1)
@@ -299,7 +301,7 @@ class Node(NetworkItemWithUI):
     def add_task(self, task: "Task"):
         if task in self.__tasks:
             return
-        print(f"adding task {task.get_id()} to node {self.get_id()}")
+        logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
         pos_id = len(self.__tasks)
         if task.node() is None:
             task.set_node(self, self.get_task_pos(task, pos_id))
@@ -310,7 +312,7 @@ class Node(NetworkItemWithUI):
         task._Task__node = self
 
     def remove_task(self, task_to_remove: "Task"):
-        print(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
+        logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
         task_pid = self.__tasks.index(task_to_remove)
         task_to_remove._Task__node = None
         for i in range(task_pid, len(self.__tasks) - 1):
@@ -393,14 +395,13 @@ class Node(NetworkItemWithUI):
             conns = self.__connections.copy()
             for connection in conns:
                 if self.scene() is not None and value != self.scene():
-                    print('removing connections...')
+                    logger.debug('removing connections...')
                     assert connection.scene() is not None
                     connection.scene().removeItem(connection)
             assert len(self.__connections) == 0
         elif change == QGraphicsItem.ItemPositionChange:
             for connection in self.__connections:
                 connection.prepareGeometryChange()
-        #print(change, value)
 
         return super(Node, self).itemChange(change, value)
 
@@ -479,7 +480,7 @@ class Node(NetworkItemWithUI):
 
         # actual node reconection
         if snap_point is None:
-            print('no change')
+            logger.debug('no change')
             return
         scene: QGraphicsImguiScene = self.scene()
         setting_out = not snap_point.connection_is_input()
@@ -557,7 +558,7 @@ class NodeConnection(NetworkItem):
         return self.__nodein, self.__inname
 
     def set_output(self, node: Node, output_name: str = 'main'):
-        print(f'reassigning NodeConnection output to {node.get_id()}, {output_name}')
+        logger.debug(f'reassigning NodeConnection output to {node.get_id()}, {output_name}')
         assert node is not None
         self.prepareGeometryChange()
         if node != self.__nodeout:
@@ -567,7 +568,7 @@ class NodeConnection(NetworkItem):
         self.__outname = output_name
 
     def set_input(self, node: Node, input_name: str = 'main'):
-        print(f'reassigning NodeConnection input to {node.get_id()}, {input_name}')
+        logger.debug(f'reassigning NodeConnection input to {node.get_id()}, {input_name}')
         assert node is not None
         self.prepareGeometryChange()
         if node != self.__nodein:
@@ -577,13 +578,13 @@ class NodeConnection(NetworkItem):
         self.__inname = input_name
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-        print('proper beep', self)
+        logger.debug('proper beep', self)
         line = self.get_painter_path(close_path=True)
         pick_radius = 10
         circle = QPainterPath()
         circle.addEllipse(event.scenePos(), pick_radius, pick_radius)
         if self.__ui_interactor is None and line.intersects(circle):
-            print('---GOT A PEAK AT MY DICK---')
+            logger.debug('---GOT A PEAK AT MY DICK---')
             wgt = event.widget()
             if wgt is None:
                 return
@@ -647,7 +648,7 @@ class NodeConnection(NetworkItem):
 
         # actual node reconection
         if snap_point is None:
-            print('no change')
+            logger.debug('no change')
             return
         scene: QGraphicsImguiScene = self.scene()
         changing_out = not snap_point.connection_is_input()
@@ -761,7 +762,7 @@ class Task(NetworkItemWithUI):
 
     def set_progress(self, progress: float):
         self.__progress = progress
-        print('progress', progress)
+        logger.debug('progress', progress)
         self.update()
         self.update_ui()
 
@@ -770,7 +771,7 @@ class Task(NetworkItemWithUI):
 
     def update_log(self, alllog):
         #self.__log = alllog
-        print('log updated with', alllog)
+        logger.debug('log updated with %s', alllog)
         # Note that we assume log deletion is not possible
         for node_id, invocs in alllog.items():
             if self.__log.get(node_id, None) is None:
@@ -784,7 +785,7 @@ class Task(NetworkItemWithUI):
         self.update_ui()
 
     def update_attributes(self, attributes: dict):
-        print('attrs updated with', attributes)
+        logger.debug('attrs updated with %s', attributes)
         self.__ui_attributes = attributes
         self.update_ui()
 
@@ -806,7 +807,6 @@ class Task(NetworkItemWithUI):
         self.refresh_ui()
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF):
-        #print('set animated called!', node, pos)
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
         new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
@@ -940,7 +940,7 @@ class Task(NetworkItemWithUI):
                     imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
                     if invoc['state'] == InvocationState.IN_PROGRESS.value:
                         if imgui.button('update'):
-                            print('clicked')
+                            logger.debug('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
                                 self.__requested_invocs_while_selected.remove(invoc_id)
 
@@ -1069,7 +1069,7 @@ class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
 
     def initializeGL(self) -> None:
         super(QOpenGLWidgetWithSomeShit, self).initializeGL()
-        print('init')
+        logger.debug('init')
 
 
 class QGraphicsImguiScene(QGraphicsScene):
@@ -1153,7 +1153,6 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_nodetypes_update_requested.emit()
 
     def request_set_node_name(self, node_id: int, name: str):
-        print('qqqqqqqqqqqq', name)
         self._signal_set_node_name_requested.emit(node_id, name)
 
     def request_node_connection_change(self,  connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
@@ -1193,7 +1192,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(object)
     def full_update(self, uidata: UiData):
-        print('full_update')
+        logger.debug('full_update')
 
         to_del = []
         existing_node_ids: Dict[int, Node] = {}
@@ -1284,7 +1283,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         try:
             task = self.get_task(task_id)
         except KeyError:
-            print('log fetched, but task not found!')
+            logger.error('log fetched, but task not found!')
             return
         task.update_log(log)
 
@@ -1294,14 +1293,14 @@ class QGraphicsImguiScene(QGraphicsScene):
             node = self.get_node(node_id)
             node.update_nodeui(nodeui)
         except KeyError:
-            print('node ui fetched for non existant node')
+            logger.error('node ui fetched for non existant node')
 
     @Slot(object, object)
     def task_attribs_fetched(self, task_id: int, attribs: dict):
         try:
             task = self.get_task(task_id)
         except KeyError:
-            print('log fetched, but task not found!')
+            logger.error('log fetched, but task not found!')
             return
         task.update_attributes(attribs)
 
@@ -1317,18 +1316,18 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.nodetypes_updated.emit(nodetypes)
 
     def addItem(self, item):
-        print('adding item', item)
+        logger.debug('adding item %s', item)
         super(QGraphicsImguiScene, self).addItem(item)
         if isinstance(item, Task):
             self.__task_dict[item.get_id()] = item
         elif isinstance(item, Node):
             self.__node_dict[item.get_id()] = item
-        print('added item')
+        logger.debug('added item')
 
     def removeItem(self, item):
-        print('removing item', item)
+        logger.debug('removing item %s', item)
         if item.scene() != self:
-            print('item was already removed, just removing ids from internal caches')
+            logger.debug('item was already removed, just removing ids from internal caches')
         else:
             super(QGraphicsImguiScene, self).removeItem(item)
         if isinstance(item, Task):
@@ -1337,7 +1336,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         elif isinstance(item, Node):
             assert item.get_id() in self.__node_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
             del self.__node_dict[item.get_id()]
-        print('item removed')
+        logger.debug('item removed')
 
     def clear(self):
         super(QGraphicsImguiScene, self).clear()
@@ -1452,31 +1451,31 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         config = get_config('viewer')
         if config.get_option_noasync('viewer.listen_to_broadcast', True):
-            print('waiting for scheduler broadcast...')
+            logger.info('waiting for scheduler broadcast...')
             tasks = asyncio.run(asyncio.wait((
                 await_broadcast('taskflow_scheduler'),
                 _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
 
-            print(tasks)
+            logger.debug(tasks)
             message = list(tasks[0])[0].result()
 
-            print(message)
+            logger.debug(message)
             if message is None:
                 return False
-            print('received broadcast:', message)
+            logger.debug('received broadcast: %s', message)
             schedata = json.loads(message)
             sche_addr, sche_port = schedata['ui'].split(':')
             sche_port = int(sche_port)
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
             sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
-        print(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
+        logger.debug(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
 
         while not self.interruption_requested():
             try:
                 self.__conn = socket.create_connection((sche_addr, sche_port), timeout=30)
             except ConnectionError:
-                print('ui connection refused, retrying...')
+                logger.debug('ui connection refused, retrying...')
 
                 # now sleep, but listening to interrupt requests
                 for i in range(25):
@@ -1501,7 +1500,6 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     @Slot()
     def check_scheduler(self):
-        print('schee')
         if self.interruption_requested():
             self.__timer.stop()
             if self.__conn is not None:
@@ -1524,18 +1522,18 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                     self._send_string(group)
             recvdata = recv_exactly(self.__conn, 8)
         except ConnectionError as e:
-            print('connection reset', e)
-            print('scheduler connection lost')
+            logger.error(f'connection reset {e}')
+            logger.error('scheduler connection lost')
             self.__conn = None
             return
         if len(recvdata) != 8:  # means connection was closed
-            print('scheduler connection lost')
+            logger.error('scheduler connection lost')
             self.__conn = None
             return
         uidatasize = struct.unpack('>Q', recvdata)[0]
         uidatabytes = recv_exactly(self.__conn, uidatasize)
         if len(uidatabytes) != uidatasize:
-            print('scheduler connection lost')
+            logger.error('scheduler connection lost')
             return
         uidata = UiData.deserialize(uidatabytes)
         self.full_update.emit(uidata)
@@ -1552,7 +1550,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             logmeta = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
-            print('failed ', e)
+            logger.error(f'failed {e}')
         else:
             self.log_fetched.emit(task_id, logmeta)
 
@@ -1568,7 +1566,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
-            print('failed ', e)
+            logger.error(f'failed {e}')
         else:
             self.task_attribs_fetched.emit(task_id, attribs)
 
@@ -1584,7 +1582,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             alllogs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
-            print('failed ', e)
+            logger.error(f'failed {e}')
         else:
             self.log_fetched.emit(task_id, alllogs)
 
@@ -1599,7 +1597,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
             nodeui: NodeUi = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
-            print('failed ', e)
+            logger.error(f'failed {e}')
         else:
             self.nodeui_fetched.emit(node_id, nodeui)
 
@@ -1628,7 +1626,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             else:
                 raise NotImplementedError()
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def get_nodetypes(self):
@@ -1644,7 +1642,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 names.append(self._recv_string())
             nodetypes = {n: {} for n in names}
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
         else:
             self.nodetypes_fetched.emit(nodetypes)
 
@@ -1659,7 +1657,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self._send_string(node_name)
             node_id = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
         else:
             self.node_created.emit(node_id, node_type, node_name, pos)
 
@@ -1672,7 +1670,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'removenode\n')
             self.__conn.sendall(struct.pack('>Q', node_id))
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def set_node_name(self, node_id: int, node_name: str):
@@ -1685,7 +1683,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self._send_string(node_name)
             _ = self._recv_string()
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def change_node_connection(self, connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
@@ -1693,7 +1691,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             return
         assert self.__conn is not None
         try:
-            print(connection_id, outnode_id, outname, innode_id, inname)
+            logger.debug(f'{connection_id}, {outnode_id}, {outname}, {innode_id}, {inname}')
             self.__conn.sendall(b'changeconnection\n')
             self.__conn.sendall(struct.pack('>Q??QQ', connection_id, outnode_id is not None, innode_id is not None, outnode_id or 0, innode_id or 0))
             if outnode_id is not None:
@@ -1701,7 +1699,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if innode_id is not None:
                 self._send_string(inname)
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def add_node_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str):
@@ -1715,7 +1713,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self._send_string(inname)
             new_id = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def remove_node_connection(self, connection_id: int):
@@ -1726,7 +1724,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'removeconnection\n')
             self.__conn.sendall(struct.pack('>Q', connection_id))
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     # task control things
     @Slot()
@@ -1743,7 +1741,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), task_ids[1:]))
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
     @Slot()
     def set_task_state(self, task_ids: List[int], state: TaskState):
@@ -1759,7 +1757,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), task_ids[1:]))
         except ConnectionError as e:
-            print('failed', e)
+            logger.error(f'failed {e}')
 
 
 class NodeEditor(QGraphicsView):
@@ -1856,18 +1854,15 @@ class NodeEditor(QGraphicsView):
         self.__node_types = nodetypes
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
-        #print('asd')
         painter.beginNativePainting()
         if not self.__imgui_init:
-            print('initdf')
+            logger.debug('initdf')
             self.__imgui_init = True
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
             imgui.get_io().display_size = 400, 400
             self._map_keys()
 
-        #print(rect.size().toTuple())
-        #print()
         imgui.get_io().display_size = self.rect().size().toTuple()  # rect.size().toTuple()
         # start new frame context
         imgui.new_frame()
@@ -1921,7 +1916,7 @@ class NodeEditor(QGraphicsView):
                     self.__node_type_input = ''
                 if self.__node_type_input:
                     self.__scene.request_create_node(self.__node_type_input, 'bark foof', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
-                print('saoijjaoioijasfafs', self.__node_type_input)
+
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
                 self.__node_type_input = ''
@@ -1938,8 +1933,6 @@ class NodeEditor(QGraphicsView):
     def imguiProcessEvents(self, event: PySide2.QtGui.QInputEvent, do_recache=True):
         if self.__imgui_input_blocked:
             return
-        if isinstance(event, PySide2.QtGui.QKeyEvent):
-            print(event.type(), event.key())
         if not self.__imgui_init:
             return
         io = imgui.get_io()

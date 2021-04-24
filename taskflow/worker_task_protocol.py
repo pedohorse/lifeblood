@@ -2,6 +2,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 import struct
+from . import logging
 from . import invocationjob
 from . import nethelpers
 
@@ -36,6 +37,7 @@ class AlreadyRunning(RuntimeError):
 class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
     def __init__(self, worker: "Worker", limit=2 ** 16):
+        self.__logger = logging.getLogger('worker.protocol')
         self.__timeout = 5.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__worker = worker
@@ -59,7 +61,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
                 if command.endswith(b'\n'):
                     command = command[:-1]
-                print(f'got command: {command.decode("UTF-8")}')
+                self.__logger.debug(f'got command: {command.decode("UTF-8")}')
 
                 #
                 # command ping
@@ -83,16 +85,16 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     addr = await reader.readexactly(addrsize)
                     task = invocationjob.InvocationJob.deserialize(task)
                     addr = addr.decode('UTF-8')
-                    print(f'got task: {task}, reply result to {addr}')
+                    self.__logger.debug(f'got task: {task}, reply result to {addr}')
                     try:
-                        print('taking the task')
+                        self.__logger.debug('taking the task')
                         await self.__worker.run_task(task, addr)
                         writer.write(bytes([TaskScheduleStatus.SUCCESS.value]))
                     except AlreadyRunning:
-                        print('BUSY. rejecting task')
+                        self.__logger.debug('BUSY. rejecting task')
                         writer.write(bytes([TaskScheduleStatus.BUSY.value]))
                     except Exception as e:
-                        print('no, cuz', e)
+                        self.__logger.exception('no, cuz %s', e)
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                 #
                 # command drop current task
@@ -141,15 +143,16 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
             else:
                 raise NotImplementedError()
         except asyncio.TimeoutError:
-            print('operation timeout')
+            self.__logger.error('operation timeout')
             raise
         except EOFError:
-            print('connection was abruptly closed')
+            self.__logger.error('connection was abruptly closed')
             raise
 
 
 class WorkerTaskClient:
     def __init__(self, ip: str, port: int, timeout=30.0):
+        self.__logger = logging.getLogger('scheduler.workerconnection')
         self.__conn_task = asyncio.create_task(asyncio.open_connection(ip, port))
         self.__reader = None  # type: Optional[asyncio.StreamReader]
         self.__writer = None  # type: Optional[asyncio.StreamWriter]
@@ -180,7 +183,7 @@ class WorkerTaskClient:
             pstatus, pvalue = struct.unpack('>Bl', await asyncio.wait_for(self.__reader.readexactly(5), self.__timeout))
             return WorkerPingReply(pstatus), pvalue
         except asyncio.exceptions.TimeoutError:
-            print('network error')
+            self.__logger.error('network error')
             raise
 
     async def give_task(self, task: invocationjob.InvocationJob, reply_address):

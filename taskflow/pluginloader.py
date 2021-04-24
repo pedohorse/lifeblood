@@ -1,12 +1,15 @@
 import os
 import importlib.util
 
+from . import logging
 
 plugins = {}
 
+logger = logging.getLogger('plugin_loader')
+
 
 def init():
-    print('loading core plugins')
+    logger.info('loading core plugins')
     global plugins
     plugins = {}
     plugin_paths = []
@@ -25,11 +28,11 @@ def init():
             mod_spec.loader.exec_module(mod)
             for requred_attr in ('create_node_object',):
                 if not hasattr(mod, requred_attr):
-                    print(f'error loading plugin "{filebasename}". '
-                          f'required method {requred_attr} is missing.')
+                    logger.error(f'error loading plugin "{filebasename}". '
+                                 f'required method {requred_attr} is missing.')
                     continue
             plugins[filebasename] = mod
-    print('loaded plugins:\n', '\n\t'.join(plugins.keys()))
+    logger.info('loaded plugins:\n' + '\n\t'.join(plugins.keys()))
 
 
 def create_node(plugin_name: str, name, scheduler_parent, node_id):
@@ -39,7 +42,7 @@ def create_node(plugin_name: str, name, scheduler_parent, node_id):
     """
     if plugin_name not in plugins:
         if plugin_name == 'basenode':  # debug case! base class should never be created directly!
-            print('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
+            logger.warning('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
             from .basenode import BaseNode
             node = BaseNode(name)
         raise RuntimeError('unknown plugin')

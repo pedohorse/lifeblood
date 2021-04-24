@@ -1,6 +1,7 @@
 import struct
 import pickle
 import asyncio
+from . import logging
 from .uidata import NodeUi
 from .enums import NodeParameterType, TaskState
 from . import pluginloader
@@ -13,12 +14,13 @@ if TYPE_CHECKING:
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler):
+        self.__logger = logging.getLogger('scheduler.uiprotocol')
         self.__scheduler: "Scheduler" = scheduler
         self.__reader = asyncio.StreamReader()
         super(SchedulerUiProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        print('UI connected')
+        self.__logger.debug('UI connected')
 
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -38,7 +40,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 command: bytes = await reader.readline()
                 if command.endswith(b'\n'):
                     command = command[:-1]
-                print(f'got command {command}')
+                self.__logger.debug(f'got command {command}')
                 # get full nodegraph state. only brings in where is which item, no other details
                 if command == b'getfullstate':
                     task_groups = []
@@ -153,16 +155,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
                 elif reader.at_eof():
-                    print('UI disconnected')
+                    self.__logger.debug('UI disconnected')
                     return
                 else:
                     raise NotImplementedError()
 
                 await writer.drain()
         except ConnectionResetError as e:
-            print('connection was reset. UI disconnected', e)
+            self.__logger.warning('connection was reset. UI disconnected %s', e)
         except ConnectionError as e:
-            print('connection error. UI disconnected', e)
+            self.__logger.error('connection error. UI disconnected %s', e)
         except Exception as e:
-            print('unknown error. UI disconnected', e)
+            self.__logger.error('unknown error. UI disconnected %s', e)
             raise

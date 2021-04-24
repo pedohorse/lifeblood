@@ -30,7 +30,7 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True, loop=None):
-        self.__logger = logging.getLogger('Scheduler')
+        self.__logger = logging.getLogger('scheduler')
         self.__logger.info('loading core plugins')
         pluginloader.init()  # TODO: move it outside of constructor
         self.__node_objects: Dict[int, BaseNode] = {}

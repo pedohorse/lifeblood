@@ -7,6 +7,7 @@ import aiofiles
 import json
 import datetime
 import tempfile
+from . import logging
 from .nethelpers import get_addr_to, get_default_addr
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
@@ -51,6 +52,7 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
 class Worker:
     def __init__(self, scheduler_addr: str, scheduler_ip: int):
         config = get_config('worker')
+        self.__logger = logging.getLogger('worker')
         self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
 
         if not os.path.exists(self.log_root_path):
@@ -116,7 +118,7 @@ class Worker:
         if self.__running_process is not None:
             raise AlreadyRunning('Task already in progress')
         # prepare logging
-        print(f'running task {task}')
+        self.__logger.info(f'running task {task}')
         logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
         env = self.__env_writer.get_environment(None, task.env())
 
@@ -219,8 +221,8 @@ class Worker:
         is called when current process finishes
         :return:
         """
-        print('task finished')
-        print(f'reporting back to {self.__where_to_report}')
+        self.__logger.info('task finished')
+        self.__logger.info(f'reporting back to {self.__where_to_report}')
         self.__running_task.finish(await self.__running_process.wait())
         try:
             ip, port = self.__where_to_report.split(':', 1)
@@ -229,9 +231,9 @@ class Worker:
                                               self.get_log_filepath('output', self.__running_task.invocation_id()),
                                               self.get_log_filepath('error', self.__running_task.invocation_id()))
         except Exception as e:
-            print(f'could not report cuz of {e}')
+            self.__logger.exception(f'could not report cuz of {e}')
         except:
-            print('could not report cuz i have no idea')
+            self.__logger.exception('could not report cuz i have no idea')
         self.__where_to_report = None
         self.__running_task = None
         self.__running_process = None
@@ -256,7 +258,7 @@ class Worker:
                 result = b''
             if result == b'':  # this means EOF
                 self.__ping_missed += 1
-                print(f'server ping missed. total misses: {self.__ping_missed}')
+                self.__logger.info(f'server ping missed. total misses: {self.__ping_missed}')
             if self.__ping_missed >= self.__ping_missed_threshold:
                 # assume scheruler down, drop everything and look for another scheruler
                 await self.stop_task()
@@ -279,18 +281,19 @@ async def main_async():
     :return: Never!
     """
     config = get_config('worker')
+    logger = logging.getLogger('worker')
     if await config.get_option('worker.listen_to_broadcast', True):
         while True:
-            print('listening for scheduler broadcasts...')
+            logger.info('listening for scheduler broadcasts...')
             message = await await_broadcast('taskflow_scheduler')
             scheduler_info = json.loads(message)
-            print('received', scheduler_info)
+            logger.debug('received', scheduler_info)
             addr = scheduler_info['worker']
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
             worker = await create_worker(ip, port)
             await worker.wait_to_finish()
-            print('worker quited')
+            logger.info('worker quited')
     else:
         while True:
             ip = await config.get_option('worker.scheduler_ip', get_default_addr())
@@ -298,11 +301,11 @@ async def main_async():
             try:
                 worker = await create_worker(ip, port)
             except ConnectionRefusedError as e:
-                print('Connection error', str(e))
+                logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
                 continue
             await worker.wait_to_finish()
-            print('worker quited')
+            logger.info('worker quited')
 
 
 def main():

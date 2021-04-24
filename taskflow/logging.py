@@ -1,6 +1,5 @@
 import sys
 import logging
-from logging import getLogger
 # init default logging
 
 
@@ -9,8 +8,15 @@ class UnimportantOnlyFilter(logging.Filter):
         return record.levelno in (logging.DEBUG, logging.INFO)
 
 
-def init():
-    logger = logging.getLogger('Scheduler')
+__logger_cache = {}
+
+
+def getLogger(name):
+    global __logger_cache
+    if name in __logger_cache:
+        return __logger_cache[name]
+    logger = logging.getLogger(name)
+    __logger_cache[name] = logger
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s'))
     handler.setStream(sys.stdout)
@@ -25,6 +31,4 @@ def init():
     logger.addHandler(handler)
 
     logger.setLevel('DEBUG')
-
-
-init()
+    return logger
