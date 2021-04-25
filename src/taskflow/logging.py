@@ -31,4 +31,5 @@ def getLogger(name):
     logger.addHandler(handler)
 
     logger.setLevel('DEBUG')
+    logger.propagate = False
     return logger
