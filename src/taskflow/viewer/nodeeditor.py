@@ -12,6 +12,7 @@ from ..broadcasting import await_broadcast
 from ..nethelpers import recv_exactly, get_default_addr
 from ..config import get_config
 from .. import logging
+from .. import paths
 
 from ..enums import NodeParameterType
 
@@ -762,7 +763,7 @@ class Task(NetworkItemWithUI):
 
     def set_progress(self, progress: float):
         self.__progress = progress
-        logger.debug('progress', progress)
+        logger.debug('progress %d', progress)
         self.update()
         self.update_ui()
 
@@ -1867,6 +1868,7 @@ class NodeEditor(QGraphicsView):
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
             imguio = imgui.get_io()
+            # figure out why doesnt work: imguio.ini_file_name = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
             imguio.display_size = 400, 400
             imguio.set_clipboard_text_fn = self._set_clipboard
             imguio.get_clipboard_text_fn = self._get_clipboard
@@ -1892,6 +1894,8 @@ class NodeEditor(QGraphicsView):
         imgui.core.show_metrics_window()
 
         # open new window context
+        imgui.set_next_window_size(561, 697)
+        imgui.set_next_window_position(1065, 32)
         imgui.begin("Parameters", True)
 
         # draw text label inside of current window
