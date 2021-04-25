@@ -16,7 +16,7 @@ from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
-from .nethelpers import address_to_ip_port, get_default_addr
+from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
 from .nodethings import ProcessingResult
@@ -66,7 +66,7 @@ class Scheduler:
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting:
             broadcast_info = json.dumps({'worker': self.__server_address, 'ui': self.__ui_address})
-            self.__broadcasting_server_task = create_broadcaster('taskflow_scheduler', broadcast_info)
+            self.__broadcasting_server_task = create_broadcaster('taskflow_scheduler', broadcast_info, ip=get_default_broadcast_addr())
         else:
             self.__broadcasting_server_task = loop.create_future()
             self.__broadcasting_server_task.set_result('noop')
