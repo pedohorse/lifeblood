@@ -16,6 +16,9 @@ def main(config_path=None):
 
     if config_path is None:
         config_path = paths.config_path('node_viewer.db', 'viewer')
+    if not os.path.exists(config_path):
+        with open(config_path, 'w') as f:
+            pass
 
     hgt, wgt = None, None
     posx, posy = None, None
