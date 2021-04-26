@@ -46,11 +46,17 @@ class TaskflowViewer(QMainWindow):
         # cOnNeC1
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiScene)
-        scene.task_groups_updated.connect(self.__model_main.update_groups)
+        scene.task_groups_updated.connect(self.update_groups)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
 
         # start
         self.__node_editor.start()
+
+    def update_groups(self, groups):
+        do_select = self.__model_main.rowCount() == 0
+        self.__model_main.update_groups(groups)
+        if do_select and self.__model_main.rowCount() > 0:
+            self.__group_list.setCurrentIndex(self.__model_main.index(self.__model_main.rowCount()-1, 0))
 
     def setSceneRect(self, *args, **kwargs):
         return self.__node_editor.setSceneRect(*args, **kwargs)
