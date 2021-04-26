@@ -669,34 +669,34 @@ class Scheduler:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
             if not task_groups:  # None or []
                 all_tasks = dict()
-                async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
-                                       'FROM "tasks" '
-                                       'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
-                                       'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
-                                       'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
-                                       'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value) as cur:
-                    all_tasks_rows = await cur.fetchall()
-                for task_row in all_tasks_rows:
-                    task = dict(task_row)
-                    if task['groups'] is None:
-                        task['groups'] = set()
-                    else:
-                        task['groups'] = set(task['groups'].split(','))  # TODO: enforce no commas (,) in group names
-                    all_tasks[task['id']] = task
+                # async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
+                #                        'FROM "tasks" '
+                #                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
+                #                        'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
+                #                        'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
+                #                        'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value) as cur:
+                #     all_tasks_rows = await cur.fetchall()
+                # for task_row in all_tasks_rows:
+                #     task = dict(task_row)
+                #     if task['groups'] is None:
+                #         task['groups'] = set()
+                #     else:
+                #         task['groups'] = set(task['groups'].split(','))  # TODO: enforce no commas (,) in group names
+                #     all_tasks[task['id']] = task
             else:
+                all_tasks = dict()
                 for group in task_groups:
-                    all_tasks = {}
-                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, task_groups."group" as groups, invocations.progress '
+                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
-                                           'WHERE task_groups."group" = ? '
+                                           'WHERE task_groups."group" LIKE ? '
                                            'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value, (group,)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
                     for task_row in grp_tasks:
                         task = dict(task_row)
-                        task['groups'] = {task['groups']}
+                        task['groups'] = set(task['groups'].split(','))
                         if task['id'] in all_tasks:
                             all_tasks[task['id']]['groups'].update(task['groups'])
                         else:
