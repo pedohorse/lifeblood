@@ -1795,6 +1795,7 @@ class NodeEditor(QGraphicsView):
         self.__imgui_input_blocked = False
 
         self.__imgui_init = False
+        self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
         self.update()
 
     def show_task_menu(self, task):
@@ -1868,7 +1869,10 @@ class NodeEditor(QGraphicsView):
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
             imguio = imgui.get_io()
-            # figure out why doesnt work: imguio.ini_file_name = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
+            # note that as of imgui 1.3.0 ini_file_name seem to have a bug of not increasing refcount,
+            # so there HAS to be some other python variable, like self.__imgui_config_path, to ensure
+            # that path is not garbage collected
+            imguio.ini_file_name = self.__imgui_config_path
             imguio.display_size = 400, 400
             imguio.set_clipboard_text_fn = self._set_clipboard
             imguio.get_clipboard_text_fn = self._get_clipboard
