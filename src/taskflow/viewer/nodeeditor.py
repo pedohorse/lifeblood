@@ -1864,7 +1864,7 @@ class NodeEditor(QGraphicsView):
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         painter.beginNativePainting()
         if not self.__imgui_init:
-            logger.debug('initdf')
+            logger.debug('initializing imgui')
             self.__imgui_init = True
             imgui.create_context()
             self.__imimpl = ProgrammablePipelineRenderer()
@@ -1898,9 +1898,9 @@ class NodeEditor(QGraphicsView):
         imgui.core.show_metrics_window()
 
         # open new window context
-        imgui.set_next_window_size(561, 697)
-        imgui.set_next_window_position(1065, 32)
-        imgui.begin("Parameters", True)
+        imgui.set_next_window_size(561, 697, imgui.FIRST_USE_EVER)
+        imgui.set_next_window_position(1065, 32, imgui.FIRST_USE_EVER)
+        imgui.begin("Parameters")
 
         # draw text label inside of current window
         sel = self.__scene.selectedItems()
