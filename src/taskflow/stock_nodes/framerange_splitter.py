@@ -3,12 +3,23 @@ from taskflow.basenode import BaseNode
 from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult, TaskSpawn
 
+from typing import Iterable
 
-def create_node_object(name: str):
-    return FramerangeSplitter(name)
+
+def node_class():
+    return FramerangeSplitter
 
 
 class FramerangeSplitter(BaseNode):
+
+    @classmethod
+    def label(cls) -> str:
+        return 'frame range splitter'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'frame', 'framerange', 'splitter', 'stock'
+
     def __init__(self, name):
         super(FramerangeSplitter, self).__init__(name)
         with self.get_ui().initializing_interface_lock():

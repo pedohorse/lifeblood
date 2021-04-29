@@ -4,16 +4,25 @@ from taskflow.basenode import BaseNode
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 from taskflow.nodethings import ProcessingResult
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 if TYPE_CHECKING:
     from taskflow.scheduler import Scheduler
 
 
-def create_node_object(name: str):
-    return Test(name)
+def node_class():
+    return Test
 
 
 class Test(BaseNode):
+
+    @classmethod
+    def label(cls) -> str:
+        return 'test node'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'test', 'debug'
+
     def process_task(self, task_dict) -> ProcessingResult:
         td = InvocationJob(['bash', '-c',
                             'echo "startin..."\n'

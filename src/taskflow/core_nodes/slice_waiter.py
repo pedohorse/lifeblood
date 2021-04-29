@@ -9,7 +9,7 @@ from taskflow.uidata import NodeUi
 
 from threading import Lock
 
-from typing import Dict, TypedDict, Set, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, TypedDict, Set, Iterable, Optional, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from taskflow.scheduler import Scheduler
@@ -21,11 +21,20 @@ class SliceAwaiting(TypedDict):
     first_to_arrive: Optional[int]
 
 
-def create_node_object(name: str):
-    return SliceWaiterNode(name)
+def node_class():
+    return SliceWaiterNode
 
 
 class SliceWaiterNode(BaseNode):
+
+    @classmethod
+    def label(cls) -> str:
+        return 'slice gatherer'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'slice', 'gather', 'core'
+
     def __init__(self, name: str):
         super(SliceWaiterNode, self).__init__(name)
         self.__cache: Dict[int: SliceAwaiting] = {}

@@ -4,12 +4,22 @@ from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult, TaskSpawn
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
+from typing import Iterable
 
-def create_node_object(name: str):
-    return HipIfdGenerator(name)
+
+def node_class():
+    return HipIfdGenerator
 
 
 class HipIfdGenerator(BaseNode):
+    @classmethod
+    def label(cls) -> str:
+        return 'ifd generator'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'hip', 'houdini', 'ifd', 'generator', 'render', 'stock'
+
     def __init__(self, name):
         super(HipIfdGenerator, self).__init__(name)
         ui = self.get_ui()

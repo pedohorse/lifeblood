@@ -4,12 +4,22 @@ from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
+from typing import Iterable
 
-def create_node_object(name: str):
-    return Mantra(name)
+
+def node_class():
+    return Mantra
 
 
 class Mantra(BaseNode):
+    @classmethod
+    def label(cls) -> str:
+        return 'mantra'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'houdini', 'mantra', 'ifd', 'stock'
+
     def __init__(self, name):
         super(Mantra, self).__init__(name)
 

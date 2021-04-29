@@ -4,12 +4,22 @@ from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult, TaskSpawn
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
+from typing import Iterable
 
-def create_node_object(name: str):
-    return HipDriverRenderer(name)
+
+def node_class():
+    return HipDriverRenderer
 
 
 class HipDriverRenderer(BaseNode):
+    @classmethod
+    def label(cls) -> str:
+        return 'hip driver renderer'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'hip', 'houdini', 'driver', 'render', 'stock'
+
     def __init__(self, name):
         super(HipDriverRenderer, self).__init__(name)
         ui = self.get_ui()

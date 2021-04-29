@@ -5,12 +5,22 @@ from taskflow.exceptions import NodeNotReadyToProcess
 from taskflow.enums import NodeParameterType
 from taskflow.uidata import NodeUi
 
+from typing import Iterable
 
-def create_node_object(name: str):
-    return SetAttributes(name)
+
+def node_class():
+    return SetAttributes
 
 
 class SetAttributes(BaseNode):
+    @classmethod
+    def label(cls) -> str:
+        return 'set attributes'
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        return 'set', 'attribute', 'core'
+
     def __init__(self, name: str):
         super(SetAttributes, self).__init__(name)
         ui = self.get_ui()

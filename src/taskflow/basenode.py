@@ -8,13 +8,21 @@ from .nodethings import ProcessingResult
 from .uidata import NodeUi
 from .pluginloader import create_node
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from .scheduler import Scheduler
 
 
 class BaseNode:
+    @classmethod
+    def label(cls) -> str:
+        raise NotImplementedError()
+
+    @classmethod
+    def tags(cls) -> Iterable[str]:
+        raise NotImplementedError()
+
     def __init__(self, name: str):
         self.__parent: Scheduler = None
         self.__parent_nid: int = None
