@@ -5,6 +5,7 @@ import asyncio
 import subprocess
 import aiofiles
 import json
+import psutil
 import datetime
 import tempfile
 from . import logging
@@ -199,14 +200,28 @@ class Worker:
             return
         self.__running_awaiter.cancel()
         self.__running_awaiter = None
-        self.__running_process.terminate()
+        puproc = psutil.Process(self.__running_process.pid)
+        all_proc = puproc.children(recursive=True)
+        all_proc.append(puproc)
+        for proc in all_proc:
+            try:
+                proc.terminate()
+            except psutil.NoSuchProcess:
+                pass
         for i in range(20):  # TODO: make a parameter out of this!
-            if self.__running_process.returncode is None:
+            if not all(not proc.is_running() for proc in all_proc):
                 await asyncio.sleep(0.5)
             else:
                 break
         else:
-            self.__running_process.kill()
+            for proc in all_proc:
+                if not proc.is_running():
+                    continue
+                try:
+                    proc.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
         await self.__running_process.wait()
         self.__running_task = None
         self.__running_process = None
