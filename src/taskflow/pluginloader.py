@@ -26,7 +26,7 @@ def init():
                                                               os.path.join(plugin_path, filename))
             mod = importlib.util.module_from_spec(mod_spec)
             mod_spec.loader.exec_module(mod)
-            for requred_attr in ('create_node_object',):
+            for requred_attr in ('node_class',):
                 if not hasattr(mod, requred_attr):
                     logger.error(f'error loading plugin "{filebasename}". '
                                  f'required method {requred_attr} is missing.')
@@ -46,6 +46,6 @@ def create_node(plugin_name: str, name, scheduler_parent, node_id):
             from .basenode import BaseNode
             node = BaseNode(name)
         raise RuntimeError('unknown plugin')
-    node = plugins[plugin_name].create_node_object(name)
+    node = plugins[plugin_name].node_class()(name)
     node._set_parent(scheduler_parent, node_id)
     return node
