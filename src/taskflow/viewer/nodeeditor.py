@@ -13,6 +13,7 @@ from ..nethelpers import recv_exactly, get_default_addr
 from ..config import get_config
 from .. import logging
 from .. import paths
+from ..net_classes import NodeTypeMetadata
 
 from ..enums import NodeParameterType
 
@@ -1636,12 +1637,13 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__conn is not None
         nodetypes = {}
         try:
-            names = []
+            metas: List[NodeTypeMetadata] = []
             self.__conn.sendall(b'listnodetypes\n')
             elemcount = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
             for i in range(elemcount):
-                names.append(self._recv_string())
-            nodetypes = {n: {} for n in names}
+                btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+                metas.append(pickle.loads(recv_exactly(self.__conn, btlen)))
+            nodetypes = {n.type_name: {} for n in metas}
         except ConnectionError as e:
             logger.error(f'failed {e}')
         else:
