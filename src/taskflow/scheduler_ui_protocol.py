@@ -5,6 +5,7 @@ from . import logging
 from .uidata import NodeUi
 from .enums import NodeParameterType, TaskState
 from . import pluginloader
+from .net_classes import NodeTypeMetadata
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -84,10 +85,15 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 #
                 # node related commands
                 elif command == b'listnodetypes':
-                    typenames = list(pluginloader.plugins.keys())
-                    writer.write(struct.pack('>Q', len(typenames)))
-                    for typename in typenames:
-                        await write_string(typename)
+                    typemetas = []
+                    for type_name, module in pluginloader.plugins.items():
+                        cls = module.node_class()
+                        typemetas.append(NodeTypeMetadata(type_name, cls.label(), cls.tags()))
+                    writer.write(struct.pack('>Q', len(typemetas)))
+                    for typemeta in typemetas:
+                        data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, typemeta)
+                        writer.write(struct.pack('>Q', len(data)))
+                        writer.write(data)
                 elif command == b'removenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node(node_id)
