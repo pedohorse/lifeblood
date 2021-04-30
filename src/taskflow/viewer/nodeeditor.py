@@ -1643,7 +1643,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             for i in range(elemcount):
                 btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
                 metas.append(pickle.loads(recv_exactly(self.__conn, btlen)))
-            nodetypes = {n.type_name: {} for n in metas}
+            nodetypes = {n.type_name: n for n in metas}
         except ConnectionError as e:
             logger.error(f'failed {e}')
         else:
@@ -1788,7 +1788,7 @@ class NodeEditor(QGraphicsView):
 
         self.__create_menu_popup_toopen = False
         self.__node_type_input = ''
-        self.__node_types = {}
+        self.__node_types: Dict[str, NodeTypeMetadata] = {}
 
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
 
@@ -1912,23 +1912,27 @@ class NodeEditor(QGraphicsView):
         # close current window context
         imgui.end()
 
+        # tab menu
         if self.__create_menu_popup_toopen:
             imgui.open_popup('create node')
             self.__node_type_input = ''
 
         if imgui.begin_popup('create node'):
-            #if self.__create_menu_popup_toopen:
             imgui.set_keyboard_focus_here()
             _, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
-            for type_name in self.__node_types:
-                if self.__node_type_input in type_name:  # TODO: this can be cached
-                    imgui.text(type_name)
+            for type_name, type_meta in self.__node_types.items():
+                if self.__node_type_input in type_name\
+                        or self.__node_type_input in type_meta.tags\
+                        or self.__node_type_input in type_meta.label:  # TODO: this can be cached
+                    imgui.text(type_meta.label)
 
             imguio = imgui.get_io()
             if imguio.keys_down[imgui.KEY_ENTER]:
                 imgui.close_current_popup()
-                for type_name in self.__node_types:
-                    if self.__node_type_input in type_name:
+                for type_name, type_meta in self.__node_types.items():
+                    if self.__node_type_input in type_name \
+                            or self.__node_type_input in type_meta.tags \
+                            or self.__node_type_input in type_meta.label:
                         self.__node_type_input = type_name
                         break
                 else:
