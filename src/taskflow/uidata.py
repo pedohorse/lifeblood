@@ -128,22 +128,37 @@ class NodeUi:
 
     def parameter_line_portion(self, param_name: str) -> float:
         param = self.__parameters[param_name]
-        if '_inline_cnt' not in param:
-            return 1.0
-        assert '_inline_ord' in param
         if param.get('__width_cache', None) is not None:
             return param['__width_cache']
 
         idx = self.__parameter_order.index(param_name)
-        line_ord = param['_inline_ord']
-        line_cnt = param['_inline_cnt']
+        viz_cnt_in_line = 1
 
-        viz_cnt_in_line = 0
-        for i in range(idx - 2*line_ord, idx + 2*(-line_ord + line_cnt) -1):  # 2* cuz there are sameline modifier between each param in line
-            if self.__parameters[self.__parameter_order[i]].get('is_ui_modifier', False):
-                continue
-            if self.is_parameter_visible(self.__parameter_order[i]):
-                viz_cnt_in_line += 1
+        if idx > 0:
+            psep = False
+            for pname in self.__parameter_order[idx-1::-1]:
+                if not self.__parameters[pname].get('is_ui_modifier', False) and not self.is_parameter_visible(pname):
+                    continue
+                psep = not psep
+                if psep:
+                    if not self.__parameters[pname].get('is_ui_modifier', False) or self.__parameters[pname].get('type', None) != 'sameline':
+                        break
+                elif not self.is_parameter_visible(pname):
+                    continue
+                else:
+                    viz_cnt_in_line += 1
+        if idx < len(self.__parameter_order) - 1:
+            psep = False
+            for pname in self.__parameter_order[idx+1:]:
+                if not self.__parameters[pname].get('is_ui_modifier', False) and not self.is_parameter_visible(pname):
+                    continue
+                psep = not psep
+                if psep:
+                    if not self.__parameters[pname].get('is_ui_modifier', False) or self.__parameters[pname].get('type', None) != 'sameline':
+                        break
+                else:
+                    viz_cnt_in_line += 1
+
         param['__width_cache'] = 1 / viz_cnt_in_line
         return param['__width_cache']
 
