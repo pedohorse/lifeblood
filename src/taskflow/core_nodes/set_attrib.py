@@ -33,8 +33,14 @@ class SetAttributes(BaseNode):
                                               ('float', NodeParameterType.FLOAT.value),
                                               ('string', NodeParameterType.STRING.value)))
             ui.next_parameter_same_line()
-            ui.add_parameter('value', 'val', NodeParameterType.STRING, '')
-            ui.add_visibility_condition('value', f'type=={NodeParameterType.STRING.value}')
+            ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '')
+            ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0)
+            ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0)
+            ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False)
+            ui.add_visibility_condition('svalue', f'type=={NodeParameterType.STRING.value}')
+            ui.add_visibility_condition('ivalue', f'type=={NodeParameterType.INT.value}')
+            ui.add_visibility_condition('fvalue', f'type=={NodeParameterType.FLOAT.value}')
+            ui.add_visibility_condition('bvalue', f'type=={NodeParameterType.BOOL.value}')
 
     def process_task(self, task_dict) -> ProcessingResult:
         return ProcessingResult()
