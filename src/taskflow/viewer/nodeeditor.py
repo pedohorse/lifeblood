@@ -349,16 +349,8 @@ class Node(NetworkItemWithUI):
                 param_label = param_dict.get('label', param_name)
 
                 if not param_dict.get('is_ui_modifier', False):
-                    if '_vis_when' in param_dict:
-                        other_param_name, op, value = param_dict['_vis_when']
-                        other_param = self.__nodeui.parameters().get(other_param_name, None)
-                        if op == '==' and other_param['value'] != value\
-                                or op == '!=' and other_param['value'] == value\
-                                or op == '>' and other_param['value'] <= value\
-                                or op == '>=' and other_param['value'] < value\
-                                or op == '<' and other_param['value'] >= value\
-                                or op == '<=' and other_param['value'] > value:
-                            continue
+                    if not self.__nodeui.is_parameter_visible(param_name):
+                        continue
 
                     imgui.push_item_width(imgui.get_window_width() * param_dict.get('widthmult', 2.0/3))
 

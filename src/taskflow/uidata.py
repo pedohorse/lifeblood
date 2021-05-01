@@ -130,6 +130,20 @@ class NodeUi:
         self.__parameters[param_name] = {'label': None, 'type': 'sameline', 'value': None, 'is_ui_modifier': True}
         self.__ui_callback([param_name])
 
+    def is_parameter_visible(self, param_name: str):
+        param_dict = self.__parameters[param_name]
+        if '_vis_when' in param_dict:
+            other_param_name, op, value = param_dict['_vis_when']
+            other_param = self.__parameters.get(other_param_name, None)
+            if op == '==' and other_param['value'] != value \
+                    or op == '!=' and other_param['value'] == value \
+                    or op == '>' and other_param['value'] <= value \
+                    or op == '>=' and other_param['value'] < value \
+                    or op == '<' and other_param['value'] >= value \
+                    or op == '<=' and other_param['value'] > value:
+                return False
+        return True
+
     def add_visibility_condition(self, param_name: str, condition: Union[str, Tuple[str, str, Any]]):
         """
         condition currently can only be a simplest
