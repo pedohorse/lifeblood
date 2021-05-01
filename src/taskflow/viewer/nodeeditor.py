@@ -352,7 +352,7 @@ class Node(NetworkItemWithUI):
                     if not self.__nodeui.is_parameter_visible(param_name):
                         continue
 
-                    imgui.push_item_width(imgui.get_window_width() * param_dict.get('widthmult', 2.0/3))
+                    imgui.push_item_width(imgui.get_window_width() * self.__nodeui.parameter_line_portion(param_name) * 2/3)
 
                     if 'menu_items' in param_dict:
                         menu_items: dict = param_dict['menu_items']
@@ -365,18 +365,21 @@ class Node(NetworkItemWithUI):
                         menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
                         menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
                         changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[param_dict['value']]], menu_order)
-                        param_dict['value'] = menu_items[menu_order[val]]
+                        if changed:
+                            self.__nodeui.set_parameter(param_name, menu_items[menu_order[val]])
                     else:
                         if param_type == NodeParameterType.BOOL:
-                            changed, param_dict['value'] = imgui.checkbox(param_label, param_dict['value'])
+                            changed, newval = imgui.checkbox(param_label, param_dict['value'])
                         elif param_type == NodeParameterType.INT:
-                            changed, param_dict['value'] = imgui.slider_int(param_label, param_dict['value'], 0, 10)
+                            changed, newval = imgui.slider_int(param_label, param_dict['value'], 0, 10)
                         elif param_type == NodeParameterType.FLOAT:
-                            changed, param_dict['value'] = imgui.slider_float(param_label, param_dict['value'], 0, 10)
+                            changed, newval = imgui.slider_float(param_label, param_dict['value'], 0, 10)
                         elif param_type == NodeParameterType.STRING:
-                            changed, param_dict['value'] = imgui.input_text(param_label, param_dict['value'], 256)
+                            changed, newval = imgui.input_text(param_label, param_dict['value'], 256)
                         else:
                             raise NotImplementedError()
+                        if changed:
+                            self.__nodeui.set_parameter(param_name, newval)
                     imgui.pop_item_width()
                     if changed:
                         self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)

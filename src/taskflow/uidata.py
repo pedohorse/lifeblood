@@ -98,7 +98,7 @@ class NodeUi:
             param_label = param_name
 
         # analyze parm line and adjust width
-        widthmult = None
+        cnt_in_line = None
         if len(self.__parameter_order) > 0 and self.__parameters[self.__parameter_order[-1]].get('is_ui_modifier', False) \
                                            and self.__parameters[self.__parameter_order[-1]].get('type', None) == 'sameline':
             psep = False
@@ -112,26 +112,59 @@ class NodeUi:
                 else:
                     pcnt += 1
                     pparams.append(self.__parameters[pname])
-            widthmult = 1.0 / pcnt
+            cnt_in_line = pcnt
             for param in pparams:
-                param['widthmult'] = widthmult
+                param['_inline_cnt'] = cnt_in_line
+                if '_inline_ord' not in param:
+                    param['_inline_ord'] = 0
         #
         self.__parameter_order.append(param_name)
         self.__parameters[param_name] = {'label': param_label, 'type': param_type, 'value': param_val, 'is_ui_modifier': False}
-        if widthmult:
-            self.__parameters[param_name]['widthmult'] = widthmult
+        if cnt_in_line:
+            self.__parameters[param_name]['_inline_cnt'] = cnt_in_line
+            self.__parameters[param_name]['_inline_ord'] = cnt_in_line - 1
+        self.__reset_all_cache()
         self.__ui_callback([param_name])
+
+    def parameter_line_portion(self, param_name: str) -> float:
+        param = self.__parameters[param_name]
+        if '_inline_cnt' not in param:
+            return 1.0
+        assert '_inline_ord' in param
+        if param.get('__width_cache', None) is not None:
+            return param['__width_cache']
+
+        idx = self.__parameter_order.index(param_name)
+        line_ord = param['_inline_ord']
+        line_cnt = param['_inline_cnt']
+
+        viz_cnt_in_line = 0
+        for i in range(idx - 2*line_ord, idx + 2*(-line_ord + line_cnt) -1):  # 2* cuz there are sameline modifier between each param in line
+            if self.__parameters[self.__parameter_order[i]].get('is_ui_modifier', False):
+                continue
+            if self.is_parameter_visible(self.__parameter_order[i]):
+                viz_cnt_in_line += 1
+        param['__width_cache'] = 1 / viz_cnt_in_line
+        return param['__width_cache']
+
+    def __reset_all_cache(self):
+        for param_name, param in self.__parameters.items():
+            for item in param:
+                if item.startswith('__'):
+                    param[item] = None
 
     def next_parameter_same_line(self):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        param_name = self._make_unique_parm_name('__next_same_line')
+        param_name = self._make_unique_parm_name('__next_same_line')  # TODO: get rid of this modifier - it only makes shit more complicated
         self.__parameter_order.append(param_name)
         self.__parameters[param_name] = {'label': None, 'type': 'sameline', 'value': None, 'is_ui_modifier': True}
         self.__ui_callback([param_name])
 
     def is_parameter_visible(self, param_name: str):
         param_dict = self.__parameters[param_name]
+        if param_dict.get('__vis_cache', None) is not None:
+            return param_dict['__vis_cache']
         if '_vis_when' in param_dict:
             other_param_name, op, value = param_dict['_vis_when']
             other_param = self.__parameters.get(other_param_name, None)
@@ -141,7 +174,9 @@ class NodeUi:
                     or op == '>=' and other_param['value'] < value \
                     or op == '<' and other_param['value'] >= value \
                     or op == '<=' and other_param['value'] > value:
+                param_dict['__vis_cache'] = False
                 return False
+        param_dict['__vis_cache'] = not param_dict.get('is_ui_modifier', False)
         return True
 
     def add_visibility_condition(self, param_name: str, condition: Union[str, Tuple[str, str, Any]]):
@@ -174,6 +209,7 @@ class NodeUi:
             self.__parameters[param_name]['_vis_when'] = (oparam, op, value)
         else:
             self.__parameters[param_name]['_vis_when'] = condition
+        self.__reset_all_cache()
 
     def add_menu_to_parameter(self, param_name: str, menu_items_pairs):
         """
@@ -257,6 +293,7 @@ class NodeUi:
         else:
             raise NotImplementedError()
         self.__parameters[param_name]['value'] = param_value
+        self.__reset_all_cache()
         self.__ui_callback([param_name])
 
     def parameters_items(self):
