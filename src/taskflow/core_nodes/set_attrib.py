@@ -34,6 +34,7 @@ class SetAttributes(BaseNode):
                                               ('string', NodeParameterType.STRING.value)))
             ui.next_parameter_same_line()
             ui.add_parameter('value', 'val', NodeParameterType.STRING, '')
+            ui.add_visibility_condition('value', f'type=={NodeParameterType.STRING.value}')
 
     def process_task(self, task_dict) -> ProcessingResult:
         return ProcessingResult()
