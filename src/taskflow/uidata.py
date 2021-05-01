@@ -2,8 +2,9 @@ import asyncio
 import pickle
 from copy import copy
 from .enums import NodeParameterType
+import re
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -128,6 +129,37 @@ class NodeUi:
         self.__parameter_order.append(param_name)
         self.__parameters[param_name] = {'label': None, 'type': 'sameline', 'value': None, 'is_ui_modifier': True}
         self.__ui_callback([param_name])
+
+    def add_visibility_condition(self, param_name: str, condition: Union[str, Tuple[str, str, Any]]):
+        """
+        condition currently can only be a simplest
+        :param param_name:
+        :param condition:
+        :return:
+        """
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if param_name not in self.__parameters:
+            raise RuntimeError(f'parameter "{param_name}" does not exists on the node')
+        if isinstance(condition, str):
+            match = re.match(r'(\w+)(==|!=|>=|<=|<|>)(.*)', condition)
+            if match is None:
+                raise RuntimeError(f'bad visibility condition: {condition}')
+            oparam, op, value = tuple(match.groups())
+            if oparam not in self.__parameters:
+                raise RuntimeError('parameters in visibility condition must already be added to allow type checking')
+            otype = self.__parameters[oparam]['type']
+            if otype == NodeParameterType.INT:
+                value = int(value)
+            elif otype == NodeParameterType.BOOL:
+                value = bool(value)
+            elif otype == NodeParameterType.FLOAT:
+                value = float(value)
+            elif otype != NodeParameterType.STRING:  # for future
+                raise RuntimeError(f'cannot add visibility condition check based on this type of parameters: {otype}')
+            self.__parameters[param_name]['_vis_when'] = (oparam, op, value)
+        else:
+            self.__parameters[param_name]['_vis_when'] = condition
 
     def add_menu_to_parameter(self, param_name: str, menu_items_pairs):
         """
