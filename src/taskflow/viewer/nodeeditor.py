@@ -586,7 +586,6 @@ class NodeConnection(NetworkItem):
         self.__inname = input_name
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-        logger.debug('proper beep', self)
         line = self.get_painter_path(close_path=True)
         pick_radius = 10
         circle = QPainterPath()
