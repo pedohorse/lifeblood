@@ -43,7 +43,22 @@ class SetAttributes(BaseNode):
             ui.add_visibility_condition('bvalue', f'type=={NodeParameterType.BOOL.value}')
 
     def process_task(self, task_dict) -> ProcessingResult:
-        return ProcessingResult()
+        ui = self.get_ui()
+        attr_name = ui.parameter_value('name')
+        attr_type = ui.parameter_value('type')
+        if attr_type == NodeParameterType.INT.value:
+            attr_val = ui.parameter_value('ivalue')
+        elif attr_type == NodeParameterType.BOOL.value:
+            attr_val = ui.parameter_value('bvalue')
+        elif attr_type == NodeParameterType.FLOAT.value:
+            attr_val = ui.parameter_value('fvalue')
+        elif attr_type == NodeParameterType.STRING.value:
+            attr_val = ui.parameter_value('svalue')
+        else:
+            raise NotImplementedError('unexpected type')
+        res = ProcessingResult()
+        res.set_attribute(attr_name, attr_val)
+        return res
 
     def postprocess_task(self, task_dict) -> ProcessingResult:
         return ProcessingResult()
