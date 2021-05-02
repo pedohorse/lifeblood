@@ -49,15 +49,19 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 if command == b'ping':
                     writer.write(b'p')
                 elif command == b'done':
-                    tasksize = await reader.readexactly(4)
-                    tasksize = struct.unpack('>I', tasksize)[0]
+                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
                     task = await reader.readexactly(tasksize)
-                    task = invocationjob.InvocationJob.deserialize(task)  # TODO: async this
-                    stdout_size = struct.unpack('>I', await reader.readexactly(4))[0]
-                    stdout = (await reader.readexactly(stdout_size)).decode('UTF-8')
-                    stderr_size = struct.unpack('>I', await reader.readexactly(4))[0]
-                    stderr = (await reader.readexactly(stderr_size)).decode('UTF-8')
+                    task = await invocationjob.InvocationJob.deserialize_async(task)
+                    stdout = await read_string()
+                    stderr = await read_string()
                     await self.__scheduler.task_done_reported(task, stdout, stderr)
+                elif command == b'dropped':
+                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    task = await reader.readexactly(tasksize)
+                    task = await invocationjob.InvocationJob.deserialize_async(task)
+                    stdout = await read_string()
+                    stderr = await read_string()
+                    await self.__scheduler.task_cancel_reported(task, stdout, stderr)
                 elif command == b'hello':
                     addrsize = await reader.readexactly(4)
                     addrsize = struct.unpack('>I', addrsize)[0]
@@ -99,6 +103,11 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
 
 
 class SchedulerTaskClient:
+    async def write_string(self, s: str):
+        b = s.encode('UTF-8')
+        self.__writer.write(struct.pack('>Q', len(b)))
+        self.__writer.write(b)
+
     def __init__(self, ip: str, port: int):
         self.__logger = logging.getLogger('worker')
         self.__conn_task = asyncio.open_connection(ip, port)
@@ -122,17 +131,27 @@ class SchedulerTaskClient:
         self.__reader, self.__writer = await self.__conn_task
         self.__writer.write(b'\0\0\0\0')
 
-    async def report_task_done(self, task: invocationjob.InvocationJob,stdout_file: str, stderr_file: str):
+    async def report_task_done(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
-        self.__writer.writelines([b'done\n'])
+        self.__writer.write(b'done\n')
         taskserialized = await task.serialize_async()
-        self.__writer.write(struct.pack('>I', len(taskserialized)))
+        self.__writer.write(struct.pack('>Q', len(taskserialized)))
         self.__writer.write(taskserialized)
         for std_file in (stdout_file, stderr_file):
             async with aiofiles.open(std_file, 'r') as f:
-                filedata = (await f.read()).encode('UTF-8')
-                self.__writer.write(struct.pack('>I', len(filedata)))
-                self.__writer.write(filedata)
+                await self.write_string(await f.read())
+        await self.__writer.drain()
+        # do we need a reply? doesn't seem so
+
+    async def report_task_canceled(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
+        await self._ensure_conn_open()
+        self.__writer.write(b'dropped\n')
+        taskserialized = await task.serialize_async()
+        self.__writer.write(struct.pack('>Q', len(taskserialized)))
+        self.__writer.write(taskserialized)
+        for std_file in (stdout_file, stderr_file):
+            async with aiofiles.open(std_file, 'r') as f:
+                await self.write_string(await f.read())
         await self.__writer.drain()
         # do we need a reply? doesn't seem so
 
