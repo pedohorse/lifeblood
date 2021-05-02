@@ -1538,6 +1538,10 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error('scheduler connection lost')
             self.__conn = None
             return
+        except:
+            logger.exception('problems in network operations')
+            self.__conn = None
+            return
         if len(recvdata) != 8:  # means connection was closed
             logger.error('scheduler connection lost')
             self.__conn = None
@@ -1563,6 +1567,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logmeta = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.log_fetched.emit(task_id, logmeta)
 
@@ -1579,6 +1585,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.task_attribs_fetched.emit(task_id, attribs)
 
@@ -1595,6 +1603,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             alllogs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.log_fetched.emit(task_id, alllogs)
 
@@ -1610,6 +1620,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             nodeui: NodeUi = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.nodeui_fetched.emit(node_id, nodeui)
 
@@ -1639,6 +1651,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 raise NotImplementedError()
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def get_nodetypes(self):
@@ -1656,6 +1670,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             nodetypes = {n.type_name: n for n in metas}
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.nodetypes_fetched.emit(nodetypes)
 
@@ -1671,6 +1687,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             node_id = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
         else:
             self.node_created.emit(node_id, node_type, node_name, pos)
 
@@ -1684,6 +1702,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', node_id))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def set_node_name(self, node_id: int, node_name: str):
@@ -1697,6 +1717,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             _ = self._recv_string()
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def change_node_connection(self, connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
@@ -1713,6 +1735,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self._send_string(inname)
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def add_node_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str):
@@ -1727,6 +1751,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             new_id = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def remove_node_connection(self, connection_id: int):
@@ -1738,6 +1764,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', connection_id))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     # task control things
     @Slot()
@@ -1755,6 +1783,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), task_ids[1:]))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def set_task_state(self, task_ids: List[int], state: TaskState):
@@ -1771,6 +1801,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), task_ids[1:]))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
     @Slot()
     def cancel_task(self, task_id: int):
@@ -1782,6 +1814,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', task_id))
         except ConnectionError as e:
             logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
 
 
 
