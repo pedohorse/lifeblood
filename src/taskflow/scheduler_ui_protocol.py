@@ -151,6 +151,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
                     await self.__scheduler.set_task_paused(task_ids, bool(paused))
+                elif command == b'tcancel':  # cancel task invocation
+                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    await self.__scheduler.cancel_invocation_for_task(task_id)
                 elif command == b'tcstate':  # change task state
                     task_ids = [-1]
                     numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
@@ -172,5 +175,5 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         except ConnectionError as e:
             self.__logger.error('connection error. UI disconnected %s', e)
         except Exception as e:
-            self.__logger.error('unknown error. UI disconnected %s', e)
+            self.__logger.exception('unknown error. UI disconnected %s', e)
             raise
