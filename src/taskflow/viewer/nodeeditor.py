@@ -1840,6 +1840,8 @@ class NodeEditor(QGraphicsView):
             menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
         state_submenu = menu.addMenu('force state')
         for state in TaskState:
+            if state in (TaskState.GENERATING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
+                continue
             state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
 
         pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
