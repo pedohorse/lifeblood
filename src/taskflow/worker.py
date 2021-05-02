@@ -158,36 +158,43 @@ class Worker:
                     await stderr.flush()
 
                 await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task initialized\n').encode('UTF-8'))
-                rout_task = asyncio.create_task(self.__running_process.stdout.readline())
-                rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
-                done_task = asyncio.create_task(self.__running_process.wait())
-                flush_task = asyncio.create_task(_flush())
-                tasks_to_wait = {rout_task, rerr_task, done_task, flush_task}
-                while len(tasks_to_wait) != 0:
-                    done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
-                    if rout_task in done:
-                        str = rout_task.result()
-                        progress = self.__running_task.match_stdout_progress(str)
-                        if progress is not None:
-                            self.__running_task_progress = progress
-                        if str != b'':  # this can only happen at eof
-                            await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str)
-                            rout_task = asyncio.create_task(self.__running_process.stdout.readline())
-                            tasks_to_wait.add(rout_task)
-                    if rerr_task in done:
-                        str = rerr_task.result()
-                        progress = self.__running_task.match_stderr_progress(str)
-                        if progress is not None:
-                            self.__running_task_progress = progress
-                        if str != b'':  # this can only happen at eof
-                            await asyncio.gather(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str),
-                                                 stdout.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
-                            rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
-                            tasks_to_wait.add(rerr_task)
-                    if flush_task in done and not done_task.done():
-                        flush_task = asyncio.create_task(_flush())
-                        tasks_to_wait.add(flush_task)
-                await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task finished\n').encode('UTF-8'))
+                tasks_to_wait = {}
+                try:
+                    rout_task = asyncio.create_task(self.__running_process.stdout.readline())
+                    rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
+                    done_task = asyncio.create_task(self.__running_process.wait())
+                    flush_task = asyncio.create_task(_flush())
+                    tasks_to_wait = {rout_task, rerr_task, done_task, flush_task}
+                    while len(tasks_to_wait) != 0:
+                        done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
+                        if rout_task in done:
+                            str = rout_task.result()
+                            progress = self.__running_task.match_stdout_progress(str)
+                            if progress is not None:
+                                self.__running_task_progress = progress
+                            if str != b'':  # this can only happen at eof
+                                await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str)
+                                rout_task = asyncio.create_task(self.__running_process.stdout.readline())
+                                tasks_to_wait.add(rout_task)
+                        if rerr_task in done:
+                            str = rerr_task.result()
+                            progress = self.__running_task.match_stderr_progress(str)
+                            if progress is not None:
+                                self.__running_task_progress = progress
+                            if str != b'':  # this can only happen at eof
+                                await asyncio.gather(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str),
+                                                     stdout.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
+                                rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
+                                tasks_to_wait.add(rerr_task)
+                        if flush_task in done and not done_task.done():
+                            flush_task = asyncio.create_task(_flush())
+                            tasks_to_wait.add(flush_task)
+                    await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task finished\n').encode('UTF-8'))
+                except asyncio.CancelledError:
+                    self.__logger.debug('task awaiter was cancelled')
+                    for task in tasks_to_wait:
+                        task.cancel()
+                    raise
 
         await self.__running_process.wait()
         await self.task_finished()
@@ -195,9 +202,10 @@ class Worker:
     def is_task_running(self) -> bool:
         return self.__running_task is not None
 
-    async def stop_task(self):
+    async def cancel_task(self):
         if self.__running_process is None:
             return
+        self.__logger.info('cancelling running task')
         self.__running_awaiter.cancel()
         self.__running_awaiter = None
         puproc = psutil.Process(self.__running_process.pid)
@@ -223,6 +231,21 @@ class Worker:
                     pass
 
         await self.__running_process.wait()
+
+        # report to scheduler that cancel was a success
+        self.__logger.info(f'reporting cancel back to {self.__where_to_report}')
+        try:
+            ip, port = self.__where_to_report.split(':', 1)
+            async with SchedulerTaskClient(ip, int(port)) as client:
+                await client.report_task_canceled(self.__running_task,
+                                                  self.get_log_filepath('output', self.__running_task.invocation_id()),
+                                                  self.get_log_filepath('error', self.__running_task.invocation_id()))
+        except Exception as e:
+            self.__logger.exception(f'could not report cuz of {e}')
+        except:
+            self.__logger.exception('could not report cuz i have no idea')
+        # end reporting
+
         self.__running_task = None
         self.__running_process = None
         self.__where_to_report = None
@@ -237,7 +260,7 @@ class Worker:
         :return:
         """
         self.__logger.info('task finished')
-        self.__logger.info(f'reporting back to {self.__where_to_report}')
+        self.__logger.info(f'reporting done back to {self.__where_to_report}')
         self.__running_task.finish(await self.__running_process.wait())
         try:
             ip, port = self.__where_to_report.split(':', 1)
@@ -276,7 +299,7 @@ class Worker:
                 self.__logger.info(f'server ping missed. total misses: {self.__ping_missed}')
             if self.__ping_missed >= self.__ping_missed_threshold:
                 # assume scheruler down, drop everything and look for another scheruler
-                await self.stop_task()
+                await self.cancel_task()
                 self.__server.close()
                 return
 
