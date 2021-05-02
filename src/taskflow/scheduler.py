@@ -562,10 +562,22 @@ class Scheduler:
 
     #
     # callbacks
+
+    #
+    # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
+            # sanity check
+            async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
+                invoc = await cur.fetchone()
+                if invoc is None:
+                    self.__logger.error('reported task has non existing invocation id %d' % task.invocation_id())
+                    return
+                if invoc['state'] != InvocationState.IN_PROGRESS.value:
+                    self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
+                    return
             await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ? WHERE "id" = ?',
                               (InvocationState.FINISHED.value, task.exit_code(), task.invocation_id()))
             async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
@@ -590,6 +602,35 @@ class Scheduler:
             await con.commit()
 
     #
+    # worker reports canceled task
+    async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
+        self.__logger.debug('task cancelled reported %s', repr(task))
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            # sanity check
+            async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
+                invoc = await cur.fetchone()
+                if invoc is None:
+                    self.__logger.error('reported task has non existing invocation id %d' % task.invocation_id())
+                    return
+                if invoc['state'] != InvocationState.IN_PROGRESS.value:
+                    self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
+                    return
+            await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
+                              (InvocationState.FINISHED.value, task.invocation_id()))
+            async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
+                invocation = await incur.fetchone()
+            assert invocation is not None
+
+            await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
+                              (WorkerState.IDLE.value, invocation['worker_id']))
+            await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
+                              (stdout, stderr, task.invocation_id()))
+            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                              (TaskState.WAITING.value, invocation['task_id']))
+            await con.commit()
+
+    #
     # add new worker to db
     async def add_worker(self, addr: str):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path) as con:
@@ -611,14 +652,75 @@ class Scheduler:
             await con.commit()
 
     #
+    # cancel invocation
+    async def cancel_invocation(self, invocation_id: str):
+        self.__logger.debug(f'canceling invocation {invocation_id}')
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT * FROM "invocations" WHERE "id" = ?', (invocation_id,)) as cur:
+                invoc = await cur.fetchone()
+            if invoc is None or invoc['state'] != InvocationState.IN_PROGRESS.value:
+                return
+            async with con.execute('SELECT "last_address" FROM "workers" WHERE "id" = ?', (invoc['worker_id'],)) as cur:
+                worker = await cur.fetchone()
+        if worker is None:
+            self.__logger.error('inconsistent worker ids? how?')
+            return
+        ip, port = worker['last_address'].rsplit(':', 1)
+
+        # the logic is:
+        # - we send the worker a signal to cancel invocation
+        # - later worker sends task_cancel_reported, and we are happy
+        # - but worker might be overloaded, broken or whatever and may never send it. and it can even finish task and send task_done_reported, witch we need to treat
+        async with WorkerTaskClient(ip, int(port)) as client:
+            await client.cancel_task()
+
+        # oh no, we don't do that, we wait for worker to report task canceled.  await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?', (InvocationState.FINISHED.value, invocation_id))
+
+    #
+    #
+    async def cancel_invocation_for_task(self, task_id: int):
+        self.__logger.debug(f'canceling invocation for task {task_id}')
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id" FROM "invocations" WHERE "task_id" = ? AND state = ?', (task_id, InvocationState.IN_PROGRESS.value)) as cur:
+                invoc = await cur.fetchone()
+        if invoc is None:
+            return
+        return await self.cancel_invocation(invoc['id'])
+
+    #
     # force change task state
     async def force_change_task_state(self, task_ids: Union[int, Iterable[int]], state: TaskState):
+        """
+        forces task into given state.
+        obviously a task cannot be forced into certain states, like IN_PROGRESS, GENERATING, POST_GENERATING
+        :param task_ids:
+        :param state:
+        :return:
+        """
+        if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
+            self.__logger.error(f'cannot force task {task_ids} into state {state}')
+            return
         if isinstance(task_ids, int):
             task_ids = [task_ids]
         query = 'UPDATE "tasks" SET "state" = %d WHERE "id" = ?' % state.value
         async with aiosqlite.connect(self.db_path) as con:
-            await con.executemany(query, ((x,) for x in task_ids))
-            await con.commit()
+            for task_id in task_ids:
+                await con.execute('BEGIN')
+                async with con.execute('SELECT "state" FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+                    state = await cur.fetchone()
+                    if state is None:
+                        continue
+                    state = TaskState(state[0])
+                if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
+                    self.__logger.warning(f'forcing task out of state {state} is not currently implemented')
+                    await con.rollback()
+                    return
+
+                await con.execute(query, (task_id,))
+                #await con.executemany(query, ((x,) for x in task_ids))
+                await con.commit()
 
     #
     # change task's paused state
