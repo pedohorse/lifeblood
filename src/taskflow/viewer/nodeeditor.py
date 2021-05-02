@@ -1096,6 +1096,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_task_paused = Signal(list, bool)
+    _signal_cancel_task = Signal(int)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -1139,6 +1140,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
         self._signal_set_task_paused.connect(self.__ui_connection_worker.set_task_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
+        self._signal_cancel_task.connect(self.__ui_connection_worker.cancel_task)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -1185,6 +1187,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def set_task_paused(self, task_ids: List[int], paused: bool):
         self._signal_set_task_paused.emit(task_ids, paused)
+
+    def request_task_cancel(self, task_id: int):
+        self._signal_cancel_task.emit(task_id)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -1767,6 +1772,18 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except ConnectionError as e:
             logger.error(f'failed {e}')
 
+    @Slot()
+    def cancel_task(self, task_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tcancel\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+
+
 
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, parent=None):
@@ -1819,6 +1836,8 @@ class NodeEditor(QGraphicsView):
         else:
             menu.addAction('pause').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_paused([x], True))
 
+        if task.state() == TaskState.IN_PROGRESS:
+            menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
         state_submenu = menu.addMenu('force state')
         for state in TaskState:
             state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
