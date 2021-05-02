@@ -97,12 +97,12 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                         self.__logger.exception('no, cuz %s', e)
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                 #
-                # command drop current task
+                # command drop/cancel current task
                 elif command == b'drop':  # scheduler wants us to drop current task
                     try:
-                        await self.__worker.stop_task()
+                        await self.__worker.cancel_task()
                     except:
-                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
+                        self.__logger.exception('task drop failed')
                 #
                 # command check worker status
                 elif command == b'status':  # scheduler wants to know the status of current task
@@ -201,6 +201,11 @@ class WorkerTaskClient:
         await self.__writer.drain()
         reply = TaskScheduleStatus(ord(await self.__reader.readexactly(1)))
         return reply
+
+    async def cancel_task(self):
+        await self._ensure_conn_open()
+        self.__writer.write(b'drop\n')
+        await self.__writer.drain()
 
     async def status(self):
         raise NotImplementedError()
