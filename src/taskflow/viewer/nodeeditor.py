@@ -693,14 +693,14 @@ class Task(NetworkItemWithUI):
         self.__requested_invocs_while_selected = set()
 
         self.__size = 16
-        self.__line_width = 4
+        self.__line_width = 1.5
         self.__node: Optional[Node] = None
 
         self.__animation_group: Optional[QSequentialAnimationGroup] = None
         self.__final_pos = None
 
-        self.__borderpen = [QPen(QColor(96, 96, 96, 255)),
-                            QPen(QColor(192, 192, 192, 255))]
+        self.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
+                            QPen(QColor(192, 192, 192, 255), self.__line_width)]
         self.__brushes = {TaskState.WAITING: QBrush(QColor(64, 64, 64, 192)),
                           TaskState.GENERATING: QBrush(QColor(32, 128, 128, 192)),
                           TaskState.READY:  QBrush(QColor(32, 64, 32, 192)),
@@ -711,6 +711,7 @@ class Task(NetworkItemWithUI):
                           TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
                           TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
                           TaskState.DEAD: QBrush(QColor(16, 19, 22, 192))}
+        self.__paused_pen = QPen(QColor(64, 64, 128, 192), self.__line_width*3)
 
     def boundingRect(self) -> QRectF:
         lw = self.__line_width
@@ -723,6 +724,20 @@ class Task(NetworkItemWithUI):
                         self.__size, self.__size)
         return path
 
+    def _get_selectshapepath(self) -> QPainterPath:
+        path = QPainterPath()
+        lw = self.__line_width
+        path.addEllipse(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw),
+                        self.__size + lw, self.__size + lw)
+        return path
+
+    def _get_pausedpath(self) -> QPainterPath:
+        path = QPainterPath()
+        lw = self.__line_width
+        path.addEllipse(-0.5 * self.__size + 1.5*lw, -0.5 * self.__size + 1.5*lw,
+                        self.__size - 3*lw, self.__size - 3*lw)
+        return path
+
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         path = self._get_mainpath()
         brush = self.__brushes[self.__state]
@@ -733,6 +748,9 @@ class Task(NetworkItemWithUI):
                           90, -3.6*self.__progress)
             arcpath.closeSubpath()
             painter.fillPath(arcpath, self.__brushes[TaskState.DONE])
+        if self.__paused:
+            painter.setPen(self.__paused_pen)
+            painter.drawPath(self._get_pausedpath())
         painter.setPen(self.__borderpen[int(self.isSelected())])
         painter.drawPath(path)
 
@@ -902,7 +920,7 @@ class Task(NetworkItemWithUI):
         return super(Task, self).itemChange(change, value)  # TODO: maybe move this to scene's remove item?
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._get_mainpath().contains(event.pos()):
+        if not self._get_selectshapepath().contains(event.pos()):
             event.ignore()
             return
 
