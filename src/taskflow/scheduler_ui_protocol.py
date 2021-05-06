@@ -154,6 +154,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'tcancel':  # cancel task invocation
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.cancel_invocation_for_task(task_id)
+                elif command == b'tsetnode':  # set task node
+                    task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
+                    await self.__scheduler.force_set_node_task(task_id, node_id)
                 elif command == b'tcstate':  # change task state
                     task_ids = [-1]
                     numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
