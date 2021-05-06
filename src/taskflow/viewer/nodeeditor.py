@@ -506,7 +506,7 @@ class Node(NetworkItemWithUI):
 class NodeConnection(NetworkItem):
     def __init__(self, id: int, nodeout: Node, nodein: Node, outname: str, inname: str):
         super(NodeConnection, self).__init__(id)
-        self.setFlags(QGraphicsItem.ItemIsSelectable)
+        self.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
         self.__nodeout = nodeout
         self.__nodein = nodein
         self.__outname = outname
@@ -682,6 +682,7 @@ class Task(NetworkItemWithUI):
     def __init__(self, id, name: str, groups=None):
         super(Task, self).__init__(id)
         self.setFlags(QGraphicsItem.ItemIsSelectable)
+        self.setZValue(1)
         self.__name = name
         self.__state = TaskState.WAITING
         self.__paused = False
@@ -695,6 +696,9 @@ class Task(NetworkItemWithUI):
         self.__size = 16
         self.__line_width = 1.5
         self.__node: Optional[Node] = None
+
+        self.__ui_interactor = None
+        self.__press_pos = None
 
         self.__animation_group: Optional[QSequentialAnimationGroup] = None
         self.__final_pos = None
@@ -923,12 +927,38 @@ class Task(NetworkItemWithUI):
         if not self._get_selectshapepath().contains(event.pos()):
             event.ignore()
             return
+        super(Task, self).mousePressEvent(event)
+        self.__press_pos = event.scenePos()
 
         if event.button() == Qt.RightButton:
             # context menu time
             view = event.widget().parent()
             assert isinstance(view, NodeEditor)
             view.show_task_menu(self)
+
+    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.__ui_interactor is None:
+            movedist = event.scenePos() - self.__press_pos
+            if QPointF.dotProduct(movedist, movedist) > 2500:  # TODO: config this rad squared
+                self.__ui_interactor = TaskPreview(self)
+                self.scene().addItem(self.__ui_interactor)
+        if self.__ui_interactor:
+            self.__ui_interactor.mouseMoveEvent(event)
+        else:
+            super(Task, self).mouseMoveEvent(event)
+        
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.__ui_interactor:
+            self.__ui_interactor.mouseReleaseEvent(event)
+            nodes = [x for x in self.scene().items(event.scenePos(), Qt.IntersectsItemBoundingRect) if isinstance(x, Node)]
+            if len(nodes) > 0:
+                logger.debug(f'moving item {self} to node {nodes[0]}')
+                self.scene().request_set_task_node(self.get_id(), nodes[0].get_id())
+            call_later(self.scene().removeItem, self.__ui_interactor)
+            self.__ui_interactor = None
+
+        else:
+            super(Task, self).mouseReleaseEvent(event)
 
     #
     # interface
@@ -1003,6 +1033,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         assert nodeout is None and nodein is not None or \
                nodeout is not None and nodein is None
         self.setFlags(QGraphicsItem.ItemSendsGeometryChanges)
+        self.setZValue(10)
         self.__nodeout = nodeout
         self.__nodein = nodein
         self.__outname = outname
@@ -1085,6 +1116,45 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         event.accept()
 
 
+class TaskPreview(QGraphicsItem):
+    def __init__(self, task: Task):
+        super(TaskPreview, self).__init__()
+        self.setZValue(10)
+        self.__size = 16
+        self.__line_width = 1.5
+        self.__finished_callback = None
+        self.setZValue(10)
+
+        self.__borderpen = QPen(QColor(192, 192, 192, 255), self.__line_width)
+        self.__brush = QBrush(QColor(64, 64, 64, 128))
+
+    def boundingRect(self) -> QRectF:
+        lw = self.__line_width
+        return QRectF(QPointF(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw)),
+                      QSizeF(self.__size + lw, self.__size + lw))
+
+    def _get_mainpath(self) -> QPainterPath:
+        path = QPainterPath()
+        path.addEllipse(-0.5 * self.__size, -0.5 * self.__size,
+                        self.__size, self.__size)
+        return path
+
+    def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        path = self._get_mainpath()
+        brush = self.__brush
+        painter.fillPath(path, brush)
+        painter.setPen(self.__borderpen)
+        painter.drawPath(path)
+
+    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self.setPos(event.scenePos())
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+        if self.__finished_callback is not None:
+            self.__finished_callback(event.scenePos())  # not used for now not to overcomplicate
+        event.accept()
+
+
 class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
     def __init__(self, *args, **kwargs):
         super(QOpenGLWidgetWithSomeShit, self).__init__(*args, **kwargs)
@@ -1114,6 +1184,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_task_paused = Signal(list, bool)
+    _signal_set_task_node_requested = Signal(int, int)
     _signal_cancel_task = Signal(int)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
@@ -1158,6 +1229,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
         self._signal_set_task_paused.connect(self.__ui_connection_worker.set_task_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
+        self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_cancel_task.connect(self.__ui_connection_worker.cancel_task)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
@@ -1208,6 +1280,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task.emit(task_id)
+
+    def request_set_task_node(self, task_id: int, node_id:int):
+        self._signal_set_task_node_requested.emit(task_id, node_id)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -1799,6 +1874,19 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids[0]))
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), task_ids[1:]))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def set_task_node(self, task_id: int, node_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tsetnode\n')
+            self.__conn.sendall(struct.pack('>QQ', task_id, node_id))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except:
