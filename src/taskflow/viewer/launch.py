@@ -3,16 +3,28 @@ import os
 import sqlite3
 
 from PySide2.QtWidgets import QApplication
-from PySide2.QtCore import QRectF
+from PySide2.QtCore import QRectF, QFile
 
 from .taskflow_viewer import TaskflowViewer
 from .db_misc import sql_init_script
 
 from .. import paths
 
+from . import breeze_resources
+
 
 def main(config_path=None):
     qapp = QApplication(sys.argv)
+
+    # set stylesheet
+    ssfile = QFile(":/dark.qss")
+    ssfile.open(QFile.ReadOnly | QFile.Text)
+    try:
+        stylesheet = str(ssfile.readAll(), 'UTF-8')
+    finally:
+        ssfile.close()
+    qapp.setStyleSheet(stylesheet)
+    #
 
     if config_path is None:
         config_path = paths.config_path('node_viewer.db', 'viewer')
