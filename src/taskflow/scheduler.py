@@ -690,6 +690,19 @@ class Scheduler:
         return await self.cancel_invocation(invoc['id'])
 
     #
+    #
+    async def force_set_node_task(self, task_id: int, node_id: int):
+        self.__logger.debug(f'forcing task {task_id} to node {node_id}')
+        try:
+            async with aiosqlite.connect(self.db_path) as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                await con.execute('UPDATE "tasks" SET "node_id" = ? WHERE "id" = ?', (node_id, task_id))
+                await con.commit()
+        except aiosqlite.IntegrityError:
+            self.__logger.error('could not remove node connection because of database integrity check')
+
+    #
     # force change task state
     async def force_change_task_state(self, task_ids: Union[int, Iterable[int]], state: TaskState):
         """
