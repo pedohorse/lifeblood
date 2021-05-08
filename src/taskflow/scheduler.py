@@ -462,7 +462,8 @@ class Scheduler:
                                                                  (TaskState.POST_WAITING.value, task_row['id']))
                                 await submit_transaction.commit()
                             else:
-                                task.set_invocation_id(invocation_id)
+                                task._set_invocation_id(invocation_id)
+                                task._set_task_attributes(json.loads(task_row['attributes']))
                                 # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
                                 self.__logger.debug(f'submitting task to {addr}')
                                 try:

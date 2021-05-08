@@ -1,8 +1,9 @@
 import os
 import re
-from copy import copy
+from copy import copy, deepcopy
 import asyncio
 import pickle
+from types import MappingProxyType
 
 from typing import Optional, Iterable
 
@@ -112,6 +113,8 @@ class InvocationJob:
         self.__good_exitcodes = set(good_exitcodes or [0])
         self.__retry_exitcodes = set(retry_exitcodes or [])
 
+        self.__attrs = {}
+
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
             self.__out_progress_regex = None
@@ -146,6 +149,9 @@ class InvocationJob:
             return
         return float(match.group(1))
 
+    def attributes(self):
+        return MappingProxyType(self.__attrs)
+
     def args(self):
         return self.__args
 
@@ -177,8 +183,13 @@ class InvocationJob:
     async def serialize_async(self) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
 
-    def set_invocation_id(self, invocation_id):
+    #
+    # methods for scheduler
+    def _set_invocation_id(self, invocation_id):
         self.__invocation_id = invocation_id
+
+    def _set_task_attributes(self, attr_dict):
+        self.__attrs = deepcopy(attr_dict)
 
     def __repr__(self):
         return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
