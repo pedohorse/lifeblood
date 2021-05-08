@@ -126,6 +126,9 @@ class Worker:
         env.prepend('PYTHONPATH', self.__rt_module_dir)
         env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
         env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
+        for aname, aval in task.attributes().items():
+            env['TFATTR_%s' % aname] = str(aval)
+        env['TFATTRS_JSON'] = json.dumps(task.attributes()).encode('UTF-8')
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
