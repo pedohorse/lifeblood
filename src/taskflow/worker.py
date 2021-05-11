@@ -128,7 +128,7 @@ class Worker:
         env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
         for aname, aval in task.attributes().items():
             env['TFATTR_%s' % aname] = str(aval)
-        env['TFATTRS_JSON'] = json.dumps(task.attributes()).encode('UTF-8')
+        env['TFATTRS_JSON'] = json.dumps(dict(task.attributes())).encode('UTF-8')
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
@@ -296,6 +296,10 @@ class Worker:
                 async with SchedulerTaskClient(*self.__scheduler_addr) as client:
                     result = await client.ping()
             except ConnectionRefusedError as e:
+                self.__logger.error('scheduler ping connection was refused')
+                result = b''
+            except ConnectionResetError as e:
+                self.__logger.error('scheduler ping connection was reset')
                 result = b''
             if result == b'':  # this means EOF
                 self.__ping_missed += 1
