@@ -39,9 +39,9 @@ class HipIfdGenerator(BaseNode):
         :return:
         """
         attrs = self._get_task_attributes(task_dict)
-        if any(x not in attrs for x in ('hipfile', 'frames')):
-            return ProcessingResult()
-        hippath = attrs['hipfile']
+        if any(x not in attrs for x in ('file', 'frames')):
+            return ProcessingResult()  # TODO: throw error
+        hippath = attrs['file']
         if self.param_value('override') and 'hipdriver' in attrs:
             driverpath = attrs['hipdriver']
         else:
