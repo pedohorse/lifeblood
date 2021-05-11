@@ -3,6 +3,7 @@ from taskflow.basenode import BaseNode
 from taskflow.enums import NodeParameterType
 from taskflow.nodethings import ProcessingResult, TaskSpawn
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
+from taskflow.names import match
 
 from typing import Iterable
 
@@ -27,6 +28,7 @@ class HipDriverRenderer(BaseNode):
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, '')
             ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
+            ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '*')
 
     def process_task(self, task_dict) -> ProcessingResult:
         """
@@ -38,19 +40,24 @@ class HipDriverRenderer(BaseNode):
         :return:
         """
         attrs = self._get_task_attributes(task_dict)
-        if any(x not in attrs for x in ('hipfile', 'frames')):
-            return ProcessingResult()
-        hippath = attrs['hipfile']
+        if any(x not in attrs for x in ('file', 'frames')):
+            return ProcessingResult()  # TODO:  better throw error
+        hippath = attrs['file']
         if self.param_value('override') and 'hipdriver' in attrs:
             driverpath = attrs['hipdriver']
         else:
             driverpath = self.param_value('driver path')
         frames = attrs['frames']
+        matching_attrnames = match(self.param_value('attrs'), attrs.keys())
+        attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
 
         env = InvocationEnvironment()
 
         spawnlines = \
-            f"    kwargs = {{'frames':[frame], 'hipfile':'{hippath}'}}\n" \
+            f"    kwargs = {{'frames':[frame]}}\n" \
+            f"    for attr, val in {repr(attr_to_trans)}:\n" \
+            f"        kwargs[attr] = val\n" \
+            f"    kwargs['hipfile'] = {repr(hippath)}\n" \
             f"    if node.parm('filename'):\n" \
             f"        kwargs['file'] = node.evalParm('filename')\n" \
             f"    if node.parm('sopoutput'):\n" \
