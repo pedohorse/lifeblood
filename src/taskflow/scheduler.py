@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+from datetime import datetime
 import json
 import itertools
 from enum import Enum
@@ -817,8 +818,8 @@ class Scheduler:
                             all_tasks[task['id']]['groups'].update(task['groups'])
                         else:
                             all_tasks[task['id']] = task
-            async with con.execute('SELECT DISTINCT "group" FROM task_groups') as cur:
-                all_task_groups = [x['group'] for x in await cur.fetchall()]
+            async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group";') as cur:
+                all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             data = await create_uidata(all_nodes, all_conns, all_tasks, all_task_groups)
         return data
 
@@ -958,8 +959,11 @@ class Scheduler:
                         await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                               zip(itertools.repeat(new_id, len(groups)), groups))
                 else:  # parent_task_id is None
+                    new_group = '{name}#{id:d}'.format(name=newtask.name(), id=new_id)
                     await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
-                                      (new_id, '{name}#{id:d}'.format(name=newtask.name(), id=new_id)))
+                                      (new_id, new_group))
+                    await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
+                                      (new_group, int(datetime.utcnow().timestamp())))
 
                 if newtask.extra_group_names():
                     groups = newtask.extra_group_names()
