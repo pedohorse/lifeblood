@@ -4,7 +4,7 @@ from copy import copy
 from .enums import NodeParameterType
 import re
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -93,10 +93,14 @@ class ParameterHierarchyItem:
         """
         pass
 
-    def children(self) -> Iterable["ParameterHierarchyItem"]:
+    def children(self) -> FrozenSet["ParameterHierarchyItem"]:
         return frozenset(self.__children)
 
     def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        if self.__parent is not None:
+            self.__parent._children_definition_changed([self])
+
+    def _children_appearance_changed(self, children: Iterable["ParameterHierarchyItem"]):
         if self.__parent is not None:
             self.__parent._children_definition_changed([self])
 
@@ -104,12 +108,18 @@ class ParameterHierarchyItem:
         if self.__parent is not None:
             self.__parent._children_value_changed([self])
 
+    def visible(self) -> bool:
+        return False
+
 
 class ParameterHierarchyLeaf(ParameterHierarchyItem):
     def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
         return
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        return
+
+    def _children_appearance_changed(self, children: Iterable["ParameterHierarchyItem"]):
         return
 
     def _child_added(self, child: "ParameterHierarchyItem"):
@@ -127,7 +137,12 @@ class Parameter(ParameterHierarchyLeaf):
         self.__type = param_type
         self.__value = None
         self.set_value(param_val)
-        self.__menu = None
+        self.__menu_items = None
+        self.__menu_items_order = []
+        self.__vis_when = None
+
+        # links
+        self.__params_referencing_me: Set["Parameter"] = set()
 
         # caches
         self.__vis_cache = None
@@ -156,75 +171,82 @@ class Parameter(ParameterHierarchyLeaf):
         else:
             raise NotImplementedError()
         self.__value = param_value
+        for other_param in self.__params_referencing_me:
+            other_param._referencing_param_value_changed(self)
+
         if self.parent() is not None:
             self.parent()._children_value_changed([self])
 
-    def _reset_caches(self):
-        self.__vis_cache = None
+    def _referencing_param_value_changed(self, other_parameter):
+        """
+        when a parameter that we are referencing changes - it will report here
+        :param other_parameter:
+        """
+        if self.__vis_when is not None:
+            self.__vis_cache = None
+            if self.parent() is not None and isinstance(self.parent(), ParametersLayoutBase):
+                self.parent()._children_appearance_changed([self])
 
-    def visible(self, param_name: str):
-
+    def visible(self) -> bool:
         if self.__vis_cache is not None:
             return self.__vis_cache
-        if '_vis_when' in param_dict:
-            other_param_name, op, value = param_dict['_vis_when']
-            other_param = self.__parameters.get(other_param_name, None)
+        if self.__vis_when is not None:
+            other_param, op, value = self.__vis_when
             if op == '==' and other_param['value'] != value \
                     or op == '!=' and other_param['value'] == value \
                     or op == '>' and other_param['value'] <= value \
                     or op == '>=' and other_param['value'] < value \
                     or op == '<' and other_param['value'] >= value \
                     or op == '<=' and other_param['value'] > value:
-                param_dict['__vis_cache'] = False
+                self.__vis_cache = False
                 return False
-        param_dict['__vis_cache'] = not param_dict.get('is_ui_modifier', False)
+        self.__vis_cache = True
         return True
 
-    def add_visibility_condition(self, param_name: str, condition: Union[str, Tuple[str, str, Any]]):
+    def _add_referencing_me(self, other_parameter: "Parameter"):
+        self.__params_referencing_me.add(other_parameter)
+
+    def _remove_referencing_me(self, other_parameter: "Parameter"):
+        assert other_parameter in self.__params_referencing_me
+        self.__params_referencing_me.remove(other_parameter)
+
+    def add_visibility_condition(self, other_param: "Parameter", condition: str, value):
         """
         condition currently can only be a simplest
-        :param param_name:
+        :param other_param:
         :param condition:
+        :param value:
         :return:
         """
-        if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        if param_name not in self.__parameters:
-            raise RuntimeError(f'parameter "{param_name}" does not exists on the node')
-        if isinstance(condition, str):
-            match = re.match(r'(\w+)(==|!=|>=|<=|<|>)(.*)', condition)
-            if match is None:
-                raise RuntimeError(f'bad visibility condition: {condition}')
-            oparam, op, value = tuple(match.groups())
-            if oparam not in self.__parameters:
-                raise RuntimeError('parameters in visibility condition must already be added to allow type checking')
-            otype = self.__parameters[oparam]['type']
-            if otype == NodeParameterType.INT:
-                value = int(value)
-            elif otype == NodeParameterType.BOOL:
-                value = bool(value)
-            elif otype == NodeParameterType.FLOAT:
-                value = float(value)
-            elif otype != NodeParameterType.STRING:  # for future
-                raise RuntimeError(f'cannot add visibility condition check based on this type of parameters: {otype}')
-            self.__parameters[param_name]['_vis_when'] = (oparam, op, value)
-        else:
-            self.__parameters[param_name]['_vis_when'] = condition
-        self.__reset_all_cache()
 
-    def add_menu_to_parameter(self, param_name: str, menu_items_pairs):
+        assert condition in ('==', '!=', '>=', '<=', '<', '>')
+
+        if self.__vis_when is not None:
+            self.__vis_when[0]._remove_referencing_me(self)
+
+        otype = other_param.type()
+        if otype == NodeParameterType.INT:
+            value = int(value)
+        elif otype == NodeParameterType.BOOL:
+            value = bool(value)
+        elif otype == NodeParameterType.FLOAT:
+            value = float(value)
+        elif otype != NodeParameterType.STRING:  # for future
+            raise RuntimeError(f'cannot add visibility condition check based on this type of parameters: {otype}')
+        self.__vis_when = (other_param, condition, value)
+        other_param._add_referencing_me(self)
+        self.__vis_cache = None
+
+        self.parent()._children_definition_changed([self])
+
+    def add_menu(self, menu_items_pairs):
         """
         adds UI menu to parameter param_name
-        :param param_name: parameter to add menu to. Must already exist on the node
-        :param menu_items: dict of label -> value for parameter menu. type of value MUST match type of parameter param_name. type of label MUST be string
+        :param menu_items_pairs: dict of label -> value for parameter menu. type of value MUST match type of parameter param_name. type of label MUST be string
         :return:
         """
-        if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        if param_name not in self.__parameters:
-            raise RuntimeError(f'parameter "{param_name}" does not exists on the node')
         # sanity check and regroup
-        param_type = self.__parameters[param_name]['type']
+        my_type = self.type()
         menu_items = {}
         menu_order = []
         for key, value in menu_items_pairs:
@@ -232,18 +254,18 @@ class Parameter(ParameterHierarchyLeaf):
             menu_order.append(key)
             if not isinstance(key, str):
                 raise RuntimeError('menu label type must be string')
-            if param_type == NodeParameterType.INT and not isinstance(value, int):
-                raise RuntimeError(f'wrong menu value for int parameter "{param_name}"')
-            elif param_type == NodeParameterType.BOOL and not isinstance(value, bool):
-                raise RuntimeError(f'wrong menu value for bool parameter "{param_name}"')
-            elif param_type == NodeParameterType.FLOAT and not isinstance(value, float):
-                raise RuntimeError(f'wrong menu value for float parameter "{param_name}"')
-            elif param_type == NodeParameterType.STRING and not isinstance(value, str):
-                raise RuntimeError(f'wrong menu value for string parameter "{param_name}"')
+            if my_type == NodeParameterType.INT and not isinstance(value, int):
+                raise RuntimeError(f'wrong menu value for int parameter "{self.name()}"')
+            elif my_type == NodeParameterType.BOOL and not isinstance(value, bool):
+                raise RuntimeError(f'wrong menu value for bool parameter "{self.name()}"')
+            elif my_type == NodeParameterType.FLOAT and not isinstance(value, float):
+                raise RuntimeError(f'wrong menu value for float parameter "{self.name()}"')
+            elif my_type == NodeParameterType.STRING and not isinstance(value, str):
+                raise RuntimeError(f'wrong menu value for string parameter "{self.name()}"')
 
-        self.__parameters[param_name]['menu_items'] = menu_items
-        self.__parameters[param_name]['_menu_items_order'] = menu_order
-        self.__ui_callback([param_name])
+        self.__menu_items = menu_items
+        self.__menu_items_order = menu_order
+        self.parent()._children_definition_changed([self])
 
 
 class ParameterNotFound(RuntimeError):
@@ -283,15 +305,19 @@ class ParametersLayoutBase(ParameterHierarchyItem):
             raise RuntimeError('initializing interface not inside initializing_interface_lock')
         new_layout.set_parent(self)
 
-    def parameters(self, recursive=False) -> Iterable[Parameter]:
+    def items(self, recursive=False) -> Iterable["ParameterHierarchyItem"]:
         for child in self.children():
-            if isinstance(child, Parameter):
-                yield child
-            elif not recursive:
+            yield child
+            if not recursive:
                 continue
             elif isinstance(child, ParametersLayoutBase):
                 for child_param in child.parameters(recursive=recursive):
                     yield child_param
+
+    def parameters(self, recursive=False) -> Iterable[Parameter]:
+        for item in self.items(recursive=recursive):
+            if isinstance(item, Parameter):
+                yield item
 
     def parameter(self, name: str) -> Parameter:
         if name in self.__parameters:
@@ -302,6 +328,9 @@ class ParametersLayoutBase(ParameterHierarchyItem):
             except ParameterNotFound:
                 continue
         raise ParameterNotFound(f'parameter {name} not found in layout hierarchy')
+
+    def visible(self) -> bool:
+        return len(self.children()) != 0 and any(x.visible() for x in self.items())
 
     def _child_added(self, child: "ParameterHierarchyItem"):
         super(ParametersLayoutBase, self)._child_added(child)
@@ -321,27 +350,29 @@ class ParametersLayoutBase(ParameterHierarchyItem):
 
     def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
         """
-        for now we don't keep any parameter dependencies, so change to a definition
-        will cause all parameters to drop their caches
         :param children:
         :return:
         """
-        if self.parent() is None:  # if we are the root
-            for parameter in self.parameters(recursive=True):
-                parameter._reset_caches()
         super(ParametersLayoutBase, self)._children_definition_changed(children)
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
         """
-        for now we don't keep any parameter dependencies, so change to a value
-        will cause all parameters to drop their caches
         :param children:
         :return:
         """
-        if self.parent() is None:  # if we are the root
-            for parameter in self.parameters(recursive=True):
-                parameter._reset_caches()
         super(ParametersLayoutBase, self)._children_value_changed(children)
+        
+    def _children_appearance_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        super(ParametersLayoutBase, self)._children_appearance_changed(children)
+
+    def relative_size_for_child(self, child: ParameterHierarchyItem) -> Tuple[float, float]:
+        """
+        get relative size of a child in this layout
+        the exact interpretation of size is up to subclass to decide
+        :param child:
+        :return:
+        """
+        raise NotImplementedError()
 
 
 class OrderedParametersLayout(ParametersLayoutBase):
@@ -357,27 +388,38 @@ class OrderedParametersLayout(ParametersLayoutBase):
         self.__parameter_order.remove(child)
         super(OrderedParametersLayout, self)._child_about_to_be_removed(child)
 
-    def parameters(self, recursive=False):
+    def items(self, recursive=False):
         """
         unlike base method, we need to return parameters in order
         :param recursive:
         :return:
         """
         for child in self.__parameter_order:
-            if isinstance(child, Parameter):
-                yield child
-            elif not recursive:
+            yield child
+            if not recursive:
                 continue
             elif isinstance(child, ParametersLayoutBase):
                 for child_param in child.parameters(recursive=recursive):
                     yield child_param
+
+    def relative_size_for_child(self, child: ParameterHierarchyItem) -> Tuple[float, float]:
+        """
+        get relative size of a child in this layout
+        the exact interpretation of size is up to subclass to decide
+        :param child:
+        :return:
+        """
+        raise NotImplementedError()
 
 
 class VerticalParametersLayout(OrderedParametersLayout):
     """
     simple vertical parameter layout.
     """
-    pass
+
+    def relative_size_for_child(self, child: ParameterHierarchyItem) -> Tuple[float, float]:
+        assert child in self.children()
+        return 1.0, 1.0
 
 
 class OneLineParametersLayout(OrderedParametersLayout):
@@ -385,7 +427,34 @@ class OneLineParametersLayout(OrderedParametersLayout):
     horizontal parameter layout.
     unlike vertical, this one has to keep track of portions of line it's parameters are taking
     """
-    pass
+    def __init__(self):
+        super(OneLineParametersLayout, self).__init__()
+        self.__hsizes = {}
+
+    def _children_appearance_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        super(ParametersLayoutBase, self)._children_appearance_changed(children)
+        self.__hsizes = {}
+
+    def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        super(OneLineParametersLayout, self)._children_definition_changed(children)
+        self.__hsizes = {}
+
+    def relative_size_for_child(self, child: ParameterHierarchyItem) -> Tuple[float, float]:
+        assert child in self.children()
+        if child not in self.__hsizes:
+            self._update_hsizes()
+        assert child in self.__hsizes
+        return self.__hsizes[child], 1.0
+
+    def _update_hsizes(self):
+        self.__hsizes = {}
+        totalitems = 0
+        for item in self.items():
+            if item.visible():
+                totalitems += 1
+        uniform_size = 1.0 / float(totalitems)
+        for item in self.items():
+            self.__hsizes[item] = uniform_size
 
 
 class NodeUi:
