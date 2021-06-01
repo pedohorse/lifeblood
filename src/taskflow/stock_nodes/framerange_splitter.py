@@ -33,7 +33,7 @@ class FramerangeSplitter(BaseNode):
         if not isinstance(frames, list):
             return ProcessingResult()
         res = ProcessingResult()
-        chunksize = self.get_ui().parameter_value('chunk size')
+        chunksize = self.param_value('chunk size')
         if len(frames) < chunksize:
             return ProcessingResult()
 

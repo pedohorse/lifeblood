@@ -46,7 +46,7 @@ class BaseNode:
         :param param_name:
         :return:
         """
-        return self._parameters.parameter_value(param_name)
+        return self._parameters.parameter(param_name).value()
 
     def set_param_value(self, param_name, param_value) -> None:
         """
@@ -54,7 +54,7 @@ class BaseNode:
         :param param_name:
         :return:
         """
-        return self._parameters.set_parameter(param_name, param_value)
+        return self._parameters.parameter(param_name).set_value(param_value)
 
     def get_ui(self) -> NodeUi:
         return self._parameters
@@ -81,10 +81,9 @@ class BaseNode:
         conns = fut.result(60)
         return len(conns) > 0
 
-    def _ui_changed(self, names_changed: Optional[List[str]] = None):
+    def _ui_changed(self):
         """
         this methods gets called by self and NodeUi when a parameter changes to trigger node's database update
-        :names_changed:
         :return:
         """
         if self.__parent is not None:

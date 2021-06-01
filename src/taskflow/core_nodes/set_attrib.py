@@ -26,34 +26,29 @@ class SetAttributes(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_parameter('name', 'Name', NodeParameterType.STRING, '')
-            ui.next_parameter_same_line()
-            ui.add_parameter('type', '', NodeParameterType.INT, 0)
-            ui.add_menu_to_parameter('type', (('int', NodeParameterType.INT.value),
-                                              ('bool', NodeParameterType.BOOL.value),
-                                              ('float', NodeParameterType.FLOAT.value),
-                                              ('string', NodeParameterType.STRING.value)))
-            ui.next_parameter_same_line()
-            ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '')
-            ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0)
-            ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0)
-            ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False)
-            ui.add_visibility_condition('svalue', f'type=={NodeParameterType.STRING.value}')
-            ui.add_visibility_condition('ivalue', f'type=={NodeParameterType.INT.value}')
-            ui.add_visibility_condition('fvalue', f'type=={NodeParameterType.FLOAT.value}')
-            ui.add_visibility_condition('bvalue', f'type=={NodeParameterType.BOOL.value}')
+            with ui.parameters_on_same_line_block():
+                type_param = ui.add_parameter('type', '', NodeParameterType.INT, 0)
+                type_param.add_menu((('int', NodeParameterType.INT.value),
+                                     ('bool', NodeParameterType.BOOL.value),
+                                     ('float', NodeParameterType.FLOAT.value),
+                                     ('string', NodeParameterType.STRING.value)))
+
+                ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
+                ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
+                ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
+                ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
 
     def process_task(self, task_dict) -> ProcessingResult:
-        ui = self.get_ui()
-        attr_name = ui.parameter_value('name')
-        attr_type = ui.parameter_value('type')
+        attr_name = self.param_value('name')
+        attr_type = self.param_value('type')
         if attr_type == NodeParameterType.INT.value:
-            attr_val = ui.parameter_value('ivalue')
+            attr_val = self.param_value('ivalue')
         elif attr_type == NodeParameterType.BOOL.value:
-            attr_val = ui.parameter_value('bvalue')
+            attr_val = self.param_value('bvalue')
         elif attr_type == NodeParameterType.FLOAT.value:
-            attr_val = ui.parameter_value('fvalue')
+            attr_val = self.param_value('fvalue')
         elif attr_type == NodeParameterType.STRING.value:
-            attr_val = ui.parameter_value('svalue')
+            attr_val = self.param_value('svalue')
         else:
             raise NotImplementedError('unexpected type')
         res = ProcessingResult()

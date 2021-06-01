@@ -59,7 +59,7 @@ class SliceWaiterNode(BaseNode):
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
-        if self._parameters.parameter_value('wait for all'):
+        if self.param_value('wait for all'):
             with self.__main_lock:
                 if self.__cache[split_id]['arrived'] == self.__cache[split_id]['awaiting']:
                     res = ProcessingResult()

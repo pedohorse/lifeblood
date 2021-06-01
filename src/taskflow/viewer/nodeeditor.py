@@ -6,7 +6,7 @@ import pickle
 import sqlite3
 import asyncio
 from math import sqrt
-from ..uidata import UiData, NodeUi
+from ..uidata import UiData, NodeUi, Parameter, ParametersLayoutBase, OneLineParametersLayout, VerticalParametersLayout
 from ..enums import TaskState, InvocationState
 from ..broadcasting import await_broadcast
 from ..nethelpers import recv_exactly, get_default_addr
@@ -344,19 +344,18 @@ class Node(NetworkItemWithUI):
     def draw_imgui_elements(self):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
         if self.__nodeui is not None:
-            for param_name, param_dict in self.__nodeui.parameters_items():
-                param_type = param_dict['type']
-                param_label = param_dict.get('label', param_name)
-
-                if not param_dict.get('is_ui_modifier', False):
-                    if not self.__nodeui.is_parameter_visible(param_name):
+            for item in self.__nodeui.items(recursive=False):
+                if isinstance(item, Parameter):
+                    if not item.visible():
                         continue
+                    param_name = item.name()
+                    param_label = item.label() or ''
+                    parent_layout = item.parent()
+                    assert isinstance(parent_layout, ParametersLayoutBase)
+                    imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2/3)
 
-                    imgui.push_item_width(imgui.get_window_width() * self.__nodeui.parameter_line_portion(param_name) * 2/3)
-
-                    if 'menu_items' in param_dict:
-                        menu_items: dict = param_dict['menu_items']
-                        menu_order: list = param_dict['_menu_items_order']
+                    if item.has_menu():
+                        menu_order, menu_items = item.get_menu_items()
 
                         if param_name not in self.__nodeui_menucache:
                             self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
@@ -364,30 +363,31 @@ class Node(NetworkItemWithUI):
 
                         menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
                         menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
-                        changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[param_dict['value']]], menu_order)
+                        changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[item.value()]], menu_order)
                         if changed:
-                            self.__nodeui.set_parameter(param_name, menu_items[menu_order[val]])
+                            item.set_value(val)
                     else:
+                        param_type = item.type()
                         if param_type == NodeParameterType.BOOL:
-                            changed, newval = imgui.checkbox(param_label, param_dict['value'])
+                            changed, newval = imgui.checkbox(param_label, item.value())
                         elif param_type == NodeParameterType.INT:
-                            changed, newval = imgui.slider_int(param_label, param_dict['value'], 0, 10)
+                            changed, newval = imgui.slider_int(param_label, item.value(), 0, 10)
                         elif param_type == NodeParameterType.FLOAT:
-                            changed, newval = imgui.slider_float(param_label, param_dict['value'], 0, 10)
+                            changed, newval = imgui.slider_float(param_label, item.value(), 0, 10)
                         elif param_type == NodeParameterType.STRING:
-                            changed, newval = imgui.input_text(param_label, param_dict['value'], 256)
+                            changed, newval = imgui.input_text(param_label, item.value(), 256)
                         else:
                             raise NotImplementedError()
                         if changed:
-                            self.__nodeui.set_parameter(param_name, newval)
+                            item.set_value(newval)
                     imgui.pop_item_width()
                     if changed:
                         self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
-                else:
-                    if param_type == 'sameline':
-                        imgui.same_line()
-                    else:
-                        raise NotImplementedError()
+                # else:
+                #     if param_type == 'sameline':
+                #         imgui.same_line()
+                #     else:
+                #         raise NotImplementedError()
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
