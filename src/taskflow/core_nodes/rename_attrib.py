@@ -25,8 +25,8 @@ class RenameAttributes(BaseNode):
         super(RenameAttributes, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.add_parameter('oldname', 'from', NodeParameterType.STRING, 'from')
             with ui.parameters_on_same_line_block():
+                ui.add_parameter('oldname', 'from', NodeParameterType.STRING, 'from')
                 ui.add_parameter('newname', 'to', NodeParameterType.STRING, 'to')
 
     def process_task(self, task_dict) -> ProcessingResult:

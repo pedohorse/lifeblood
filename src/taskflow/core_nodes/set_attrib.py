@@ -25,8 +25,8 @@ class SetAttributes(BaseNode):
         super(SetAttributes, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.add_parameter('name', 'Name', NodeParameterType.STRING, '')
             with ui.parameters_on_same_line_block():
+                ui.add_parameter('name', 'Name', NodeParameterType.STRING, '')
                 type_param = ui.add_parameter('type', '', NodeParameterType.INT, 0)
                 type_param.add_menu((('int', NodeParameterType.INT.value),
                                      ('bool', NodeParameterType.BOOL.value),
