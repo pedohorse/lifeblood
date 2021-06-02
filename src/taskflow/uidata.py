@@ -1,6 +1,6 @@
 import asyncio
 import pickle
-from copy import copy
+from copy import deepcopy
 from .enums import NodeParameterType
 import re
 
@@ -468,6 +468,7 @@ class NodeUi(ParameterHierarchyItem):
     def __init__(self, attached_node: "BaseNode"):
         super(NodeUi, self).__init__()
         self.__parameter_layout = VerticalParametersLayout()
+        self.__parameter_layout.set_parent(self)
         self.__attached_node: Optional[BaseNode] = attached_node
         self.__block_ui_callbacks = False
         self.__inputs_names = ('main',)
@@ -571,7 +572,7 @@ class NodeUi(ParameterHierarchyItem):
         return self.__parameter_layout.items(recursive=recursive)
 
     def serialize(self) -> bytes:
-        obj = copy(self)
+        obj = deepcopy(self)
         obj.__attached_node = None
         return pickle.dumps(obj)
 

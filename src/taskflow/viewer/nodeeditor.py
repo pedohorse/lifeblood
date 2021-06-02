@@ -382,7 +382,7 @@ class Node(NetworkItemWithUI):
                             item.set_value(newval)
                     imgui.pop_item_width()
                     if changed:
-                        self.scene().send_node_parameter_change(self.get_id(), param_name, param_dict)
+                        self.scene().send_node_parameter_change(self.get_id(), item)
                 # else:
                 #     if param_type == 'sameline':
                 #         imgui.same_line()
@@ -1173,7 +1173,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_log_meta_has_been_requested = Signal(int)
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int)
-    _signal_node_parameter_change_requested = Signal(int, str, dict)
+    _signal_node_parameter_change_requested = Signal(int, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
     _signal_create_node_requested = Signal(str, str, QPointF)
@@ -1245,8 +1245,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_node_ui(self, node_id: int):
         self._signal_node_ui_has_been_requested.emit(node_id)
 
-    def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
-        self._signal_node_parameter_change_requested.emit(node_id, param_name, param)
+    def send_node_parameter_change(self, node_id: int, param: Parameter):
+        self._signal_node_parameter_change_requested.emit(node_id, param)
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
@@ -1719,15 +1719,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.nodeui_fetched.emit(node_id, nodeui)
 
     @Slot()
-    def send_node_parameter_change(self, node_id: int, param_name: str, param: dict):
+    def send_node_parameter_change(self, node_id: int, param: Parameter):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
         try:
-            param_type = param['type']
-            param_value = param['value']
+            param_type = param.type()
+            param_value = param.value()
             self.__conn.sendall(b'setnodeparam\n')
-            param_name_data = param_name.encode('UTF-8')
+            param_name_data = param.name().encode('UTF-8')
             self.__conn.sendall(struct.pack('>QII', node_id, param_type.value, len(param_name_data)))
             self.__conn.sendall(param_name_data)
             if param_type == NodeParameterType.FLOAT:
