@@ -595,7 +595,7 @@ class NodeUi(ParameterHierarchyItem):
 
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        return NodeUi._slwrapper
+        return _slwrapper_multi(self)
 
     def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         if not self.__block_ui_callbacks:
