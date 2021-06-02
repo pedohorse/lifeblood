@@ -341,53 +341,74 @@ class Node(NetworkItemWithUI):
 
     #
     # interface
+
+    # helper
+    def __draw_single_item(self, item, size=(1.0,1.0)):
+        if isinstance(item, Parameter):
+            if not item.visible():
+                return
+            param_name = item.name()
+            param_label = item.label() or ''
+            parent_layout = item.parent()
+            assert isinstance(parent_layout, ParametersLayoutBase)
+            imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2 / 3)
+
+            if item.has_menu():
+                menu_order, menu_items = item.get_menu_items()
+
+                if param_name not in self.__nodeui_menucache:
+                    self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
+                                                           'menu_order_inv': {v: i for i, v in enumerate(menu_order)}}
+
+                menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
+                menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
+                changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[item.value()]], menu_order)
+                if changed:
+                    item.set_value(val)
+            else:
+                param_type = item.type()
+                if param_type == NodeParameterType.BOOL:
+                    changed, newval = imgui.checkbox(param_label, item.value())
+                elif param_type == NodeParameterType.INT:
+                    changed, newval = imgui.slider_int(param_label, item.value(), 0, 10)
+                elif param_type == NodeParameterType.FLOAT:
+                    changed, newval = imgui.slider_float(param_label, item.value(), 0, 10)
+                elif param_type == NodeParameterType.STRING:
+                    changed, newval = imgui.input_text(param_label, item.value(), 256)
+                else:
+                    raise NotImplementedError()
+                if changed:
+                    item.set_value(newval)
+            imgui.pop_item_width()
+            if changed:
+                self.scene().send_node_parameter_change(self.get_id(), item)
+        elif isinstance(item, OneLineParametersLayout):
+            first_time = True
+            for child in item.items(recursive=False):
+                h, w = item.relative_size_for_child(child)
+                if isinstance(child, Parameter):
+                    if not child.visible():
+                        continue
+                if first_time:
+                    first_time = False
+                else:
+                    imgui.same_line()
+                self.__draw_single_item(child, (h*size[0], w*size[1]))
+        elif isinstance(item, ParametersLayoutBase):
+            for child in item.items(recursive=False):
+                h, w = item.relative_size_for_child(child)
+                if isinstance(child, Parameter):
+                    if not child.visible():
+                        continue
+                self.__draw_single_item(child, (h*size[0], w*size[1]))
+        else:
+            raise NotImplementedError(f'unknown parameter hierarchy item to display {type(item)}')
+
+    # main dude
     def draw_imgui_elements(self):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
         if self.__nodeui is not None:
-            for item in self.__nodeui.items(recursive=False):
-                if isinstance(item, Parameter):
-                    if not item.visible():
-                        continue
-                    param_name = item.name()
-                    param_label = item.label() or ''
-                    parent_layout = item.parent()
-                    assert isinstance(parent_layout, ParametersLayoutBase)
-                    imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2/3)
-
-                    if item.has_menu():
-                        menu_order, menu_items = item.get_menu_items()
-
-                        if param_name not in self.__nodeui_menucache:
-                            self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
-                                                                   'menu_order_inv': {v: i for i, v in enumerate(menu_order)}}
-
-                        menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
-                        menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
-                        changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[item.value()]], menu_order)
-                        if changed:
-                            item.set_value(val)
-                    else:
-                        param_type = item.type()
-                        if param_type == NodeParameterType.BOOL:
-                            changed, newval = imgui.checkbox(param_label, item.value())
-                        elif param_type == NodeParameterType.INT:
-                            changed, newval = imgui.slider_int(param_label, item.value(), 0, 10)
-                        elif param_type == NodeParameterType.FLOAT:
-                            changed, newval = imgui.slider_float(param_label, item.value(), 0, 10)
-                        elif param_type == NodeParameterType.STRING:
-                            changed, newval = imgui.input_text(param_label, item.value(), 256)
-                        else:
-                            raise NotImplementedError()
-                        if changed:
-                            item.set_value(newval)
-                    imgui.pop_item_width()
-                    if changed:
-                        self.scene().send_node_parameter_change(self.get_id(), item)
-                # else:
-                #     if param_type == 'sameline':
-                #         imgui.same_line()
-                #     else:
-                #         raise NotImplementedError()
+            self.__draw_single_item(self.__nodeui.main_parameter_layout())
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
