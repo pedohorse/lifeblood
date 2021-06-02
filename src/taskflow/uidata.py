@@ -193,12 +193,12 @@ class Parameter(ParameterHierarchyLeaf):
             return self.__vis_cache
         if self.__vis_when is not None:
             other_param, op, value = self.__vis_when
-            if op == '==' and other_param['value'] != value \
-                    or op == '!=' and other_param['value'] == value \
-                    or op == '>' and other_param['value'] <= value \
-                    or op == '>=' and other_param['value'] < value \
-                    or op == '<' and other_param['value'] >= value \
-                    or op == '<=' and other_param['value'] > value:
+            if op == '==' and other_param.value() != value \
+                    or op == '!=' and other_param.value() == value \
+                    or op == '>' and other_param.value() <= value \
+                    or op == '>=' and other_param.value() < value \
+                    or op == '<' and other_param.value() >= value \
+                    or op == '<=' and other_param.value() > value:
                 self.__vis_cache = False
                 return False
         self.__vis_cache = True
@@ -475,6 +475,9 @@ class NodeUi(ParameterHierarchyItem):
         self.__outputs_names = ('main',)
 
         self.__groups_stack = []
+
+    def main_parameter_layout(self):
+        return self.__parameter_layout
 
     def parent(self) -> Optional["ParameterHierarchyItem"]:
         return None
