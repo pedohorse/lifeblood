@@ -24,8 +24,11 @@ def init():
                 continue
             mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',
                                                               os.path.join(plugin_path, filename))
-            mod = importlib.util.module_from_spec(mod_spec)
-            mod_spec.loader.exec_module(mod)
+            try:
+                mod = importlib.util.module_from_spec(mod_spec)
+                mod_spec.loader.exec_module(mod)
+            except:
+                logger.exception(f'failed to load plugin "{filebasename}". skipping.')
             for requred_attr in ('node_class',):
                 if not hasattr(mod, requred_attr):
                     logger.error(f'error loading plugin "{filebasename}". '
