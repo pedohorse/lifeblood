@@ -151,6 +151,14 @@ class Parameter(ParameterHierarchyLeaf):
     def name(self) -> str:
         return self.__name
 
+    def _set_name(self, name: str):
+        """
+        this should only be called by layout classes
+        """
+        self.__name = name
+        if self.parent() is not None:
+            self.parent()._children_definition_changed([self])
+
     def label(self) -> Optional[str]:
         return self.__label
 
@@ -282,7 +290,7 @@ class ParameterNotFound(RuntimeError):
 class ParametersLayoutBase(ParameterHierarchyItem):
     def __init__(self):
         super(ParametersLayoutBase, self).__init__()
-        self.__parameters: Dict[str: Parameter] = {}  # just for quicker access
+        self.__parameters: Dict[str, Parameter] = {}  # just for quicker access
         self.__layouts: Set[ParametersLayoutBase] = set()
         self.__block_ui_callbacks = False
 
@@ -355,12 +363,21 @@ class ParametersLayoutBase(ParameterHierarchyItem):
             self.__layouts.remove(child)
         super(ParametersLayoutBase, self)._child_about_to_be_removed(child)
 
-    def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
+    def _children_definition_changed(self, changed_children: Iterable["ParameterHierarchyItem"]):
         """
         :param children:
         :return:
         """
-        super(ParametersLayoutBase, self)._children_definition_changed(children)
+        super(ParametersLayoutBase, self)._children_definition_changed(changed_children)
+        # check self.__parameters consistency
+        reversed_parameters: Dict[Parameter, str] = {v: k for k, v in self.__parameters.items()}
+        for child in changed_children:
+            if not isinstance(child, Parameter):
+                continue
+            if child in reversed_parameters:
+                del self.__parameters[reversed_parameters[child]]
+                self.__parameters[child.name()] = child
+
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
         """
@@ -416,17 +433,15 @@ class OrderedParametersLayout(ParametersLayoutBase):
         :param child:
         :return:
         """
-        raise NotImplementedError()
+        assert child in self.children()
+        return 1.0, 1.0
 
 
 class VerticalParametersLayout(OrderedParametersLayout):
     """
     simple vertical parameter layout.
     """
-
-    def relative_size_for_child(self, child: ParameterHierarchyItem) -> Tuple[float, float]:
-        assert child in self.children()
-        return 1.0, 1.0
+    pass
 
 
 class OneLineParametersLayout(OrderedParametersLayout):
@@ -490,11 +505,13 @@ class MultiGroupLayout(OrderedParametersLayout):
         raise RuntimeError('NO')
 
     def add_template_instance(self):
-        if not self._is_initialize_lock_set():
-            raise RuntimeError('initializing interface not inside initializing_interface_lock')
         if self.__template is None:
             raise RuntimeError('template is not set')
         new_layout = deepcopy(self.__template)
+        i = len(self.children())
+        for param in new_layout.parameters(recursive=True):
+            param._set_name(param.name() + '_' + str(i))
+            print(param.name())
         new_layout.set_parent(self)
 
     def remove_template_instance(self, index=-1):
@@ -557,7 +574,9 @@ class NodeUi(ParameterHierarchyItem):
                 self.__ui._NodeUi__parameter_layout.add_layout(new_layout)
 
         def __exit__(self, exc_type, exc_val, exc_tb):
-            self.__ui._NodeUi__groups_stack.pop()
+            layout = self.__ui._NodeUi__groups_stack.pop()
+            self.__ui._add_layout(layout)
+
 
     def parameters_on_same_line_block(self):
         """
@@ -582,7 +601,7 @@ class NodeUi(ParameterHierarchyItem):
                 self.__new_layout = None
 
             def __enter__(self):
-                self.new_layout = VerticalParametersLayout()
+                self.__new_layout = VerticalParametersLayout()
                 self.__ui._NodeUi__groups_stack.append(self.__new_layout)
 
             def __exit__(self, exc_type, exc_val, exc_tb):
@@ -591,11 +610,23 @@ class NodeUi(ParameterHierarchyItem):
                     multi_layout = MultiGroupLayout()
                     with multi_layout.initializing_interface_lock():
                         multi_layout.set_spawning_template(self.__new_layout)
-                    self.__ui._NodeUi__parameter_layout.add_layout(multi_layout)
+                    self.__ui._add_layout(multi_layout)
+
+            def multigroup(self):
+                return self.__new_layout
 
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self)
+
+    def _add_layout(self, new_layout):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        layout = self.__parameter_layout
+        if len(self.__groups_stack) != 0:
+            layout = self.__groups_stack[-1]
+        with layout.initializing_interface_lock():
+            layout.add_layout(new_layout)
 
     def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         if not self.__block_ui_callbacks:
