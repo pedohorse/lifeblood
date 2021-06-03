@@ -3,7 +3,7 @@ from taskflow.nodethings import ProcessingResult
 from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
 from taskflow.enums import NodeParameterType
-from taskflow.uidata import NodeUi
+from taskflow.uidata import NodeUi, MultiGroupLayout, Parameter
 
 from typing import Iterable
 
@@ -38,7 +38,20 @@ class SetAttributes(BaseNode):
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
                     ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
                     ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
-        
+        multiblock = list(ui.items())[-1]
+        assert isinstance(multiblock, MultiGroupLayout)  # TODO: find a better workflow of getting that last layout added
+        multiblock.add_template_instance()
+        multiblock.add_template_instance()
+
+        # def _printone(level, i=0):
+        #     if isinstance(level, Parameter):
+        #         print('\t'*(i-1), f'====parameter {level.name()}')
+        #         return
+        #     for item in level.items(recursive=False):
+        #         print('\t'*i, item)
+        #         _printone(item, i+1)
+
+        _printone(ui.main_parameter_layout())
 
     def process_task(self, task_dict) -> ProcessingResult:
         attr_name = self.param_value('name')
