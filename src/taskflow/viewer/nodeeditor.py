@@ -362,19 +362,19 @@ class Node(NetworkItemWithUI):
 
                 menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
                 menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
-                changed, val = imgui.combo(param_label, menu_order_inv[menu_items_inv[item.value()]], menu_order)
+                changed, val = imgui.combo('##'.join((param_label, param_name)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
                 if changed:
                     item.set_value(val)
             else:
                 param_type = item.type()
                 if param_type == NodeParameterType.BOOL:
-                    changed, newval = imgui.checkbox(param_label, item.value())
+                    changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.INT:
-                    changed, newval = imgui.slider_int(param_label, item.value(), 0, 10)
+                    changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
                 elif param_type == NodeParameterType.FLOAT:
-                    changed, newval = imgui.slider_float(param_label, item.value(), 0, 10)
+                    changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
                 elif param_type == NodeParameterType.STRING:
-                    changed, newval = imgui.input_text(param_label, item.value(), 256)
+                    changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
                 else:
                     raise NotImplementedError()
                 if changed:
