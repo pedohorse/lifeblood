@@ -25,7 +25,7 @@ class SetAttributes(BaseNode):
         super(SetAttributes, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            with ui.multigroup_parameter_block():
+            with ui.multigroup_parameter_block('attr_count'):
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('name', 'Name', NodeParameterType.STRING, '')
                     type_param = ui.add_parameter('type', '', NodeParameterType.INT, 0)
@@ -51,7 +51,7 @@ class SetAttributes(BaseNode):
         #         print('\t'*i, item)
         #         _printone(item, i+1)
 
-        _printone(ui.main_parameter_layout())
+        #_printone(ui.main_parameter_layout())
 
     def process_task(self, task_dict) -> ProcessingResult:
         attr_name = self.param_value('name')
