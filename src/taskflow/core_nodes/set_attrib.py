@@ -54,20 +54,22 @@ class SetAttributes(BaseNode):
         #_printone(ui.main_parameter_layout())
 
     def process_task(self, task_dict) -> ProcessingResult:
-        attr_name = self.param_value('name')
-        attr_type = self.param_value('type')
-        if attr_type == NodeParameterType.INT.value:
-            attr_val = self.param_value('ivalue')
-        elif attr_type == NodeParameterType.BOOL.value:
-            attr_val = self.param_value('bvalue')
-        elif attr_type == NodeParameterType.FLOAT.value:
-            attr_val = self.param_value('fvalue')
-        elif attr_type == NodeParameterType.STRING.value:
-            attr_val = self.param_value('svalue')
-        else:
-            raise NotImplementedError('unexpected type')
+        attr_count = self.param_value('attr_count')
         res = ProcessingResult()
-        res.set_attribute(attr_name, attr_val)
+        for i in range(attr_count):
+            attr_name = self.param_value(f'name_{i}')
+            attr_type = self.param_value(f'type_{i}')
+            if attr_type == NodeParameterType.INT.value:
+                attr_val = self.param_value(f'ivalue_{i}')
+            elif attr_type == NodeParameterType.BOOL.value:
+                attr_val = self.param_value(f'bvalue_{i}')
+            elif attr_type == NodeParameterType.FLOAT.value:
+                attr_val = self.param_value(f'fvalue_{i}')
+            elif attr_type == NodeParameterType.STRING.value:
+                attr_val = self.param_value(f'svalue_{i}')
+            else:
+                raise NotImplementedError('unexpected type')
+            res.set_attribute(attr_name, attr_val)
         return res
 
     def postprocess_task(self, task_dict) -> ProcessingResult:
