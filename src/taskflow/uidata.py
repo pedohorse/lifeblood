@@ -350,7 +350,7 @@ class ParametersLayoutBase(ParameterHierarchyItem):
     def _child_added(self, child: "ParameterHierarchyItem"):
         super(ParametersLayoutBase, self)._child_added(child)
         if isinstance(child, Parameter):
-            if child.name() in (x.name() for x in self.parameters(recursive=True)):
+            if child.name() in (x.name() for x in self.parameters(recursive=True)):  # TODO: this is not a way to check uniquenes, it does not cover all cases
                 raise RuntimeError('cannot add parameters with the same name to the same layout hierarchy')
             self.__parameters[child.name()] = child
         elif isinstance(child, ParametersLayoutBase):
@@ -377,7 +377,6 @@ class ParametersLayoutBase(ParameterHierarchyItem):
             if child in reversed_parameters:
                 del self.__parameters[reversed_parameters[child]]
                 self.__parameters[child.name()] = child
-
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
         """
@@ -485,9 +484,12 @@ class MultiGroupLayout(OrderedParametersLayout):
     this group can dynamically spawn more parameters according to it's template
     spawning more parameters does NOT count as definition change
     """
-    def __init__(self):
+    def __init__(self, name):
         super(MultiGroupLayout, self).__init__()
         self.__template: Union[ParametersLayoutBase, Parameter, None] = None
+        self.__count_param = Parameter(name, 'count', NodeParameterType.INT, 0)
+        self.__count_param.set_parent(self)
+        self.__last_count = 0
 
     def set_spawning_template(self, layout: ParametersLayoutBase):
         self.__template = deepcopy(layout)
@@ -505,18 +507,37 @@ class MultiGroupLayout(OrderedParametersLayout):
         raise RuntimeError('NO')
 
     def add_template_instance(self):
-        if self.__template is None:
-            raise RuntimeError('template is not set')
-        new_layout = deepcopy(self.__template)
-        i = len(self.children())
-        for param in new_layout.parameters(recursive=True):
-            param._set_name(param.name() + '_' + str(i))
-            print(param.name())
-        new_layout.set_parent(self)
+        self.__count_param.set_value(self.__count_param.value() + 1)
 
-    def remove_template_instance(self, index=-1):
-        instances = list(self.items(recursive=False))
-        instances[index].set_parent(None)
+    def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
+
+        for child in children:
+            if child == self.__count_param:
+                break
+        else:
+            super(MultiGroupLayout, self)._children_value_changed(children)
+        if self.__count_param.value() < 0:
+            self.__count_param.set_value(0)
+            super(MultiGroupLayout, self)._children_value_changed(children)
+            return
+
+        new_count = self.__count_param.value()
+        if self.__last_count < new_count:
+            if self.__template is None:
+                raise RuntimeError('template is not set')
+            for _ in range(new_count - self.__last_count):
+                new_layout = deepcopy(self.__template)
+                i = len(self.children())
+                for param in new_layout.parameters(recursive=True):
+                    param._set_name(param.name() + '_' + str(i))
+                new_layout.set_parent(self)
+        elif self.__last_count > self.__count_param.value():
+            for _ in range(self.__last_count - new_count):
+                instances = list(self.items(recursive=False))
+                assert len(instances) > 1
+                instances[-1].set_parent(None)
+        self.__last_count = new_count
+        super(MultiGroupLayout, self)._children_value_changed(children)
         
     def _child_added(self, child: "ParameterHierarchyItem"):
         super(MultiGroupLayout, self)._child_added(child)
@@ -588,7 +609,7 @@ class NodeUi(ParameterHierarchyItem):
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return NodeUi._slwrapper(self, OneLineParametersLayout)
 
-    def multigroup_parameter_block(self):
+    def multigroup_parameter_block(self, name: str):
         """
         use it in with statement
         creates a block like multiparameter block in houdini
@@ -596,9 +617,10 @@ class NodeUi(ParameterHierarchyItem):
         :return:
         """
         class _slwrapper_multi:
-            def __init__(self, ui: "NodeUi"):
+            def __init__(self, ui: "NodeUi", name: str):
                 self.__ui = ui
                 self.__new_layout = None
+                self.__name = name
 
             def __enter__(self):
                 self.__new_layout = VerticalParametersLayout()
@@ -607,7 +629,7 @@ class NodeUi(ParameterHierarchyItem):
             def __exit__(self, exc_type, exc_val, exc_tb):
                 assert self.__ui._NodeUi__groups_stack.pop() == self.__new_layout
                 with self.__ui._NodeUi__parameter_layout.initializing_interface_lock():
-                    multi_layout = MultiGroupLayout()
+                    multi_layout = MultiGroupLayout(self.__name)
                     with multi_layout.initializing_interface_lock():
                         multi_layout.set_spawning_template(self.__new_layout)
                     self.__ui._add_layout(multi_layout)
@@ -617,7 +639,7 @@ class NodeUi(ParameterHierarchyItem):
 
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        return _slwrapper_multi(self)
+        return _slwrapper_multi(self, name)
 
     def _add_layout(self, new_layout):
         if not self.__block_ui_callbacks:
