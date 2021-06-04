@@ -370,9 +370,11 @@ class Node(NetworkItemWithUI):
                 if param_type == NodeParameterType.BOOL:
                     changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.INT:
-                    changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
+                    #changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
+                    changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.FLOAT:
-                    changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
+                    #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
+                    changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.STRING:
                     changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
                 else:
