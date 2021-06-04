@@ -527,7 +527,7 @@ class MultiGroupLayout(OrderedParametersLayout):
                 raise RuntimeError('template is not set')
             for _ in range(new_count - self.__last_count):
                 new_layout = deepcopy(self.__template)
-                i = len(self.children())
+                i = len(self.children()) - 1
                 for param in new_layout.parameters(recursive=True):
                     param._set_name(param.name() + '_' + str(i))
                 new_layout.set_parent(self)
