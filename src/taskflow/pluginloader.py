@@ -22,7 +22,7 @@ def init():
             filebasename, fileext = os.path.splitext(filename)
             if fileext != '.py':
                 continue
-            mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',
+            mod_spec = importlib.util.spec_from_file_location(f'taskflow.coreplugins.{filebasename}',  # TODO: here all plugins load as coreplugins
                                                               os.path.join(plugin_path, filename))
             try:
                 mod = importlib.util.module_from_spec(mod_spec)
