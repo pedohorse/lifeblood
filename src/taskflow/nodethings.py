@@ -5,13 +5,13 @@ from typing import List, Dict, Any, Optional
 
 
 class ProcessingResult:
-    def __init__(self, job: InvocationJob = None, spawn: List[TaskSpawn] = None):
+    def __init__(self, job: InvocationJob = None, spawn: List[TaskSpawn] = None, node_output_name: str = 'main'):
         self.invocation_job: InvocationJob = job
         self.spawn_list: List[TaskSpawn] = spawn
         self.do_kill_task: bool = False
         self.attributes_to_set: Optional[Dict[str, Any]] = {}
         self.do_split_remove: bool = False
-        self.output_name: str = 'main'
+        self.output_name: str = node_output_name
 
     def set_node_output_name(self, newname: str):
         self.output_name = newname
