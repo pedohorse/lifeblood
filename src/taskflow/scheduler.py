@@ -317,7 +317,7 @@ class Scheduler:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value, task_id))
                     await con.commit()
-                    self.__logger.error('error happened %s', e)
+                    self.__logger.exception('error happened %s %s', type(e), e)
                 return
 
             async with aiosqlite.connect(self.db_path) as con:
@@ -953,6 +953,9 @@ class Scheduler:
                     new_id = newcur.lastrowid
 
                 if parent_task_id is not None:  # inherit all parent's groups
+                    # inc children count
+                    await con.execute('UPDATE "tasks" SET children_count = children_count + 1 WHERE "id" == ?', (parent_task_id,))
+                    # inherit groups
                     async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
                         groups = [x['group'] for x in await gcur.fetchall()]
                     if len(groups) > 0:
