@@ -664,8 +664,8 @@ class NodeUi(ParameterHierarchyItem):
     def add_input(self, input_name):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        if input_name not in self.__outputs_names:
-            self.__outputs_names += (input_name,)
+        if input_name not in self.__inputs_names:
+            self.__inputs_names += (input_name,)
 
     def add_output(self, output_name):
         if not self.__block_ui_callbacks:
