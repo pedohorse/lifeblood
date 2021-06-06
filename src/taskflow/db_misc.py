@@ -1,5 +1,26 @@
 sql_init_script = '''
 BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "tasks" (
+	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	"parent_id"	INTEGER,
+	"children_count"	INTEGER NOT NULL DEFAULT 0,
+	"state"	INTEGER NOT NULL,
+	"paused"	INTEGER DEFAULT 0,
+	"node_id"	INTEGER NOT NULL,
+	"node_input_name"	TEXT,
+	"node_output_name"	TEXT,
+	"work_data"	BLOB,
+	"name"	TEXT,
+	"attributes"	TEXT NOT NULL DEFAULT '{}',
+	"split_level"	INTEGER NOT NULL DEFAULT 0,
+	FOREIGN KEY("parent_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE SET NULL,
+	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS "task_group_attributes" (
+	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	"group"	TEXT NOT NULL UNIQUE,
+	"ctime"	INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS "workers" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	"cpu_count"	TEXT NOT NULL,
@@ -25,21 +46,6 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("worker_id") REFERENCES "workers"("id") ON UPDATE CASCADE ON DELETE RESTRICT
-);
-CREATE TABLE IF NOT EXISTS "tasks" (
-	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	"parent_id"	INTEGER,
-	"state"	INTEGER NOT NULL,
-	"paused"	INTEGER DEFAULT 0,
-	"node_id"	INTEGER NOT NULL,
-	"node_input_name"	TEXT,
-	"node_output_name"	TEXT,
-	"work_data"	BLOB,
-	"name"	TEXT,
-	"attributes"	TEXT NOT NULL DEFAULT '{}',
-	"split_level"	INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
-	FOREIGN KEY("parent_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS "task_groups" (
 	"task_id"	INTEGER NOT NULL,
