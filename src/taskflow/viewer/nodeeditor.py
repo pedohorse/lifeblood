@@ -483,6 +483,7 @@ class Node(NetworkItemWithUI):
             view = event.widget().parent()
             assert isinstance(view, NodeEditor)
             view.show_node_menu(self)
+            event.accept()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
         if self.__ui_interactor is not None:
@@ -958,6 +959,7 @@ class Task(NetworkItemWithUI):
             view = event.widget().parent()
             assert isinstance(view, NodeEditor)
             view.show_task_menu(self)
+        event.accept()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.__ui_interactor is None:
