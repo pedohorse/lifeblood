@@ -1,5 +1,6 @@
 import os
 import errno
+import shutil
 import traceback
 import asyncio
 import subprocess
@@ -21,7 +22,7 @@ from .environment_wrapper import TrivialEnvironmentWrapper
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
 
-from typing import Optional
+from typing import Optional, Dict
 
 
 async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
@@ -70,6 +71,7 @@ class Worker:
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
         self.__scheduler_pinger = None
+        self.__extra_files_base_dir = None
 
         self.__env_writer = TrivialEnvironmentWrapper()
 
@@ -121,6 +123,33 @@ class Worker:
         # prepare logging
         self.__logger.info(f'running task {task}')
         logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
+
+        # save external files
+        self.__extra_files_base_dir = None
+        extra_files_map: Dict[str, str] = {}
+        if len(task.extra_files()) > 0:
+            self.__extra_files_base_dir = tempfile.mkdtemp(prefix='taskflow_efs_')  # TODO: add base temp dir to config
+            self.__logger.debug(f'creating extra file temporary dir at {self.__extra_files_base_dir}')
+        for exfilepath, exfiledata in task.extra_files().items():
+            self.__logger.info(f'saving extra job file {exfilepath}')
+            exfilepath_parts = exfilepath.split('/')
+            tmpfilepath = os.path.join(self.__extra_files_base_dir, *exfilepath_parts)
+            os.makedirs(os.path.dirname(tmpfilepath), exist_ok=True)
+            with open(tmpfilepath, 'w' if isinstance(exfiledata, str) else 'wb') as f:
+                f.write(exfiledata)
+            extra_files_map[exfilepath] = tmpfilepath
+
+        # check args for extra file references
+        if len(task.extra_files()) > 0:
+            args = []
+            for arg in task.args():
+                if isinstance(arg, str) and arg.startswith(':/') and arg[2:] in task.extra_files():
+                    args.append(extra_files_map[arg[2:]])
+                else:
+                    args.append(arg)
+        else:
+            args = task.args()
+
         env = self.__env_writer.get_environment(None, task.env())
 
         env.prepend('PYTHONPATH', self.__rt_module_dir)
@@ -136,7 +165,7 @@ class Worker:
             #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
             self.__running_process: asyncio.subprocess.Process = \
                 await asyncio.create_subprocess_exec(  # TODO: process subprocess exceptions
-                    *task.args(),
+                    *args,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     env=env
@@ -253,6 +282,7 @@ class Worker:
         self.__running_process = None
         self.__where_to_report = None
         self.__running_task_progress = None
+        await self._cleanup_extra_files()
 
     async def task_status(self) -> Optional[float]:
         return self.__running_task_progress
@@ -280,6 +310,19 @@ class Worker:
         self.__running_process = None
         self.__running_awaiter = None
         self.__running_task_progress = None
+        await self._cleanup_extra_files()
+
+    async def _cleanup_extra_files(self):
+        """
+        cleanup extra files transfered with the task
+        :return:
+        """
+        if self.__extra_files_base_dir is None:
+            return
+        try:
+            shutil.rmtree(self.__extra_files_base_dir)
+        except:
+            self.__logger.exception('could not cleanup extra files')
 
     #
     # simply ping scheduler once in a while
