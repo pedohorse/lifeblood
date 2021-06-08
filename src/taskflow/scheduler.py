@@ -397,7 +397,7 @@ class Scheduler:
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
-                if process_result._split_attribs is not None
+                if process_result._split_attribs is not None:
                     split_count = len(process_result._split_attribs)
                     for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(split_count, split_count, con)):
                         async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
