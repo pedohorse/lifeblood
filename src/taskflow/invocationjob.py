@@ -5,7 +5,7 @@ import asyncio
 import pickle
 from types import MappingProxyType
 
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Union, Dict, List
 
 
 class InvocationNotFinished(RuntimeError):
@@ -99,10 +99,10 @@ class InvocationJob:
     """
     serializable data about launching something
     """
-    def __init__(self, args: list, env: Optional[InvocationEnvironment] = None, invocation_id=None,
+    def __init__(self, args: List[str], env: Optional[InvocationEnvironment] = None, invocation_id=None,
                  good_exitcodes: Optional[Iterable[int]] = None,
                  retry_exitcodes: Optional[Iterable[int]] = None):
-        self.__args = args
+        self.__args = [str(arg) for arg in args]
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
         # TODO: add here also all kind of resource requirements information
@@ -114,6 +114,7 @@ class InvocationJob:
         self.__retry_exitcodes = set(retry_exitcodes or [])
 
         self.__attrs = {}
+        self.__extra_files: Dict[str, Union[str, bytes]] = {}
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
@@ -126,6 +127,22 @@ class InvocationJob:
             self.__err_progress_regex = None
             return
         self.__err_progress_regex = re.compile(regex)
+
+    def set_extra_file(self, file_path: str, file_data: Union[str, bytes]):
+        """
+        extra files to transfer with this task
+        these files can be referenced in args list in qt resources format:
+        like:
+        :/path/to/file.smth
+        if such file does not exist - argument will be left as is
+
+        WARNING:  slashes / are used to split dirs, OS/FS INDEPENDENT
+        WARNING:  other than that it is YOUR responsibility to ensure file names do not contain illegal characters
+
+        :param file_path: file path, like file.smth or path/to/file.smth NOTE: NO leading slashes
+        :param file_data: data. str data will be saved as utf-8 text, binary data will be saved as is
+        """
+        self.__extra_files[file_path] = file_data
 
     def match_stdout_progress(self, line: bytes) -> Optional[float]:
         if self.__out_progress_regex is None:
@@ -152,13 +169,16 @@ class InvocationJob:
     def attributes(self):
         return MappingProxyType(self.__attrs)
 
-    def args(self):
+    def extra_files(self):
+        return MappingProxyType(self.__extra_files)
+
+    def args(self) -> List[str]:
         return self.__args
 
     def env(self):
         return self.__env
 
-    def invocation_id(self):
+    def invocation_id(self) -> int:
         return self.__invocation_id
 
     def finish(self, exitcode: int):
