@@ -522,6 +522,9 @@ class Scheduler:
                                             new_task_id = insert_cur.lastrowid
                                         await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
                                                           (next_split_id, new_task_id, split_element, wire_count, new_split_level, task_row['id']))
+                                    # now increase number of children to the parent of the task being splitted
+                                    if task_row['parent_id'] is not None:
+                                        await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (wire_count-1, task_row['parent_id']))
                                 await con.commit()
 
             await asyncio.sleep(self.__processing_interval)
