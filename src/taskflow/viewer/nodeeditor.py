@@ -564,10 +564,12 @@ class NodeConnection(NetworkItem):
 
         p0 = self.__nodeout.get_output_position(self.__outname)
         p1 = self.__nodein.get_input_position(self.__inname)
+        curv = 150
+        curv = min((p0-p1).manhattanLength()*0.5, curv)
         line.moveTo(p0)
-        line.cubicTo(p0 + QPointF(0, 150), p1 - QPointF(0, 150), p1)
+        line.cubicTo(p0 + QPointF(0, curv), p1 - QPointF(0, curv), p1)
         if close_path:
-            line.cubicTo(p1 - QPointF(0, 150), p0 + QPointF(0, 150), p0)
+            line.cubicTo(p1 - QPointF(0, curv), p0 + QPointF(0, curv), p0)
         return line
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
@@ -2129,7 +2131,7 @@ class NodeEditor(QGraphicsView):
                 else:
                     self.__node_type_input = ''
                 if self.__node_type_input:
-                    self.__scene.request_create_node(self.__node_type_input, 'bark foof', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    self.__scene.request_create_node(self.__node_type_input, self.__node_type_input, self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
 
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
