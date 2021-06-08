@@ -259,6 +259,52 @@ class Scheduler:
             await con.commit()
             self.__logger.debug('    :: %s', ping_code)
 
+    async def split_task(self, task_id: int, into: int, con: aiosqlite.Connection) -> List[int]:
+        """
+        con is expected to be a opened db connection with dict factory
+        :param into:
+        :param con:
+        :return:
+        """
+        async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+            task_row = await cur.fetchone()
+        new_split_level = task_row['split_level'] + 1
+
+        async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
+            next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
+        await con.execute('UPDATE tasks SET split_level = ? WHERE "id" = ?',
+                          (new_split_level, task_id))
+        await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                          (next_split_id, task_row['id'], 0, into, new_split_level, task_id))
+        all_split_ids = [task_id]
+        for split_element in range(1, into):
+            async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
+                                   '"node_input_name", "node_output_name", '
+                                   '"work_data", "name", "attributes", "split_level") '
+                                   'VALUES (?,?,?,?,?,?,?,?,?)',
+                                   (task_row['parent_id'], TaskState.WAITING.value, task_row['node_id'],
+                                    task_row['node_input_name'], task_row['node_output_name'],
+                                    task_row['work_data'], task_row['name'], task_row['attributes'], new_split_level)) \
+                    as insert_cur:
+                new_task_id = insert_cur.lastrowid
+
+            # copy groups
+            async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as gcur:
+                groups = [x['group'] for x in await gcur.fetchall()]
+            if len(groups) > 0:
+                await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                                      zip(itertools.repeat(new_task_id, len(groups)), groups))
+
+            all_split_ids.append(new_task_id)
+            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                              (next_split_id, new_task_id, split_element, into, new_split_level, task_id))
+        # now increase number of children to the parent of the task being splitted
+        if task_row['parent_id'] is not None:
+            await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (into - 1, task_row['parent_id']))
+
+        assert into == len(all_split_ids)
+        return all_split_ids
+
     #
     # pinger "thread"
     async def worker_pinger(self):
@@ -350,6 +396,17 @@ class Scheduler:
                                       (result_serialized, task_id))
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
+
+                if process_result._split_attribs is not None
+                    split_count = len(process_result._split_attribs)
+                    for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(split_count, split_count, con)):
+                        async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
+                            split_task_dict = await cur.fetchone()
+                        assert split_task_dict is not None
+                        split_task_attrs = json.loads(split_task_dict['attributes'])
+                        split_task_attrs.update(attr_dict)
+                        await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (split_task_attrs, split_task_id))
+
                 await con.commit()
 
         while True:
@@ -503,28 +560,33 @@ class Scheduler:
                                                       'WHERE "id" = ?',
                                                       (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
                                 else:
-                                    new_split_level = task_row['split_level'] + 1
-                                    await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?, split_level = ?'
-                                                      'WHERE "id" = ?',
-                                                      (all_wires[0]['node_id_in'], all_wires[0]['in_name'], TaskState.WAITING.value, None, new_split_level,
-                                                       task_row['id']))
-                                    async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
-                                        next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
-                                    await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                                                      (next_split_id, task_row['id'], 0, wire_count, new_split_level, task_row['id']))
-                                    for split_element, wire in enumerate(all_wires[1:], 1):
-                                        async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "node_input_name", '
-                                                               '"work_data", "name", "attributes", "split_level") '
-                                                               'VALUES (?,?,?,?,?,?,?,?)',
-                                                               (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], wire['in_name'],
-                                                                None, task_row['name'], task_row['attributes'], new_split_level)) \
-                                                as insert_cur:
-                                            new_task_id = insert_cur.lastrowid
-                                        await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                                                          (next_split_id, new_task_id, split_element, wire_count, new_split_level, task_row['id']))
-                                    # now increase number of children to the parent of the task being splitted
-                                    if task_row['parent_id'] is not None:
-                                        await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (wire_count-1, task_row['parent_id']))
+                                    for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
+                                        await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
+                                                          'WHERE "id" = ?',
+                                                          (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
+                                                           splited_task_id))
+                                    # new_split_level = task_row['split_level'] + 1
+                                    # await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?, split_level = ?'
+                                    #                   'WHERE "id" = ?',
+                                    #                   (all_wires[0]['node_id_in'], all_wires[0]['in_name'], TaskState.WAITING.value, None, new_split_level,
+                                    #                    task_row['id']))
+                                    # async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
+                                    #     next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
+                                    # await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                                    #                   (next_split_id, task_row['id'], 0, wire_count, new_split_level, task_row['id']))
+                                    # for split_element, wire in enumerate(all_wires[1:], 1):
+                                    #     async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "node_input_name", '
+                                    #                            '"work_data", "name", "attributes", "split_level") '
+                                    #                            'VALUES (?,?,?,?,?,?,?,?)',
+                                    #                            (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], wire['in_name'],
+                                    #                             None, task_row['name'], task_row['attributes'], new_split_level)) \
+                                    #             as insert_cur:
+                                    #         new_task_id = insert_cur.lastrowid
+                                    #     await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
+                                    #                       (next_split_id, new_task_id, split_element, wire_count, new_split_level, task_row['id']))
+                                    # # now increase number of children to the parent of the task being splitted
+                                    # if task_row['parent_id'] is not None:
+                                    #     await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (wire_count-1, task_row['parent_id']))
                                 await con.commit()
 
             await asyncio.sleep(self.__processing_interval)
