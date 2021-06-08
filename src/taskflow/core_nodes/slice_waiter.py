@@ -82,6 +82,6 @@ class SplitAwaiterNode(BaseNode):
 
     def __getstate__(self):
         d = super(SplitAwaiterNode, self).__getstate__()
-        assert '_SliceWaiterNode__main_lock' in d
-        del d['_SliceWaiterNode__main_lock']
+        assert '_SplitAwaiterNode__main_lock' in d
+        del d['_SplitAwaiterNode__main_lock']
         return d
