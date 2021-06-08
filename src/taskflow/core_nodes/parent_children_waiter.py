@@ -50,7 +50,9 @@ class ParentChildrenWaiterNode(BaseNode):
             with ui.multigroup_parameter_block('transfer_attribs'):
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('src_attr_name', 'attribute', NodeParameterType.STRING, 'attr1')
-                    ui.add_parameter('transfer_type', 'as', NodeParameterType.STRING, 'append').add_menu((('Append', 'append'),))
+                    ui.add_parameter('transfer_type', 'as', NodeParameterType.STRING, 'extend')\
+                        .add_menu((('Extend', 'extend'),
+                                   ('Append', 'append')))
                     ui.add_parameter('dst_attr_name', 'sort by', NodeParameterType.STRING, 'attr1')
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
@@ -85,6 +87,17 @@ class ParentChildrenWaiterNode(BaseNode):
 
                                 attr_val = attribs[src_attr_name]
                                 gathered_values.append(attr_val)
+                            result.set_attribute(dst_attr_name, gathered_values)
+                        elif transfer_type == 'extend':
+                            for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                                if src_attr_name not in attribs:
+                                    continue
+
+                                attr_val = attribs[src_attr_name]
+                                if isinstance(attr_val, list):
+                                    gathered_values.extend(attr_val)
+                                else:
+                                    gathered_values.append(attr_val)
                             result.set_attribute(dst_attr_name, gathered_values)
                         else:
                             raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
