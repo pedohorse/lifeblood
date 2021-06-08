@@ -22,10 +22,10 @@ class SliceAwaiting(TypedDict):
 
 
 def node_class():
-    return SliceWaiterNode
+    return SplitAwaiterNode
 
 
-class SliceWaiterNode(BaseNode):
+class SplitAwaiterNode(BaseNode):
 
     @classmethod
     def label(cls) -> str:
@@ -36,7 +36,7 @@ class SliceWaiterNode(BaseNode):
         return 'slice', 'gather', 'core'
 
     def __init__(self, name: str):
-        super(SliceWaiterNode, self).__init__(name)
+        super(SplitAwaiterNode, self).__init__(name)
         self.__cache: Dict[int: SliceAwaiting] = {}
         self.__main_lock = Lock()
         with self._parameters.initializing_interface_lock():
@@ -81,7 +81,7 @@ class SliceWaiterNode(BaseNode):
         return ProcessingResult()
 
     def __getstate__(self):
-        d = super(SliceWaiterNode, self).__getstate__()
+        d = super(SplitAwaiterNode, self).__getstate__()
         assert '_SliceWaiterNode__main_lock' in d
         del d['_SliceWaiterNode__main_lock']
         return d
