@@ -12,6 +12,7 @@ class ProcessingResult:
         self.attributes_to_set: Optional[Dict[str, Any]] = {}
         self.do_split_remove: bool = False
         self.output_name: str = node_output_name
+        self._split_attribs = None
 
     def set_node_output_name(self, newname: str):
         self.output_name = newname
@@ -32,3 +33,19 @@ class ProcessingResult:
         if self.spawn_list is None:
             self.spawn_list = []
         self.spawn_list.append(spawn)
+
+    def cancel_split_task(self):
+        self._split_attribs = None
+
+    def split_task(self, into: int):
+        if into <= 1:
+            raise ValueError('cannot split into less than or eq to 1 parts')
+
+        self._split_attribs = [{}] * into
+
+    def set_split_task_attrib(self, split: int, attr_name: str, attr_value):
+        self._split_attribs[split][attr_name] = attr_value
+
+    def set_split_task_attribs(self, split: int, attribs: dict):
+        self._split_attribs[split] = attribs
+
