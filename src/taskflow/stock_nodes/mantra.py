@@ -25,13 +25,14 @@ class Mantra(BaseNode):
 
     def process_task(self, task_dict) -> ProcessingResult:
         args = self._get_task_attributes(task_dict)
-        if 'file' not in args:
+        if 'file' not in args or 'outimage' not in args:
             return ProcessingResult()
 
         env = InvocationEnvironment()
 
-        invoc = InvocationJob(['mantra', '-V', '2a', args['file']], env)
+        invoc = InvocationJob(['mantra', '-V', '2a', args['file'], args['outimage']], env)
         res = ProcessingResult(invoc)
+        res.set_attribute('file', args['outimage'])
         return res
 
     def postprocess_task(self, task_dict) -> ProcessingResult:
