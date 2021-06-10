@@ -481,7 +481,8 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
                         else:
-                            (await self.get_node_object_by_id(task_row['node_id'])).process_task
+                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row['id']):
+                                continue
 
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.GENERATING.value, task_row['id']))
@@ -504,6 +505,9 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
                         else:
+                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row['id']):
+                                continue
+
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.POST_GENERATING.value, task_row['id']))
                             _debug_tmp = time.perf_counter()
