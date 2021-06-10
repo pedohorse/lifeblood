@@ -1,3 +1,5 @@
+import json
+
 from .invocationjob import InvocationJob
 from .taskspawn import TaskSpawn
 
@@ -41,11 +43,20 @@ class ProcessingResult:
         if into <= 1:
             raise ValueError('cannot split into less than or eq to 1 parts')
 
-        self._split_attribs = [{}] * into
+        self._split_attribs = [{} for _ in range(into)]
 
     def set_split_task_attrib(self, split: int, attr_name: str, attr_value):
+        try:
+            json.dumps(attr_value)
+        except:
+            raise ValueError('attribs must be json-serializable dict')
         self._split_attribs[split][attr_name] = attr_value
 
     def set_split_task_attribs(self, split: int, attribs: dict):
+        try:
+            assert isinstance(attribs, dict)
+            json.dumps(attribs)
+        except:
+            raise ValueError('attribs must be json-serializable dict')
         self._split_attribs[split] = attribs
 
