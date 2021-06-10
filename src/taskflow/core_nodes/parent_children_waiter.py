@@ -46,7 +46,7 @@ class ParentChildrenWaiterNode(BaseNode):
         with ui.initializing_interface_lock():
             ui.add_input('children')
             ui.add_output('children')
-            ui.add_parameter('recursive', None, NodeParameterType.BOOL, False)
+            ui.add_parameter('recursive', 'recursive', NodeParameterType.BOOL, False)
             with ui.multigroup_parameter_block('transfer_attribs'):
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('src_attr_name', 'attribute', NodeParameterType.STRING, 'attr1')
