@@ -364,7 +364,7 @@ class Node(NetworkItemWithUI):
                 menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
                 changed, val = imgui.combo('##'.join((param_label, param_name)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
                 if changed:
-                    item.set_value(val)
+                    item.set_value(menu_items[menu_order[val]])
             else:
                 param_type = item.type()
                 if param_type == NodeParameterType.BOOL:
