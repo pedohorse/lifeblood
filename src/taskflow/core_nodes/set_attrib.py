@@ -58,6 +58,8 @@ class SetAttributes(BaseNode):
         res = ProcessingResult()
         for i in range(attr_count):
             attr_name = self.param_value(f'name_{i}')
+            if attr_name == '':  # however some spaces - is a valid parameter name
+                continue
             attr_type = self.param_value(f'type_{i}')
             if attr_type == NodeParameterType.INT.value:
                 attr_val = self.param_value(f'ivalue_{i}')
