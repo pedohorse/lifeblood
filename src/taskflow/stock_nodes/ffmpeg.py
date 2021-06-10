@@ -1,3 +1,5 @@
+from math import sqrt, floor, ceil
+
 from taskflow.basenode import BaseNode
 from taskflow.nodethings import ProcessingResult
 from taskflow.uidata import NodeParameterType
@@ -14,7 +16,7 @@ def node_class():
 class Ffmpeg(BaseNode):
     @classmethod
     def label(cls) -> str:
-        return 'mantra'
+        return 'ffmpeg'
 
     @classmethod
     def tags(cls) -> Iterable[str]:
@@ -51,8 +53,44 @@ class Ffmpeg(BaseNode):
             job = InvocationJob(args)
             framelist = '\n'.join(f'file \'{seqitem}\'' for seqitem in sequence)  # file in ffmpeg concat format
             job.set_extra_file('framelist.txt', framelist)
+        elif isinstance(sequence[0], list):
+            # for now logic is this:
+            # calc dims
+            # pick first sequence, use as size ref with dims
+            # woop woop
+            num_items = len(sequence)
+            count_h = ceil(sqrt(num_items))
+            count_w = ceil(num_items/count_h)
+
+            filter = f"color=color='Black'[null];" \
+                     f'[null][0]scale2ref=w=iw*{count_w}:h=ih*{count_h}[prebase][sink];[sink]nullsink;[prebase]setsar=1/1[base0];'
+
+            filterlines = []
+            input = 0
+            for h in range(count_h):
+                for w in range(count_w):
+                    filterlines.append(f"[base{input}][{input}]overlay={'shortest=1:' if input == 0 else ''}x='w*{w}':y='h*{h}'[base{input+1}]")
+                    input += 1
+                    if input == num_items:
+                        break
+                if input == num_items:
+                    break
+
+            filterlines.append(f'[base{input}]null')
+            filter += ';'.join(filterlines)
+
+            args = [binpath]
+            for i in range(num_items):
+                args += ['-f', 'concat', '-safe', '0', '-r', fps, '-i', f':/framelist{i}.txt']
+            args += ['-filter_complex', filter]
+            args += [*outopts, '-r', fps, '-y', outpath]
+            job = InvocationJob(args)
+            for i, subsequence in enumerate(sequence):
+                framelist = '\n'.join(f'file \'{seqitem}\'' for seqitem in subsequence)  # file in ffmpeg concat format
+                job.set_extra_file(f'framelist{i}.txt', framelist)
         else:
             raise RuntimeError('bad attribute value')
+
 
         res = ProcessingResult(job)
         res.set_attribute('file', outpath)
