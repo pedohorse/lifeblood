@@ -62,7 +62,7 @@ class Ffmpeg(BaseNode):
             count_h = ceil(sqrt(num_items))
             count_w = ceil(num_items/count_h)
 
-            filter = f"color=color='Black'[null];" \
+            filter = f"color=c='Black':r={fps}[null];" \
                      f'[null][0]scale2ref=w=iw*{count_w}:h=ih*{count_h}[prebase][sink];[sink]nullsink;[prebase]setsar=1/1[base0];'
 
             filterlines = []
@@ -83,7 +83,7 @@ class Ffmpeg(BaseNode):
             for i in range(num_items):
                 args += ['-f', 'concat', '-safe', '0', '-r', fps, '-i', f':/framelist{i}.txt']
             args += ['-filter_complex', filter]
-            args += [*outopts, '-r', fps, '-y', outpath]
+            args += [*outopts, '-y', outpath]
             job = InvocationJob(args)
             for i, subsequence in enumerate(sequence):
                 framelist = '\n'.join(f'file \'{seqitem}\'' for seqitem in subsequence)  # file in ffmpeg concat format
