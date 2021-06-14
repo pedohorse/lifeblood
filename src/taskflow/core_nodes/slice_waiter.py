@@ -52,6 +52,14 @@ class SplitAwaiterNode(BaseNode):
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
 
+    def ready_to_process_task(self, task_dict) -> bool:
+        split_id = task_dict['split_id']
+        # we don't even need to lock
+        return split_id not in self.__cache or \
+               not self.param_value('wait for all') or \
+               task_dict['split_element'] not in self.__cache[split_id]['arrived'] or \
+               self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']
+
     def process_task(self, task_dict) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
         orig_id = task_dict['split_origin_task_id']
         split_id = task_dict['split_id']
