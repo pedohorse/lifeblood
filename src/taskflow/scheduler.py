@@ -1,5 +1,6 @@
 import sys
 import os
+import traceback
 import time
 from datetime import datetime
 import json
@@ -362,10 +363,17 @@ class Scheduler:
                                       (abort_state.value, task_id))
                     await con.commit()
                 return
-            except Exception as e:  # TODO: save error information into database
+            except Exception as e:
                 async with aiosqlite.connect(self.db_path) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value, task_id))
+                    await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
+                                      (json.dumps({'message': traceback.format_exc(),
+                                                   'happened_at': task_row['state'],
+                                                   'type': 'exception',
+                                                   'exception_str': str(e),
+                                                   'exception_type': str(type(e))})
+                                       , task_id))
                     await con.commit()
                     self.__logger.exception('error happened %s %s', type(e), e)
                 return
@@ -711,6 +719,11 @@ class Scheduler:
             elif task.finished_with_error():
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.ERROR.value, invocation['task_id']))
+                await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
+                                  (json.dumps({'message': f'see invocation #{invocation["id"]} log for details',
+                                               'happened_at': TaskState.IN_PROGRESS.value,
+                                               'type': 'invocation'})
+                                   , invocation['task_id']))
             else:
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.POST_WAITING.value, invocation['task_id']))
