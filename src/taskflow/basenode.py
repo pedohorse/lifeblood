@@ -89,13 +89,13 @@ class BaseNode:
         if self.__parent is not None:
             asyncio.get_event_loop().create_task(self.__parent.node_reports_ui_update(self.__parent_nid))
 
-    def ready_to_process_task(self, task_id) -> bool:
+    def ready_to_process_task(self, task_dict) -> bool:
         """
         must be VERY fast - this will be run in main thread
         """
         return True
 
-    def ready_to_postprocess_task(self, task_id) -> bool:
+    def ready_to_postprocess_task(self, task_dict) -> bool:
         """
         must be VERY fast - this will be run in main thread
         """
