@@ -481,7 +481,7 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
                         else:
-                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row['id']):
+                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
                                 continue
 
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
@@ -505,7 +505,7 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
                         else:
-                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row['id']):
+                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                 continue
 
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
@@ -622,6 +622,16 @@ class Scheduler:
                             _debug_tmp = time.perf_counter()
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
+                        else:
+                            # the problem is that there are tasks that done, but have no wires to go anywhere
+                            # and that is the point, they are done done. But processing thousands of them every time is painful
+                            # so we need to somehow prevent them from being amilessly processed
+                            # this is a testing desicion, TODO: test and see if thes is a good way to deal with the problem
+                            await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
+                            _debug_tmp = time.perf_counter()
+                            await con.commit()
+                            _debug_tc += time.perf_counter() - _debug_tmp
+
                         _debug_td += time.perf_counter() - _debug_tmpw
                         _debug_done_cnt += 1
 
