@@ -35,6 +35,8 @@ class Test(BaseNode):
                             'echo "ended"\n'],
                            InvocationEnvironment())
         time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
+        if int(time.time()) % 10 == 0:
+            raise RuntimeError('just happened to be in a wrong time in a wrong place')
         return ProcessingResult(job=td)
 
     def postprocess_task(self, task_dict) -> ProcessingResult:
@@ -42,4 +44,6 @@ class Test(BaseNode):
         res = ProcessingResult()
         res.set_attribute('cat', 1)
         res.set_attribute('dog', 2)
+        if int(time.time()) % 10 == 0:
+            raise RuntimeError('ain\'t ur lucky day, kid')
         return res
