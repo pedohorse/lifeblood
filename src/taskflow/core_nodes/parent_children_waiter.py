@@ -57,6 +57,23 @@ class ParentChildrenWaiterNode(BaseNode):
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
 
+    def ready_to_process_task(self, task_dict) -> bool:
+        task_id = task_dict['id']
+        children_count = task_dict['children_count']
+        if task_dict['node_input_name'] == 'main':
+            return task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
+
+        ready: bool = True
+        parent_id = task_dict['parent_id']
+        if self.param_value('recursive') and children_count > 0:
+            ready = task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
+        ready = ready and (
+                parent_id not in self.__cache_children or
+                task_id not in self.__cache_children[parent_id].children or
+                self.__cache_children[parent_id].parent_ready
+                )
+        return ready
+
     def process_task(self, task_dict) -> ProcessingResult:
         task_id = task_dict['id']
         children_count = task_dict['children_count']
