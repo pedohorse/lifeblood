@@ -23,6 +23,7 @@ from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup, QEvent
 from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent, QSurfaceFormat, QPainter, QTransform
 
+from .dialogs import MessageWithSelectableText
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -714,6 +715,9 @@ class Task(NetworkItemWithUI):
         self.__paused = False
         self.__progress = None
 
+        self.__state_details_raw = None
+        self.__state_details = None
+
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
@@ -790,6 +794,9 @@ class Task(NetworkItemWithUI):
     def state(self):
         return self.__state
 
+    def state_details(self) -> Optional[dict]:
+        return self.__state_details
+
     def paused(self):
         return self.__paused
 
@@ -805,10 +812,20 @@ class Task(NetworkItemWithUI):
     def draw_size(self):
         return self.__size
 
+    def set_state_details(self, state_details: Optional[str] = None):
+        if self.__state_details_raw == state_details:
+            return
+        self.__state_details_raw = state_details
+        if state_details is None:
+            self.__state_details = None
+            return
+        self.__state_details = json.loads(self.__state_details_raw)
+
     def set_state(self, state: TaskState, paused: bool):
         if state == self.__state and self.__paused == paused:
             return
         self.__state = state
+        self.set_state_details(None)
         self.__paused = paused
         if state != TaskState.IN_PROGRESS:
             self.__progress = None
@@ -1401,6 +1418,7 @@ class QGraphicsImguiScene(QGraphicsScene):
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
+            task.set_state_details(newdata['state_details'])
             if newdata['progress'] is not None:
                 task.set_progress(newdata['progress'])
             task.set_groups(newdata['groups'])
@@ -1994,6 +2012,10 @@ class NodeEditor(QGraphicsView):
         menu.addAction(f'task {task.get_id()}').setEnabled(False)
         menu.addSeparator()
         menu.addAction(f'{task.state().name}').setEnabled(False)
+        if task.state_details() is None:
+            menu.addAction('no state message').setEnabled(False)
+        else:
+            menu.addAction('state message').triggered.connect(lambda _=False, x=task: self.show_task_details(x))
         menu.addAction('-paused-' if task.paused() else 'active').setEnabled(False)
 
         menu.addSeparator()
@@ -2014,6 +2036,14 @@ class NodeEditor(QGraphicsView):
         pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
+
+    def show_task_details(self, task: Task):
+        details = task.state_details()
+        if details is None:
+            return
+        dialog = MessageWithSelectableText(self)
+        dialog.set_text(details.get('message', ''))
+        dialog.show()
 
     def show_node_menu(self, node: Node, pos=None):
         menu = QMenu(self)
