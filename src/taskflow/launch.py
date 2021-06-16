@@ -1,10 +1,12 @@
 import sys
 import argparse
 from . import config
+from . import logging
 
 
 def main(argv):
     parser = argparse.ArgumentParser('taskflow', description='task execution thingie')
+    parser.add_argument('--loglevel', help='logging level, like DEBUG, INFO, WARNING, ERROR')
 
     subparsers = parser.add_subparsers(title='command', required=True, dest='command')
     schedparser = subparsers.add_parser('scheduler', description='run main scheduler server')
@@ -18,6 +20,8 @@ def main(argv):
 
     if opts.command == 'scheduler':
         from .scheduler import main
+        if opts.loglevel is not None:
+            logging.getLogger('scheduler').setLevel(opts.loglevel)
         overrides = {}
         if opts.db_path:
             if 'scheduler' not in overrides:
@@ -29,9 +33,13 @@ def main(argv):
         return main()
     elif opts.command == 'worker':
         from .worker import main
+        if opts.loglevel is not None:
+            logging.getLogger('worker').setLevel(opts.loglevel)
         return main()
     elif opts.command == 'viewer':
         from .viewer.launch import main
+        if opts.loglevel is not None:
+            logging.getLogger('viewer').setLevel(opts.loglevel)
         return main()
 
 
