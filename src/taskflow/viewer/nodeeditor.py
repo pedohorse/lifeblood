@@ -2041,8 +2041,7 @@ class NodeEditor(QGraphicsView):
         details = task.state_details()
         if details is None:
             return
-        dialog = MessageWithSelectableText(self)
-        dialog.set_text(details.get('message', ''))
+        dialog = MessageWithSelectableText(details.get('message', ''), parent=self)
         dialog.show()
 
     def show_node_menu(self, node: Node, pos=None):

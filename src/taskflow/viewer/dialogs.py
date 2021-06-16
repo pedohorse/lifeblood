@@ -3,7 +3,11 @@ from PySide2.QtCore import QSize
 
 
 class MessageWithSelectableText(QDialog):
-    def __init__(self, parent=None):
+    """
+    dialog with a read-only text edit field
+    good to preview long texts with ability to select-copy parts of it
+    """
+    def __init__(self, text, parent=None):
         super(MessageWithSelectableText, self).__init__(parent)
 
         self.__main_layout = QVBoxLayout(self)
@@ -21,6 +25,9 @@ class MessageWithSelectableText(QDialog):
 
         # connect
         self.__btn_ok.pressed.connect(self.accept)
+
+        # postconnec
+        self.set_text(text)
 
     def set_text(self, text: str):
         self.__edit_field.setText(text)
