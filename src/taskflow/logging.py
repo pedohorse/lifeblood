@@ -30,6 +30,6 @@ def getLogger(name):
     handler.setStream(sys.stderr)
     logger.addHandler(handler)
 
-    logger.setLevel('DEBUG')
+    logger.setLevel('INFO')
     logger.propagate = False
     return logger
