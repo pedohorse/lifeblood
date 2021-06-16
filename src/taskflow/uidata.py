@@ -541,10 +541,8 @@ class MultiGroupLayout(OrderedParametersLayout):
         
     def _child_added(self, child: "ParameterHierarchyItem"):
         super(MultiGroupLayout, self)._child_added(child)
-        print("__debug__ child added", child)
     
     def _child_about_to_be_removed(self, child: "ParameterHierarchyItem"):
-        print("__debug__ child removed", child)
         super(MultiGroupLayout, self)._child_about_to_be_removed(child)
 
 
