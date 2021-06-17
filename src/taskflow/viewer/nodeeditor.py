@@ -538,7 +538,8 @@ class NodeConnection(NetworkItem):
         self.__inname = inname
         self.setZValue(-1)
         self.__line_width = 6  # TODO: rename it to match what it represents
-        self.__pick_radius2 = 50**2
+        self.__pick_radius2 = 100**2
+        self.__curv = 150
 
         self.__ui_interactor: Optional[NodeConnectionCreatePreview] = None
         self.__ui_widget: Optional[NodeEditor] = None
@@ -550,6 +551,42 @@ class NodeConnection(NetworkItem):
         self.__thick_pen = QPen(QColor(144, 144, 144, 128))
         self.__thick_pen.setWidthF(4)
         self.__last_drawn_path: Optional[QPainterPath] = None
+
+    def distance_to_point(self, pos: QPointF):
+        """
+        returns approx distance to a given point
+        currently it has the most crude implementation
+        :param pos:
+        :return:
+        """
+        def sqlength(v: QPointF):
+            return QPointF.dotProduct(v, v)
+
+        line = self.get_painter_path()
+        # determine where to start
+        p0 = self.__nodeout.get_output_position(self.__outname)
+        p1 = self.__nodein.get_input_position(self.__inname)
+
+        if sqlength(p0-pos) < sqlength(p1-pos):  # pos closer to p0
+            curper = 0
+            curstep = 0.1
+            lastsqlen = sqlength(p0 - pos)
+        else:
+            curper = 1
+            curstep = -0.1
+            lastsqlen = sqlength(p1 - pos)
+
+        sqlen = lastsqlen
+        while 0 <= curper <= 1:
+            curper += curstep
+            sqlen = sqlength(line.pointAtPercent(curper) - pos)
+            if sqlen > lastsqlen:
+                curstep *= -0.1
+                if abs(sqlen - lastsqlen) < 0.001**2 or abs(curstep) < 1e-7:
+                    break
+            lastsqlen = sqlen
+
+        return sqrt(sqlen)
 
     def boundingRect(self) -> QRectF:
         hlw = self.__line_width
@@ -565,7 +602,7 @@ class NodeConnection(NetworkItem):
 
         p0 = self.__nodeout.get_output_position(self.__outname)
         p1 = self.__nodein.get_input_position(self.__inname)
-        curv = 150
+        curv = self.__curv
         curv = min((p0-p1).manhattanLength()*0.5, curv)
         line.moveTo(p0)
         line.cubicTo(p0 + QPointF(0, curv), p1 - QPointF(0, curv), p1)
@@ -614,9 +651,10 @@ class NodeConnection(NetworkItem):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
         line = self.get_painter_path(close_path=True)
-        pick_radius = 10
+        wire_pick_radius = 15
         circle = QPainterPath()
-        circle.addEllipse(event.scenePos(), pick_radius, pick_radius)
+        circle.addEllipse(event.scenePos(), wire_pick_radius, wire_pick_radius)
+        event.ignore()
         if self.__ui_interactor is None and line.intersects(circle):
             logger.debug('---GOT A PEAK AT MY DICK---')
             wgt = event.widget()
@@ -633,26 +671,41 @@ class NodeConnection(NetworkItem):
                 event.accept()
                 return
 
-            node_viewer = wgt.parent()
-            assert isinstance(node_viewer, NodeEditor)
-            if node_viewer.request_ui_focus(self):
-                event.accept()
+            if hasattr(event, 'wire_candidates'):
+                event.wire_candidates.append((self.distance_to_point(p), self))
 
-                output_picked = d02 < d12
-                if output_picked:
-                    snap_points = [y for x in self.scene().nodes() if x != self.__nodein for y in x.output_snap_points() ]
-                else:
-                    snap_points = [y for x in self.scene().nodes() if x != self.__nodeout for y in x.input_snap_points()]
-                self.__ui_interactor = NodeConnectionCreatePreview(None if output_picked else self.__nodeout,
-                                                                   self.__nodein if output_picked else None,
-                                                                   self.__outname, self.__inname,
-                                                                   snap_points, 15, self._ui_interactor_finished)
-                self.update()
-                self.__ui_widget = node_viewer
-                self.scene().addItem(self.__ui_interactor)
-                self.__ui_interactor.mouseMoveEvent(event)
-        else:
-            event.ignore()
+    def post_mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        """
+        this will be called by scene as continuation of mousePressEvent
+        IF scene decides so.
+        :param event:
+        :return:
+        """
+        wgt = event.widget()
+        p = event.scenePos()
+        p0 = self.__nodeout.get_output_position(self.__outname)
+        p1 = self.__nodein.get_input_position(self.__inname)
+        d02 = QPointF.dotProduct(p0 - p, p0 - p)
+        d12 = QPointF.dotProduct(p1 - p, p1 - p)
+        node_viewer = wgt.parent()
+        assert isinstance(node_viewer, NodeEditor)
+        if node_viewer.request_ui_focus(self):
+            event.accept()
+            self.grabMouse()
+
+            output_picked = d02 < d12
+            if output_picked:
+                snap_points = [y for x in self.scene().nodes() if x != self.__nodein for y in x.output_snap_points() ]
+            else:
+                snap_points = [y for x in self.scene().nodes() if x != self.__nodeout for y in x.input_snap_points()]
+            self.__ui_interactor = NodeConnectionCreatePreview(None if output_picked else self.__nodeout,
+                                                               self.__nodein if output_picked else None,
+                                                               self.__outname, self.__inname,
+                                                               snap_points, 15, self._ui_interactor_finished)
+            self.update()
+            self.__ui_widget = node_viewer
+            self.scene().addItem(self.__ui_interactor)
+            self.__ui_interactor.mouseMoveEvent(event)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
@@ -663,6 +716,7 @@ class NodeConnection(NetworkItem):
         if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
             self.__ui_interactor.mouseReleaseEvent(event)
             event.accept()
+        self.ungrabMouse()
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Delete:
@@ -1086,6 +1140,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         self.__snap_radius2 = snap_radius * snap_radius
         self.setZValue(-1)
         self.__line_width = 4
+        self.__curv = 150
 
         self.__ui_last_pos = QPointF()
         self.__finished_callback = report_done_here
@@ -1101,9 +1156,12 @@ class NodeConnectionCreatePreview(QGraphicsItem):
             p0 = self.__nodeout.get_output_position(self.__outname)
             p1 = self.__ui_last_pos
 
+        curv = self.__curv
+        curv = min((p0 - p1).manhattanLength() * 0.5, curv)
+
         line = QPainterPath()
         line.moveTo(p0)
-        line.cubicTo(p0 + QPointF(0, 150), p1 - QPointF(0, 150), p1)
+        line.cubicTo(p0 + QPointF(0, curv), p1 - QPointF(0, curv), p1)
         return line
 
     def boundingRect(self) -> QRectF:
@@ -1537,6 +1595,16 @@ class QGraphicsImguiScene(QGraphicsScene):
             item.keyReleaseEvent(event)
         event.accept()
         #return super(QGraphicsImguiScene, self).keyReleaseEvent(event)
+
+    # this will also catch accumulated events that wires ignore to determine the losest wire
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        event.wire_candidates = []
+        super(QGraphicsImguiScene, self).mousePressEvent(event)
+        print(self.mouseGrabberItem())
+        if not event.isAccepted() and len(event.wire_candidates) > 0:
+            print([x[0] for x in event.wire_candidates])
+            closest = min(event.wire_candidates, key=lambda x: x[0])
+            closest[1].post_mousePressEvent(event)  # this seem a bit unsafe, at least not typed statically enough
 
 
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
