@@ -650,11 +650,13 @@ class NodeConnection(NetworkItem):
         self.__inname = input_name
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        event.ignore()
+        if event.button() != Qt.LeftButton:
+            return
         line = self.get_painter_path(close_path=True)
         wire_pick_radius = 15
         circle = QPainterPath()
         circle.addEllipse(event.scenePos(), wire_pick_radius, wire_pick_radius)
-        event.ignore()
         if self.__ui_interactor is None and line.intersects(circle):
             logger.debug('---GOT A PEAK AT MY DICK---')
             wgt = event.widget()
@@ -713,6 +715,9 @@ class NodeConnection(NetworkItem):
             event.accept()
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        event.ignore()
+        if event.button() != Qt.LeftButton:
+            return
         if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
             self.__ui_interactor.mouseReleaseEvent(event)
             event.accept()
