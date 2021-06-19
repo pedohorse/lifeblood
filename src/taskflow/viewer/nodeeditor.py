@@ -40,6 +40,10 @@ def call_later(callable, *args, **kwargs):
         PySide2.QtCore.QTimer.singleShot(0, lambda: callable(*args, **kwargs))
 
 
+def length2(v: QPointF):
+    return QPointF.dotProduct(v, v)
+
+
 class NetworkItem(QGraphicsItem):
     def __init__(self, id):
         super(NetworkItem, self).__init__()
@@ -103,7 +107,7 @@ class Node(NetworkItemWithUI):
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
         self.__height = self.base_height
         self.__width = self.base_width
-        self.__input_radius = 7
+        self.__input_radius = 8
         self.__line_width = 1
         self.__name = name
         self.__tasks: List["Task"] = []
@@ -438,9 +442,9 @@ class Node(NetworkItemWithUI):
         return super(Node, self).itemChange(change, value)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-        if self.__ui_interactor is None:
+        if event.button() == Qt.LeftButton and self.__ui_interactor is None:
             pos = event.scenePos()
-            r2 = self.__input_radius**2
+            r2 = (self.__input_radius + 0.5*self.__line_width)**2
             node_viewer = event.widget().parent()
             assert isinstance(node_viewer, NodeEditor)
 
@@ -477,6 +481,10 @@ class Node(NetworkItemWithUI):
                     self.__ui_interactor.mousePressEvent(event)
                     return
 
+            if not self._get_nodeshape().contains(event.pos()):
+                event.ignore()
+                return
+
         super(Node, self).mousePressEvent(event)
 
         if event.button() == Qt.RightButton:
@@ -487,23 +495,25 @@ class Node(NetworkItemWithUI):
             event.accept()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
-        if self.__ui_interactor is not None:
-            event.accept()
-            self.__ui_interactor.mouseMoveEvent(event)
-            return
+        # if self.__ui_interactor is not None:
+        #     event.accept()
+        #     self.__ui_interactor.mouseMoveEvent(event)
+        #     return
         super(Node, self).mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
-        if self.__ui_interactor is not None:
-            event.accept()
-            self.__ui_interactor.mouseReleaseEvent(event)
-            return
+        # if self.__ui_interactor is not None:
+        #     event.accept()
+        #     self.__ui_interactor.mouseReleaseEvent(event)
+        #     return
         super(Node, self).mouseReleaseEvent(event)
 
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
         assert self.__ui_interactor is not None
-        call_later(lambda x: print('bloop', x) or self.scene().removeItem(x), self.__ui_interactor)
+        call_later(lambda x: print('bloop', x) or x.scene().removeItem(x), self.__ui_interactor)
+        if self.scene() is None:  # if scheduler deleted us while interacting
+            return
         # NodeConnection._dbg_shitlist.append(self.__ui_interactor)
         grabbed_conn = self.__ui_grabbed_conn
         self.__ui_widget.release_ui_focus(self)
@@ -531,7 +541,7 @@ class Node(NetworkItemWithUI):
 class NodeConnection(NetworkItem):
     def __init__(self, id: int, nodeout: Node, nodein: Node, outname: str, inname: str):
         super(NodeConnection, self).__init__(id)
-        self.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
+        self.setFlags(QGraphicsItem.ItemSendsGeometryChanges)  # QGraphicsItem.ItemIsSelectable |
         self.__nodeout = nodeout
         self.__nodein = nodein
         self.__outname = outname
@@ -559,27 +569,25 @@ class NodeConnection(NetworkItem):
         :param pos:
         :return:
         """
-        def sqlength(v: QPointF):
-            return QPointF.dotProduct(v, v)
 
         line = self.get_painter_path()
         # determine where to start
         p0 = self.__nodeout.get_output_position(self.__outname)
         p1 = self.__nodein.get_input_position(self.__inname)
 
-        if sqlength(p0-pos) < sqlength(p1-pos):  # pos closer to p0
+        if length2(p0-pos) < length2(p1-pos):  # pos closer to p0
             curper = 0
             curstep = 0.1
-            lastsqlen = sqlength(p0 - pos)
+            lastsqlen = length2(p0 - pos)
         else:
             curper = 1
             curstep = -0.1
-            lastsqlen = sqlength(p1 - pos)
+            lastsqlen = length2(p1 - pos)
 
         sqlen = lastsqlen
         while 0 <= curper <= 1:
             curper += curstep
-            sqlen = sqlength(line.pointAtPercent(curper) - pos)
+            sqlen = length2(line.pointAtPercent(curper) - pos)
             if sqlen > lastsqlen:
                 curstep *= -0.1
                 if abs(sqlen - lastsqlen) < 0.001**2 or abs(curstep) < 1e-7:
@@ -693,7 +701,6 @@ class NodeConnection(NetworkItem):
         assert isinstance(node_viewer, NodeEditor)
         if node_viewer.request_ui_focus(self):
             event.accept()
-            self.grabMouse()
 
             output_picked = d02 < d12
             if output_picked:
@@ -703,25 +710,29 @@ class NodeConnection(NetworkItem):
             self.__ui_interactor = NodeConnectionCreatePreview(None if output_picked else self.__nodeout,
                                                                self.__nodein if output_picked else None,
                                                                self.__outname, self.__inname,
-                                                               snap_points, 15, self._ui_interactor_finished)
+                                                               snap_points, 15, self._ui_interactor_finished, True)
             self.update()
             self.__ui_widget = node_viewer
             self.scene().addItem(self.__ui_interactor)
-            self.__ui_interactor.mouseMoveEvent(event)
+            self.__ui_interactor.mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
-            self.__ui_interactor.mouseMoveEvent(event)
-            event.accept()
+        # if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
+        #     self.__ui_interactor.mouseMoveEvent(event)
+        #     event.accept()
+        super(NodeConnection, self).mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        event.ignore()
-        if event.button() != Qt.LeftButton:
-            return
-        if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
-            self.__ui_interactor.mouseReleaseEvent(event)
-            event.accept()
+        # event.ignore()
+        # if event.button() != Qt.LeftButton:
+        #     return
+        # if self.__ui_interactor is not None:  # redirect input, cuz scene will direct all events to this item. would be better to change focus, but so far scene.setFocusItem did not work as expected
+        #     self.__ui_interactor.mouseReleaseEvent(event)
+        #     event.accept()
+        # self.ungrabMouse()
+        print('ungrabbin')
         self.ungrabMouse()
+        super(NodeConnection, self).mouseReleaseEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Delete:
@@ -732,12 +743,20 @@ class NodeConnection(NetworkItem):
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
         assert self.__ui_interactor is not None
-        call_later(lambda x: print('bloop', x) or self.scene().removeItem(x), self.__ui_interactor)
+        call_later(lambda x: print('bloop', x) or x.scene().removeItem(x), self.__ui_interactor)
+        if self.scene() is None:  # if scheduler deleted us while interacting
+            return
         # NodeConnection._dbg_shitlist.append(self.__ui_interactor)
         self.__ui_widget.release_ui_focus(self)
         self.__ui_widget = None
+        is_cutting = self.__ui_interactor.is_cutting()
         self.__ui_interactor = None
         self.update()
+
+        # are we cutting the wire
+        if is_cutting:
+            self.scene().request_node_connection_remove(self.get_id())
+            return
 
         # actual node reconection
         if snap_point is None:
@@ -767,7 +786,7 @@ class NodeConnection(NetworkItem):
 class Task(NetworkItemWithUI):
     def __init__(self, id, name: str, groups=None):
         super(Task, self).__init__(id)
-        self.setFlags(QGraphicsItem.ItemIsSelectable)
+        #self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setZValue(1)
         self.__name = name
         self.__state = TaskState.WAITING
@@ -1017,6 +1036,7 @@ class Task(NetworkItemWithUI):
             if value and self.__node is not None:   # item was just selected
                 self.refresh_ui()
             elif not value:
+                self.setFlag(QGraphicsItem.ItemIsSelectable, False)  # we are not selectable any more by band selection until directly clicked
                 pass
                 #self.__log = None
         elif change == QGraphicsItem.ItemSceneChange:
@@ -1029,6 +1049,7 @@ class Task(NetworkItemWithUI):
         if not self._get_selectshapepath().contains(event.pos()):
             event.ignore()
             return
+        self.setFlag(QGraphicsItem.ItemIsSelectable, True)  # if we are clicked - we are now selectable until unselected. This is to avoid band selection
         super(Task, self).mousePressEvent(event)
         self.__press_pos = event.scenePos()
 
@@ -1057,7 +1078,7 @@ class Task(NetworkItemWithUI):
             if len(nodes) > 0:
                 logger.debug(f'moving item {self} to node {nodes[0]}')
                 self.scene().request_set_task_node(self.get_id(), nodes[0].get_id())
-            call_later(self.scene().removeItem, self.__ui_interactor)
+            call_later(self.__ui_interactor.scene().removeItem, self.__ui_interactor)
             self.__ui_interactor = None
 
         else:
@@ -1131,7 +1152,7 @@ class NodeConnSnapPoint(SnapPoint):
 
 
 class NodeConnectionCreatePreview(QGraphicsItem):
-    def __init__(self, nodeout: Optional[Node], nodein: Optional[Node], outname: str, inname: str, snap_points: List[NodeConnSnapPoint], snap_radius: float, report_done_here: Callable):
+    def __init__(self, nodeout: Optional[Node], nodein: Optional[Node], outname: str, inname: str, snap_points: List[NodeConnSnapPoint], snap_radius: float, report_done_here: Callable, do_cutting: bool = False):
         super(NodeConnectionCreatePreview, self).__init__()
         assert nodeout is None and nodein is not None or \
                nodeout is not None and nodein is None
@@ -1146,12 +1167,22 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         self.setZValue(-1)
         self.__line_width = 4
         self.__curv = 150
+        self.__breakdist2 = 200**2
 
         self.__ui_last_pos = QPointF()
         self.__finished_callback = report_done_here
 
         self.__pen = QPen(QColor(64, 64, 64, 192))
         self.__pen.setWidthF(3)
+
+        self.__do_cutting = do_cutting
+        self.__cutpen = QPen(QColor(96, 32, 32, 192))
+        self.__cutpen.setWidthF(3)
+        self.__cutpen.setStyle(Qt.DotLine)
+
+        self.__is_snapping = False
+
+        self.__orig_pos: Optional[QPointF] = None
 
     def get_painter_path(self):
         if self.__nodein is not None:
@@ -1184,43 +1215,67 @@ class NodeConnectionCreatePreview(QGraphicsItem):
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         line = self.get_painter_path()
-        painter.setPen(self.__pen)
+        if self.is_cutting():
+            painter.setPen(self.__cutpen)
+        else:
+            painter.setPen(self.__pen)
         painter.drawPath(line)
         # painter.drawRect(self.boundingRect())
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        if event.button() != Qt.LeftButton:
+            event.ignore()
+            return
+        self.grabMouse()
         pos = event.scenePos()
         closest_snap = self.get_closest_snappoint(pos)
+        self.__is_snapping = False
         if closest_snap is not None:
             pos = closest_snap.pos()
+            self.__is_snapping = True
         self.prepareGeometryChange()
         self.__ui_last_pos = pos
+        if self.__orig_pos is None:
+            self.__orig_pos = pos
         event.accept()
 
     def mouseMoveEvent(self, event):
         pos = event.scenePos()
         closest_snap = self.get_closest_snappoint(pos)
+        self.__is_snapping = False
         if closest_snap is not None:
             pos = closest_snap.pos()
+            self.__is_snapping = True
         self.prepareGeometryChange()
         self.__ui_last_pos = pos
+        if self.__orig_pos is None:
+            self.__orig_pos = pos
         event.accept()
 
-    def get_closest_snappoint(self, pos: QPointF) -> Optional[NodeConnSnapPoint]:
-        def qpflength2(p: QPointF):
-            return QPointF.dotProduct(p, p)
+    def is_cutting(self):
+        """
+        wether or not interactor is it cutting the wire state
+        :return:
+        """
+        return self.__do_cutting and not self.__is_snapping and self.__orig_pos is not None and length2(self.__orig_pos - self.__ui_last_pos) > self.__breakdist2
 
-        snappoints = [x for x in self.__snappoints if qpflength2(x.pos() - pos) < self.__snap_radius2]
+    def get_closest_snappoint(self, pos: QPointF) -> Optional[NodeConnSnapPoint]:
+
+        snappoints = [x for x in self.__snappoints if length2(x.pos() - pos) < self.__snap_radius2]
 
         if len(snappoints) == 0:
             return None
 
-        return min(snappoints, key=lambda x: qpflength2(x.pos() - pos))
+        return min(snappoints, key=lambda x: length2(x.pos() - pos))
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+        if event.button() != Qt.LeftButton:
+            event.ignore()
+            return
         if self.__finished_callback is not None:
             self.__finished_callback(self.get_closest_snappoint(event.scenePos()))
         event.accept()
+        self.ungrabMouse()
 
 
 class TaskPreview(QGraphicsItem):
@@ -1605,11 +1660,18 @@ class QGraphicsImguiScene(QGraphicsScene):
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         event.wire_candidates = []
         super(QGraphicsImguiScene, self).mousePressEvent(event)
-        print(self.mouseGrabberItem())
+        print('press mg=', self.mouseGrabberItem())
         if not event.isAccepted() and len(event.wire_candidates) > 0:
             print([x[0] for x in event.wire_candidates])
             closest = min(event.wire_candidates, key=lambda x: x[0])
             closest[1].post_mousePressEvent(event)  # this seem a bit unsafe, at least not typed statically enough
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        super(QGraphicsImguiScene, self).mouseReleaseEvent(event)
+        print('release mg=', self.mouseGrabberItem())
+
+    def setSelectionArea(self, *args, **kwargs):
+        pass
 
 
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
@@ -2051,6 +2113,8 @@ class NodeEditor(QGraphicsView):
         self.setViewport(self.__oglwidget)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.setMouseTracking(True)
+        self.setDragMode(self.RubberBandDrag)
+
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setCacheMode(QGraphicsView.CacheBackground)
         self.__view_scale = 1.0
