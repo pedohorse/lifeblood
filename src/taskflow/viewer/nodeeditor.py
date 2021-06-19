@@ -154,6 +154,15 @@ class Node(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
+    def pause_all_tasks(self):
+        scene: QGraphicsImguiScene = self.scene()
+        scene.set_task_paused([x.get_id() for x in self.__tasks], True)
+
+    def resume_all_tasks(self):
+        scene: QGraphicsImguiScene = self.scene()
+        scene.set_task_paused([x.get_id() for x in self.__tasks], False)
+
+
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
         self.__nodeui_menucache = {}
@@ -2053,7 +2062,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'tpause\n')
             self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids[0]))
             if numtasks > 1:
-                self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), task_ids[1:]))
+                self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), *task_ids[1:]))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except:
@@ -2084,7 +2093,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'tcstate\n')
             self.__conn.sendall(struct.pack('>QIQ', numtasks, state.value, task_ids[0]))
             if numtasks > 1:
-                self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), task_ids[1:]))
+                self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), *task_ids[1:]))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except:
@@ -2186,6 +2195,9 @@ class NodeEditor(QGraphicsView):
         menu.addAction(f'node {node.node_name()}').setEnabled(False)
         menu.addSeparator()
         menu.addAction('rename').triggered.connect(lambda checked=False, x=node: self._popup_node_rename_widget(x))
+        menu.addSeparator()
+        menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
+        menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
 
         if pos is None:
             pos = self.mapToGlobal(self.mapFromScene(node.mapToScene(node.boundingRect().topRight())))
