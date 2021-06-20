@@ -28,7 +28,7 @@ from .dialogs import MessageWithSelectableText
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable
+from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
 logger = logging.getLogger('viewer')
 
@@ -156,11 +156,11 @@ class Node(NetworkItemWithUI):
 
     def pause_all_tasks(self):
         scene: QGraphicsImguiScene = self.scene()
-        scene.set_task_paused([x.get_id() for x in self.__tasks], True)
+        scene.set_tasks_paused([x.get_id() for x in self.__tasks], True)
 
     def resume_all_tasks(self):
         scene: QGraphicsImguiScene = self.scene()
-        scene.set_task_paused([x.get_id() for x in self.__tasks], False)
+        scene.set_tasks_paused([x.get_id() for x in self.__tasks], False)
 
 
     def update_nodeui(self, nodeui: NodeUi):
@@ -1354,7 +1354,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_add_node_connection_requested = Signal(int, str, int, str)
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
-    _signal_set_task_paused = Signal(list, bool)
+    _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
     _signal_set_task_node_requested = Signal(int, int)
     _signal_cancel_task = Signal(int)
 
@@ -1398,7 +1398,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
-        self._signal_set_task_paused.connect(self.__ui_connection_worker.set_task_paused)
+        self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_cancel_task.connect(self.__ui_connection_worker.cancel_task)
@@ -1446,8 +1446,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     def set_task_state(self, task_ids: List[int], state: TaskState):
         self._signal_set_task_state.emit(task_ids, state)
 
-    def set_task_paused(self, task_ids: List[int], paused: bool):
-        self._signal_set_task_paused.emit(task_ids, paused)
+    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
+        self._signal_set_tasks_paused.emit(task_ids_or_group, paused)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task.emit(task_id)
@@ -2051,18 +2051,26 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     # task control things
     @Slot()
-    def set_task_paused(self, task_ids: List[int], paused: bool):
-        numtasks = len(task_ids)
-        if numtasks == 0:
+    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
+        if len(task_ids_or_group) == 0:
             return
         if not self.ensure_connected():
             return
         assert self.__conn is not None
+
         try:
-            self.__conn.sendall(b'tpauselst\n')
-            self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids[0]))
-            if numtasks > 1:
-                self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), *task_ids[1:]))
+            if isinstance(task_ids_or_group, str):
+                self.__conn.sendall(b'tpausegrp\n')
+                self.__conn.sendall(struct.pack('>?', paused))
+                self._send_string(task_ids_or_group)
+            else:
+                numtasks = len(task_ids_or_group)
+                if numtasks == 0:
+                    return
+                self.__conn.sendall(b'tpauselst\n')
+                self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids_or_group[0]))
+                if numtasks > 1:
+                    self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks-1), *task_ids_or_group[1:]))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except:
@@ -2167,9 +2175,9 @@ class NodeEditor(QGraphicsView):
         menu.addSeparator()
 
         if task.paused():
-            menu.addAction('resume').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_paused([x], False))
+            menu.addAction('resume').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], False))
         else:
-            menu.addAction('pause').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_paused([x], True))
+            menu.addAction('pause').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], True))
 
         if task.state() == TaskState.IN_PROGRESS:
             menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
