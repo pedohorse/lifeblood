@@ -874,7 +874,7 @@ class Scheduler:
             async with aiosqlite.connect(self.db_path) as con:
                 await con.execute('UPDATE "tasks" SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
                                   (int(paused), task_ids_or_group))
-
+                await con.commit()
             return
         if isinstance(task_ids_or_group, int):
             task_ids_or_group = [task_ids_or_group]
