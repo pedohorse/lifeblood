@@ -145,12 +145,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'removeconnection':
                     connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node_connection(connection_id)
-                elif command == b'tpause':  # pause tasks
+                elif command == b'tpauselst':  # pause tasks
                     task_ids = [-1]
                     numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
                     await self.__scheduler.set_task_paused(task_ids, bool(paused))
+                elif command == b'tpausegrp':  # pause task group
+                    paused = struct.unpack('>?', await reader.readexactly(1))
+                    task_group = await read_string()
+                    await self.__scheduler.set_task_paused(task_group, bool(paused))
                 elif command == b'tcancel':  # cancel task invocation
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.cancel_invocation_for_task(task_id)
