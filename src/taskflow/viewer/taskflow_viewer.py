@@ -63,6 +63,7 @@ class GroupsModel(QAbstractItemModel):
 
 class GroupsView(QTreeView):
     selection_changed = Signal(set)
+    group_pause_state_change_requested = Signal(str, bool)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -71,6 +72,21 @@ class GroupsView(QTreeView):
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
         self.selection_changed.emit(set(index.data() for index in self.selectedIndexes() if index.column() == 0))
+
+    def contextMenuEvent(self, event):
+        model: GroupsModel = self.model()
+        if model is None:
+            return
+        index: QModelIndex = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+
+        group = index.siblingAtColumn(0).data(Qt.DisplayRole)
+        event.accept()
+        menu = QMenu(parent=self)
+        menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
+        menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
+        menu.popup(event.globalPos())
 
 
 class TaskflowViewer(QMainWindow):
@@ -101,6 +117,7 @@ class TaskflowViewer(QMainWindow):
         assert isinstance(scene, QGraphicsImguiScene)
         scene.task_groups_updated.connect(self.update_groups)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
+        self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
 
         # start
         self.__node_editor.start()
