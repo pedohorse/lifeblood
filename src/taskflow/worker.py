@@ -158,6 +158,8 @@ class Worker:
         for aname, aval in task.attributes().items():
             env['TFATTR_%s' % aname] = str(aval)
         env['TFATTRS_JSON'] = json.dumps(dict(task.attributes())).encode('UTF-8')
+        if self.__extra_files_base_dir is not None:
+            env['TF_EF_ROOT'] = self.__extra_files_base_dir
         if not os.path.exists(logbasedir):
             os.makedirs(logbasedir)
         try:
