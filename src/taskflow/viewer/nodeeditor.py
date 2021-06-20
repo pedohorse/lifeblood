@@ -2059,7 +2059,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             return
         assert self.__conn is not None
         try:
-            self.__conn.sendall(b'tpause\n')
+            self.__conn.sendall(b'tpauselst\n')
             self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids[0]))
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q'*(numtasks-1), *task_ids[1:]))
