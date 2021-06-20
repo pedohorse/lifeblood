@@ -869,12 +869,18 @@ class Scheduler:
 
     #
     # change task's paused state
-    async def set_task_paused(self, task_ids: Union[int, Iterable[int]], paused: bool):
-        if isinstance(task_ids, int):
-            task_ids = [task_ids]
+    async def set_task_paused(self, task_ids_or_group: Union[int, Iterable[int], str], paused: bool):
+        if isinstance(task_ids_or_group, str):
+            async with aiosqlite.connect(self.db_path) as con:
+                await con.execute('UPDATE "tasks" SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
+                                  (int(paused), task_ids_or_group))
+
+            return
+        if isinstance(task_ids_or_group, int):
+            task_ids_or_group = [task_ids_or_group]
         query = 'UPDATE "tasks" SET "paused" = %d WHERE "id" = ?' % int(paused)
         async with aiosqlite.connect(self.db_path) as con:
-            await con.executemany(query, ((x,) for x in task_ids))
+            await con.executemany(query, ((x,) for x in task_ids_or_group))
             await con.commit()
 
     #
