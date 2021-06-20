@@ -152,7 +152,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
                     await self.__scheduler.set_task_paused(task_ids, bool(paused))
                 elif command == b'tpausegrp':  # pause task group
-                    paused = struct.unpack('>?', await reader.readexactly(1))
+                    paused = struct.unpack('>?', await reader.readexactly(1))[0]
                     task_group = await read_string()
                     await self.__scheduler.set_task_paused(task_group, bool(paused))
                 elif command == b'tcancel':  # cancel task invocation
