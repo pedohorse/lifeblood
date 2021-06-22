@@ -1577,7 +1577,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         try:
             task = self.get_task(task_id)
         except KeyError:
-            logger.error('log fetched, but task not found!')
+            logger.error('attribs fetched, but task not found!')
             return
         task.update_attributes(attribs)
 
