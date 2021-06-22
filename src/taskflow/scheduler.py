@@ -939,7 +939,9 @@ class Scheduler:
             else:
                 all_tasks = dict()
                 for group in task_groups:
-                    async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.state, tasks.state_details, tasks.paused, tasks.id, tasks.node_id, '
+                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
+                                           'task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
