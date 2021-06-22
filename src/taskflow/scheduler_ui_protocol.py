@@ -80,7 +80,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     attribs = await self.__scheduler.get_task_attributes(task_id)
                     data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
-                    writer.write(struct.pack('>I', len(data)))
+                    writer.write(struct.pack('>Q', len(data)))
                     writer.write(data)
                 #
                 # node related commands
