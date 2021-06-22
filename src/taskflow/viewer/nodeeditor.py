@@ -1863,7 +1863,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'gettaskattribs\n')
             self.__conn.sendall(struct.pack('>Q', task_id))
-            rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 4))[0]
+            rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
             attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
