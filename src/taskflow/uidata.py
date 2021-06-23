@@ -4,7 +4,7 @@ from copy import deepcopy
 from .enums import NodeParameterType
 import re
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -130,6 +130,10 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 
 
 class Parameter(ParameterHierarchyLeaf):
+
+    class DontChange:
+        pass
+
     def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         super(Parameter, self).__init__()
         self.__name = param_name
@@ -139,6 +143,8 @@ class Parameter(ParameterHierarchyLeaf):
         self.__menu_items: Dict[str, str] = None
         self.__menu_items_order: List[str] = []
         self.__vis_when = None
+
+        self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
 
         # links
         self.__params_referencing_me: Set["Parameter"] = set()
@@ -168,11 +174,45 @@ class Parameter(ParameterHierarchyLeaf):
     def value(self):
         return self.__value
 
+    def set_value_limits(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, Type[DontChange]], Union[int, float, Type[DontChange]]) -> None
+        """
+        set minimum and maximum values that parameter will enforce
+        None means no limit (unset limit)
+        """
+        if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
+            raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
+        if value_min == self.DontChange:
+            value_min = self.__hard_borders[0]
+        else:
+            if self.__type == NodeParameterType.INT:
+                value_min = int(value_min)
+            elif self.__type == NodeParameterType.FLOAT:
+                value_min = float(value_min)
+        if value_max == self.DontChange:
+            value_max = self.__hard_borders[1]
+        else:
+            if self.__type == NodeParameterType.INT:
+                value_max = int(value_max)
+            elif self.__type == NodeParameterType.FLOAT:
+                value_max = float(value_max)
+        assert value_min != self.DontChange
+        assert value_max != self.DontChange
+
+        self.__hard_borders = (value_min, value_max)
+
     def set_value(self, value: Any):
         if self.__type == NodeParameterType.FLOAT:
             param_value = float(value)
+            if self.__hard_borders[0] is not None:
+                param_value = max(param_value, self.__hard_borders[0])
+            if self.__hard_borders[1] is not None:
+                param_value = min(param_value, self.__hard_borders[1])
         elif self.__type == NodeParameterType.INT:
             param_value = int(value)
+            if self.__hard_borders[0] is not None:
+                param_value = max(param_value, self.__hard_borders[0])
+            if self.__hard_borders[1] is not None:
+                param_value = min(param_value, self.__hard_borders[1])
         elif self.__type == NodeParameterType.BOOL:
             param_value = bool(value)
         elif self.__type == NodeParameterType.STRING:
