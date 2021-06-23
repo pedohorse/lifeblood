@@ -17,6 +17,8 @@ from ..net_classes import NodeTypeMetadata
 
 from ..enums import NodeParameterType
 
+from ..misc import generate_name
+
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
@@ -2317,7 +2319,7 @@ class NodeEditor(QGraphicsView):
                 else:
                     self.__node_type_input = ''
                 if self.__node_type_input:
-                    self.__scene.request_create_node(self.__node_type_input, self.__node_type_input, self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    self.__scene.request_create_node(self.__node_type_input, f'{self.__node_type_input} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
 
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
