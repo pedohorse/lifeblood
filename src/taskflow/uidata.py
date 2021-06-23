@@ -287,6 +287,10 @@ class ParameterNotFound(RuntimeError):
     pass
 
 
+class ParameterNameCollisionError(RuntimeError):
+    pass
+
+
 class ParametersLayoutBase(ParameterHierarchyItem):
     def __init__(self):
         super(ParametersLayoutBase, self).__init__()
@@ -350,11 +354,24 @@ class ParametersLayoutBase(ParameterHierarchyItem):
     def _child_added(self, child: "ParameterHierarchyItem"):
         super(ParametersLayoutBase, self)._child_added(child)
         if isinstance(child, Parameter):
-            if child.name() in (x.name() for x in self.parameters(recursive=True)):  # TODO: this is not a way to check uniquenes, it does not cover all cases
-                raise RuntimeError('cannot add parameters with the same name to the same layout hierarchy')
+            # check global parameter name uniqueness
+            rootparent = self
+            while isinstance(rootparent.parent(), ParametersLayoutBase):
+                rootparent = rootparent.parent()
+            if child.name() in (x.name() for x in rootparent.parameters(recursive=True) if x != child):
+                raise ParameterNameCollisionError('cannot add parameters with the same name to the same layout hierarchy')
             self.__parameters[child.name()] = child
         elif isinstance(child, ParametersLayoutBase):
             self.__layouts.add(child)
+            # check global parameter name uniqueness
+            rootparent = self
+            while isinstance(rootparent.parent(), ParametersLayoutBase):
+                rootparent = rootparent.parent()
+            new_params = list(child.parameters(recursive=True))
+            existing_params = set(x.name() for x in rootparent.parameters(recursive=True) if x not in new_params)
+            for new_param in new_params:
+                if new_param.name() in existing_params:
+                    raise ParameterNameCollisionError('cannot add parameters with the same name to the same layout hierarchy')
 
     def _child_about_to_be_removed(self, child: "ParameterHierarchyItem"):
         if isinstance(child, Parameter):
