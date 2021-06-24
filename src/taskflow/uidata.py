@@ -145,6 +145,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_when = None
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
+        self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
 
         # links
         self.__params_referencing_me: Set["Parameter"] = set()
@@ -174,7 +175,33 @@ class Parameter(ParameterHierarchyLeaf):
     def value(self):
         return self.__value
 
-    def set_value_limits(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, Type[DontChange]], Union[int, float, Type[DontChange]]) -> None
+    def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, Type[DontChange]], Union[int, float, Type[DontChange]]) -> None
+        """
+        set a visual slider's minimum and maximum
+        this does nothing to the parameter itself, and it's up to parameter renderer to interpret this data
+        """
+        if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
+            raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
+        if value_min == self.DontChange:
+            value_min = self.__display_borders[0]
+        elif value_min is not None:
+            if self.__type == NodeParameterType.INT:
+                value_min = int(value_min)
+            elif self.__type == NodeParameterType.FLOAT:
+                value_min = float(value_min)
+        if value_max == self.DontChange:
+            value_max = self.__display_borders[1]
+        elif value_max is not None:
+            if self.__type == NodeParameterType.INT:
+                value_max = int(value_max)
+            elif self.__type == NodeParameterType.FLOAT:
+                value_max = float(value_max)
+        assert value_min != self.DontChange
+        assert value_max != self.DontChange
+
+        self.__display_borders = (value_min, value_max)
+
+    def set_value_limits(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, None, Type[DontChange]], Union[int, float, None, Type[DontChange]]) -> None
         """
         set minimum and maximum values that parameter will enforce
         None means no limit (unset limit)
@@ -183,14 +210,14 @@ class Parameter(ParameterHierarchyLeaf):
             raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
         if value_min == self.DontChange:
             value_min = self.__hard_borders[0]
-        else:
+        elif value_min is not None:
             if self.__type == NodeParameterType.INT:
                 value_min = int(value_min)
             elif self.__type == NodeParameterType.FLOAT:
                 value_min = float(value_min)
         if value_max == self.DontChange:
             value_max = self.__hard_borders[1]
-        else:
+        elif value_max is not None:
             if self.__type == NodeParameterType.INT:
                 value_max = int(value_max)
             elif self.__type == NodeParameterType.FLOAT:
@@ -199,6 +226,21 @@ class Parameter(ParameterHierarchyLeaf):
         assert value_max != self.DontChange
 
         self.__hard_borders = (value_min, value_max)
+
+    def display_value_limits(self) -> Tuple[Union[int, float, None], Union[int, float, None]]:
+        """
+        returns a tuple of limits for display purposes.
+        parameter itself ignores this totally.
+        it's up to parameter renderer to interpret this info
+        """
+        return self.__display_borders
+
+    def value_limits(self) -> Tuple[Union[int, float, None], Union[int, float, None]]:
+        """
+        returns a tuple of hard limits.
+        these limits are enforced by the parameter itself
+        """
+        return self.__hard_borders
 
     def set_value(self, value: Any):
         if self.__type == NodeParameterType.FLOAT:
