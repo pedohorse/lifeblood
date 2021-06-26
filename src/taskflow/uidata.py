@@ -175,29 +175,23 @@ class Parameter(ParameterHierarchyLeaf):
     def value(self):
         return self.__value
 
-    def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, Type[DontChange]], Union[int, float, Type[DontChange]]) -> None
+    def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float], Union[int, float]) -> None
         """
         set a visual slider's minimum and maximum
         this does nothing to the parameter itself, and it's up to parameter renderer to interpret this data
         """
         if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
             raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
-        if value_min == self.DontChange:
-            value_min = self.__display_borders[0]
-        elif value_min is not None:
-            if self.__type == NodeParameterType.INT:
-                value_min = int(value_min)
-            elif self.__type == NodeParameterType.FLOAT:
-                value_min = float(value_min)
-        if value_max == self.DontChange:
-            value_max = self.__display_borders[1]
-        elif value_max is not None:
-            if self.__type == NodeParameterType.INT:
-                value_max = int(value_max)
-            elif self.__type == NodeParameterType.FLOAT:
-                value_max = float(value_max)
-        assert value_min != self.DontChange
-        assert value_max != self.DontChange
+
+        if self.__type == NodeParameterType.INT:
+            value_min = int(value_min)
+        elif self.__type == NodeParameterType.FLOAT:
+            value_min = float(value_min)
+
+        if self.__type == NodeParameterType.INT:
+            value_max = int(value_max)
+        elif self.__type == NodeParameterType.FLOAT:
+            value_max = float(value_max)
 
         self.__display_borders = (value_min, value_max)
 
