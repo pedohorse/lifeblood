@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
-from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex
+from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 
 from typing import Dict
@@ -42,6 +42,7 @@ class GroupsModel(QAbstractItemModel):
             if role == Qt.DisplayRole:
                 return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].get('ctime', 0) or 0).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
+                print(self.__items[self.__items_order[index.row()]].get('ctime', -1))
                 return self.__items[self.__items_order[index.row()]].get('ctime', -1)
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
@@ -68,6 +69,8 @@ class GroupsView(QTreeView):
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
         self.setSelectionMode(GroupsView.ExtendedSelection)
+        self.setSortingEnabled(True)
+        self.__sorting_model = QSortFilterProxyModel(self)
 
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
@@ -87,6 +90,13 @@ class GroupsView(QTreeView):
         menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
         menu.popup(event.globalPos())
+
+    def setModel(self, model):
+        self.__sorting_model.setSourceModel(model)
+        self.__sorting_model.setSortRole(GroupsModel.SortRole)
+        self.__sorting_model.setDynamicSortFilter(True)
+        self.sortByColumn(1, Qt.AscendingOrder)
+        super(GroupsView, self).setModel(self.__sorting_model)
 
 
 class TaskflowViewer(QMainWindow):
