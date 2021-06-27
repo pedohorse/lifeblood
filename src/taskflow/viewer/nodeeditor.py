@@ -387,10 +387,18 @@ class Node(NetworkItemWithUI):
                     changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.INT:
                     #changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
-                    changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
+                    slider_limits = item.display_value_limits()
+                    if slider_limits[0] is not None:
+                        changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                    else:
+                        changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.FLOAT:
                     #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
-                    changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
+                    slider_limits = item.display_value_limits()
+                    if slider_limits[0] is not None:
+                        changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                    else:
+                        changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.STRING:
                     changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
                 else:
