@@ -136,6 +136,7 @@ class Parameter(ParameterHierarchyLeaf):
 
     def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
         super(Parameter, self).__init__()
+        self.__init_default_members()
         self.__name = param_name
         self.__label = param_label
         self.__type = param_type
@@ -154,6 +155,30 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_cache = None
 
         self.set_value(param_val)
+
+    def __init_default_members(self):
+        """
+        helper function mostly for unpickling
+        to ease iterations when adding new OPTIONAL fields
+        This should be removed once all is more or less stable
+        Or a better way of keeping stuff up-to-date found
+        """
+        self.__name = ''
+        self.__label = ''
+        self.__type = NodeParameterType.INT
+        self.__value = None
+        self.__menu_items: Dict[str, str] = None
+        self.__menu_items_order: List[str] = []
+        self.__vis_when = None
+
+        self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
+        self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
+
+        # links
+        self.__params_referencing_me: Set["Parameter"] = set()
+
+        # caches
+        self.__vis_cache = None
 
     def name(self) -> str:
         return self.__name
@@ -358,6 +383,13 @@ class Parameter(ParameterHierarchyLeaf):
     def get_menu_items(self):
         return self.__menu_items_order, self.__menu_items
 
+    def __setstate__(self, state):
+        """
+        overriden for easier parameter class iterations during active development.
+        otherwise all node ui data should be recreated from zero in DB every time a change is made
+        """
+        self.__init_default_members()
+        self.__dict__.update(state)
 
 class ParameterNotFound(RuntimeError):
     pass
