@@ -28,7 +28,7 @@ class Ffmpeg(BaseNode):
         with ui.initializing_interface_lock():
             ui.add_parameter('ffmpeg bin path', 'ffmpeg binary', NodeParameterType.STRING, 'ffmpeg')
             ui.add_parameter('fps', 'fps', NodeParameterType.INT, 24)
-            ui.add_parameter('icrf', 'quality %', NodeParameterType.INT, 75)
+            ui.add_parameter('icrf', 'quality %', NodeParameterType.INT, 75).set_slider_visualization(1, 100)
             ui.add_parameter('-pix_fmt', 'pixel format', NodeParameterType.STRING, 'yuv420p')
             ui.add_parameter('-vcodec', 'codec', NodeParameterType.STRING, 'libx264')
             ui.add_parameter('outpath', 'movie path', NodeParameterType.STRING, '/tmp/movie.mp4')
