@@ -3,6 +3,7 @@ import time
 from taskflow.basenode import BaseNode
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 from taskflow.nodethings import ProcessingResult
+from taskflow.uidata import NodeParameterType
 
 from typing import TYPE_CHECKING, Iterable
 if TYPE_CHECKING:
@@ -14,6 +15,11 @@ def node_class():
 
 
 class Test(BaseNode):
+    def __init__(self, name):
+        super(Test, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_parameter('multiline text', 'wow multi line', NodeParameterType.STRING, 'bla').set_text_multiline()
 
     @classmethod
     def label(cls) -> str:
