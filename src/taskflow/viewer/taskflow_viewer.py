@@ -42,7 +42,6 @@ class GroupsModel(QAbstractItemModel):
             if role == Qt.DisplayRole:
                 return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].get('ctime', 0) or 0).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
-                print(self.__items[self.__items_order[index.row()]].get('ctime', -1))
                 return self.__items[self.__items_order[index.row()]].get('ctime', -1)
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
