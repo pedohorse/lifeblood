@@ -400,10 +400,15 @@ class Node(NetworkItemWithUI):
                     else:
                         changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
                 elif param_type == NodeParameterType.STRING:
-                    changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
+                    if item.is_text_multiline():
+                        # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
+                        changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.value(), len(item.value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                    else:
+                        changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
                 else:
                     raise NotImplementedError()
                 if changed:
+                    print('foooo!', newval)
                     item.set_value(newval)
             imgui.pop_item_width()
             if changed:
@@ -1089,7 +1094,7 @@ class Task(NetworkItemWithUI):
             self.__ui_interactor.mouseMoveEvent(event)
         else:
             super(Task, self).mouseMoveEvent(event)
-        
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.__ui_interactor:
             self.__ui_interactor.mouseReleaseEvent(event)
