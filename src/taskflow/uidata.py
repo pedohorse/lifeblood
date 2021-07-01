@@ -148,6 +148,8 @@ class Parameter(ParameterHierarchyLeaf):
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
 
+        self.__string_multiline = False
+
         # links
         self.__params_referencing_me: Set["Parameter"] = set()
 
@@ -173,6 +175,8 @@ class Parameter(ParameterHierarchyLeaf):
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
+
+        self.__string_multiline = False
 
         # links
         self.__params_referencing_me: Set["Parameter"] = set()
@@ -245,6 +249,14 @@ class Parameter(ParameterHierarchyLeaf):
         assert value_max != self.DontChange
 
         self.__hard_borders = (value_min, value_max)
+
+    def set_text_multiline(self):
+        if self.__type != NodeParameterType.STRING:
+            raise RuntimeError('multiline can be only set for string parameters')
+        self.__string_multiline = True
+
+    def is_text_multiline(self):
+        return self.__string_multiline
 
     def display_value_limits(self) -> Tuple[Union[int, float, None], Union[int, float, None]]:
         """
