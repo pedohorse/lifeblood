@@ -1,7 +1,7 @@
 import re
 from enum import Enum
 from PySide2.QtWidgets import *
-from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor
+from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor, QTextFormat
 from PySide2.QtCore import Slot, Signal, Qt, QSize, QEvent
 
 from typing import List, Tuple, Pattern
@@ -44,6 +44,10 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
     def __init__(self, *args, **kwargs):
         super(QTextEditButTabsAreSpaces, self).__init__(*args, **kwargs)
         self.__ident_re = re.compile(r'\s*')
+        self.__last_highligh_block_num = -1
+
+        # connec
+        self.cursorPositionChanged.connect(self._highlight_current_line)
 
     def keyPressEvent(self, event):
 
@@ -98,6 +102,18 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
             cur.insertText(m.group(0))
         else:
             super().keyPressEvent(event)
+
+    def _highlight_current_line(self):
+        cur = self.textCursor()
+        if cur.blockNumber() == self.__last_highligh_block_num:
+            return
+        self.__last_highligh_block_num = cur.blockNumber()
+        linesel = QTextEdit.ExtraSelection()
+        linesel.format.setBackground(QColor('#2B2B2F'))
+        linesel.format.setProperty(QTextFormat.FullWidthSelection, True)
+        linesel.cursor = QTextCursor(cur)
+        linesel.cursor.clearSelection()
+        self.setExtraSelections([linesel])
 
 
 class StringParameterEditor(QWidget):
