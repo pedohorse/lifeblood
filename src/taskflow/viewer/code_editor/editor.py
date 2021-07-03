@@ -1,8 +1,8 @@
 import re
 from enum import Enum
 from PySide2.QtWidgets import *
-from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor
-from PySide2.QtCore import Slot, Signal, Qt, QSize
+from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor
+from PySide2.QtCore import Slot, Signal, Qt, QSize, QEvent
 
 from typing import List, Tuple, Pattern
 
@@ -14,14 +14,79 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
         kw_format = QTextCharFormat()
         kw_format.setForeground(QColor('#CC7832'))
         kw_format.setFontWeight(QFont.Bold)
+
+        fu_format = QTextCharFormat()
+        fu_format.setForeground(QColor('#FFC66D'))
         self.__highlights: List[Tuple[Pattern[str], QTextCharFormat]] = []
         for keyword in ('False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'):
             self.__highlights.append((re.compile(rf'\b{keyword}\b'), kw_format))
+        self.__highlights.append((re.compile(r'def\s+(\w+)'), fu_format))
 
     def highlightBlock(self, text:str) -> None:
         for rule, format in self.__highlights:
             for m in rule.finditer(text):
-                self.setFormat(m.start(), m.end()-m.start(), format)
+                grp = len(m.groups())
+                self.setFormat(m.start(grp), m.end(grp)-m.start(grp), format)
+
+
+class QTextEditButTabsAreSpaces(QPlainTextEdit):
+    def __init__(self, *args, **kwargs):
+        super(QTextEditButTabsAreSpaces, self).__init__(*args, **kwargs)
+        self.__ident_re = re.compile(r'\s*')
+
+    def keyPressEvent(self, event):
+
+        def _block_helper(what_to_do_for_each_block):
+            old_cur = self.textCursor()
+            cur = self.textCursor()
+            cur.beginEditBlock()
+            blocks = [cur.block()]
+            sstart = old_cur.selectionStart()
+            send = old_cur.selectionEnd()
+            if sstart != send:
+                curblock = blocks[0]
+                while sstart < curblock.position():
+                    curblock = curblock.previous()
+                    assert curblock.isValid()
+                    blocks.append(curblock)
+                curblock = blocks[0]
+                while send > curblock.position() + curblock.length():
+                    curblock = curblock.next()
+                    assert curblock.isValid()
+                    blocks.append(curblock)
+            for block in blocks:
+                what_to_do_for_each_block(block, cur)
+            cur.endEditBlock()
+            self.setTextCursor(old_cur)
+
+        def _remove_indent(block, cur):
+            if block.text().startswith('    '):
+                cur.setPosition(block.position())
+                for _ in range(4):
+                    cur.deleteChar()
+
+        def _insert_indent(block, cur):
+            cur.setPosition(block.position())
+            cur.insertText('    ')
+
+        if event.key() == Qt.Key_Tab:  # tab means spaces!
+            cur = self.textCursor()
+            if cur.selectionStart() == cur.selectionEnd():
+                event = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.KeyboardModifiers(event.nativeModifiers()), '    ')
+                super().keyPressEvent(event)
+            else:
+                _block_helper(_insert_indent)
+        elif event.key() == Qt.Key_Backtab:  # shift+tab
+            _block_helper(_remove_indent)
+        elif event.key() == Qt.Key_Return:
+            # check indent of prev line
+            cur = self.textCursor()
+            m = self.__ident_re.match(cur.block().text())
+            event = QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.KeyboardModifiers())
+            super().keyPressEvent(event)
+            cur.insertText(m.group(0))
+        else:
+            super().keyPressEvent(event)
 
 
 class StringParameterEditor(QWidget):
@@ -34,7 +99,7 @@ class StringParameterEditor(QWidget):
     def __init__(self, syntax_highlight: SyntaxHighlight = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
         super(StringParameterEditor, self).__init__(parent)
         self.__main_layout = QVBoxLayout(self)
-        self.__textarea = QTextEdit()
+        self.__textarea = QTextEditButTabsAreSpaces()
         font = QFont('monospace')
         font.setFixedPitch(True)
         self.__textarea.setFont(font)
@@ -78,7 +143,7 @@ def _test():
 
     wgt = StringParameterEditor(StringParameterEditor.SyntaxHighlight.PYTHON)
     wgt.set_text('line1\nline2\nline3 and more')
-    wgt.edit_done.connect(lambda s: print(f'edit done, result: {s}'))
+    wgt.edit_done.connect(lambda s: print(f'edit done, result: {repr(s)}'))
     wgt.show()
     return qapp.exec_()
 
