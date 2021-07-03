@@ -17,10 +17,21 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
 
         fu_format = QTextCharFormat()
         fu_format.setForeground(QColor('#FFC66D'))
+
+        co_format = QTextCharFormat()
+        co_format.setForeground(QColor('#808080'))
+        co_format.setFontItalic(True)
+
+        ss_format = QTextCharFormat()
+        ss_format.setForeground(QColor('#6A8759'))
+
         self.__highlights: List[Tuple[Pattern[str], QTextCharFormat]] = []
         for keyword in ('False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'):
             self.__highlights.append((re.compile(rf'\b{keyword}\b'), kw_format))
         self.__highlights.append((re.compile(r'def\s+(\w+)'), fu_format))
+        self.__highlights.append((re.compile(r'#.*'), co_format))
+        for qmark in ('"', "'", '`'):
+            self.__highlights.append((re.compile(rf'{qmark}[^{qmark}]*{qmark}'), ss_format))
 
     def highlightBlock(self, text:str) -> None:
         for rule, format in self.__highlights:
