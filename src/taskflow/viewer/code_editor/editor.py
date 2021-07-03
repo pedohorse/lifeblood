@@ -30,7 +30,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             self.__highlights.append((re.compile(rf'\b{keyword}\b'), kw_format))
         self.__highlights.append((re.compile(r'def\s+(\w+)'), fu_format))
         self.__highlights.append((re.compile(r'#.*'), co_format))
-        for qmark in ('"', "'", '`'):
+        for qmark in ('"', "'"):
             self.__highlights.append((re.compile(rf'{qmark}[^{qmark}]*{qmark}'), ss_format))
 
     def highlightBlock(self, text:str) -> None:
