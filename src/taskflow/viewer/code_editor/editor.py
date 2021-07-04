@@ -126,7 +126,7 @@ class StringParameterEditor(QWidget):
         PYTHON = 1
 
     def __init__(self, syntax_highlight: SyntaxHighlight = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
-        super(StringParameterEditor, self).__init__(parent)
+        super(StringParameterEditor, self).__init__(parent, Qt.Dialog)
         self.__main_layout = QVBoxLayout(self)
         self.__textarea = QTextEditButTabsAreSpaces()
         font = QFont('monospace')
