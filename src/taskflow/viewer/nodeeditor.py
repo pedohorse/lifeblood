@@ -408,7 +408,10 @@ class Node(NetworkItemWithUI):
                         changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.value(), len(item.value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
                         imgui.end_group()
                         if ed_butt_pressed:
-                            wgt = StringParameterEditor(parent=drawing_widget)
+                            hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
+                            if item.syntax_hint() == 'python':
+                                hl = StringParameterEditor.SyntaxHighlight.PYTHON
+                            wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
                             wgt.set_text(item.value())
                             wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
                             wgt.show()
