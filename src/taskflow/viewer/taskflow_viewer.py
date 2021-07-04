@@ -94,7 +94,7 @@ class GroupsView(QTreeView):
         self.__sorting_model.setSourceModel(model)
         self.__sorting_model.setSortRole(GroupsModel.SortRole)
         self.__sorting_model.setDynamicSortFilter(True)
-        self.sortByColumn(1, Qt.AscendingOrder)
+        self.sortByColumn(1, Qt.DescendingOrder)
         super(GroupsView, self).setModel(self.__sorting_model)
 
 
