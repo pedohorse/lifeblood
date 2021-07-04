@@ -149,6 +149,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
 
         self.__string_multiline = False
+        self.__string_multiline_syntax_hint: Optional[str] = None
 
         # links
         self.__params_referencing_me: Set["Parameter"] = set()
@@ -250,13 +251,23 @@ class Parameter(ParameterHierarchyLeaf):
 
         self.__hard_borders = (value_min, value_max)
 
-    def set_text_multiline(self):
+    def set_text_multiline(self, syntax_hint=None):
         if self.__type != NodeParameterType.STRING:
             raise RuntimeError('multiline can be only set for string parameters')
         self.__string_multiline = True
+        self.__string_multiline_syntax_hint = syntax_hint
 
     def is_text_multiline(self):
         return self.__string_multiline
+
+    def syntax_hint(self) -> Optional[str]:
+        """
+        may hint an arbitrary string hint to the renderer
+        it's up to renderer to decide what to do.
+        common conception is to use language name lowercase, like: python
+        None means no hint
+        """
+        return self.__string_multiline_syntax_hint
 
     def display_value_limits(self) -> Tuple[Union[int, float, None], Union[int, float, None]]:
         """
