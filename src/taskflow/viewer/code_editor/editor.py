@@ -152,6 +152,7 @@ class StringParameterEditor(QWidget):
 
         if syntax_highlight == StringParameterEditor.SyntaxHighlight.PYTHON:
             self.__syntax_highlighter = PythonSyntaxHighlighter(self.__textarea.document())
+            self.__status_bar.insertPermanentWidget(0, QLabel('syntax: Python'))
 
         # connec
         self.__cancel_button.clicked.connect(self.close)
