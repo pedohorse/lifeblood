@@ -134,7 +134,8 @@ class StringParameterEditor(QWidget):
         self.__textarea.setFont(font)
 
         self.__bottom_layout = QHBoxLayout()
-        self.__ok_button = QPushButton('Apply')
+        self.__ok_button = QPushButton('Apply&Close')
+        self.__apply_button = QPushButton('Apply')
         self.__cancel_button = QPushButton('Cancel')
         self.__status_bar = QStatusBar()
         self.__status_bar.setSizeGripEnabled(False)
@@ -144,6 +145,7 @@ class StringParameterEditor(QWidget):
 
         self.__bottom_layout.addStretch()
         self.__bottom_layout.addWidget(self.__ok_button)
+        self.__bottom_layout.addWidget(self.__apply_button)
         self.__bottom_layout.addWidget(self.__cancel_button)
 
         self.__main_layout.addWidget(self.__textarea)
@@ -157,6 +159,7 @@ class StringParameterEditor(QWidget):
         # connec
         self.__cancel_button.clicked.connect(self.close)
         self.__ok_button.clicked.connect(self._done_editing)
+        self.__apply_button.clicked.connect(lambda: self.edit_done.emit(self.text()))
         self.__textarea.cursorPositionChanged.connect(self._cursor_position_changed)
 
     @Slot()
