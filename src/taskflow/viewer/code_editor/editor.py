@@ -134,12 +134,17 @@ class StringParameterEditor(QWidget):
         self.__bottom_layout = QHBoxLayout()
         self.__ok_button = QPushButton('Apply')
         self.__cancel_button = QPushButton('Cancel')
+        self.__status_bar = QStatusBar()
+        self.__status_bar.setSizeGripEnabled(False)
+        self.__status_pos_label = QLabel('0:0')
+        self.__status_bar.addPermanentWidget(self.__status_pos_label)
 
         self.__bottom_layout.addStretch()
         self.__bottom_layout.addWidget(self.__ok_button)
         self.__bottom_layout.addWidget(self.__cancel_button)
 
         self.__main_layout.addWidget(self.__textarea)
+        self.__main_layout.addWidget(self.__status_bar)
         self.__main_layout.addLayout(self.__bottom_layout)
 
         if syntax_highlight == StringParameterEditor.SyntaxHighlight.PYTHON:
@@ -148,11 +153,17 @@ class StringParameterEditor(QWidget):
         # connec
         self.__cancel_button.clicked.connect(self.close)
         self.__ok_button.clicked.connect(self._done_editing)
+        self.__textarea.cursorPositionChanged.connect(self._cursor_position_changed)
 
     @Slot()
     def _done_editing(self):
         self.close()
         self.edit_done.emit(self.text())
+
+    @Slot()
+    def _cursor_position_changed(self):
+        cur = self.__textarea.textCursor()
+        self.__status_pos_label.setText(f'{cur.blockNumber()}:{cur.positionInBlock()}')
 
     def sizeHint(self):
         return QSize(640, 480)
