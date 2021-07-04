@@ -187,7 +187,7 @@ def _test():
     qapp = QApplication(sys.argv)
 
     wgt = StringParameterEditor(StringParameterEditor.SyntaxHighlight.PYTHON)
-    wgt.set_text('line1\nline2\nline3 and more')
+    wgt.set_text('line1\nline2\nline3 and more\nclass cat:\n    def meow(self):\n        print("meow")')
     wgt.edit_done.connect(lambda s: print(f'edit done, result: {repr(s)}'))
     wgt.show()
     return qapp.exec_()
