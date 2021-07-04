@@ -26,6 +26,7 @@ from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QSizeF, QPointF, Q
 from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent, QSurfaceFormat, QPainter, QTransform
 
 from .dialogs import MessageWithSelectableText
+from .code_editor.editor import StringParameterEditor
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -60,7 +61,7 @@ class NetworkItemWithUI(NetworkItem):
         self.update()  # currently contents and UI are drawn always together, so this will do
         # but in future TODO: invalidate only UI layer
 
-    def draw_imgui_elements(self):
+    def draw_imgui_elements(self, drawing_widget):
         """
         this should only be called from active opengl context!
         :return:
@@ -359,7 +360,7 @@ class Node(NetworkItemWithUI):
     # interface
 
     # helper
-    def __draw_single_item(self, item, size=(1.0,1.0)):
+    def __draw_single_item(self, item, size=(1.0,1.0), drawing_widget=None):
         if isinstance(item, Parameter):
             if not item.visible():
                 return
@@ -402,7 +403,15 @@ class Node(NetworkItemWithUI):
                 elif param_type == NodeParameterType.STRING:
                     if item.is_text_multiline():
                         # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
+                        imgui.begin_group()
+                        ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
                         changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.value(), len(item.value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                        imgui.end_group()
+                        if ed_butt_pressed:
+                            wgt = StringParameterEditor(parent=drawing_widget)
+                            wgt.set_text(item.value())
+                            wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
+                            wgt.show()
                     else:
                         changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
                 else:
@@ -424,22 +433,22 @@ class Node(NetworkItemWithUI):
                     first_time = False
                 else:
                     imgui.same_line()
-                self.__draw_single_item(child, (h*size[0], w*size[1]))
+                self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
         elif isinstance(item, ParametersLayoutBase):
             for child in item.items(recursive=False):
                 h, w = item.relative_size_for_child(child)
                 if isinstance(child, Parameter):
                     if not child.visible():
                         continue
-                self.__draw_single_item(child, (h*size[0], w*size[1]))
+                self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
         else:
             raise NotImplementedError(f'unknown parameter hierarchy item to display {type(item)}')
 
     # main dude
-    def draw_imgui_elements(self):
+    def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
         if self.__nodeui is not None:
-            self.__draw_single_item(self.__nodeui.main_parameter_layout())
+            self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
@@ -1110,7 +1119,7 @@ class Task(NetworkItemWithUI):
 
     #
     # interface
-    def draw_imgui_elements(self):
+    def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Task {self.get_id()} {self.__name}')
         imgui.text(f'groups: {", ".join(self.__groups)}')
 
@@ -2301,7 +2310,7 @@ class NodeEditor(QGraphicsView):
         # draw text label inside of current window
         sel = self.__scene.selectedItems()
         if len(sel) > 0 and isinstance(sel[0], NetworkItemWithUI):
-            sel[0].draw_imgui_elements()
+            sel[0].draw_imgui_elements(self)
 
         # close current window context
         imgui.end()
