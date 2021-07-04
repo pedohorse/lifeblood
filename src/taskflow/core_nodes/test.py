@@ -20,6 +20,7 @@ class Test(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_parameter('multiline text', 'wow multi line', NodeParameterType.STRING, 'bla').set_text_multiline()
+            ui.add_parameter('multiline python text', 'wow multi line code', NodeParameterType.STRING, '# shize').set_text_multiline('python')
 
     @classmethod
     def label(cls) -> str:
