@@ -45,6 +45,8 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
         super(QTextEditButTabsAreSpaces, self).__init__(*args, **kwargs)
         self.__ident_re = re.compile(r'\s*')
         self.__last_highligh_block_num = -1
+        self.__space_in_tab_count = 4
+        self.__tab = ' '*self.__space_in_tab_count
 
         # connec
         self.cursorPositionChanged.connect(self._highlight_current_line)
@@ -75,19 +77,19 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
             self.setTextCursor(old_cur)
 
         def _remove_indent(block, cur):
-            if block.text().startswith('    '):
+            if block.text().startswith(self.__tab):
                 cur.setPosition(block.position())
-                for _ in range(4):
+                for _ in range(self.__space_in_tab_count):
                     cur.deleteChar()
 
         def _insert_indent(block, cur):
             cur.setPosition(block.position())
-            cur.insertText('    ')
+            cur.insertText(self.__tab)
 
         if event.key() == Qt.Key_Tab:  # tab means spaces!
             cur = self.textCursor()
             if cur.selectionStart() == cur.selectionEnd():
-                event = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.KeyboardModifiers(event.nativeModifiers()), '    ')
+                event = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.KeyboardModifiers(event.nativeModifiers()), self.__tab)
                 super().keyPressEvent(event)
             else:
                 _block_helper(_insert_indent)
