@@ -33,7 +33,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
         for qmark in ('"', "'"):
             self.__highlights.append((re.compile(rf'{qmark}[^{qmark}]*{qmark}'), ss_format))
 
-    def highlightBlock(self, text:str) -> None:
+    def highlightBlock(self, text: str) -> None:
         for rule, format in self.__highlights:
             for m in rule.finditer(text):
                 grp = len(m.groups())
@@ -137,6 +137,7 @@ class StringParameterEditor(QWidget):
         self.__status_bar = QStatusBar()
         self.__status_bar.setSizeGripEnabled(False)
         self.__status_pos_label = QLabel('0:0')
+        self.__status_pos_label.setFont(QFont('monospace'))
         self.__status_bar.addPermanentWidget(self.__status_pos_label)
 
         self.__bottom_layout.addStretch()
