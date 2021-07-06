@@ -18,6 +18,8 @@ process_help = "# use task variable to get/set attribs, e.g.     task['attr'] = 
                "# use schedule() to decide if you want to create an invocation to be done by worker\n" \
                "# this code will be executed on scheduler, so don't make in heavy.\n" \
                "# leave heavy things for 'invoke' parameter below\n" \
+               "\n" \
+               "# schedule()  # uncomment this to launch code in invoke parameter below on a remote worker\n" \
                "\n"
 
 invoke_help = "# use task variable to get attribs, e.g.     task['attr'] = 123\n" \
