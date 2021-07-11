@@ -1,7 +1,7 @@
 from math import sqrt, floor, ceil
 
 from taskflow.basenode import BaseNode
-from taskflow.nodethings import ProcessingResult
+from taskflow.nodethings import ProcessingResult, ProcessingError
 from taskflow.uidata import NodeParameterType
 from taskflow.invocationjob import InvocationJob
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
@@ -37,7 +37,7 @@ class Ffmpeg(BaseNode):
         binpath = context.param_value('ffmpeg bin path')
         attributes = context.task_attributes()
         if 'sequence' not in attributes:
-            return ProcessingResult()
+            raise ProcessingError('required attribute "sequence" not found')
         sequence = attributes['sequence']
 
         assert isinstance(sequence, list), 'sequence attribute is supposed to be list of frames, or list of sequences'
