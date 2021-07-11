@@ -4,7 +4,7 @@ import pickle
 import json
 from copy import copy
 from typing import Dict, Optional, List, Any
-from .nodethings import ProcessingResult
+from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi
 from .pluginloader import create_node
 from .processingcontext import ProcessingContext
