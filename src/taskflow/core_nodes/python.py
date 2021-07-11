@@ -56,7 +56,9 @@ class Python(BaseNode):
             def __getitem__(self, item):
                 if item in self.__todel:
                     raise KeyError(f'key {item} was deleted')
-                return self.__overrides.get(item, self.__attribs[item])
+                if item in self.__overrides:
+                    return self.__overrides[item]
+                return self.__attribs[item]
 
             def __setitem__(self, key, value):
                 if self.__readonly:
