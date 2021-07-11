@@ -6,6 +6,10 @@ from .taskspawn import TaskSpawn
 from typing import List, Dict, Any, Optional
 
 
+class ProcessingError(RuntimeError):
+    pass
+
+
 class ProcessingResult:
     def __init__(self, job: InvocationJob = None, spawn: List[TaskSpawn] = None, node_output_name: str = 'main'):
         self.invocation_job: InvocationJob = job
