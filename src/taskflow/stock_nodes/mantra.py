@@ -1,7 +1,7 @@
 from copy import copy
 from taskflow.basenode import BaseNode
 from taskflow.enums import NodeParameterType
-from taskflow.nodethings import ProcessingResult
+from taskflow.nodethings import ProcessingResult, ProcessingError
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
 from typing import Iterable
@@ -26,7 +26,7 @@ class Mantra(BaseNode):
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()
         if 'file' not in args or 'outimage' not in args:
-            return ProcessingResult()
+            raise ProcessingError('required attributes not found')
 
         env = InvocationEnvironment()
 
