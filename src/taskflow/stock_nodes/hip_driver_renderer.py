@@ -26,8 +26,8 @@ class HipDriverRenderer(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_output_for_spawned_tasks()
-            ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, '')
-            ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
+            ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")
+            # ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '*')
 
     def process_task(self, context) -> ProcessingResult:
@@ -43,10 +43,7 @@ class HipDriverRenderer(BaseNode):
         if any(x not in attrs for x in ('file', 'frames')):
             return ProcessingResult()  # TODO:  better throw error
         hippath = attrs['file']
-        if context.param_value('override') and 'hipdriver' in attrs:
-            driverpath = attrs['hipdriver']
-        else:
-            driverpath = context.param_value('driver path')
+        driverpath = context.param_value('driver path')
         frames = attrs['frames']
         matching_attrnames = match(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
