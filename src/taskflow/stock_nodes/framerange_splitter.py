@@ -1,7 +1,7 @@
 from copy import copy
 from taskflow.basenode import BaseNode
 from taskflow.enums import NodeParameterType
-from taskflow.nodethings import ProcessingResult, TaskSpawn
+from taskflow.nodethings import ProcessingResult, ProcessingError
 
 from typing import Iterable
 
@@ -28,7 +28,7 @@ class FramerangeSplitter(BaseNode):
     def process_task(self, context):
         attrs = context.task_attributes()
         if 'frames' not in attrs:
-            return ProcessingResult()
+            raise ProcessingError('attribute "frames" not found')
         frames = attrs['frames']
         if not isinstance(frames, list):
             return ProcessingResult()
