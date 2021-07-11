@@ -30,25 +30,25 @@ class HipDriverRenderer(BaseNode):
             ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '*')
 
-    def process_task(self, task_dict) -> ProcessingResult:
+    def process_task(self, context) -> ProcessingResult:
         """
         this node expects to find the following attributes:
         frames
         hipfile
         hipdriver
-        :param task_dict:
+        :param context:
         :return:
         """
-        attrs = self._get_task_attributes(task_dict)
+        attrs = context.task_attributes()
         if any(x not in attrs for x in ('file', 'frames')):
             return ProcessingResult()  # TODO:  better throw error
         hippath = attrs['file']
-        if self.param_value('override') and 'hipdriver' in attrs:
+        if context.param_value('override') and 'hipdriver' in attrs:
             driverpath = attrs['hipdriver']
         else:
-            driverpath = self.param_value('driver path')
+            driverpath = context.param_value('driver path')
         frames = attrs['frames']
-        matching_attrnames = match(self.param_value('attrs'), attrs.keys())
+        matching_attrnames = match(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
 
         env = InvocationEnvironment()
@@ -84,5 +84,5 @@ class HipDriverRenderer(BaseNode):
         res = ProcessingResult(job=inv)
         return res
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

@@ -30,13 +30,13 @@ class Wedge(BaseNode):
                     ui.add_parameter('to', 'count', NodeParameterType.FLOAT, 9.0)
                     ui.add_parameter('count', None, NodeParameterType.INT, 10)
 
-    def process_task(self, task_dict) -> ProcessingResult:
-        wedges_count = self.param_value('wedge count')
+    def process_task(self, context) -> ProcessingResult:
+        wedges_count = context.param_value('wedge count')
         if wedges_count <= 0:
             return ProcessingResult()
         wedge_ranges = []
         for i in range(wedges_count):
-            wedge_ranges.append((self.param_value(f'attr_{i}'), self.param_value(f'from_{i}'), self.param_value(f'to_{i}'), self.param_value(f'count_{i}')))
+            wedge_ranges.append((context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'to_{i}'), context.param_value(f'count_{i}')))
 
         all_wedges = []
 
@@ -59,5 +59,5 @@ class Wedge(BaseNode):
             res.set_split_task_attribs(i, attrs)
         return res
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

@@ -6,6 +6,7 @@ from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
 from taskflow.enums import NodeParameterType
 from taskflow.uidata import NodeUi
+from taskflow.processingcontext import ProcessingContext
 
 from threading import Lock
 
@@ -53,33 +54,34 @@ class SplitAwaiterNode(BaseNode):
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
 
     def ready_to_process_task(self, task_dict) -> bool:
-        split_id = task_dict['split_id']
+        context = ProcessingContext(self, task_dict)
+        split_id = context.task_field('split_id')
         # we don't even need to lock
         return split_id not in self.__cache or \
-               not self.param_value('wait for all') or \
-               task_dict['split_element'] not in self.__cache[split_id]['arrived'] or \
+               not context.param_value('wait for all') or \
+               context.task_field('split_element') not in self.__cache[split_id]['arrived'] or \
                self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']
 
-    def process_task(self, task_dict) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
-        orig_id = task_dict['split_origin_task_id']
-        split_id = task_dict['split_id']
-        task_id = task_dict['id']
+    def process_task(self, context) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
+        orig_id = context.task_field('split_origin_task_id')
+        split_id = context.task_field('split_id')
+        task_id = context.task_field('id')
         if orig_id is None:  # means no splits - just pass through
             return ProcessingResult()
         with self.__main_lock:
             if split_id not in self.__cache:
                 self.__cache[split_id] = {'arrived': {},
-                                          'awaiting': set(range(task_dict['split_count'])),
+                                          'awaiting': set(range(context.task_field('split_count'))),
                                           'first_to_arrive': None}
             if self.__cache[split_id]['first_to_arrive'] is None and len(self.__cache[split_id]['arrived']) == 0:
                 self.__cache[split_id]['first_to_arrive'] = task_id
-            if task_dict['split_element'] not in self.__cache[split_id]['arrived']:
-                self.__cache[split_id]['arrived'][task_dict['split_element']] = json.loads(task_dict['attributes'])
-                self.__cache[split_id]['arrived'][task_dict['split_element']]['_builtin_id'] = task_id
+            if context.task_field('split_element') not in self.__cache[split_id]['arrived']:
+                self.__cache[split_id]['arrived'][context.task_field('split_element')] = json.loads(context.task_field('attributes'))
+                self.__cache[split_id]['arrived'][context.task_field('split_element')]['_builtin_id'] = task_id
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
-        if self.param_value('wait for all'):
+        if context.param_value('wait for all'):
             with self.__main_lock:
                 if self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']:
                     res = ProcessingResult()
@@ -88,13 +90,13 @@ class SplitAwaiterNode(BaseNode):
                         res.kill_task()
                     else:
                         # transfer attributes  # TODO: delete cache for already processed splits
-                        num_attribs = self.param_value('transfer_attribs')
+                        num_attribs = context.param_value('transfer_attribs')
                         for i in range(num_attribs):
-                            src_attr_name = self.param_value(f'src_attr_name_{i}')
-                            transfer_type = self.param_value(f'transfer_type_{i}')
-                            dst_attr_name = self.param_value(f'dst_attr_name_{i}')
-                            sort_attr_name = self.param_value(f'sort_by_{i}')
-                            sort_reversed = self.param_value(f'reversed_{i}')
+                            src_attr_name = context.param_value(f'src_attr_name_{i}')
+                            transfer_type = context.param_value(f'transfer_type_{i}')
+                            dst_attr_name = context.param_value(f'dst_attr_name_{i}')
+                            sort_attr_name = context.param_value(f'sort_by_{i}')
+                            sort_reversed = context.param_value(f'reversed_{i}')
                             gathered_values = []
                             if transfer_type == 'append':
                                 for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
@@ -129,7 +131,7 @@ class SplitAwaiterNode(BaseNode):
 
         raise NodeNotReadyToProcess()
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()
 
     def __getstate__(self):

@@ -5,6 +5,7 @@ from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 from taskflow.nodethings import ProcessingResult
 from taskflow.uidata import NodeParameterType
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable
 if TYPE_CHECKING:
     from taskflow.scheduler import Scheduler
@@ -26,6 +27,7 @@ invoke_help = "# use task variable to get attribs, e.g.     task['attr'] = 123\n
               "# this code will be executed on remote worker, all calls to task['smth'] will be resolved beforehand\n" \
               "\n"
 
+
 class Python(BaseNode):
     def __init__(self, name):
         super(Python, self).__init__(name)
@@ -43,9 +45,9 @@ class Python(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'script', 'python'
 
-    def process_task(self, task_dict) -> ProcessingResult:
+    def process_task(self, context) -> ProcessingResult:
         class _TaskHelper:
-            def __init__(self, attribs: dict, readonly: bool):
+            def __init__(self, attribs: MappingProxyType, readonly: bool):
                 self.__attribs = attribs
                 self.__overrides = {}
                 self.__todel = set()
@@ -83,17 +85,17 @@ class Python(BaseNode):
             nonlocal do_schedule
             do_schedule = True
 
-        task_helper = _TaskHelper(self._get_task_attributes(task_dict), readonly=False)
+        task_helper = _TaskHelper(context.task_attributes(), readonly=False)
 
         exec_locals = {'task': task_helper, 'schedule': _set_sched}
         do_schedule = False
-        exec(self.param_value('process'), {}, exec_locals)
+        exec(context.param_value('process'), {}, exec_locals)
 
         if do_schedule:
             inv = InvocationJob(['python', ':/main_invocation.py'])
             inok_task_attributes = {k: task_helper[k] for k in task_helper.attribute_names()}
 
-            inv.set_extra_file('main_invocation.py', f'task = {repr(inok_task_attributes)}\n{self.param_value("invoke")}')
+            inv.set_extra_file('main_invocation.py', f'task = {repr(inok_task_attributes)}\n{context.param_value("invoke")}')
         else:
             inv = None
         res = ProcessingResult(inv)
@@ -106,5 +108,5 @@ class Python(BaseNode):
 
         return res
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

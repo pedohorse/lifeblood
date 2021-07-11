@@ -53,26 +53,26 @@ class SetAttributes(BaseNode):
 
         #_printone(ui.main_parameter_layout())
 
-    def process_task(self, task_dict) -> ProcessingResult:
-        attr_count = self.param_value('attr_count')
+    def process_task(self, context) -> ProcessingResult:
+        attr_count = context.param_value('attr_count')
         res = ProcessingResult()
         for i in range(attr_count):
-            attr_name = self.param_value(f'name_{i}')
+            attr_name = context.param_value(f'name_{i}')
             if attr_name == '':  # however some spaces - is a valid parameter name
                 continue
-            attr_type = self.param_value(f'type_{i}')
+            attr_type = context.param_value(f'type_{i}')
             if attr_type == NodeParameterType.INT.value:
-                attr_val = self.param_value(f'ivalue_{i}')
+                attr_val = context.param_value(f'ivalue_{i}')
             elif attr_type == NodeParameterType.BOOL.value:
-                attr_val = self.param_value(f'bvalue_{i}')
+                attr_val = context.param_value(f'bvalue_{i}')
             elif attr_type == NodeParameterType.FLOAT.value:
-                attr_val = self.param_value(f'fvalue_{i}')
+                attr_val = context.param_value(f'fvalue_{i}')
             elif attr_type == NodeParameterType.STRING.value:
-                attr_val = self.param_value(f'svalue_{i}')
+                attr_val = context.param_value(f'svalue_{i}')
             else:
                 raise NotImplementedError('unexpected type')
             res.set_attribute(attr_name, attr_val)
         return res
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

@@ -33,20 +33,20 @@ class Ffmpeg(BaseNode):
             ui.add_parameter('-vcodec', 'codec', NodeParameterType.STRING, 'libx264')
             ui.add_parameter('outpath', 'movie path', NodeParameterType.STRING, '/tmp/movie.mp4')
 
-    def process_task(self, task_dict) -> ProcessingResult:
-        binpath = self.param_value('ffmpeg bin path')
-        attributes = self._get_task_attributes(task_dict)
+    def process_task(self, context) -> ProcessingResult:
+        binpath = context.param_value('ffmpeg bin path')
+        attributes = context.task_attributes()
         if 'sequence' not in attributes:
             return ProcessingResult()
         sequence = attributes['sequence']
 
         assert isinstance(sequence, list), 'sequence attribute is supposed to be list of frames, or list of sequences'
 
-        outopts = ['-vcodec', self.param_value('-vcodec'),
-                   '-crf', 100 - self.param_value('icrf'),
-                   '-pix_fmt', self.param_value('-pix_fmt')]
-        fps = self.param_value('fps')
-        outpath = self.param_value('outpath')
+        outopts = ['-vcodec', context.param_value('-vcodec'),
+                   '-crf', 100 - context.param_value('icrf'),
+                   '-pix_fmt', context.param_value('-pix_fmt')]
+        fps = context.param_value('fps')
+        outpath = context.param_value('outpath')
 
         if isinstance(sequence[0], str):  # we have sequence of frames
             args = [binpath, '-f', 'concat', '-safe', '0', '-r', fps, '-i', ':/framelist.txt', *outopts, '-y', outpath]
@@ -91,12 +91,10 @@ class Ffmpeg(BaseNode):
         else:
             raise RuntimeError('bad attribute value')
 
-
         res = ProcessingResult(job)
         res.set_attribute('file', outpath)
         return res
 
 
-
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

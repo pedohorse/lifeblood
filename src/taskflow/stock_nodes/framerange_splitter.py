@@ -25,15 +25,15 @@ class FramerangeSplitter(BaseNode):
         with self.get_ui().initializing_interface_lock():
             self.get_ui().add_parameter('chunk size', None, NodeParameterType.INT, 10)
 
-    def process_task(self, task_row):
-        attrs = self._get_task_attributes(task_row)
+    def process_task(self, context):
+        attrs = context.task_attributes()
         if 'frames' not in attrs:
             return ProcessingResult()
         frames = attrs['frames']
         if not isinstance(frames, list):
             return ProcessingResult()
         res = ProcessingResult()
-        chunksize = self.param_value('chunk size')
+        chunksize = context.param_value('chunk size')
         if len(frames) < chunksize:
             return ProcessingResult()
 
@@ -44,5 +44,5 @@ class FramerangeSplitter(BaseNode):
             res.set_split_task_attrib(i, 'frames', frames[chunksize*i:chunksize*(i+1)])
         return res
 
-    def postprocess_task(self, task_row):
+    def postprocess_task(self, context):
         return ProcessingResult()

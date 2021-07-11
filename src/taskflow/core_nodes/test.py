@@ -30,7 +30,7 @@ class Test(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'test', 'debug'
 
-    def process_task(self, task_dict) -> ProcessingResult:
+    def process_task(self, context) -> ProcessingResult:
         td = InvocationJob(['bash', '-c',
                             'echo "startin..."\n'
                             'for i in {1..15}\n'
@@ -46,7 +46,7 @@ class Test(BaseNode):
             raise RuntimeError('just happened to be in a wrong time in a wrong place')
         return ProcessingResult(job=td)
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         time.sleep(3.5)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
         res = ProcessingResult()
         res.set_attribute('cat', 1)

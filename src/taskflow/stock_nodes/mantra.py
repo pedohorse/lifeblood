@@ -23,8 +23,8 @@ class Mantra(BaseNode):
     def __init__(self, name):
         super(Mantra, self).__init__(name)
 
-    def process_task(self, task_dict) -> ProcessingResult:
-        args = self._get_task_attributes(task_dict)
+    def process_task(self, context) -> ProcessingResult:
+        args = context.task_attributes()
         if 'file' not in args or 'outimage' not in args:
             return ProcessingResult()
 
@@ -35,5 +35,5 @@ class Mantra(BaseNode):
         res.set_attribute('file', args['outimage'])
         return res
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()

@@ -5,6 +5,7 @@ from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
 from taskflow.enums import NodeParameterType
 from taskflow.uidata import NodeUi
+from taskflow.processingcontext import ProcessingContext
 
 from threading import Lock
 
@@ -58,14 +59,15 @@ class ParentChildrenWaiterNode(BaseNode):
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
 
     def ready_to_process_task(self, task_dict) -> bool:
-        task_id = task_dict['id']
-        children_count = task_dict['children_count']
-        if task_dict['node_input_name'] == 'main':
+        context = ProcessingContext(self, task_dict)
+        task_id = context.task_field('id')
+        children_count = context.task_field('children_count')
+        if context.task_field('node_input_name') == 'main':
             return task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
 
         ready: bool = True
-        parent_id = task_dict['parent_id']
-        if self.param_value('recursive') and children_count > 0:
+        parent_id = context.task_field('parent_id')
+        if context.param_value('recursive') and children_count > 0:
             ready = task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
         ready = ready and (
                 parent_id not in self.__cache_children or
@@ -74,13 +76,13 @@ class ParentChildrenWaiterNode(BaseNode):
                 )
         return ready
 
-    def process_task(self, task_dict) -> ProcessingResult:
-        task_id = task_dict['id']
-        children_count = task_dict['children_count']
-        recursive = self.param_value('recursive')
+    def process_task(self, context) -> ProcessingResult:
+        task_id = context.task_field('id')
+        children_count = context.task_field('children_count')
+        recursive = context.param_value('recursive')
 
         with self.__main_lock:
-            if task_dict['node_input_name'] == 'main':  # parent task
+            if context.task_field('node_input_name') == 'main':  # parent task
                 if children_count == 0:
                     return ProcessingResult()
                 if task_id not in self.__cache_children:
@@ -89,13 +91,13 @@ class ParentChildrenWaiterNode(BaseNode):
                 if children_count == len(self.__cache_children[task_id].children):
                     result = ProcessingResult()
                     # transfer attributes
-                    num_attribs = self.param_value('transfer_attribs')
+                    num_attribs = context.param_value('transfer_attribs')
                     for i in range(num_attribs):
-                        src_attr_name = self.param_value(f'src_attr_name_{i}')
-                        transfer_type = self.param_value(f'transfer_type_{i}')
-                        dst_attr_name = self.param_value(f'dst_attr_name_{i}')
-                        sort_attr_name = self.param_value(f'sort_by_{i}')
-                        sort_reversed = self.param_value(f'reversed_{i}')
+                        src_attr_name = context.param_value(f'src_attr_name_{i}')
+                        transfer_type = context.param_value(f'transfer_type_{i}')
+                        dst_attr_name = context.param_value(f'dst_attr_name_{i}')
+                        sort_attr_name = context.param_value(f'sort_by_{i}')
+                        sort_reversed = context.param_value(f'reversed_{i}')
                         gathered_values = []
                         if transfer_type == 'append':
                             for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
@@ -124,7 +126,7 @@ class ParentChildrenWaiterNode(BaseNode):
 
                 raise NodeNotReadyToProcess()
             else:  # child task
-                parent_id = task_dict['parent_id']
+                parent_id = context.task_field('parent_id')
                 if parent_id is None:
                     return ProcessingResult(node_output_name='children')
                 if recursive and children_count > 0:  # if recursive - we first wait for our children, then add ourselves to our parent children list
@@ -150,7 +152,7 @@ class ParentChildrenWaiterNode(BaseNode):
 
                 if task_id not in self.__cache_children[parent_id].children:
                     self.__cache_children[parent_id].children.add(task_id)
-                    self.__cache_children[parent_id].all_children_dicts[task_id] = json.loads(task_dict['attributes'])
+                    self.__cache_children[parent_id].all_children_dicts[task_id] = json.loads(context.task_field('attributes'))
                     self.__cache_children[parent_id].all_children_dicts[task_id]['_builtin_id'] = task_id
                     if children_attrs_to_pass_up is not None:
                         self.__cache_children[parent_id].all_children_dicts.update(children_attrs_to_pass_up)
@@ -158,9 +160,9 @@ class ParentChildrenWaiterNode(BaseNode):
 
         raise NodeNotReadyToProcess()
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def postprocess_task(self, context) -> ProcessingResult:
         res = ProcessingResult()
-        res.set_node_output_name(task_dict.get('node_output_name', 'main'))
+        res.set_node_output_name(context.task_field('node_output_name', 'main'))
         return res
 
     def __getstate__(self):
