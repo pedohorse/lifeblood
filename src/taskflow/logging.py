@@ -9,6 +9,12 @@ class UnimportantOnlyFilter(logging.Filter):
 
 
 __logger_cache = {}
+__default_loglevel = 'INFO'
+
+
+def set_default_loglevel(loglevel):
+    global __default_loglevel
+    __default_loglevel = loglevel
 
 
 def getLogger(name):
@@ -30,6 +36,6 @@ def getLogger(name):
     handler.setStream(sys.stderr)
     logger.addHandler(handler)
 
-    logger.setLevel('INFO')
+    logger.setLevel(__default_loglevel)
     logger.propagate = False
     return logger
