@@ -21,7 +21,7 @@ def main(argv):
     if opts.command == 'scheduler':
         from .scheduler import main
         if opts.loglevel is not None:
-            logging.getLogger('scheduler').setLevel(opts.loglevel)
+            logging.set_default_loglevel(opts.loglevel)
         overrides = {}
         if opts.db_path:
             if 'scheduler' not in overrides:
@@ -34,12 +34,12 @@ def main(argv):
     elif opts.command == 'worker':
         from .worker import main
         if opts.loglevel is not None:
-            logging.getLogger('worker').setLevel(opts.loglevel)
+            logging.set_default_loglevel(opts.loglevel)
         return main()
     elif opts.command == 'viewer':
         from .viewer.launch import main
         if opts.loglevel is not None:
-            logging.getLogger('viewer').setLevel(opts.loglevel)
+            logging.set_default_loglevel(opts.loglevel)
         return main()
 
 
