@@ -2,6 +2,7 @@ import asyncio
 import pickle
 from copy import deepcopy
 from .enums import NodeParameterType
+from .processingcontext import ProcessingContext
 import re
 
 from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type
@@ -129,21 +130,31 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
         raise RuntimeError('cannot remove children from ParameterHierarchyLeaf')
 
 
+def evaluate_expression(expression, context: Optional[ProcessingContext]):
+    try:
+        return eval(expression, {}, context.locals() if context is not None else {})
+    except:  # we are catching any exception from eval
+        return ''
+
 class Parameter(ParameterHierarchyLeaf):
 
     class DontChange:
         pass
 
-    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
+    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expression: bool = False):
         super(Parameter, self).__init__()
-        self.__init_default_members()
         self.__name = param_name
         self.__label = param_label
         self.__type = param_type
         self.__value = None
-        self.__menu_items: Dict[str, str] = None
+        self.__menu_items: Optional[Dict[str, str]] = None
         self.__menu_items_order: List[str] = []
         self.__vis_when = None
+
+        self.__expression = None
+        self.__can_have_expressions = can_have_expression
+
+        self.__re_expand_pattern = re.compile(r'`(.*?)`')
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
@@ -158,32 +169,6 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_cache = None
 
         self.set_value(param_val)
-
-    def __init_default_members(self):
-        """
-        helper function mostly for unpickling
-        to ease iterations when adding new OPTIONAL fields
-        This should be removed once all is more or less stable
-        Or a better way of keeping stuff up-to-date found
-        """
-        self.__name = ''
-        self.__label = ''
-        self.__type = NodeParameterType.INT
-        self.__value = None
-        self.__menu_items: Dict[str, str] = None
-        self.__menu_items_order: List[str] = []
-        self.__vis_when = None
-
-        self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
-        self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
-
-        self.__string_multiline = False
-
-        # links
-        self.__params_referencing_me: Set["Parameter"] = set()
-
-        # caches
-        self.__vis_cache = None
 
     def name(self) -> str:
         return self.__name
@@ -202,8 +187,20 @@ class Parameter(ParameterHierarchyLeaf):
     def type(self) -> NodeParameterType:
         return self.__type
 
-    def value(self):
+    def unexpanded_value(self, context: Optional[ProcessingContext] = None):
         return self.__value
+
+    def value(self, context: Optional[ProcessingContext] = None):
+        """
+        returns value of this parameter
+        :param context: optional dict like locals, for expression evaluations
+        """
+        # TODO: implement expressions!
+        if self.__type != NodeParameterType.STRING:
+            return self.__value
+
+        # for string parameters we expand expressions in ``, kinda like bash
+        return self.__re_expand_pattern.sub(lambda m: str(evaluate_expression(m.group(1), context)), self.__value)
 
     def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float], Union[int, float]) -> None
         """
@@ -310,11 +307,27 @@ class Parameter(ParameterHierarchyLeaf):
         if self.parent() is not None:
             self.parent()._children_value_changed([self])
 
+    def can_have_expressions(self):
+        return self.__can_have_expressions
+
+    def set_expression(self, expression: Union[str, None]):
+        """
+        sets or removes expression from a parameter
+        :param expression: either expression code or None means removing expression
+        :return:
+        """
+        if not self.__can_have_expressions:
+            raise RuntimeError('this parameter cannot have expressions')
+        self.__expression = expression
+
     def _referencing_param_value_changed(self, other_parameter):
         """
         when a parameter that we are referencing changes - it will report here
         :param other_parameter:
         """
+        # TODO: this now only works with referencing param in visibility condition
+        # TODO: butt we want general references, including from parameter expressions
+        # TODO: OOOORR will i need references for expressions at all?
         if self.__vis_when is not None:
             self.__vis_cache = None
             if self.parent() is not None and isinstance(self.parent(), ParametersLayoutBase):
@@ -356,6 +369,8 @@ class Parameter(ParameterHierarchyLeaf):
 
         if self.__vis_when is not None:
             self.__vis_when[0]._remove_referencing_me(self)
+            # TODO: will need a proper reference reevaluator for when references will also come from expressions, not implemented for now
+            # TODO: OOOORR will i need references for expressions at all?
 
         otype = other_param.type()
         if otype == NodeParameterType.INT:
@@ -411,7 +426,8 @@ class Parameter(ParameterHierarchyLeaf):
         overriden for easier parameter class iterations during active development.
         otherwise all node ui data should be recreated from zero in DB every time a change is made
         """
-        self.__init_default_members()
+        # this init here only to init new shit when unpickling old parameters without resetting DB all the times
+        self.__init__('', '', NodeParameterType.INT,  0, False)
         self.__dict__.update(state)
 
 class ParameterNotFound(RuntimeError):
