@@ -393,6 +393,9 @@ class Node(NetworkItemWithUI):
                         changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), *slider_limits)
                     else:
                         changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
+                    if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
+                        imgui.selectable('toggle expression')
+                        imgui.end_popup()
                 elif param_type == NodeParameterType.FLOAT:
                     #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
                     slider_limits = item.display_value_limits()
@@ -405,18 +408,18 @@ class Node(NetworkItemWithUI):
                         # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
                         imgui.begin_group()
                         ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
-                        changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.value(), len(item.value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                        changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
                         imgui.end_group()
                         if ed_butt_pressed:
                             hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
                             if item.syntax_hint() == 'python':
                                 hl = StringParameterEditor.SyntaxHighlight.PYTHON
                             wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
-                            wgt.set_text(item.value())
+                            wgt.set_text(item.unexpanded_value())
                             wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
                             wgt.show()
                     else:
-                        changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.value(), 256)
+                        changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.unexpanded_value(), 256)
                 else:
                     raise NotImplementedError()
                 if changed:
@@ -1941,7 +1944,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__conn is not None
         try:
             param_type = param.type()
-            param_value = param.value()
+            param_value = param.unexpanded_value()
             self.__conn.sendall(b'setnodeparam\n')
             param_name_data = param.name().encode('UTF-8')
             self.__conn.sendall(struct.pack('>QII', node_id, param_type.value, len(param_name_data)))
