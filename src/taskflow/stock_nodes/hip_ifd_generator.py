@@ -1,7 +1,7 @@
 from copy import copy
 from taskflow.basenode import BaseNode
 from taskflow.enums import NodeParameterType
-from taskflow.nodethings import ProcessingResult, TaskSpawn
+from taskflow.nodethings import ProcessingResult, ProcessingError
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 
 from typing import Iterable
@@ -25,9 +25,8 @@ class HipIfdGenerator(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_output_for_spawned_tasks()
-            ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, '')
-            ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, '')
-            ui.add_parameter('override', 'override with hipdriver attribute', NodeParameterType.BOOL, False)
+            ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
+            ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
 
     def process_task(self, context) -> ProcessingResult:
         """
@@ -39,13 +38,10 @@ class HipIfdGenerator(BaseNode):
         :return:
         """
         attrs = context.task_attributes()
-        if any(x not in attrs for x in ('file', 'frames')):
-            return ProcessingResult()  # TODO: throw error
-        hippath = attrs['file']
-        if context.param_value('override') and 'hipdriver' in attrs:
-            driverpath = attrs['hipdriver']
-        else:
-            driverpath = context.param_value('driver path')
+        if any(x not in attrs for x in ('frames',)):
+            raise ProcessingError('required attribute "frames" not found')
+        hippath = context.param_value('hip path')
+        driverpath = context.param_value('driver path')
         frames = attrs['frames']
 
         env = InvocationEnvironment()
