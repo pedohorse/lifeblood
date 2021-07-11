@@ -7,6 +7,7 @@ from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult
 from .uidata import NodeUi
 from .pluginloader import create_node
+from .processingcontext import ProcessingContext
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -40,18 +41,21 @@ class BaseNode:
     def set_name(self, name: str):
         self.__name = name
 
-    def param_value(self, param_name) -> Any:
-        """
-        shortcut to node.get_ui().parameter_value
-        :param param_name:
-        :return:
-        """
-        return self._parameters.parameter(param_name).value()
-
+    # # MAYBE UNCOMMENT THESE WHEN ALL NODES ARE REFACTORED TO USE CONTEXT?
+    # def param_value(self, param_name, context: Optional[ProcessingContext] = None) -> Any:
+    #     """
+    #     shortcut to node.get_ui().parameter_value
+    #     :param param_name:
+    #     :param context: context in which to evaluate expression
+    #     :return:
+    #     """
+    #     return self._parameters.parameter(param_name).value(context)
+    #
     def set_param_value(self, param_name, param_value) -> None:
         """
         shortcut to node.get_ui().set_parameter
-        :param param_name:
+        :param param_name: parameter name
+        :param param_value: value to set
         :return:
         """
         return self._parameters.parameter(param_name).set_value(param_value)
@@ -92,24 +96,32 @@ class BaseNode:
     def ready_to_process_task(self, task_dict) -> bool:
         """
         must be VERY fast - this will be run in main thread
+        there is no context wrapper just to skip unnessesary overhead as not many nodes will ever override this
         """
         return True
 
     def ready_to_postprocess_task(self, task_dict) -> bool:
         """
         must be VERY fast - this will be run in main thread
+        there is no context wrapper just to skip unnessesary overhead as not many nodes will ever override this
         """
         return True
 
-    def process_task(self, task_dict) -> ProcessingResult:
+    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+        return self.process_task(ProcessingContext(self, task_dict))
+
+    def process_task(self, context: ProcessingContext) -> ProcessingResult:
         raise NotImplementedError()
 
-    def postprocess_task(self, task_dict) -> ProcessingResult:
+    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
+        return self.postprocess_task(ProcessingContext(self, task_dict))
+
+    def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         raise NotImplementedError()
 
-    # some helpers
-    def _get_task_attributes(self, task_row):
-        return json.loads(task_row.get('attributes', '{}'))
+    # # some helpers
+    # def _get_task_attributes(self, task_row):
+    #     return json.loads(task_row.get('attributes', '{}'))
 
     #
     # Serialize and back
