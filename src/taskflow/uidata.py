@@ -131,10 +131,8 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 
 
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
-    try:
-        return eval(expression, {}, context.locals() if context is not None else {})
-    except:  # we are catching any exception from eval
-        return ''
+    return eval(expression, {}, context.locals() if context is not None else {})
+
 
 class Parameter(ParameterHierarchyLeaf):
 
@@ -429,6 +427,7 @@ class Parameter(ParameterHierarchyLeaf):
         # this init here only to init new shit when unpickling old parameters without resetting DB all the times
         self.__init__('', '', NodeParameterType.INT,  0, False)
         self.__dict__.update(state)
+
 
 class ParameterNotFound(RuntimeError):
     pass
