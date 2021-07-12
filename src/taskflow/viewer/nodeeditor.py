@@ -423,7 +423,6 @@ class Node(NetworkItemWithUI):
                 else:
                     raise NotImplementedError()
                 if changed:
-                    print('foooo!', newval)
                     item.set_value(newval)
             imgui.pop_item_width()
             if changed:
