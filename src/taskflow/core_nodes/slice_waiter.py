@@ -48,7 +48,9 @@ class SplitAwaiterNode(BaseNode):
                     ui.add_parameter('src_attr_name', 'attribute', NodeParameterType.STRING, 'attr1')
                     ui.add_parameter('transfer_type', 'as', NodeParameterType.STRING, 'extend')\
                         .add_menu((('Extend', 'extend'),
-                                   ('Append', 'append')))
+                                   ('Append', 'append'),
+                                   ('First', 'first'),
+                                   ('Sum', 'sum')))
                     ui.add_parameter('dst_attr_name', 'sort by', NodeParameterType.STRING, 'attr1')
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
@@ -97,8 +99,8 @@ class SplitAwaiterNode(BaseNode):
                             dst_attr_name = context.param_value(f'dst_attr_name_{i}')
                             sort_attr_name = context.param_value(f'sort_by_{i}')
                             sort_reversed = context.param_value(f'reversed_{i}')
-                            gathered_values = []
                             if transfer_type == 'append':
+                                gathered_values = []
                                 for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
                                     if src_attr_name not in attribs:
                                         continue
@@ -107,6 +109,7 @@ class SplitAwaiterNode(BaseNode):
                                     gathered_values.append(attr_val)
                                 res.set_attribute(dst_attr_name, gathered_values)
                             elif transfer_type == 'extend':
+                                gathered_values = []
                                 for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
                                     if src_attr_name not in attribs:
                                         continue
@@ -116,6 +119,26 @@ class SplitAwaiterNode(BaseNode):
                                         gathered_values.extend(attr_val)
                                     else:
                                         gathered_values.append(attr_val)
+                                res.set_attribute(dst_attr_name, gathered_values)
+                            elif transfer_type == 'first':
+                                _acd = self.__cache[split_id]['arrived']
+                                if len(_acd) > 0:
+                                    if sort_reversed:
+                                        attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                                    else:
+                                        attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                                    if src_attr_name in attribs:
+                                        res.set_attribute(dst_attr_name, attribs[src_attr_name])
+                            elif transfer_type == 'sum':
+                                # we don't care about the order, assume sum is associative
+                                gathered_values = None
+                                for attribs in self.__cache[split_id]['arrived'].values():
+                                    if src_attr_name not in attribs:
+                                        continue
+                                    if gathered_values is None:
+                                        gathered_values = attribs[src_attr_name]
+                                    else:
+                                        gathered_values += attribs[src_attr_name]
                                 res.set_attribute(dst_attr_name, gathered_values)
                             else:
                                 raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
