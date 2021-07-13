@@ -132,6 +132,7 @@ class StringParameterEditor(QWidget):
         font = QFont('monospace')
         font.setFixedPitch(True)
         self.__textarea.setFont(font)
+        self.__textarea.setLineWrapMode(QPlainTextEdit.NoWrap)
 
         self.__bottom_layout = QHBoxLayout()
         self.__ok_button = QPushButton('Apply&Close')
