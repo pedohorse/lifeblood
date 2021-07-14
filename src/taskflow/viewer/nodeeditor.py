@@ -957,7 +957,12 @@ class Task(NetworkItemWithUI):
     def set_groups(self, groups: Iterable[str]):
         self.__groups = set(groups)
 
-    def update_log(self, alllog):
+    def update_log(self, alllog: Dict[int, Dict[int, dict]]):
+        """
+        This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
+        :param alllog: is expected to be a dict of node_id -> (dict of invocation_id -> (invocation dict) )
+        :return:
+        """
         #self.__log = alllog
         logger.debug('log updated with %s', alllog)
         # Note that we assume log deletion is not possible
@@ -2178,6 +2183,9 @@ class NodeEditor(QGraphicsView):
 
         self.__create_menu_popup_toopen = False
         self.__node_type_input = ''
+        self.__menu_popup_selection_id = 0
+        self.__menu_popup_selection_name = ''
+        self.__menu_popup_arrow_down = False
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
 
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
@@ -2324,33 +2332,58 @@ class NodeEditor(QGraphicsView):
         if self.__create_menu_popup_toopen:
             imgui.open_popup('create node')
             self.__node_type_input = ''
+            self.__menu_popup_selection_id = 0
+            self.__menu_popup_selection_name = ''
+            self.__menu_popup_arrow_down = False
 
         if imgui.begin_popup('create node'):
-            imgui.set_keyboard_focus_here()
-            _, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
+            changed, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
+            if not imgui.is_item_active() and not imgui.is_mouse_down():
+                # if text input is always focused - selectable items do not work
+                imgui.set_keyboard_focus_here(-1)
+            if changed:
+                self.__menu_popup_selection_id = 0
+            item_number = 0
             for type_name, type_meta in self.__node_types.items():
                 if self.__node_type_input in type_name\
                         or self.__node_type_input in type_meta.tags\
                         or self.__node_type_input in type_meta.label:  # TODO: this can be cached
-                    imgui.text(type_meta.label)
+                    selected = self.__menu_popup_selection_id == item_number
+                    _, selected = imgui.selectable(f'{type_meta.label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
+                    if selected:
+                        self.__menu_popup_selection_id = item_number
+                        self.__menu_popup_selection_name = type_name
+                    item_number += 1
 
-            imguio = imgui.get_io()
-            if imguio.keys_down[imgui.KEY_ENTER]:
+            imguio: imgui.core._IO = imgui.get_io()
+            if imguio.keys_down[imgui.KEY_DOWN_ARROW]:  # TODO: pauses until key up
+                if not self.__menu_popup_arrow_down:
+                    self.__menu_popup_selection_id += 1
+                    self.__menu_popup_arrow_down = True
+            elif imguio.keys_down[imgui.KEY_UP_ARROW]:
+                if not self.__menu_popup_arrow_down:
+                    self.__menu_popup_selection_id -= 1
+                    self.__menu_popup_arrow_down = True
+            elif imguio.keys_down[imgui.KEY_ENTER]:
                 imgui.close_current_popup()
-                for type_name, type_meta in self.__node_types.items():
-                    if self.__node_type_input in type_name \
-                            or self.__node_type_input in type_meta.tags \
-                            or self.__node_type_input in type_meta.label:
-                        self.__node_type_input = type_name
-                        break
-                else:
-                    self.__node_type_input = ''
-                if self.__node_type_input:
-                    self.__scene.request_create_node(self.__node_type_input, f'{self.__node_type_input} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                # for type_name, type_meta in self.__node_types.items():
+                #     if self.__node_type_input in type_name \
+                #             or self.__node_type_input in type_meta.tags \
+                #             or self.__node_type_input in type_meta.label:
+                #         self.__node_type_input = type_name
+                #         break
+                # else:
+                #     self.__node_type_input = ''
+                if self.__menu_popup_selection_name:
+                    self.__scene.request_create_node(self.__menu_popup_selection_name, f'{self.__menu_popup_selection_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+            elif self.__menu_popup_arrow_down:
+                self.__menu_popup_arrow_down = False
+
 
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
                 self.__node_type_input = ''
+                self.__menu_popup_selection_id = 0
             imgui.end_popup()
 
         self.__create_menu_popup_toopen = False
