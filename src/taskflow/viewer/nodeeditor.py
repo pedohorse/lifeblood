@@ -2364,7 +2364,7 @@ class NodeEditor(QGraphicsView):
                 if not self.__menu_popup_arrow_down:
                     self.__menu_popup_selection_id -= 1
                     self.__menu_popup_arrow_down = True
-            elif imguio.keys_down[imgui.KEY_ENTER]:
+            if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
                 imgui.close_current_popup()
                 # for type_name, type_meta in self.__node_types.items():
                 #     if self.__node_type_input in type_name \
