@@ -2345,9 +2345,10 @@ class NodeEditor(QGraphicsView):
                 self.__menu_popup_selection_id = 0
             item_number = 0
             for type_name, type_meta in self.__node_types.items():
-                if self.__node_type_input in type_name\
-                        or self.__node_type_input in type_meta.tags\
-                        or self.__node_type_input in type_meta.label:  # TODO: this can be cached
+                inparts = [x.strip() for x in self.__node_type_input.split(' ')]
+                if all(x in type_name
+                       or any(t.startswith(x) for t in type_meta.tags)
+                       or x in type_meta.label for x in inparts):  # TODO: this can be cached
                     selected = self.__menu_popup_selection_id == item_number
                     _, selected = imgui.selectable(f'{type_meta.label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
