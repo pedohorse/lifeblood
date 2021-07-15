@@ -833,6 +833,7 @@ class Task(NetworkItemWithUI):
 
         self.__state_details_raw = None
         self.__state_details = None
+        self.__raw_data = {}
 
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
@@ -947,6 +948,9 @@ class Task(NetworkItemWithUI):
             self.__progress = None
         self.update()
         self.refresh_ui()
+
+    def set_raw_data(self, raw_data: dict):
+        self.__raw_data = raw_data
 
     def set_progress(self, progress: float):
         self.__progress = progress
@@ -1132,6 +1136,9 @@ class Task(NetworkItemWithUI):
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Task {self.get_id()} {self.__name}')
         imgui.text(f'groups: {", ".join(self.__groups)}')
+        imgui.text(f'parent id: {self.__raw_data.get("parent_id", None)}')
+        imgui.text(f'children count: {self.__raw_data.get("children_count", None)}')
+        imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
 
         # first draw attributes
         for key, val in self.__ui_attributes.items():
@@ -1579,7 +1586,8 @@ class QGraphicsImguiScene(QGraphicsScene):
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
-            task.set_state_details(newdata['state_details'])
+            task.set_state_details(newdata['state_details'])  # TODO: maybe instead of 3 calls do it with one, so task parses it's own raw data?
+            task.set_raw_data(newdata)
             if newdata['progress'] is not None:
                 task.set_progress(newdata['progress'])
             task.set_groups(newdata['groups'])
