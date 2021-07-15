@@ -34,7 +34,7 @@ class SplitAwaiterNode(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'slice', 'gather', 'core'
+        return 'slice', 'wait', 'synchronization', 'barrier', 'gather', 'core'
 
     def __init__(self, name: str):
         super(SplitAwaiterNode, self).__init__(name)

@@ -19,7 +19,7 @@ class RenameAttributes(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'set', 'attribute', 'core'
+        return 'rename', 'attribute', 'core'
 
     def __init__(self, name: str):
         super(RenameAttributes, self).__init__(name)

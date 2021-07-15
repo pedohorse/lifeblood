@@ -43,7 +43,7 @@ class Python(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'script', 'python'
+        return 'script', 'python', 'core'
 
     def process_task(self, context) -> ProcessingResult:
         class _TaskHelper:

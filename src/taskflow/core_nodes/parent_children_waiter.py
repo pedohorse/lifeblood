@@ -37,7 +37,7 @@ class ParentChildrenWaiterNode(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'hierarchy', 'gather', 'wait', 'children', 'parent', 'core'
+        return 'hierarchy', 'gather', 'wait', 'synchronization', 'barrier', 'child', 'children', 'parent', 'core'
 
     def __init__(self, name: str):
         super(ParentChildrenWaiterNode, self).__init__(name)
