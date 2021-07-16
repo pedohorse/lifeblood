@@ -482,7 +482,7 @@ class Scheduler:
                     _debug_tmpw = time.perf_counter()
                     if task_row['state'] == TaskState.WAITING.value:
                         if task_row['node_type'] not in pluginloader.plugins:
-                            self.__logger.error(f'plugin to process "P{task_row["node_type"]}" not found!')
+                            self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.DONE.value, task_row['id']))
                             _debug_tmp = time.perf_counter()
@@ -506,7 +506,7 @@ class Scheduler:
                     # waiting to be post processed
                     elif task_row['state'] == TaskState.POST_WAITING.value:
                         if task_row['node_type'] not in pluginloader.plugins:
-                            self.__logger.error(f'plugin to process "P{task_row["node_type"]}" not found!')
+                            self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                               (TaskState.DONE.value, task_row['id']))
                             _debug_tmp = time.perf_counter()
