@@ -139,7 +139,7 @@ class Parameter(ParameterHierarchyLeaf):
     class DontChange:
         pass
 
-    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expression: bool = False):
+    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expression: bool = False, readonly: bool = False):
         super(Parameter, self).__init__()
         self.__name = param_name
         self.__label = param_label
@@ -148,6 +148,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__menu_items: Optional[Dict[str, str]] = None
         self.__menu_items_order: List[str] = []
         self.__vis_when = None
+        self.__is_readonly = readonly
 
         self.__expression = None
         self.__can_have_expressions = can_have_expression
@@ -279,7 +280,12 @@ class Parameter(ParameterHierarchyLeaf):
         """
         return self.__hard_borders
 
+    def is_readonly(self):
+        return self.__is_readonly
+
     def set_value(self, value: Any):
+        if self.__is_readonly:
+            raise ParameterReadonly()
         if self.__type == NodeParameterType.FLOAT:
             param_value = float(value)
             if self.__hard_borders[0] is not None:
@@ -429,11 +435,19 @@ class Parameter(ParameterHierarchyLeaf):
         self.__dict__.update(state)
 
 
-class ParameterNotFound(RuntimeError):
+class ParameterError(RuntimeError):
     pass
 
 
-class ParameterNameCollisionError(RuntimeError):
+class ParameterNotFound(ParameterError):
+    pass
+
+
+class ParameterNameCollisionError(ParameterError):
+    pass
+
+
+class ParameterReadonly(ParameterError):
     pass
 
 
@@ -811,14 +825,14 @@ class NodeUi(ParameterHierarchyItem):
         with layout.initializing_interface_lock():
             layout.add_layout(new_layout)
 
-    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any):
+    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = False, readonly: bool = False):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
         if len(self.__groups_stack) != 0:
             layout = self.__groups_stack[-1]
         with layout.initializing_interface_lock():
-            newparam = Parameter(param_name, param_label, param_type, param_val)
+            newparam = Parameter(param_name, param_label, param_type, param_val, can_have_expressions, readonly)
             layout.add_parameter(newparam)
         return newparam
 
