@@ -88,7 +88,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     typemetas = []
                     for type_name, module in pluginloader.plugins.items():
                         cls = module.node_class()
-                        typemetas.append(NodeTypeMetadata(type_name, cls.label(), cls.tags()))
+                        typemetas.append(NodeTypeMetadata(cls))
                     writer.write(struct.pack('>Q', len(typemetas)))
                     for typemeta in typemetas:
                         data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, typemeta)
