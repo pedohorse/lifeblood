@@ -20,6 +20,10 @@ class FramerangeSplitter(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'frame', 'framerange', 'splitter', 'stock'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'framerange_splitter'
+
     def __init__(self, name):
         super(FramerangeSplitter, self).__init__(name)
         with self.get_ui().initializing_interface_lock():

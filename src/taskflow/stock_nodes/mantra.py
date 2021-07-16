@@ -20,6 +20,10 @@ class Mantra(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'houdini', 'mantra', 'ifd', 'stock'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'mantra'
+
     def __init__(self, name):
         super(Mantra, self).__init__(name)
 

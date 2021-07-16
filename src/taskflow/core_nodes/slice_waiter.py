@@ -36,6 +36,10 @@ class SplitAwaiterNode(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'slice', 'wait', 'synchronization', 'barrier', 'gather', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'slice_waiter'
+
     def __init__(self, name: str):
         super(SplitAwaiterNode, self).__init__(name)
         self.__cache: Dict[int: SliceAwaiting] = {}

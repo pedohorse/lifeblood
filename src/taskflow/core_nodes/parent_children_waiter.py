@@ -39,6 +39,10 @@ class ParentChildrenWaiterNode(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'hierarchy', 'gather', 'wait', 'synchronization', 'barrier', 'child', 'children', 'parent', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'parent_children_waiter'
+
     def __init__(self, name: str):
         super(ParentChildrenWaiterNode, self).__init__(name)
         self.__cache_children: Dict[int, "ParentChildrenWaiterNode.Entry"] = {}

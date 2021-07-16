@@ -19,6 +19,10 @@ class Wedge(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'wedge', 'attribute', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'wedge'
+
     def __init__(self, name: str):
         super(Wedge, self).__init__(name)
         ui = self.get_ui()

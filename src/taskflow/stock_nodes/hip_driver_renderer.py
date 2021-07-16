@@ -21,6 +21,10 @@ class HipDriverRenderer(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'hip', 'houdini', 'driver', 'render', 'stock'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'hip_driver_renderer'
+
     def __init__(self, name):
         super(HipDriverRenderer, self).__init__(name)
         ui = self.get_ui()

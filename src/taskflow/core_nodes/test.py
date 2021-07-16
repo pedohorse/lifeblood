@@ -30,6 +30,10 @@ class Test(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'test', 'debug'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'test'
+
     def process_task(self, context) -> ProcessingResult:
         td = InvocationJob(['bash', '-c',
                             'echo "startin..."\n'

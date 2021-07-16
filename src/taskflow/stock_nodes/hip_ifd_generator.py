@@ -20,6 +20,10 @@ class HipIfdGenerator(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'hip', 'houdini', 'ifd', 'generator', 'render', 'stock'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'hip_ifd_generator'
+
     def __init__(self, name):
         super(HipIfdGenerator, self).__init__(name)
         ui = self.get_ui()

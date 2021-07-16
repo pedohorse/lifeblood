@@ -21,6 +21,10 @@ class RenameAttributes(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'rename', 'attribute', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'rename_attrib'
+
     def __init__(self, name: str):
         super(RenameAttributes, self).__init__(name)
         ui = self.get_ui()

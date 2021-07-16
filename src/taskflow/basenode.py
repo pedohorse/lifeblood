@@ -24,6 +24,14 @@ class BaseNode:
     def tags(cls) -> Iterable[str]:
         raise NotImplementedError()
 
+    @classmethod
+    def type_name(cls) -> str:
+        raise NotImplementedError()
+
+    @classmethod
+    def description(cls) -> str:
+        return 'this node type does not have a description'
+
     def __init__(self, name: str):
         self.__parent: Scheduler = None
         self.__parent_nid: int = None

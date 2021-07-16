@@ -45,6 +45,10 @@ class Python(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'script', 'python', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'python'
+
     def process_task(self, context) -> ProcessingResult:
         class _TaskHelper:
             def __init__(self, attribs: MappingProxyType, readonly: bool):

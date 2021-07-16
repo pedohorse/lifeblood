@@ -22,6 +22,10 @@ class Ffmpeg(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'houdini', 'mantra', 'ifd', 'stock'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'ffmpeg'
+
     def __init__(self, name):
         super(Ffmpeg, self).__init__(name)
         ui = self.get_ui()

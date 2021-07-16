@@ -21,6 +21,10 @@ class SetAttributes(BaseNode):
     def tags(cls) -> Iterable[str]:
         return 'set', 'attribute', 'core'
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'set_attrib'
+
     def __init__(self, name: str):
         super(SetAttributes, self).__init__(name)
         ui = self.get_ui()
