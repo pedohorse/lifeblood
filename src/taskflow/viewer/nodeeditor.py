@@ -5,6 +5,7 @@ import json
 import pickle
 import sqlite3
 import asyncio
+from types import MappingProxyType
 from math import sqrt
 from ..uidata import UiData, NodeUi, Parameter, ParametersLayoutBase, OneLineParametersLayout, VerticalParametersLayout
 from ..enums import TaskState, InvocationState
@@ -452,6 +453,8 @@ class Node(NetworkItemWithUI):
     # main dude
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
+        if imgui.collapsing_header(f'description##{self.__node_type}', None)[0]:
+            imgui.text(self.scene().node_types().get(self.__node_type, 'error').description)
         if self.__nodeui is not None:
             self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
 
@@ -1408,7 +1411,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_dict: Dict[int, Task] = {}
         self.__node_dict: Dict[int, Node] = {}
         self.__db_path = db_path
-        self.__cached_nodetypes = None
+        self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
         self.__all_task_groups = set()
         self.__task_group_filter = None
 
@@ -1506,6 +1509,9 @@ class QGraphicsImguiScene(QGraphicsScene):
                     return row['posx'], row['posy']
 
         return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
+
+    def node_types(self) -> MappingProxyType:
+        return MappingProxyType(self.__cached_nodetypes)
 
     @Slot(object)
     def full_update(self, uidata: UiData):
@@ -1983,7 +1989,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
-        nodetypes = {}
+        nodetypes: Dict[str, NodeTypeMetadata] = {}
         try:
             metas: List[NodeTypeMetadata] = []
             self.__conn.sendall(b'listnodetypes\n')
