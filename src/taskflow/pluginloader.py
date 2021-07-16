@@ -34,7 +34,7 @@ def init():
                     logger.error(f'error loading plugin "{filebasename}". '
                                  f'required method {requred_attr} is missing.')
                     continue
-            plugins[filebasename] = mod
+            plugins[mod.node_class().type_name()] = mod
     logger.info('loaded plugins:\n' + '\n\t'.join(plugins.keys()))
 
 
