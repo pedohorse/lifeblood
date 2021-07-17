@@ -370,64 +370,77 @@ class Node(NetworkItemWithUI):
             parent_layout = item.parent()
             assert isinstance(parent_layout, ParametersLayoutBase)
             imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2 / 3)
+            try:
+                if item.has_menu():
+                    menu_order, menu_items = item.get_menu_items()
 
-            if item.has_menu():
-                menu_order, menu_items = item.get_menu_items()
+                    if param_name not in self.__nodeui_menucache:
+                        self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
+                                                               'menu_order_inv': {v: i for i, v in enumerate(menu_order)}}
 
-                if param_name not in self.__nodeui_menucache:
-                    self.__nodeui_menucache[param_name] = {'menu_items_inv': {v: k for k, v in menu_items.items()},
-                                                           'menu_order_inv': {v: i for i, v in enumerate(menu_order)}}
-
-                menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
-                menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
-                changed, val = imgui.combo('##'.join((param_label, param_name)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
-                if changed:
-                    item.set_value(menu_items[menu_order[val]])
-            else:
-                param_type = item.type()
-                if param_type == NodeParameterType.BOOL:
-                    changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
-                elif param_type == NodeParameterType.INT:
-                    #changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
-                    slider_limits = item.display_value_limits()
-                    if slider_limits[0] is not None:
-                        changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                    menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
+                    menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
+                    if item.is_readonly():
+                        imgui.text(menu_items_inv[item.value()])
+                        return
                     else:
-                        changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
-                    if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
-                        imgui.selectable('toggle expression')
-                        imgui.end_popup()
-                elif param_type == NodeParameterType.FLOAT:
-                    #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
-                    slider_limits = item.display_value_limits()
-                    if slider_limits[0] is not None:
-                        changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value(), *slider_limits)
-                    else:
-                        changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
-                elif param_type == NodeParameterType.STRING:
-                    if item.is_text_multiline():
-                        # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
-                        imgui.begin_group()
-                        ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
-                        changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
-                        imgui.end_group()
-                        if ed_butt_pressed:
-                            hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
-                            if item.syntax_hint() == 'python':
-                                hl = StringParameterEditor.SyntaxHighlight.PYTHON
-                            wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
-                            wgt.set_text(item.unexpanded_value())
-                            wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
-                            wgt.show()
-                    else:
-                        changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.unexpanded_value(), 256)
+                        changed, val = imgui.combo('##'.join((param_label, param_name)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
+                        if changed:
+                            item.set_value(menu_items[menu_order[val]])
                 else:
-                    raise NotImplementedError()
-                if changed:
-                    item.set_value(newval)
-            imgui.pop_item_width()
+                    if item.is_readonly():
+                        imgui.text(f'{item.value()}')
+                        return
+                    param_type = item.type()
+                    if param_type == NodeParameterType.BOOL:
+                        changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
+                    elif param_type == NodeParameterType.INT:
+                        #changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
+                        slider_limits = item.display_value_limits()
+                        if slider_limits[0] is not None:
+                            changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                        else:
+                            changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
+                        if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
+                            imgui.selectable('toggle expression')
+                            imgui.end_popup()
+                    elif param_type == NodeParameterType.FLOAT:
+                        #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
+                        slider_limits = item.display_value_limits()
+                        if slider_limits[0] is not None:
+                            changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                        else:
+                            changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
+                    elif param_type == NodeParameterType.STRING:
+                        if item.is_text_multiline():
+                            # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
+                            imgui.begin_group()
+                            ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
+                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                            imgui.end_group()
+                            if ed_butt_pressed:
+                                hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
+                                if item.syntax_hint() == 'python':
+                                    hl = StringParameterEditor.SyntaxHighlight.PYTHON
+                                wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
+                                wgt.set_text(item.unexpanded_value())
+                                wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
+                                wgt.show()
+                        else:
+                            changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.unexpanded_value(), 256)
+                    else:
+                        raise NotImplementedError()
+                    if changed:
+                        item.set_value(newval)
+            finally:
+                imgui.pop_item_width()
+
             if changed:
                 self.scene().send_node_parameter_change(self.get_id(), item)
+                # see the logic is that whatever callbacks parameters may have - we rely that they will happen the same way
+                # here and on scheduler side
+                # so we just inform scheduler of the value change
+                # anyway it's scheduler side that matters
         elif isinstance(item, OneLineParametersLayout):
             first_time = True
             for child in item.items(recursive=False):
