@@ -361,7 +361,7 @@ class Node(NetworkItemWithUI):
     # interface
 
     # helper
-    def __draw_single_item(self, item, size=(1.0,1.0), drawing_widget=None):
+    def __draw_single_item(self, item, size=(1.0, 1.0), drawing_widget=None):
         if isinstance(item, Parameter):
             if not item.visible():
                 return
