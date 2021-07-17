@@ -148,7 +148,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__menu_items: Optional[Dict[str, str]] = None
         self.__menu_items_order: List[str] = []
         self.__vis_when = None
-        self.__is_readonly = readonly
+        self.__is_readonly = False  # set it False until the end of constructor
 
         self.__expression = None
         self.__can_have_expressions = can_have_expression
@@ -168,6 +168,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_cache = None
 
         self.set_value(param_val)
+        self.__is_readonly = readonly
 
     def name(self) -> str:
         return self.__name
@@ -877,6 +878,10 @@ class NodeUi(ParameterHierarchyItem):
         return self.__parameter_layout.items(recursive=recursive)
 
     def serialize(self) -> bytes:
+        """
+        note - this serialization disconnects the node to which this UI is connected
+        :return:
+        """
         obj = deepcopy(self)
         obj.__attached_node = None
         return pickle.dumps(obj)
