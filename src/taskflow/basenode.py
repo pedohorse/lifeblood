@@ -5,8 +5,8 @@ import json
 from copy import copy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
-from .uidata import NodeUi
-from .pluginloader import create_node
+from .uidata import NodeUi, ParameterNotFound, ParameterReadonly
+from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 
 from typing import TYPE_CHECKING, Iterable
@@ -135,17 +135,48 @@ class BaseNode:
     # Serialize and back
     #
     def __reduce__(self):
-        typename = type(self).__module__
-        if '.' in typename:
-            typename = typename.rsplit('.', 1)[-1]
-        return create_node, (typename, '', None, None), self.__getstate__()
+        # typename = type(self).__module__
+        # if '.' in typename:
+        #     typename = typename.rsplit('.', 1)[-1]
+        return create_node, (self.type_name(), '', None, None), self.__getstate__()
 
     def __getstate__(self):
+        # TODO: if u ever implement parameter expressions - be VERY careful with pickling expressions referencing across nodes
         d = copy(self.__dict__)
         assert '_BaseNode__parent' in d
         d['_BaseNode__parent'] = None
         d['_BaseNode__parent_nid'] = None
+        d['_BaseNode__saved_plugin_hash'] = plugin_hash(self.type_name())  # we will use this hash to detect plugin module changes on load
         return d
+
+    def __setstate__(self, state):
+        # the idea here is to update node's class instance IF plugin hash is different from the saved one
+        # the hash being different means that node's definition was updated - we don't know how
+        # so what we do is save all parameter values, merge old state values with new
+        # and hope for the best...
+
+        hash = plugin_hash(self.type_name())
+        if hash != state.get('_BaseNode__saved_plugin_hash', None):
+            self.__init__(state.get('name', ''))
+            # update all except ui
+            if '_parameters' in state:
+                old_ui: NodeUi = state['_parameters']
+                del state['_parameters']
+                self.__dict__.update(state)
+                new_ui = self.get_ui()
+                for param in old_ui.parameters():
+                    try:
+                        newparam = new_ui.parameter(param.name())
+                    except ParameterNotFound:
+                        continue
+                    try:
+                        newparam.set_value(param.unexpanded_value())
+                    except ParameterReadonly:
+                        newparam._Parameter__value = param.unexpanded_value()
+            # TODO: if and whenever expressions are introduced - u need to take care of expressions here too!
+        else:
+            self.__dict__.update(state)
+
 
     def serialize(self) -> bytes:
         """
