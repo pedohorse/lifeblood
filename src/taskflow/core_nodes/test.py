@@ -21,6 +21,12 @@ class Test(BaseNode):
         with ui.initializing_interface_lock():
             ui.add_parameter('multiline text', 'wow multi line', NodeParameterType.STRING, 'bla').set_text_multiline()
             ui.add_parameter('multiline python text', 'wow multi line code', NodeParameterType.STRING, '# shize').set_text_multiline('python')
+            ui.add_parameter('test readonly crap', 'lelabel', NodeParameterType.STRING, 'wow im text', readonly=True)
+            with ui.parameters_on_same_line_block():
+                ui.add_parameter('text1', 'lobel', NodeParameterType.STRING, 'hi text i\'m dad', readonly=True)
+                ui.add_parameter('text2', 'lebel', NodeParameterType.FLOAT, 4.22, readonly=True)
+                ui.add_parameter('text3', 'lubel', NodeParameterType.INT, 1, readonly=True).add_menu([('fee', 0), ('foo', 1), ('faa', 2)])
+                ui.add_parameter('text4', 'ha, and i\'m editable', NodeParameterType.STRING, 'yes')
 
     @classmethod
     def label(cls) -> str:
