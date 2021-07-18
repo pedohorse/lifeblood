@@ -1406,6 +1406,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_node_name_requested = Signal(int, str)
     _signal_create_node_requested = Signal(str, str, QPointF)
     _signal_remove_node_requested = Signal(int)
+    _signal_wipe_node_requested = Signal(int)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
     _signal_remove_node_connection_requested = Signal(int)
     _signal_add_node_connection_requested = Signal(int, str, int, str)
@@ -1451,6 +1452,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_node_name_requested.connect(self.__ui_connection_worker.set_node_name)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
+        self._signal_wipe_node_requested.connect(self.__ui_connection_worker.wipe_node)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
@@ -1496,6 +1498,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_remove_node(self, node_id: int):
         self._signal_remove_node_requested.emit(node_id)
+
+    def request_wipe_node(self, node_id: int):
+        self._signal_wipe_node_requested.emit(node_id)
 
     def set_task_group_filter(self, groups):
         self._signal_set_task_group_filter.emit(groups)
@@ -1618,26 +1623,24 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):
-        try:
-            task = self.get_task(task_id)
-        except KeyError:
+        task = self.get_task(task_id)
+        if task is None:
             logger.error('log fetched, but task not found!')
             return
         task.update_log(log)
 
     @Slot(object, object)
     def nodeui_fetched(self, node_id: int, nodeui: NodeUi):
-        try:
-            node = self.get_node(node_id)
-            node.update_nodeui(nodeui)
-        except KeyError:
+        node = self.get_node(node_id)
+        if node is None:
             logger.error('node ui fetched for non existant node')
+            return
+        node.update_nodeui(nodeui)
 
     @Slot(object, object)
     def task_attribs_fetched(self, task_id: int, attribs: dict):
-        try:
-            task = self.get_task(task_id)
-        except KeyError:
+        task = self.get_task(task_id)
+        if task is None:
             logger.error('attribs fetched, but task not found!')
             return
         task.update_attributes(attribs)
@@ -1681,11 +1684,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_dict = {}
         self.__node_dict = {}
 
-    def get_task(self, task_id) -> Task:
-        return self.__task_dict[task_id]
+    def get_task(self, task_id) -> Optional[Task]:
+        return self.__task_dict.get(task_id, None)
 
-    def get_node(self, node_id) -> Node:
-        return self.__node_dict[node_id]
+    def get_node(self, node_id) -> Optional[Node]:
+        return self.__node_dict.get(node_id, None)
 
     def nodes(self) -> Tuple[Node]:
         return tuple(self.__node_dict.values())
@@ -2049,6 +2052,19 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
+    def wipe_node(self, node_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'wipenode\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
+
+    @Slot()
     def set_node_name(self, node_id: int, node_name: str):
         if not self.ensure_connected():
             return
@@ -2270,6 +2286,16 @@ class NodeEditor(QGraphicsView):
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
+
+        del_submenu = menu.addMenu('extra')
+
+        def _action(checked=False, nid=node.get_id()):
+            self.__scene.request_wipe_node(nid)
+            node = self.__scene.get_node(nid)
+            if node is not None:
+                node.setSelected(False)
+
+        del_submenu.addAction('reset node to default state').triggered.connect(_action)
 
         if pos is None:
             pos = self.mapToGlobal(self.mapFromScene(node.mapToScene(node.boundingRect().topRight())))
