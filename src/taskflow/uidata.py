@@ -333,6 +333,7 @@ class Parameter(ParameterHierarchyLeaf):
         # TODO: this now only works with referencing param in visibility condition
         # TODO: butt we want general references, including from parameter expressions
         # TODO: OOOORR will i need references for expressions at all?
+        # TODO: references between node bring SOOOO much pain when serializing them separately
         if self.__vis_when is not None:
             self.__vis_cache = None
             if self.parent() is not None and isinstance(self.parent(), ParametersLayoutBase):
@@ -355,6 +356,12 @@ class Parameter(ParameterHierarchyLeaf):
         return True
 
     def _add_referencing_me(self, other_parameter: "Parameter"):
+        """
+        other_parameter MUST belong to the same node to avoid cross-node references
+        :param other_parameter:
+        :return:
+        """
+        assert self.has_same_parent(other_parameter), 'references MUST belong to the same node'
         self.__params_referencing_me.add(other_parameter)
 
     def _remove_referencing_me(self, other_parameter: "Parameter"):
@@ -425,6 +432,34 @@ class Parameter(ParameterHierarchyLeaf):
 
     def get_menu_items(self):
         return self.__menu_items_order, self.__menu_items
+
+    def has_same_parent(self, other_parameter: "Parameter") -> bool:
+        """
+        finds if somewhere down the hierarchy there is a shared parent of self and other_parameter
+        """
+        my_ancestry_line = set()
+        ancestor = self
+        while ancestor is not None:
+            my_ancestry_line.add(ancestor)
+            ancestor = ancestor.parent()
+
+        ancestor = other_parameter
+        while ancestor is not None:
+            if ancestor in my_ancestry_line:
+                return True
+            ancestor = ancestor.parent()
+        return False
+
+    def nodeui(self) -> Optional["NodeUi"]:
+        """
+        returns parent nodeui if it is the root of current hierarchy. otherwise returns None
+        """
+        ancestor = self
+        while ancestor is not None:
+            if isinstance(ancestor, NodeUi):
+                return ancestor
+            ancestor = ancestor.parent()
+        return None
 
     def __setstate__(self, state):
         """
