@@ -31,6 +31,8 @@ class HipIfdGenerator(BaseNode):
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
+            ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifdsc")
+            ui.add_parameter('ifd force inline', 'force inline ifd', NodeParameterType.BOOL, True)
 
     def process_task(self, context) -> ProcessingResult:
         """
@@ -65,7 +67,15 @@ class HipIfdGenerator(BaseNode):
             f'hou.hipFile.load("{hippath}")\n' \
             f'node = hou.node("{driverpath}")\n' \
             f'if node.parm("soho_outputmode").evalAsInt() != 1:\n' \
-            f'    node.parm("soho_outputmode").set(1)\n' \
+            f'    node.parm("soho_outputmode").set(1)\n'
+        ifdpath = context.param_value('ifd file path').strip()
+        if ifdpath != '':
+            script += \
+                f'node.parm("soho_diskfile").set("{ifdpath}")\n'
+        if context.param_value('ifd force inline'):
+            script += \
+                f'node.parm("vm_inlinestorage").set(1)\n'
+        script += \
             f'for frame in {repr(frames)}:\n' \
             f'    hou.setFrame(frame)\n' \
             f'    print("rendering frame %d" % frame)\n' \
