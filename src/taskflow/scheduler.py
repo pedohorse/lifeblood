@@ -900,11 +900,23 @@ class Scheduler:
         return node_name
 
     #
+    # reset node's stored state
+    async def wipe_node_state(self, node_id):
+        async with aiosqlite.connect(self.db_path) as con:
+            await con.execute('UPDATE "nodes" SET node_object = NULL WHERE "id" = ?', (node_id,))
+            if node_id in self.__node_objects:
+                del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. but a proper __node_object lock should be in place instead
+            await con.commit()
+
+    #
     # node reports it's interface was changed. not sure why it exists
     async def node_reports_ui_update(self, node_id):
         assert node_id in self.__node_objects, 'this may be caused by race condition with node deletion'
         # TODO: introduce __node_objects lock? or otherwise secure access
         node_object = self.__node_objects[node_id]
+        if node_object is None:
+            self.__logger.error('node_object is None while')
+            return
         async with aiosqlite.connect(self.db_path) as con:
             await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
                               (await node_object.serialize_async(), node_id))
