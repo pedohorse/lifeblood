@@ -1,24 +1,54 @@
 import json
 from types import MappingProxyType
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
+    from .uidata import Parameter
 
 
 class ProcessingContext:
+    class TaskWrapper:
+        def __init__(self, task_dict: dict):
+            self.__attributes = json.loads(task_dict.get('attributes', '{}'))
+            self.__stuff = task_dict
+
+        def __getitem__(self, item):
+            return self.__attributes[item]
+
+        def __getattr__(self, item):
+            if item in self.__stuff:
+                return self.__stuff[item]
+            raise AttributeError(f'task has no field {item}')
+
+    class NodeWrapper:
+        def __init__(self, node: "BaseNode", context: "ProcessingContext"):
+            self.__parameters: Dict[str, "Parameter"] = {x.name(): x for x in node.get_ui().parameters()}
+            self.__attrs = {'name': node.name(), 'label': node.label()}
+            self.__context = context
+
+        def __getitem__(self, item):
+            return self.__parameters[item].value(self.__context)
+
+        def __getattr__(self, item):
+            if item in self.__attrs:
+                return self.__attrs[item]
+            raise AttributeError(f'node has no field {item}')
+
     def __init__(self, node: "BaseNode", task_dict: dict):
         task_dict = dict(task_dict)
         self.__task_attributes = json.loads(task_dict.get('attributes', '{}'))
         self.__task_dict = task_dict
+        self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
+        self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
         self.__node = node
 
     def param_value(self, param_name: str):
         return self.__node.get_ui().parameter(param_name).value(self)
 
     def locals(self):
-        return {'task': self.__task_attributes}
+        return {'task': self.__task_wrapper, 'node': self.__node_wrapper}
 
     def task_attribute(self, attrib_name: str):
         return self.__task_attributes[attrib_name]
