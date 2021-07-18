@@ -1,5 +1,7 @@
 import asyncio
 import pickle
+import os
+import pathlib
 from copy import deepcopy
 from .enums import NodeParameterType
 from .processingcontext import ProcessingContext
@@ -131,7 +133,7 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 
 
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
-    return eval(expression, {}, context.locals() if context is not None else {})
+    return eval(expression, {'os': os, 'pathlib': pathlib}, context.locals() if context is not None else {})
 
 
 class Parameter(ParameterHierarchyLeaf):
@@ -190,7 +192,7 @@ class Parameter(ParameterHierarchyLeaf):
     def unexpanded_value(self, context: Optional[ProcessingContext] = None):
         return self.__value
 
-    def value(self, context: Optional[ProcessingContext] = None):
+    def value(self, context: Optional[ProcessingContext] = None) -> Any:
         """
         returns value of this parameter
         :param context: optional dict like locals, for expression evaluations
