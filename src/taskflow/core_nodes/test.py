@@ -27,6 +27,7 @@ class Test(BaseNode):
                 ui.add_parameter('text2', 'lebel', NodeParameterType.FLOAT, 4.22, readonly=True)
                 ui.add_parameter('text3', 'lubel', NodeParameterType.INT, 1, readonly=True).add_menu([('fee', 0), ('foo', 1), ('faa', 2)])
                 ui.add_parameter('text4', 'ha, and i\'m editable', NodeParameterType.STRING, 'yes')
+            ui.add_parameter('some int or smth', 'into', NodeParameterType.INT, -1)
 
     @classmethod
     def label(cls) -> str:
