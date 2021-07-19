@@ -689,7 +689,10 @@ class OneLineParametersLayout(OrderedParametersLayout):
         for item in self.items():
             if item.visible():
                 totalitems += 1
-        uniform_size = 1.0 / float(totalitems)
+        if totalitems == 0:
+            uniform_size = 1.0
+        else:
+            uniform_size = 1.0 / float(totalitems)
         for item in self.items():
             self.__hsizes[item] = uniform_size
 
