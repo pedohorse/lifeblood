@@ -1,3 +1,4 @@
+import os
 from math import sqrt, floor, ceil
 
 from taskflow.basenode import BaseNode
@@ -36,6 +37,8 @@ class Ffmpeg(BaseNode):
             ui.add_parameter('-pix_fmt', 'pixel format', NodeParameterType.STRING, 'yuv420p')
             ui.add_parameter('-vcodec', 'codec', NodeParameterType.STRING, 'libx264')
             ui.add_parameter('outpath', 'movie path', NodeParameterType.STRING, '/tmp/movie.mp4')
+            docc = ui.add_parameter('docc', 'color correct', NodeParameterType.BOOL, False)
+            ui.add_parameter('cc gamma', 'gamma', NodeParameterType.FLOAT, 1.0).add_visibility_condition(docc, '==', True)
 
     def process_task(self, context) -> ProcessingResult:
         binpath = context.param_value('ffmpeg bin path')
@@ -52,8 +55,18 @@ class Ffmpeg(BaseNode):
         fps = context.param_value('fps')
         outpath = context.param_value('outpath')
 
+        # TODO: MOVE THIS TO WORKER! AND MIND POTENTIAL EMBEDDED FILES IN FUTURE
+        os.makedirs(os.path.dirname(outpath), exist_ok=True)
+
         if isinstance(sequence[0], str):  # we have sequence of frames
-            args = [binpath, '-f', 'concat', '-safe', '0', '-r', fps, '-i', ':/framelist.txt', *outopts, '-y', outpath]
+            filterline = None
+            if context.param_value('docc'):
+                gam = 1.0 / context.param_value("cc gamma")
+                filterline = f'lut=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})'  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
+            args = [binpath, '-f', 'concat', '-safe', '0', '-r', fps, '-i', ':/framelist.txt']
+            if filterline:
+                args += ['-filter:v', filterline]
+            args += [*outopts, '-y', outpath]
             job = InvocationJob(args)
             framelist = '\n'.join(f'file \'{seqitem}\'' for seqitem in sequence)  # file in ffmpeg concat format
             job.set_extra_file('framelist.txt', framelist)
@@ -79,8 +92,11 @@ class Ffmpeg(BaseNode):
                         break
                 if input == num_items:
                     break
-
-            filterlines.append(f'[base{input}]null')
+            if context.param_value('docc'):
+                gam = context.param_value("cc gamma")
+                filterlines.append(f'[base{input}]lut=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})')  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
+            else:
+                filterlines.append(f'[base{input}]null')
             filter += ';'.join(filterlines)
 
             args = [binpath]
