@@ -85,4 +85,5 @@ BEGIN
 UPDATE "tasks" SET "state_details" = NULL WHERE "id" == new.id;
 END;
 COMMIT;
+PRAGMA journal_mode=wal;
 '''
