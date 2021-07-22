@@ -28,6 +28,15 @@ class Test(BaseNode):
                 ui.add_parameter('text3', 'lubel', NodeParameterType.INT, 1, readonly=True).add_menu([('fee', 0), ('foo', 1), ('faa', 2)])
                 ui.add_parameter('text4', 'ha, and i\'m editable', NodeParameterType.STRING, 'yes')
             ui.add_parameter('some int or smth', 'into', NodeParameterType.INT, -1)
+            ui.add_parameter('param name', 'label for display', NodeParameterType.STRING, 'default value')
+            ui.add_parameter('fooof', 'param with menu', NodeParameterType.INT, 0).add_menu((('display val1', 0), ('display val2', 4), ('donkey!', -2)))
+
+            with ui.parameters_on_same_line_block():
+                ui.add_parameter('name uniqye', 'Name', NodeParameterType.STRING, '')
+                ui.add_parameter('typeasss', '', NodeParameterType.INT, 0)
+
+            with ui.multigroup_parameter_block('attr_count'):
+                ui.add_parameter('smth41', 'label', NodeParameterType.INT, 0)
 
     @classmethod
     def label(cls) -> str:
