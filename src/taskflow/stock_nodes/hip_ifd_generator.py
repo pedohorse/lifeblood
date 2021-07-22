@@ -31,7 +31,7 @@ class HipIfdGenerator(BaseNode):
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
-            ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifdsc")
+            ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
             ui.add_parameter('ifd force inline', 'force inline ifd', NodeParameterType.BOOL, True)
 
     def process_task(self, context) -> ProcessingResult:
