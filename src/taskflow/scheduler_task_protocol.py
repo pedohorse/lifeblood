@@ -66,7 +66,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     addrsize = await reader.readexactly(4)
                     addrsize = struct.unpack('>I', addrsize)[0]
                     addr = await reader.readexactly(addrsize)
-                    await self.__scheduler.add_worker(addr.decode('UTF-8'))
+                    await self.__scheduler.add_worker(addr.decode('UTF-8'), assume_active=True)
                 #
                 # spawn a child task for task being processed
                 elif command == b'spawn':
