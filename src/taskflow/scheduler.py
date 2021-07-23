@@ -761,23 +761,30 @@ class Scheduler:
 
     #
     # add new worker to db
-    async def add_worker(self, addr: str):  # TODO: all resource should also go here
+    async def add_worker(self, addr: str, assume_active=True):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
+            if assume_active:
+                ping_state = WorkerPingState.WORKING.value
+                state = WorkerState.IDLE.value
+            else:
+                ping_state = WorkerPingState.OFF.value
+                state = WorkerState.OFF.value
+
             if worker_row is not None:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
                                   'cpu_count=?, mem_size=?, gpu_count=?, gmem_size=?, last_seen=?, ping_state=?, state=? '
                                   'WHERE last_address=?',
-                                  (1, 1, 1, 1, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value, addr))
+                                  (1, 1, 1, 1, int(time.time()), ping_state, state, addr))
             else:
                 await con.execute('INSERT INTO "workers" '
                                   '(cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state) '
                                   'VALUES '
                                   '(?, ?, ?, ?, ?, ?, ?, ?)',
-                                  (1, 1, 1, 1, addr, int(time.time()), WorkerPingState.WORKING.value, WorkerState.OFF.value))
+                                  (1, 1, 1, 1, addr, int(time.time()), ping_state, state))
             await con.commit()
 
     #
