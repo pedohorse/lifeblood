@@ -33,6 +33,7 @@ class TaskState(Enum):
     ERROR = 7  # some internal error, not allowing to process task. NOT INVOCATION ERROR
     SPAWNED = 8  # spawned tasks are just passed down from node's "spawned" output
     DEAD = 9  # task will not be processed any more
+    SPLITTED = 10  # task has been splitted, and will remain idle until splits are gathered
 
 
 class InvocationState(Enum):
