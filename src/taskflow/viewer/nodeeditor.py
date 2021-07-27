@@ -877,7 +877,8 @@ class Task(NetworkItemWithUI):
                           TaskState.DONE: QBrush(QColor(32, 192, 32, 192)),
                           TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
                           TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
-                          TaskState.DEAD: QBrush(QColor(16, 19, 22, 192))}
+                          TaskState.DEAD: QBrush(QColor(16, 19, 22, 192)),
+                          TaskState.SPLITTED: QBrush(QColor(64, 32, 64, 192))}
         self.__paused_pen = QPen(QColor(64, 64, 128, 192), self.__line_width*3)
 
     def boundingRect(self) -> QRectF:
