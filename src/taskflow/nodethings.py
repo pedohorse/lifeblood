@@ -17,6 +17,7 @@ class ProcessingResult:
         self.do_kill_task: bool = False
         self.attributes_to_set: Optional[Dict[str, Any]] = {}
         self.do_split_remove: bool = False
+        self.split_attributes_to_set: Optional[Dict[str, Any]] = {}
         self.output_name: str = node_output_name
         self._split_attribs = None
 
@@ -26,8 +27,15 @@ class ProcessingResult:
     def kill_task(self):
         self.do_kill_task = True
 
-    def remove_split(self):
+    def remove_split(self, attributes_to_set=None):
+        """
+        seals this one split
+        :param attributes_to_set:
+        :return:
+        """
         self.do_split_remove = True
+        if attributes_to_set is not None:
+            self.split_attributes_to_set.update(attributes_to_set)
 
     def set_attribute(self, key: str, value):
         self.attributes_to_set[key] = value
