@@ -277,23 +277,23 @@ class Scheduler:
 
         async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
             next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
-        await con.execute('UPDATE tasks SET split_level = ? WHERE "id" = ?',
-                          (new_split_level, task_id))
-        await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                          (next_split_id, task_row['id'], 0, into, new_split_level, task_id))
-        all_split_ids = [task_id]
-        for split_element in range(1, into):
+        await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                          (TaskState.SPLITTED.value, task_id))
+        # await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
+        #                   (next_split_id, task_row['id'], 0, into, task_id))
+        all_split_ids = []
+        for split_element in range(into):
             async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
                                    '"node_input_name", "node_output_name", '
                                    '"work_data", "name", "attributes", "split_level") '
                                    'VALUES (?,?,?,?,?,?,?,?,?)',
-                                   (task_row['parent_id'], task_row['state'], task_row['node_id'],
+                                   (None, task_row['state'], task_row['node_id'],
                                     task_row['node_input_name'], task_row['node_output_name'],
                                     task_row['work_data'], task_row['name'], task_row['attributes'], new_split_level)) \
                     as insert_cur:
                 new_task_id = insert_cur.lastrowid
 
-            # copy groups
+            # copy groups  # TODO:SQL OPTIMIZE
             async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as gcur:
                 groups = [x['group'] for x in await gcur.fetchall()]
             if len(groups) > 0:
@@ -301,11 +301,9 @@ class Scheduler:
                                       zip(itertools.repeat(new_task_id, len(groups)), groups))
 
             all_split_ids.append(new_task_id)
-            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                              (next_split_id, new_task_id, split_element, into, new_split_level, task_id))
+            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
+                              (next_split_id, new_task_id, split_element, into, task_id))
         # now increase number of children to the parent of the task being splitted
-        if task_row['parent_id'] is not None:
-            await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (into - 1, task_row['parent_id']))
 
         assert into == len(all_split_ids)
         return all_split_ids
@@ -380,6 +378,7 @@ class Scheduler:
 
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
+                # This implicitly starts transaction
                 await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                   (process_result.output_name, task_id))
                 if process_result.do_kill_task:
@@ -394,15 +393,37 @@ class Scheduler:
                         await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
                                           (taskdada_serialized, TaskState.READY.value, task_id))
                 if process_result.do_split_remove:
-                    await con.execute('UPDATE task_splits SET "split_sealed" = 1 '
-                                      'WHERE "task_id" = ? AND "split_id" = ?',
-                                      (task_id, task_row['split_id']))
-                    await con.execute('UPDATE tasks SET "split_level" = "split_level" - 1 WHERE "id" = ?',
-                                      (task_id,))
+                    async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
+                        res = await sealcur.fetchone()
+                    if res is not None and res['split_sealed'] == 0:  # sealing split does actually exist and not sealed
+                        # async with con.execute('SELECT task_id FROM task_splits WHERE split_id = ?', (task_row['split_id'])) as tcur:
+                        #     task_ids_to_update = [x['task_id'] for x in await tcur.fetchall()]
+                        # await con.executemany('UPDATE tasks set "state" = ? WHERE "id" = ?', ((TaskState.DEAD.value, x) for x in task_ids_to_update))
+                        await con.execute('UPDATE task_splits SET "split_sealed" = 1 '
+                                          'WHERE  "split_id" = ?',
+                                          (task_row['split_id'],))
+                        # teleport original task to us
+                        await con.execute('UPDATE tasks SET "node_id" = ?, "state" = ?, "node_output_name" = ? WHERE "id" = ?',
+                                          (task_row['node_id'], TaskState.DONE.value, process_result.output_name, task_row['split_origin_task_id']))
+                                          # so sealed split task will get the same output_name as the task that is sealing the split
+                        # and update it's attributes if provided
+                        if len(process_result.split_attributes_to_set) > 0:
+                            async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_row['split_origin_task_id'],)) as attcur:
+                                attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, await attcur.fetchone()['attributes'])
+                                attributes.update(process_result.split_attributes_to_set)
+                                for k, v in process_result.split_attributes_to_set.items():
+                                    if v is None:
+                                        del attributes[k]
+                                result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                                await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
+                                                  (result_serialized, task_row['split_origin_task_id']))
+
                 if process_result.attributes_to_set:  # not None or {}
-                    attributes = json.loads(task_row['attributes'])
+                    attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'])
                     attributes.update(process_result.attributes_to_set)
-                    attributes = {k: v for k, v in attributes.items() if v is not None}
+                    for k, v in process_result.attributes_to_set.items():
+                        if v is None:
+                            del attributes[k]
                     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                     await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                       (result_serialized, task_id))
@@ -428,7 +449,7 @@ class Scheduler:
                 async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
                                        'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                        'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
-                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level AND task_splits.split_sealed=0 '
+                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
                                        'WHERE (state = ? OR state = ? OR state = ? OR state = ? OR state = ? ) '
                                        'AND paused = 0 '
                                        'ORDER BY RANDOM()',
@@ -962,7 +983,7 @@ class Scheduler:
                                            'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
                                            'task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
-                                           'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
+                                           'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
                                            'WHERE task_groups."group" LIKE ? '
