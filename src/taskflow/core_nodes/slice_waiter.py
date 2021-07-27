@@ -91,10 +91,9 @@ class SplitAwaiterNode(BaseNode):
             with self.__main_lock:
                 if self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']:
                     res = ProcessingResult()
-                    res.remove_split()
-                    if orig_id != task_id:
-                        res.kill_task()
-                    else:
+                    res.kill_task()
+                    attribs_to_promote = {}
+                    if self.__cache[split_id]['first_to_arrive'] == task_id:
                         # transfer attributes  # TODO: delete cache for already processed splits
                         num_attribs = context.param_value('transfer_attribs')
                         for i in range(num_attribs):
@@ -111,7 +110,7 @@ class SplitAwaiterNode(BaseNode):
 
                                     attr_val = attribs[src_attr_name]
                                     gathered_values.append(attr_val)
-                                res.set_attribute(dst_attr_name, gathered_values)
+                                attribs_to_promote[dst_attr_name] = gathered_values
                             elif transfer_type == 'extend':
                                 gathered_values = []
                                 for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
@@ -123,7 +122,7 @@ class SplitAwaiterNode(BaseNode):
                                         gathered_values.extend(attr_val)
                                     else:
                                         gathered_values.append(attr_val)
-                                res.set_attribute(dst_attr_name, gathered_values)
+                                attribs_to_promote[dst_attr_name] = gathered_values
                             elif transfer_type == 'first':
                                 _acd = self.__cache[split_id]['arrived']
                                 if len(_acd) > 0:
@@ -132,7 +131,7 @@ class SplitAwaiterNode(BaseNode):
                                     else:
                                         attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
                                     if src_attr_name in attribs:
-                                        res.set_attribute(dst_attr_name, attribs[src_attr_name])
+                                        attribs_to_promote[dst_attr_name] = attribs[src_attr_name]
                             elif transfer_type == 'sum':
                                 # we don't care about the order, assume sum is associative
                                 gathered_values = None
@@ -143,17 +142,18 @@ class SplitAwaiterNode(BaseNode):
                                         gathered_values = attribs[src_attr_name]
                                     else:
                                         gathered_values += attribs[src_attr_name]
-                                res.set_attribute(dst_attr_name, gathered_values)
+                                attribs_to_promote[dst_attr_name] = gathered_values
                             else:
                                 raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
 
+                        res.remove_split(attributes_to_set=attribs_to_promote)
                     return res
         else:
             with self.__main_lock:
                 res = ProcessingResult()
-                res.remove_split()
-                if self.__cache[split_id]['first_to_arrive'] != task_id:
-                    res.kill_task()
+                res.kill_task()
+                if self.__cache[split_id]['first_to_arrive'] == task_id:
+                    res.remove_split()
                 return res
 
         raise NodeNotReadyToProcess()
