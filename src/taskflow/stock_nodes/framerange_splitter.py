@@ -38,7 +38,7 @@ class FramerangeSplitter(BaseNode):
             return ProcessingResult()
         res = ProcessingResult()
         chunksize = context.param_value('chunk size')
-        if len(frames) < chunksize:
+        if len(frames) <= chunksize:
             return ProcessingResult()
 
         # res.set_attribute('frames', frames[:chunksize])
