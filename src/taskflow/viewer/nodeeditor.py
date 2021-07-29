@@ -166,7 +166,6 @@ class Node(NetworkItemWithUI):
         scene: QGraphicsImguiScene = self.scene()
         scene.set_tasks_paused([x.get_id() for x in self.__tasks], False)
 
-
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
         self.__nodeui_menucache = {}
@@ -187,7 +186,7 @@ class Node(NetworkItemWithUI):
             self.setPos(self.pos() - QPointF(0, 225 * 0.5))
 
         for i, task in enumerate(self.__tasks):
-            task.set_node_animated(self, self.get_task_pos(task, i))
+            task.set_node_animated(self, *self.get_task_pos(task, i))
 
     def input_snap_points(self):
         # TODO: cache snap points, don't recalc them every time
@@ -324,9 +323,9 @@ class Node(NetworkItemWithUI):
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
         pos_id = len(self.__tasks)
         if task.node() is None:
-            task.set_node(self, self.get_task_pos(task, pos_id))
+            task.set_node(self, *self.get_task_pos(task, pos_id))
         else:
-            task.set_node_animated(self, self.get_task_pos(task, pos_id))
+            task.set_node_animated(self, *self.get_task_pos(task, pos_id))
 
         self.__tasks.append(task)
         task._Task__node = self
@@ -337,10 +336,10 @@ class Node(NetworkItemWithUI):
         task_to_remove._Task__node = None
         for i in range(task_pid, len(self.__tasks) - 1):
             self.__tasks[i] = self.__tasks[i + 1]
-            self.__tasks[i].set_node_animated(self, self.get_task_pos(self.__tasks[i], i))
+            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks = self.__tasks[:-1]
 
-    def get_task_pos(self, task: "Task", pos_id: int) -> QPointF:
+    def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
         rect = self._get_bodyshape().boundingRect()
         x, y = rect.topLeft().toTuple()
@@ -354,8 +353,22 @@ class Node(NetworkItemWithUI):
         h -= d
         w -= d
         x += (d * pos_id % w)
-        y += (d * int(d * pos_id / w) % h)
-        return QPointF(x, y)
+        y_shift = d * int(d * pos_id / w)
+        y += (y_shift % h)
+        return QPointF(x, y), int(y_shift / h)
+
+    def task_state_changed(self, task):
+        """
+        here node might decide to highlight the task that changed state one way or another
+        """
+        if task.state() not in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
+            return
+        idx = self.__tasks.index(task)
+        if idx == 0:
+            return
+        self.__tasks[0], self.__tasks[idx] = self.__tasks[idx], self.__tasks[0]
+        for i in (0, idx):
+            self.__tasks[i].set_node_animated(self, *self.get_task_pos(task, i))
 
     #
     # interface
@@ -838,6 +851,10 @@ class NodeConnection(NetworkItem):
 
 
 class Task(NetworkItemWithUI):
+    __brushes = None
+    __borderpen = None
+    __paused_pen = None
+
     def __init__(self, id, name: str, groups=None):
         super(Task, self).__init__(id)
         #self.setFlags(QGraphicsItem.ItemIsSelectable)
@@ -846,6 +863,7 @@ class Task(NetworkItemWithUI):
         self.__state = TaskState.WAITING
         self.__paused = False
         self.__progress = None
+        self.__layer = 0  # draw layer from 0 - main up to inf. kinda like LOD with highres being 0
 
         self.__state_details_raw = None
         self.__state_details = None
@@ -865,21 +883,48 @@ class Task(NetworkItemWithUI):
 
         self.__animation_group: Optional[QSequentialAnimationGroup] = None
         self.__final_pos = None
+        self.__final_layer = None
 
-        self.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
-                            QPen(QColor(192, 192, 192, 255), self.__line_width)]
-        self.__brushes = {TaskState.WAITING: QBrush(QColor(64, 64, 64, 192)),
-                          TaskState.GENERATING: QBrush(QColor(32, 128, 128, 192)),
-                          TaskState.READY:  QBrush(QColor(32, 64, 32, 192)),
-                          TaskState.IN_PROGRESS: QBrush(QColor(128, 128, 32, 192)),
-                          TaskState.POST_WAITING: QBrush(QColor(96, 96, 96, 192)),
-                          TaskState.POST_GENERATING: QBrush(QColor(128, 32, 128, 192)),
-                          TaskState.DONE: QBrush(QColor(32, 192, 32, 192)),
-                          TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
-                          TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
-                          TaskState.DEAD: QBrush(QColor(16, 19, 22, 192)),
-                          TaskState.SPLITTED: QBrush(QColor(64, 32, 64, 192))}
-        self.__paused_pen = QPen(QColor(64, 64, 128, 192), self.__line_width*3)
+        lcnt = 3
+        if self.__borderpen is None:
+            Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
+                                QPen(QColor(192, 192, 192, 255), self.__line_width)]
+        if self.__brushes is None:
+            # brushes and paused_pen are precalculated for several layers with different alphas, just not to calc them in paint
+            def lerp(a, b, t):
+                return a*(1.0-t) + b*t
+
+            def lerpclr(c1, c2, t):
+                color = c1
+                color.setAlphaF(lerp(color.alphaF(), c2.alphaF(), t))
+                color.setRedF(lerp(color.redF(), c2.redF(), t))
+                color.setGreenF(lerp(color.greenF(), c2.redF(), t))
+                color.setBlueF(lerp(color.blueF(), c2.redF(), t))
+                return color
+
+            Task.__brushes = {TaskState.WAITING: QBrush(QColor(64, 64, 64, 192)),
+                              TaskState.GENERATING: QBrush(QColor(32, 128, 128, 192)),
+                              TaskState.READY:  QBrush(QColor(32, 64, 32, 192)),
+                              TaskState.IN_PROGRESS: QBrush(QColor(128, 128, 32, 192)),
+                              TaskState.POST_WAITING: QBrush(QColor(96, 96, 96, 192)),
+                              TaskState.POST_GENERATING: QBrush(QColor(128, 32, 128, 192)),
+                              TaskState.DONE: QBrush(QColor(32, 192, 32, 192)),
+                              TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
+                              TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
+                              TaskState.DEAD: QBrush(QColor(16, 19, 22, 192)),
+                              TaskState.SPLITTED: QBrush(QColor(64, 32, 64, 192))}
+            for k, v in Task.__brushes.items():
+                ocolor = v.color()
+                Task.__brushes[k] = []
+                for i in range(lcnt):
+                    color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/lcnt)
+                    Task.__brushes[k].append(QColor(color))
+        if self.__paused_pen is None:
+            ocolor = QColor(64, 64, 128, 192)
+            Task.__paused_pen = []
+            for i in range(lcnt):
+                color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/lcnt)
+                Task.__paused_pen.append(QPen(color, self.__line_width*3))
 
     def boundingRect(self) -> QRectF:
         lw = self.__line_width
@@ -907,17 +952,19 @@ class Task(NetworkItemWithUI):
         return path
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        if self.__layer >= 3:
+            return
         path = self._get_mainpath()
-        brush = self.__brushes[self.__state]
+        brush = self.__brushes[self.__state][self.__layer]
         painter.fillPath(path, brush)
         if self.__progress:
             arcpath = QPainterPath()
             arcpath.arcTo(QRectF(-0.5*self.__size, -0.5*self.__size, self.__size, self.__size),
                           90, -3.6*self.__progress)
             arcpath.closeSubpath()
-            painter.fillPath(arcpath, self.__brushes[TaskState.DONE])
+            painter.fillPath(arcpath, self.__brushes[TaskState.DONE][self.__layer])
         if self.__paused:
-            painter.setPen(self.__paused_pen)
+            painter.setPen(self.__paused_pen[self.__layer])
             painter.drawPath(self._get_pausedpath())
         painter.setPen(self.__borderpen[int(self.isSelected())])
         painter.drawPath(path)
@@ -946,6 +993,11 @@ class Task(NetworkItemWithUI):
     def draw_size(self):
         return self.__size
 
+    def set_layer(self, layer: int):
+        assert layer >= 0
+        self.__layer = layer
+        self.setZValue(1.0/(1.0 + layer))
+
     def set_state_details(self, state_details: Optional[str] = None):
         if self.__state_details_raw == state_details:
             return
@@ -963,6 +1015,8 @@ class Task(NetworkItemWithUI):
         self.__paused = paused
         if state != TaskState.IN_PROGRESS:
             self.__progress = None
+        if self.__node:
+            self.__node.task_state_changed(self)
         self.update()
         self.refresh_ui()
 
@@ -1003,12 +1057,8 @@ class Task(NetworkItemWithUI):
         self.__ui_attributes = attributes
         self.update_ui()
 
-    def set_node(self, node: Optional[Node], pos: QPointF):
+    def set_node(self, node: Optional[Node], pos: QPointF, layer: int):
         """
-        :param pos:
-        :param node:
-        :param _drop_animation:
-        :return:
         """
         if self.__node and self.__node != node:
             self.__node.remove_task(self)
@@ -1018,17 +1068,20 @@ class Task(NetworkItemWithUI):
         self.__node = node
         self.setParentItem(self.__node)
         self.setPos(pos)
+        self.set_layer(layer)
         self.refresh_ui()
 
-    def set_node_animated(self, node: Optional[Node], pos: QPointF):
+    def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
         new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
+        self.set_layer(0)
         if self.__animation_group is None:
             self.__animation_group = QSequentialAnimationGroup(self.scene())
             self.__animation_group.finished.connect(self._clear_animation_group)
             self.setParentItem(None)
         self.__final_pos = pos
+        self.__final_layer = layer
         self.__animation_group.addAnimation(new_animation)
         if self.__animation_group.state() != QAbstractAnimation.Running:
             self.__animation_group.start()
@@ -1057,7 +1110,9 @@ class Task(NetworkItemWithUI):
             ag.stop()  # just in case some recursion occures
             self.setParentItem(self.__node)
             self.setPos(self.__final_pos)
+            self.set_layer(self.__final_layer)
             self.__final_pos = None
+            self.__final_layer = None
 
     def setParentItem(self, item):
         """
