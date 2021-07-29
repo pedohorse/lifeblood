@@ -65,7 +65,7 @@ class HipDriverRenderer(BaseNode):
         env = InvocationEnvironment()
 
         spawnlines = \
-             "kwargs = {{{{'frames': {frames}}}}}\n" \
+             "kwargs = {{'frames': {frames}}}\n" \
             f"for attr, val in {repr(attr_to_trans)}:\n" \
             f"    kwargs[attr] = val\n" \
             f"kwargs['hipfile'] = {repr(hippath)}\n" \
