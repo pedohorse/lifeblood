@@ -1075,6 +1075,10 @@ class Task(NetworkItemWithUI):
         self.refresh_ui()
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
+        # first try to optimize, if we move on the same node to invisible layer - dont animate
+        if node == self.__node and layer >= self.__visible_layers_count:
+            return self.set_node(node, pos, layer)
+        #
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
         new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
