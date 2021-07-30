@@ -366,9 +366,12 @@ class Node(NetworkItemWithUI):
         idx = self.__tasks.index(task)
         if idx == 0:
             return
-        self.__tasks[0], self.__tasks[idx] = self.__tasks[idx], self.__tasks[0]
-        for i in (0, idx):
+        the_one = self.__tasks[idx]
+        for i in reversed(range(1, idx+1)):
+            self.__tasks[i] = self.__tasks[i-1]
             self.__tasks[i].set_node_animated(self, *self.get_task_pos(task, i))
+        self.__tasks[0] = the_one
+        self.__tasks[0].set_node_animated(self, *self.get_task_pos(task, 0))
 
     #
     # interface
