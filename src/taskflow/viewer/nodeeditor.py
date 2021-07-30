@@ -888,7 +888,7 @@ class Task(NetworkItemWithUI):
         self.__final_pos = None
         self.__final_layer = None
 
-        lcnt = 3
+        self.__visible_layers_count = 3
         if self.__borderpen is None:
             Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
                                 QPen(QColor(192, 192, 192, 255), self.__line_width)]
@@ -919,14 +919,14 @@ class Task(NetworkItemWithUI):
             for k, v in Task.__brushes.items():
                 ocolor = v.color()
                 Task.__brushes[k] = []
-                for i in range(lcnt):
-                    color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/lcnt)
+                for i in range(self.__visible_layers_count):
+                    color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/self.__visible_layers_count)
                     Task.__brushes[k].append(QColor(color))
         if self.__paused_pen is None:
             ocolor = QColor(64, 64, 128, 192)
             Task.__paused_pen = []
-            for i in range(lcnt):
-                color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/lcnt)
+            for i in range(self.__visible_layers_count):
+                color = lerpclr(ocolor, QColor.fromRgbF(0, 0, 0, 1), i*1.0/self.__visible_layers_count)
                 Task.__paused_pen.append(QPen(color, self.__line_width*3))
 
     def boundingRect(self) -> QRectF:
@@ -955,7 +955,7 @@ class Task(NetworkItemWithUI):
         return path
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
-        if self.__layer >= 3:
+        if self.__layer >= self.__visible_layers_count:
             return
         path = self._get_mainpath()
         brush = self.__brushes[self.__state][self.__layer]
