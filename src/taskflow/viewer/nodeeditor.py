@@ -15,6 +15,7 @@ from ..config import get_config
 from .. import logging
 from .. import paths
 from ..net_classes import NodeTypeMetadata
+from ..node_visualization_classes import NodeColorScheme
 
 from ..enums import NodeParameterType
 
@@ -122,7 +123,7 @@ class Node(NetworkItemWithUI):
         self.__ui_widget: Optional[NodeEditor] = None
         self.__ui_grabbed_conn = None
 
-        # prepare drawing tools
+        # prepare default drawing tools
         self.__borderpen= QPen(QColor(96, 96, 96, 255))
         self.__borderpen_selected = QPen(QColor(144, 144, 144, 255))
         self.__caption_pen = QPen(QColor(192, 192, 192, 255))
@@ -177,6 +178,8 @@ class Node(NetworkItemWithUI):
         self.__nodeui_menucache = {}
         Node._node_inputs_outputs_cached[self.__node_type] = (list(nodeui.inputs_names()), list(nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
+        self.__header_brush = QBrush(QColor(*(x * 255 for x in nodeui.color_scheme().main_color()), 192))
+        self.update()  # cuz input count affects visualization in the graph
         self.update_ui()
 
     def set_expanded(self, expanded: bool):
@@ -506,7 +509,7 @@ class Node(NetworkItemWithUI):
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
         if imgui.collapsing_header(f'description##{self.__node_type}', None)[0]:
-            imgui.text(self.scene().node_types().get(self.__node_type, 'error').description)
+            imgui.text(self.scene().node_types()[self.__node_type].description if self.__node_type in self.scene().node_types() else 'error')
         if self.__nodeui is not None:
             self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
 
