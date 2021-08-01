@@ -365,6 +365,7 @@ class Node(NetworkItemWithUI):
         tasks_to_remove = set(tasks_to_remove)
         for task in tasks_to_remove:
             task._Task__node = None
+            #task.set_node(None)  # no, currently causes bad recursion
         self.__tasks = [None if x in tasks_to_remove else x for x in self.__tasks]
         off = 0
         for i, task in enumerate(self.__tasks):
@@ -378,6 +379,7 @@ class Node(NetworkItemWithUI):
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
         task_pid = self.__tasks.index(task_to_remove)
+        #task_to_remove.set_node(None)  # no, currently causes bad recursion
         task_to_remove._Task__node = None
         for i in range(task_pid, len(self.__tasks) - 1):
             self.__tasks[i] = self.__tasks[i + 1]
@@ -1105,7 +1107,7 @@ class Task(NetworkItemWithUI):
         self.__ui_attributes = attributes
         self.update_ui()
 
-    def set_node(self, node: Optional[Node], pos: QPointF, layer: int):
+    def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
         """
         if self.__node and self.__node != node:
@@ -1115,8 +1117,10 @@ class Task(NetworkItemWithUI):
             self.__animation_group = None
         self.__node = node
         self.setParentItem(self.__node)
-        self.setPos(pos)
-        self.set_layer(layer)
+        if pos is not None:
+            self.setPos(pos)
+        if layer is not None:
+            self.set_layer(layer)
         self.refresh_ui()
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
@@ -1741,7 +1745,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def log_fetched(self, task_id: int, log: dict):
         task = self.get_task(task_id)
         if task is None:
-            logger.error('log fetched, but task not found!')
+            logger.warning('log fetched, but task not found!')
             return
         task.update_log(log)
 
@@ -1749,7 +1753,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def nodeui_fetched(self, node_id: int, nodeui: NodeUi):
         node = self.get_node(node_id)
         if node is None:
-            logger.error('node ui fetched for non existant node')
+            logger.warning('node ui fetched for non existant node')
             return
         node.update_nodeui(nodeui)
 
@@ -1757,7 +1761,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def task_attribs_fetched(self, task_id: int, attribs: dict):
         task = self.get_task(task_id)
         if task is None:
-            logger.error('attribs fetched, but task not found!')
+            logger.warning('attribs fetched, but task not found!')
             return
         task.update_attributes(attribs)
 
