@@ -28,6 +28,7 @@ class HipIfdGenerator(BaseNode):
         super(HipIfdGenerator, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")

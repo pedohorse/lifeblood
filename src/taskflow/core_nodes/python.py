@@ -33,6 +33,7 @@ class Python(BaseNode):
         super(Python, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.4, 0.4, 0.2)
             ui.add_parameter('process', 'process', NodeParameterType.STRING, process_help).set_text_multiline('python')
             ui.add_parameter('invoke', 'invoke', NodeParameterType.STRING, invoke_help).set_text_multiline('python')
             # ui.add_parameter('postprocess', 'postprocess', NodeParameterType.STRING, '').set_text_multiline('python')

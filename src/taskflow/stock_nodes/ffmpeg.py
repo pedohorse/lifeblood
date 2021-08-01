@@ -31,6 +31,7 @@ class Ffmpeg(BaseNode):
         super(Ffmpeg, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.125, 0.33, 0.05)
             ui.add_parameter('ffmpeg bin path', 'ffmpeg binary', NodeParameterType.STRING, 'ffmpeg')
             ui.add_parameter('fps', 'fps', NodeParameterType.INT, 24)
             ui.add_parameter('icrf', 'quality %', NodeParameterType.INT, 75).set_slider_visualization(1, 100)

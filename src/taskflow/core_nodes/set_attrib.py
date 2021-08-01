@@ -4,6 +4,7 @@ from taskflow.taskspawn import TaskSpawn
 from taskflow.exceptions import NodeNotReadyToProcess
 from taskflow.enums import NodeParameterType
 from taskflow.uidata import NodeUi, MultiGroupLayout, Parameter
+from taskflow.node_visualization_classes import NodeColorScheme
 
 from typing import Iterable
 
@@ -42,6 +43,7 @@ class SetAttributes(BaseNode):
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
                     ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
                     ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+            ui.color_scheme().set_main_color(0.15, 0.24, 0.25)
         # # Example how one would initialize multiblock to have initial nonzero value
         # multiblock = list(ui.items())[-1]
         # assert isinstance(multiblock, MultiGroupLayout)  # TODO: find a better workflow of getting that last layout added

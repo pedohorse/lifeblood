@@ -18,6 +18,7 @@ class FileOperations(BaseNode):
         super(FileOperations, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.24, 0.25, 0.48)
             ui.add_parameter('on workers', 'submit to workers', NodeParameterType.BOOL, False)
             with ui.multigroup_parameter_block('item count'):
                 with ui.parameters_on_same_line_block():

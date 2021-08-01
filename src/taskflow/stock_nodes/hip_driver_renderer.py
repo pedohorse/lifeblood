@@ -29,6 +29,7 @@ class HipDriverRenderer(BaseNode):
         super(HipDriverRenderer, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")

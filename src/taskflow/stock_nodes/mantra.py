@@ -26,6 +26,9 @@ class Mantra(BaseNode):
 
     def __init__(self, name):
         super(Mantra, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
 
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()
