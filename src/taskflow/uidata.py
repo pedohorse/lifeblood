@@ -5,6 +5,7 @@ import pathlib
 from copy import deepcopy
 from .enums import NodeParameterType
 from .processingcontext import ProcessingContext
+from .node_visualization_classes import NodeColorScheme
 import re
 
 from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type
@@ -776,6 +777,13 @@ class NodeUi(ParameterHierarchyItem):
 
         self.__groups_stack = []
 
+        # default colorscheme
+        self.__color_scheme = NodeColorScheme()
+        self.__color_scheme.set_main_color((0.1882, 0.2510, 0.1882))  # dark-greenish
+
+    def color_scheme(self):
+        return self.__color_scheme
+
     def main_parameter_layout(self):
         return self.__parameter_layout
 
@@ -813,7 +821,6 @@ class NodeUi(ParameterHierarchyItem):
         def __exit__(self, exc_type, exc_val, exc_tb):
             layout = self.__ui._NodeUi__groups_stack.pop()
             self.__ui._add_layout(layout)
-
 
     def parameters_on_same_line_block(self):
         """
