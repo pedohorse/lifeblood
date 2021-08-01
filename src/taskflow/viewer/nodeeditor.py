@@ -28,6 +28,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent, QSurfac
 
 from .dialogs import MessageWithSelectableText
 from .code_editor.editor import StringParameterEditor
+from .node_extra_items import ImplicitSplitVisualizer
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -140,6 +141,11 @@ class Node(NetworkItemWithUI):
         if self.__node_type in Node._node_inputs_outputs_cached:
             self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
 
+        # children!
+        self.__vismark = ImplicitSplitVisualizer(self)
+        self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
+        self.__vismark.setZValue(-2)
+
     def prepareGeometryChange(self):
         super(Node, self).prepareGeometryChange()
         for conn in self.__connections:
@@ -183,7 +189,8 @@ class Node(NetworkItemWithUI):
             self.__height += 225
             self.setPos(self.pos() + QPointF(0, 225*0.5))
         else:
-            self.setPos(self.pos() - QPointF(0, 225 * 0.5))
+            self.setPos(self.pos() - QPointF(0, 225 * 0.5))  # TODO: modify painterpath getters to avoid moving nodes on expand
+        self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
 
         for i, task in enumerate(self.__tasks):
             task.set_node_animated(self, *self.get_task_pos(task, i))
@@ -205,6 +212,22 @@ class Node(NetworkItemWithUI):
         for output_name in self.__nodeui.outputs_names():
             outputs.append(NodeConnSnapPoint(self, output_name, False))
         return outputs
+
+    def input_connections(self, inname) -> Set["NodeConnection"]:
+        if self.__inputs is not None and inname not in self.__inputs:
+            raise RuntimeError(f'nodetype {self.__node_type} does not have input {inname}')
+        return {x for x in self.__connections if x.input() == (self, inname)}
+
+    def output_connections(self, outname) -> Set["NodeConnection"]:
+        if self.__outputs is not None and outname not in self.__outputs:
+            raise RuntimeError(f'nodetype {self.__node_type} does not have output {outname}')
+        return {x for x in self.__connections if x.output() == (self, outname)}
+
+    def input_names(self) -> Set[str]:
+        return self.__inputs or set()
+
+    def output_names(self) -> Set[str]:
+        return self.__outputs or set()
 
     def boundingRect(self) -> QRectF:
         lw = self.__width + self.__line_width
