@@ -356,6 +356,25 @@ class Node(NetworkItemWithUI):
         self.__tasks.append(task)
         task._Task__node = self
 
+    def remove_tasks(self, tasks_to_remove: Iterable["Task"]):
+        """
+        this should cause much less animation overhead compared to
+        if u would call remove-task for each task individually
+        """
+        logger.debug(f"removeing task {[x.get_id() for x in tasks_to_remove]} from node {self.get_id()}")
+        tasks_to_remove = set(tasks_to_remove)
+        for task in tasks_to_remove:
+            task._Task__node = None
+        self.__tasks = [None if x in tasks_to_remove else x for x in self.__tasks]
+        off = 0
+        for i, task in enumerate(self.__tasks):
+            if task is None:
+                off += 1
+            else:
+                self.__tasks[i - off] = self.__tasks[i]
+                self.__tasks[i - off].set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
+        self.__tasks = self.__tasks[:-off]
+
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
         task_pid = self.__tasks.index(task_to_remove)
@@ -1625,6 +1644,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         logger.debug('full_update')
 
         to_del = []
+        to_del_tasks = {}
         existing_node_ids: Dict[int, Node] = {}
         existing_conn_ids: Dict[int, NodeConnection] = {}
         existing_task_ids: Dict[int, Task] = {}
@@ -1644,9 +1664,16 @@ class QGraphicsImguiScene(QGraphicsScene):
             elif isinstance(item, Task):
                 if item.get_id() not in uidata.tasks():
                     to_del.append(item)
+                    if item.node() is not None:
+                        if not item.node() in to_del_tasks:
+                            to_del_tasks[item.node()] = []
+                        to_del_tasks[item.node()].append(item)
                     continue
                 existing_task_ids[item.get_id()] = item
 
+        # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
+        for node, tasks in to_del_tasks.items():
+            node.remove_tasks(tasks)
         for item in to_del:
             self.removeItem(item)
         # removing items might cascade things, like removing node will remove connections to that node
