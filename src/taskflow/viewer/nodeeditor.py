@@ -1645,7 +1645,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(object)
     def full_update(self, uidata: UiData):
-        logger.debug('full_update')
+        # logger.debug('full_update')
 
         to_del = []
         to_del_tasks = {}
@@ -2013,11 +2013,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn = None
             return
         uidatasize = struct.unpack('>Q', recvdata)[0]
+        logger.debug(f'fullstate: {uidatasize}B')
         uidatabytes = recv_exactly(self.__conn, uidatasize)
         if len(uidatabytes) != uidatasize:
             logger.error('scheduler connection lost')
             return
-        uidata = UiData.deserialize(uidatabytes)
+        uidata = UiData.deserialize_noasync(uidatabytes)
         self.full_update.emit(uidata)
 
     @Slot(int)
