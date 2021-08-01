@@ -8,6 +8,7 @@ from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi, ParameterNotFound, ParameterReadonly
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
+from .logging import getLogger
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -159,20 +160,26 @@ class BaseNode:
         if hash != state.get('_BaseNode__saved_plugin_hash', None):
             self.__init__(state.get('name', ''))
             # update all except ui
-            if '_parameters' in state:
-                old_ui: NodeUi = state['_parameters']
-                del state['_parameters']
-                self.__dict__.update(state)
-                new_ui = self.get_ui()
-                for param in old_ui.parameters():
-                    try:
-                        newparam = new_ui.parameter(param.name())
-                    except ParameterNotFound:
-                        continue
-                    try:
-                        newparam.set_value(param.unexpanded_value())
-                    except ParameterReadonly:
-                        newparam._Parameter__value = param.unexpanded_value()
+            try:
+                if '_parameters' in state:
+                    old_ui: NodeUi = state['_parameters']
+                    del state['_parameters']
+                    self.__dict__.update(state)
+                    new_ui = self.get_ui()
+                    for param in old_ui.parameters():
+                        try:
+                            newparam = new_ui.parameter(param.name())
+                        except ParameterNotFound:
+                            continue
+                        try:
+                            newparam.set_value(param.unexpanded_value())
+                        except ParameterReadonly:
+                            newparam._Parameter__value = param.unexpanded_value()
+            except AttributeError:
+                # something changed so much that some core attrs are different
+                getLogger('BaseNode').exception(f'could not update interface for some node of type {self.type_name()}. resetting node\'s inrerface')
+
+
             # TODO: if and whenever expressions are introduced - u need to take care of expressions here too!
         else:
             self.__dict__.update(state)
