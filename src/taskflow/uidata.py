@@ -779,7 +779,7 @@ class NodeUi(ParameterHierarchyItem):
 
         # default colorscheme
         self.__color_scheme = NodeColorScheme()
-        self.__color_scheme.set_main_color((0.1882, 0.2510, 0.1882))  # dark-greenish
+        self.__color_scheme.set_main_color(0.1882, 0.2510, 0.1882)  # dark-greenish
 
     def color_scheme(self):
         return self.__color_scheme
