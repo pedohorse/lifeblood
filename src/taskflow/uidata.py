@@ -1,3 +1,4 @@
+import lz4.frame
 import asyncio
 import pickle
 import os
@@ -46,15 +47,23 @@ class UiData:
     def task_groups(self):
         return self.__task_groups
 
-    async def serialize(self) -> bytes:
-        return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
+    async def serialize(self, compress=False) -> bytes:
+        res = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
+        if not compress:
+            return b'\0\0\0' + res
+        return b'lz4' + await asyncio.get_event_loop().run_in_executor(None, lz4.frame.compress, res)
 
     def __repr__(self):
         return f'{self.__nodes} :::: {self.__conns}'
 
     @classmethod
-    def deserialize(cls, data: bytes) -> "UiData":
-        return pickle.loads(data)
+    def deserialize_noasync(cls, data: bytes) -> "UiData":
+        cmp = data[:3]
+        if cmp == b'lz4':
+            return pickle.loads(lz4.frame.decompress(data[3:]))
+        elif cmp == b'\0\0\0':
+            return pickle.loads(data[3:])
+        raise NotImplementedError(f'data compression format {repr(cmp)} is not implemented')
 
 
 # if TYPE_CHECKING:
