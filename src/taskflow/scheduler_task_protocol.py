@@ -63,10 +63,17 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     stderr = await read_string()
                     await self.__scheduler.task_cancel_reported(task, stdout, stderr)
                 elif command == b'hello':
+                    # worker reports for duty
                     addrsize = await reader.readexactly(4)
                     addrsize = struct.unpack('>I', addrsize)[0]
                     addr = await reader.readexactly(addrsize)
                     await self.__scheduler.add_worker(addr.decode('UTF-8'), assume_active=True)
+                elif command == b'bye':
+                    # worker reports he's quitting
+                    addrsize = await reader.readexactly(4)
+                    addrsize = struct.unpack('>I', addrsize)[0]
+                    addr = await reader.readexactly(addrsize)
+                    await self.__scheduler.worker_stopped(addr.decode('UTF-8'))
                 #
                 # spawn a child task for task being processed
                 elif command == b'spawn':
@@ -169,6 +176,14 @@ class SchedulerTaskClient:
         await self._ensure_conn_open()
         self.__writer.write(b'hello\n')
         data = address_to_advertise.encode('UTF-8')
+        self.__writer.write(struct.pack('>I', len(data)))
+        self.__writer.write(data)
+        await self.__writer.drain()
+
+    async def say_bye(self, address_of_worker: str):
+        await self._ensure_conn_open()
+        self.__writer.write(b'bye\n')
+        data = address_of_worker.encode('UTF-8')
         self.__writer.write(struct.pack('>I', len(data)))
         self.__writer.write(data)
         await self.__writer.drain()
