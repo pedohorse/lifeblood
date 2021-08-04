@@ -22,7 +22,7 @@ from .environment_wrapper import TrivialEnvironmentWrapper
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
 
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 
 async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
@@ -30,29 +30,39 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     my_ip = get_addr_to(scheduler_ip)
+    my_port = 6969
     for i in range(1024):  # big but finite
         try:
-            server = await loop.create_server(worker.proto_server_factory, my_ip, 6969 + i, backlog=16)
-            addr = f'{my_ip}:{6969 + i}'
+            server = await loop.create_server(worker.proto_server_factory, my_ip, my_port, backlog=16)
+            addr = f'{my_ip}:{my_port}'
             break
         except OSError as e:
             if e.errno != errno.EADDRINUSE:
                 raise
+            my_port += 1
             continue
     else:
         raise RuntimeError('could not find an opened port!')
     worker._set_working_server(server)
+    worker._set_my_addr((my_ip, my_port))
 
     # now report our address to the scheduler
     async with SchedulerTaskClient(scheduler_ip, scheduler_port) as client:
         await client.say_hello(addr)
     #
-    worker._start()
+    worker._start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_ip: int):
+    def __init__(self, scheduler_addr: str, scheduler_ip: int, small_task_helper=False):
+        """
+
+        :param scheduler_addr:
+        :param scheduler_ip:
+        :param small_task_helper: if True - this worker will assume it's doing a lightweight task to help scheduler.
+                                  worker will stop after task is done or cancelled
+        """
         config = get_config('worker')
         self.__logger = logging.getLogger('worker')
         self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
@@ -72,6 +82,9 @@ class Worker:
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
         self.__scheduler_pinger = None
         self.__extra_files_base_dir = None
+        self.__my_addr: Optional[Tuple[str, int]] = None
+
+        self.__is_small_task_helper = small_task_helper
 
         self.__env_writer = TrivialEnvironmentWrapper()
 
@@ -90,8 +103,24 @@ class Worker:
                 f.write(rtmodule_code)
         self.__rt_module_dir = os.path.dirname(filepath)
 
+    def _set_my_addr(self, addr: Tuple[str, int]):
+        self.__my_addr = addr
+
     def _start(self):
         self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
+
+    async def _stop(self):
+        self.__server.close()
+        self.__scheduler_pinger.cancel()
+        try:
+            await self.__scheduler_pinger
+        except asyncio.CancelledError:
+            pass
+        await self.cancel_task()
+        if self.__my_addr is None:
+            return
+        async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+            await client.say_bye('%s:%d' % self.__my_addr)
 
     def _set_working_server(self, server: asyncio.AbstractServer):  # TODO: i dont like this unclear way of creating worker. either hide constructor somehow, or use it
         self.__server = server
@@ -286,6 +315,10 @@ class Worker:
         self.__running_task_progress = None
         await self._cleanup_extra_files()
 
+        # stop ourselves if we are a small task helper
+        if self.__is_small_task_helper:
+            await self._stop()
+
     async def task_status(self) -> Optional[float]:
         return self.__running_task_progress
 
@@ -313,6 +346,10 @@ class Worker:
         self.__running_awaiter = None
         self.__running_task_progress = None
         await self._cleanup_extra_files()
+
+        # stop ourselves if we are a small task helper
+        if self.__is_small_task_helper:
+            await self._stop()
 
     async def _cleanup_extra_files(self):
         """
@@ -357,7 +394,10 @@ class Worker:
 
     async def wait_to_finish(self):
         if self.__scheduler_pinger is not None:
-            await self.__scheduler_pinger
+            try:
+                await self.__scheduler_pinger
+            except asyncio.CancelledError:
+                self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
             self.__scheduler_pinger = None
         await self.__server.wait_closed()
 
