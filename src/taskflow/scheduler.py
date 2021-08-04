@@ -584,6 +584,7 @@ class Scheduler:
                                 # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
                                 self.__logger.debug(f'submitting task to {addr}')
                                 try:
+                                    # TODO: this can be very slow for slow network or huge tasks. so this should happen async
                                     async with WorkerTaskClient(ip, port) as client:
                                         reply = await client.give_task(task, self.__server_address)
                                     self.__logger.debug(f'got reply {reply}')
@@ -806,6 +807,27 @@ class Scheduler:
                                   'VALUES '
                                   '(?, ?, ?, ?, ?, ?, ?, ?)',
                                   (1, 1, 1, 1, addr, int(time.time()), ping_state, state))
+            await con.commit()
+
+    async def worker_stopped(self, addr: str):
+        """
+
+        :param addr:
+        :return:
+        """
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
+                worker_row = await worcur.fetchone()
+            wid = worker_row['id']
+
+            # we ensure there are no invocations running with this worker
+            async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND "state" = ?', (wid, InvocationState.IN_PROGRESS.value)) as invcur:
+                invocations = await invcur.fetchall()
+
+            await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
+            await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
+            await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.WAITING.value, x["task_id"]) for x in invocations))
             await con.commit()
 
     #
