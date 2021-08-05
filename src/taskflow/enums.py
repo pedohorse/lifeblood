@@ -36,6 +36,11 @@ class TaskState(Enum):
     SPLITTED = 10  # task has been splitted, and will remain idle until splits are gathered
 
 
+class WorkerType(Enum):
+    STANDARD = 0
+    SCHEDULER_HELPER = 1
+
+
 class InvocationState(Enum):
     IN_PROGRESS = 0
     FINISHED = 1
