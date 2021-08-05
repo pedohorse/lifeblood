@@ -6,6 +6,7 @@ from enum import Enum
 from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
+from .enums import WorkerType
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
@@ -67,7 +68,8 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     addrsize = await reader.readexactly(4)
                     addrsize = struct.unpack('>I', addrsize)[0]
                     addr = await reader.readexactly(addrsize)
-                    await self.__scheduler.add_worker(addr.decode('UTF-8'), assume_active=True)
+                    workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
+                    await self.__scheduler.add_worker(addr.decode('UTF-8'), workertype, assume_active=True)
                 elif command == b'bye':
                     # worker reports he's quitting
                     addrsize = await reader.readexactly(4)
@@ -172,12 +174,13 @@ class SchedulerTaskClient:
             self.__logger.error('ping failed. %s', e)
         # ignore retcode
 
-    async def say_hello(self, address_to_advertise: str):
+    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType):
         await self._ensure_conn_open()
         self.__writer.write(b'hello\n')
         data = address_to_advertise.encode('UTF-8')
         self.__writer.write(struct.pack('>I', len(data)))
         self.__writer.write(data)
+        self.__writer.write(struct.pack('>I', worker_type.value))
         await self.__writer.drain()
 
     async def say_bye(self, address_of_worker: str):
