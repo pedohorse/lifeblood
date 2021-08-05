@@ -17,6 +17,7 @@ from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config
 from .environment_wrapper import TrivialEnvironmentWrapper
+from .enums import WorkerType
 
 
 from .worker_runtime_pythonpath import taskflow_connection
@@ -25,8 +26,8 @@ import inspect
 from typing import Optional, Dict, Tuple
 
 
-async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
-    worker = Worker(scheduler_ip, scheduler_port)
+async def create_worker(scheduler_ip: str, scheduler_port: int, worker_type=WorkerType.STANDARD, loop=None):
+    worker = Worker(scheduler_ip, scheduler_port, worker_type)
     if loop is None:
         loop = asyncio.get_event_loop()
     my_ip = get_addr_to(scheduler_ip)
@@ -48,14 +49,14 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, loop=None):
 
     # now report our address to the scheduler
     async with SchedulerTaskClient(scheduler_ip, scheduler_port) as client:
-        await client.say_hello(addr)
+        await client.say_hello(addr, worker_type)
     #
     worker._start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_ip: int, small_task_helper=False):
+    def __init__(self, scheduler_addr: str, scheduler_ip: int, worker_type=WorkerType.STANDARD):
         """
 
         :param scheduler_addr:
@@ -84,7 +85,7 @@ class Worker:
         self.__extra_files_base_dir = None
         self.__my_addr: Optional[Tuple[str, int]] = None
 
-        self.__is_small_task_helper = small_task_helper
+        self.__worker_type = worker_type
 
         self.__env_writer = TrivialEnvironmentWrapper()
 
@@ -316,7 +317,7 @@ class Worker:
         await self._cleanup_extra_files()
 
         # stop ourselves if we are a small task helper
-        if self.__is_small_task_helper:
+        if self.__worker_type == WorkerType.SCHEDULER_HELPER:
             await self._stop()
 
     async def task_status(self) -> Optional[float]:
@@ -348,7 +349,7 @@ class Worker:
         await self._cleanup_extra_files()
 
         # stop ourselves if we are a small task helper
-        if self.__is_small_task_helper:
+        if self.__worker_type == WorkerType.SCHEDULER_HELPER:
             await self._stop()
 
     async def _cleanup_extra_files(self):
