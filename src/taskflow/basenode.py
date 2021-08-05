@@ -184,7 +184,6 @@ class BaseNode:
         else:
             self.__dict__.update(state)
 
-
     def serialize(self) -> bytes:
         """
         by default we just serialize
