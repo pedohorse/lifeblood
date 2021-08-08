@@ -132,10 +132,11 @@ class Scheduler:
                 async for row in cur:
                     await self.set_worker_ping_state(row['id'], WorkerPingState.OFF, con, nocommit=True)
             await con.commit()
-            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
-                              (TaskState.WAITING.value, TaskState.GENERATING.value))
-            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
-                              (TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" IN (?, ?, ?)',
+                              (TaskState.WAITING.value,
+                               TaskState.GENERATING.value, TaskState.POST_GENERATING.value, TaskState.INVOKING.value))
+            await con.execute('UPDATE "workers" SET "state" = ?',
+                              (WorkerState.OFF.value,))
             await con.commit()
 
         # run
@@ -150,6 +151,18 @@ class Scheduler:
 
     async def set_worker_state(self, wid: int, state: WorkerState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         await self._set_value('workers', 'state', wid, state.value, con, nocommit)
+
+    async def get_worker_state(self, wid: int, con: Optional[aiosqlite.Connection] = None) -> WorkerState:
+        if con is None:
+            async with aiosqlite.connect(self.db_path) as con:
+                async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
+                    res = cur.fetchone()
+        else:
+            async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
+                res = await cur.fetchone()
+        if res is None:
+            raise ValueError(f'worker with given wid={wid} was not found')
+        return WorkerState(res[0])
 
     async def update_worker_lastseen(self, wid: int, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False):
         await self._set_value('workers', 'last_seen', wid, int(time.time()), con, nocommit)
@@ -244,18 +257,30 @@ class Scheduler:
                 await con.commit()
                 return
 
+            # at this point we sure to have received a reply
+            # fixing possibly inconsistent worker states
+            # this inconsistencies should only occur shortly after scheduler restart
+            # due to desync of still working workers and scheduler
+            workerstate = await self.get_worker_state(worker_row['id'], con=con)
+            if workerstate == WorkerState.OFF:
+                if ping_code == WorkerPingReply.IDLE:
+                    await self.set_worker_state(worker_row['id'], WorkerState.IDLE, con=con, nocommit=True)
+                elif ping_code == WorkerPingReply.BUSY:
+                    await self.set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
+
             if ping_code == WorkerPingReply.IDLE:
-                workerstate = WorkerState.IDLE
+                pass
+                #workerstate = WorkerState.IDLE
                 # TODO: commented below as it seem to cause race conditions with worker invocation done reporting. NEED CHECKING
                 #if await self.reset_invocations_for_worker(worker_row['id'], con=con):
                 #    await con.commit()
             else:
-                workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
+                #workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
                 await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
 
             await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
-                                 self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
+                                 #self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
                                  self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
                                  )
             await con.commit()
@@ -442,7 +467,80 @@ class Scheduler:
 
                 await con.commit()
 
+        # submitter
+        async def _submitter(task_row, worker_row):
+            addr = worker_row['last_address']
+            try:
+                ip, port = addr.split(':')
+                port = int(port)
+            except:
+                self.__logger.error('error addres converting during unexpected here. ping should have cought it')
+                return
+
+            work_data = task_row['work_data']
+            assert work_data is not None
+            task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
+            if not task.args():
+                async with aiosqlite.connect(self.db_path) as skipwork_transaction:
+                    await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                       (TaskState.POST_WAITING.value, task_row['id']))
+                    await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                       (WorkerState.IDLE.value, worker_row['id']))
+                    await skipwork_transaction.commit()
+                    return
+
+            # so task.args() is not None
+            async with aiosqlite.connect(self.db_path) as submit_transaction:
+                async with submit_transaction.execute(
+                        'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
+                        (task_row['id'], worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
+                    invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
+                await submit_transaction.commit()
+
+                task._set_invocation_id(invocation_id)
+                task._set_task_attributes(json.loads(task_row['attributes']))
+                self.__logger.debug(f'submitting task to {addr}')
+                try:
+                    # this is potentially a long operation - db must NOT be locked during it
+                    async with WorkerTaskClient(ip, port) as client:
+                        # import random
+                        # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
+                        reply = await client.give_task(task, self.__server_address)
+                    self.__logger.debug(f'got reply {reply}')
+                except Exception as e:
+                    self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
+                    reply = TaskScheduleStatus.FAILED
+
+                if reply == TaskScheduleStatus.SUCCESS:
+                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                     (TaskState.IN_PROGRESS.value, task_row['id']))
+                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                     (WorkerState.BUSY.value, worker_row['id']))
+                    await submit_transaction.execute('UPDATE invocations SET state = ? WHERE "id" = ?',
+                                                     (InvocationState.IN_PROGRESS.value, invocation_id))
+                    await submit_transaction.commit()
+                else:  # on anything but success - cancel transaction
+                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                     (TaskState.READY.value, task_row['id']))
+                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                     (WorkerState.IDLE.value, worker_row['id']))
+                    await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
+                                                     (invocation_id,))
+                    await submit_transaction.commit()
+
+        # this will hold references to tasks created with asyncio.create_task
+        tasks_to_wait = set()
         while True:
+
+            # first prune awaited tasks
+            for task_to_wait in tasks_to_wait:
+                if task_to_wait.done():
+                    try:
+                        await task_to_wait
+                    except Exception as e:
+                        self.__logger.exception('awaited task raised some problems')
+
+            # now proceed with processing
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
                 _debug_t0 = time.perf_counter()
@@ -543,8 +641,8 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
 
-                            asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
-                                                         abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
+                            tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
+                                                                           abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE)))
                         _debug_tpw += time.perf_counter() - _debug_tmpw
                     #
                     # real scheduling should happen here
@@ -554,53 +652,61 @@ class Scheduler:
                         if worker is None:  # nothing available
                             continue
 
-                        addr = worker['last_address']
-                        try:
-                            ip, port = addr.split(':')
-                            port = int(port)
-                        except:
-                            self.__logger.error('error addres converting during unexpected here. ping should have cought it')
-                            continue
+                        async with aiosqlite.connect(self.db_path) as presubmit_transaction:
+                            await presubmit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                                (TaskState.INVOKING.value, task_row['id']))
+                            await presubmit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                                (WorkerState.INVOKING.value, worker['id']))
+                            await presubmit_transaction.commit()
 
-                        async with aiosqlite.connect(self.db_path) as submit_transaction:
-                            async with submit_transaction.execute(
-                                    'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
-                                    (task_row['id'], worker['id'], InvocationState.IN_PROGRESS.value, task_row['node_id'])) as incur:
-                                invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
-
-                            work_data = task_row['work_data']
-                            assert work_data is not None
-                            task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-                            if not task.args():
-                                await submit_transaction.rollback()
-                                await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                                 (TaskState.POST_WAITING.value, task_row['id']))
-                                _debug_tmp = time.perf_counter()
-                                await submit_transaction.commit()
-                                _debug_tc += time.perf_counter() - _debug_tmp
-                            else:
-                                task._set_invocation_id(invocation_id)
-                                task._set_task_attributes(json.loads(task_row['attributes']))
-                                # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
-                                self.__logger.debug(f'submitting task to {addr}')
-                                try:
-                                    # TODO: this can be very slow for slow network or huge tasks. so this should happen async
-                                    async with WorkerTaskClient(ip, port) as client:
-                                        reply = await client.give_task(task, self.__server_address)
-                                    self.__logger.debug(f'got reply {reply}')
-                                except Exception as e:
-                                    self.__logger.error('some unexpected error %s', e)
-                                    reply = TaskScheduleStatus.FAILED
-                                if reply == TaskScheduleStatus.SUCCESS:
-                                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                                     (TaskState.IN_PROGRESS.value, task_row['id']))
-                                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                                     (WorkerState.BUSY.value, worker['id']))
-                                    _debug_tmp = time.perf_counter()
-                                    await submit_transaction.commit()
-                                    _debug_tc += time.perf_counter() - _debug_tmp
-                                else:  # on anything but success - cancel transaction
-                                    await submit_transaction.rollback()
+                        tasks_to_wait.add(asyncio.create_task(_submitter(dict(task_row), dict(worker))))
+                        # addr = worker['last_address']
+                        # try:
+                        #     ip, port = addr.split(':')
+                        #     port = int(port)
+                        # except:
+                        #     self.__logger.error('error addres converting during unexpected here. ping should have cought it')
+                        #     continue
+                        #
+                        # async with aiosqlite.connect(self.db_path) as submit_transaction:
+                        #     async with submit_transaction.execute(
+                        #             'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
+                        #             (task_row['id'], worker['id'], InvocationState.IN_PROGRESS.value, task_row['node_id'])) as incur:
+                        #         invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
+                        #
+                        #     work_data = task_row['work_data']
+                        #     assert work_data is not None
+                        #     task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
+                        #     if not task.args():
+                        #         await submit_transaction.rollback()
+                        #         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                        #                                          (TaskState.POST_WAITING.value, task_row['id']))
+                        #         _debug_tmp = time.perf_counter()
+                        #         await submit_transaction.commit()
+                        #         _debug_tc += time.perf_counter() - _debug_tmp
+                        #     else:
+                        #         task._set_invocation_id(invocation_id)
+                        #         task._set_task_attributes(json.loads(task_row['attributes']))
+                        #         # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
+                        #         self.__logger.debug(f'submitting task to {addr}')
+                        #         try:
+                        #             # TODO: this can be very slow for slow network or huge tasks. so this should happen async
+                        #             async with WorkerTaskClient(ip, port) as client:
+                        #                 reply = await client.give_task(task, self.__server_address)
+                        #             self.__logger.debug(f'got reply {reply}')
+                        #         except Exception as e:
+                        #             self.__logger.error('some unexpected error %s', e)
+                        #             reply = TaskScheduleStatus.FAILED
+                        #         if reply == TaskScheduleStatus.SUCCESS:
+                        #             await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                        #                                              (TaskState.IN_PROGRESS.value, task_row['id']))
+                        #             await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                        #                                              (WorkerState.BUSY.value, worker['id']))
+                        #             _debug_tmp = time.perf_counter()
+                        #             await submit_transaction.commit()
+                        #             _debug_tc += time.perf_counter() - _debug_tmp
+                        #         else:  # on anything but success - cancel transaction
+                        #             await submit_transaction.rollback()
                         _debug_tr += time.perf_counter() - _debug_tmpw
                     #
                     # means task is done being processed by current node,
