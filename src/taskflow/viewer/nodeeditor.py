@@ -955,6 +955,7 @@ class Task(NetworkItemWithUI):
             Task.__brushes = {TaskState.WAITING: QBrush(QColor(64, 64, 64, 192)),
                               TaskState.GENERATING: QBrush(QColor(32, 128, 128, 192)),
                               TaskState.READY:  QBrush(QColor(32, 64, 32, 192)),
+                              TaskState.INVOKING: QBrush(QColor(108, 108, 12, 192)),
                               TaskState.IN_PROGRESS: QBrush(QColor(128, 128, 32, 192)),
                               TaskState.POST_WAITING: QBrush(QColor(96, 96, 96, 192)),
                               TaskState.POST_GENERATING: QBrush(QColor(128, 32, 128, 192)),
@@ -2384,7 +2385,7 @@ class NodeEditor(QGraphicsView):
             menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
         state_submenu = menu.addMenu('force state')
         for state in TaskState:
-            if state in (TaskState.GENERATING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
+            if state in (TaskState.GENERATING, TaskState.INVOKING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
                 continue
             state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
 
