@@ -38,7 +38,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
     def __init__(self, worker: "Worker", limit=2 ** 16):
         self.__logger = logging.getLogger('worker.protocol')
-        self.__timeout = 5.0
+        self.__timeout = 30.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__worker = worker
         super(WorkerTaskServerProtocol, self).__init__(self.__reader, self.client_connected_cb)
@@ -198,14 +198,14 @@ class WorkerTaskClient:
             reply_address = reply_address.encode('UTF-8')
         self.__writer.write(struct.pack('>I', len(reply_address)))
         self.__writer.write(reply_address)
-        await self.__writer.drain()
-        reply = TaskScheduleStatus(ord(await self.__reader.readexactly(1)))
+        await asyncio.wait_for(self.__writer.drain(), self.__timeout)
+        reply = TaskScheduleStatus(ord(await asyncio.wait_for(self.__reader.readexactly(1), self.__timeout)))
         return reply
 
     async def cancel_task(self):
         await self._ensure_conn_open()
         self.__writer.write(b'drop\n')
-        await self.__writer.drain()
+        await asyncio.wait_for(self.__writer.drain(), self.__timeout)
 
     async def status(self):
         raise NotImplementedError()
@@ -213,11 +213,11 @@ class WorkerTaskClient:
     async def get_log(self, invocation_id) -> (str, str):
         self.__writer.write(b'log\n')
         self.__writer.write(struct.pack('>Q', invocation_id))
-        await self.__writer.drain()
-        stdoutsize = struct.unpack('>I', await self.__reader.readexactly(4))[0]
-        stdout = await self.__reader.readexactly(stdoutsize)
-        stderrsize = struct.unpack('>I', await self.__reader.readexactly(4))[0]
-        stderr = await self.__reader.readexactly(stderrsize)
+        await asyncio.wait_for(self.__writer.drain(), self.__timeout)
+        stdoutsize = struct.unpack('>I', await asyncio.wait_for(self.__reader.readexactly(4), self.__timeout))[0]
+        stdout = await asyncio.wait_for(self.__reader.readexactly(stdoutsize), self.__timeout)
+        stderrsize = struct.unpack('>I', await asyncio.wait_for(self.__reader.readexactly(4), self.__timeout))[0]
+        stderr = await asyncio.wait_for(self.__reader.readexactly(stderrsize), self.__timeout)
         return stdout.decode('UTF-8'), stderr.decode('UTF-8')
 
     async def get_log_iterate(self, logname: str, since=None):  # TODO: type it
@@ -230,5 +230,5 @@ class WorkerTaskClient:
         raise NotImplementedError()
         self.__writer.write(b'logiter\n')
         self.__writer.write(logname.encode('UTF-8'))
-        await self.__writer.drain()
+        await asyncio.wait_for(self.__writer.drain(), self.__timeout)
         return nethelpers.LineDrainer(self.__reader)
