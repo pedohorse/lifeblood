@@ -13,6 +13,7 @@ class WorkerState(Enum):
     IDLE = 1
     BUSY = 2
     ERROR = 3
+    INVOKING = 4  # worker is being fed data to start an invocation job
 
 
 class WorkerPingState(Enum):
@@ -26,6 +27,7 @@ class TaskState(Enum):
     WAITING = 0  # arrived at node, does not know what to do
     GENERATING = 1  # node is generating work load
     READY = 2  # ready to be scheduled
+    INVOKING = 11  # task is being switched to IN_PROGRESS
     IN_PROGRESS = 3  # is being worked on by a worker
     POST_WAITING = 4  # task is waiting to be post processed by node
     POST_GENERATING = 5  # task is being post processed by node
@@ -44,3 +46,4 @@ class WorkerType(Enum):
 class InvocationState(Enum):
     IN_PROGRESS = 0
     FINISHED = 1
+    INVOKING = 2
