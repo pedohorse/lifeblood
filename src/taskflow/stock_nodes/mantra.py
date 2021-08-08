@@ -39,8 +39,10 @@ class Mantra(BaseNode):
 
         invoc = InvocationJob(['mantra', '-V', '2a', args['file'], args['outimage']], env)
         res = ProcessingResult(invoc)
-        res.set_attribute('file', args['outimage'])
         return res
 
     def postprocess_task(self, context) -> ProcessingResult:
-        return ProcessingResult()
+        args = context.task_attributes()
+        res = ProcessingResult()
+        res.set_attribute('file', args['outimage'])
+        return res
