@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
-from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel
+from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 
 from typing import Dict
@@ -70,6 +70,7 @@ class GroupsView(QTreeView):
         self.setSelectionMode(GroupsView.ExtendedSelection)
         self.setSortingEnabled(True)
         self.__sorting_model = QSortFilterProxyModel(self)
+        self.__stashed_selection = None
 
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
@@ -91,11 +92,33 @@ class GroupsView(QTreeView):
         menu.popup(event.globalPos())
 
     def setModel(self, model):
+        if self.model():
+            self.model().modelAboutToBeReset.disconnect(self._pre_model_reset)
+            self.model().modelReset.disconnect(self._post_model_reset)
         self.__sorting_model.setSourceModel(model)
         self.__sorting_model.setSortRole(GroupsModel.SortRole)
         self.__sorting_model.setDynamicSortFilter(True)
         self.sortByColumn(1, Qt.DescendingOrder)
         super(GroupsView, self).setModel(self.__sorting_model)
+        model.modelAboutToBeReset.connect(self._pre_model_reset)
+        model.modelReset.connect(self._post_model_reset)
+
+    @Slot()
+    def _pre_model_reset(self):
+        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes())
+
+    @Slot()
+    def _post_model_reset(self):
+        if self.__stashed_selection is None:
+            return
+        model = self.model()
+        selmodel = self.selectionModel()
+        for i in range(model.rowCount(QModelIndex())):
+            idx = model.index(i, 0)
+            if idx.data(Qt.DisplayRole) in self.__stashed_selection:
+                selmodel.select(idx, QItemSelectionModel.Select|QItemSelectionModel.Rows)
+
+        self.__stashed_selection = None
 
 
 class TaskflowViewer(QMainWindow):
