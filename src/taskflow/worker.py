@@ -82,6 +82,7 @@ class Worker:
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_ip)
         self.__scheduler_pinger = None
+        self.__scheduler_pinger_stop_event = asyncio.Event()
         self.__extra_files_base_dir = None
         self.__my_addr: Optional[Tuple[str, int]] = None
 
@@ -112,7 +113,7 @@ class Worker:
 
     async def _stop(self):
         self.__server.close()
-        self.__scheduler_pinger.cancel()
+        self.__scheduler_pinger_stop_event.set()
         try:
             await self.__scheduler_pinger
         except asyncio.CancelledError:
@@ -371,8 +372,13 @@ class Worker:
         ping scheduler once in a while. if it misses too many pings - close worker and wait for new broadcasts
         :return:
         """
+        exit_wait = asyncio.create_task(self.__scheduler_pinger_stop_event.wait())
         while True:
-            await asyncio.sleep(self.__ping_interval)
+            done, pend = await asyncio.wait((exit_wait, ), timeout=self.__ping_interval, return_when=asyncio.FIRST_COMPLETED)
+            if exit_wait in done:
+                await exit_wait
+                break
+            #await asyncio.sleep(self.__ping_interval)
             if self.__ping_missed_threshold == 0:
                 continue
             try:
@@ -391,14 +397,16 @@ class Worker:
                 # assume scheruler down, drop everything and look for another scheruler
                 await self.cancel_task()
                 self.__server.close()
+                exit_wait.cancel()
                 return
 
     async def wait_to_finish(self):
         if self.__scheduler_pinger is not None:
-            try:
-                await self.__scheduler_pinger
-            except asyncio.CancelledError:
-                self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
+            #try:
+            await self.__scheduler_pinger
+            #except asyncio.CancelledError:
+            #    self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
+            #    #raise
             self.__scheduler_pinger = None
         await self.__server.wait_closed()
 
