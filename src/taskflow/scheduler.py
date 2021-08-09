@@ -1084,7 +1084,7 @@ class Scheduler:
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT * from "nodes"') as cur:
+            async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
                 all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
             async with con.execute('SELECT * from "node_connections"') as cur:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
@@ -1107,7 +1107,7 @@ class Scheduler:
             else:
                 all_tasks = dict()
                 for group in task_groups:
-                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.state, tasks.state_details, tasks.paused, tasks.id, tasks.node_id, '
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
                                            'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
                                            'task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
