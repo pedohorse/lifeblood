@@ -65,7 +65,7 @@ class Worker:
                                   worker will stop after task is done or cancelled
         """
         config = get_config('worker')
-        self.__logger = logging.getLogger('worker')
+        self.__logger = logging.get_logger('worker')
         self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
 
         if not os.path.exists(self.log_root_path):
@@ -420,7 +420,7 @@ async def main_async():
     :return: Never!
     """
     config = get_config('worker')
-    logger = logging.getLogger('worker')
+    logger = logging.get_logger('worker')
     if await config.get_option('worker.listen_to_broadcast', True):
         while True:
             logger.info('listening for scheduler broadcasts...')
@@ -448,7 +448,7 @@ async def main_async():
 
 
 def main():
-    global_logger = logging.getLogger('worker')
+    global_logger = logging.get_logger('worker')
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:

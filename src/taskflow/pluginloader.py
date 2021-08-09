@@ -11,7 +11,7 @@ from typing import List, Tuple
 plugins = {}
 __plugin_file_hashes = {}
 
-logger = logging.getLogger('plugin_loader')
+logger = logging.get_logger('plugin_loader')
 
 
 def init():

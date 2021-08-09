@@ -17,7 +17,7 @@ def set_default_loglevel(loglevel):
     __default_loglevel = loglevel
 
 
-def getLogger(name):
+def get_logger(name):
     global __logger_cache
     if name in __logger_cache:
         return __logger_cache[name]

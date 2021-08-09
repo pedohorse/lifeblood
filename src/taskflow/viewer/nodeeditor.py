@@ -36,7 +36,7 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 
 from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
-logger = logging.getLogger('viewer')
+logger = logging.get_logger('viewer')
 
 
 def call_later(callable, *args, **kwargs):

@@ -37,7 +37,7 @@ class AlreadyRunning(RuntimeError):
 class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
     def __init__(self, worker: "Worker", limit=2 ** 16):
-        self.__logger = logging.getLogger('worker.protocol')
+        self.__logger = logging.get_logger('worker.protocol')
         self.__timeout = 30.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__worker = worker
@@ -152,7 +152,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
 class WorkerTaskClient:
     def __init__(self, ip: str, port: int, timeout=30.0):
-        self.__logger = logging.getLogger('scheduler.workerconnection')
+        self.__logger = logging.get_logger('scheduler.workerconnection')
         self.__conn_task = asyncio.create_task(asyncio.open_connection(ip, port))
         self.__reader = None  # type: Optional[asyncio.StreamReader]
         self.__writer = None  # type: Optional[asyncio.StreamWriter]

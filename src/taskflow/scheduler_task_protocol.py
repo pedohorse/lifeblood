@@ -20,7 +20,7 @@ class SpawnStatus(Enum):
 
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler: "Scheduler", limit=2**16):
-        self.__logger = logging.getLogger('scheduler')
+        self.__logger = logging.get_logger('scheduler')
         self.__timeout = 5.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__scheduler = scheduler
@@ -118,7 +118,7 @@ class SchedulerTaskClient:
         self.__writer.write(b)
 
     def __init__(self, ip: str, port: int):
-        self.__logger = logging.getLogger('worker')
+        self.__logger = logging.get_logger('worker')
         self.__conn_task = asyncio.open_connection(ip, port)
         self.__reader = None  # type: Optional[asyncio.StreamReader]
         self.__writer = None  # type: Optional[asyncio.StreamWriter]

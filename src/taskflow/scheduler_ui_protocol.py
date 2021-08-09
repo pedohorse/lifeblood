@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler):
-        self.__logger = logging.getLogger('scheduler.uiprotocol')
+        self.__logger = logging.get_logger('scheduler.uiprotocol')
         self.__scheduler: "Scheduler" = scheduler
         self.__reader = asyncio.StreamReader()
         super(SchedulerUiProtocol, self).__init__(self.__reader, self.connection_cb)

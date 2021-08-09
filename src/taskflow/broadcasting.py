@@ -38,7 +38,7 @@ async def await_broadcast(identifier, broad_port=9000):
 
 class BroadcastProtocol(asyncio.DatagramProtocol):
     def __init__(self, identifier: str, information: str, target: Address, count=None, *, loop: asyncio.AbstractEventLoop = None):
-        self.__logger = logging.getLogger('broadcast')
+        self.__logger = logging.get_logger('broadcast')
         self.__target = target
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__transport = None
@@ -81,7 +81,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
 
 class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
     def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None):
-        self.__logger = logging.getLogger('broadcast_catcher')
+        self.__logger = logging.get_logger('broadcast_catcher')
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__transport = None
         self.__identifier = identifier

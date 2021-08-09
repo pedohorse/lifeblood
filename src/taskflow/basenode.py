@@ -8,7 +8,7 @@ from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi, ParameterNotFound, ParameterReadonly
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
-from .logging import getLogger
+from .logging import get_logger
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -177,7 +177,7 @@ class BaseNode:
                             newparam._Parameter__value = param.unexpanded_value()
             except AttributeError:
                 # something changed so much that some core attrs are different
-                getLogger('BaseNode').exception(f'could not update interface for some node of type {self.type_name()}. resetting node\'s inrerface')
+                get_logger('BaseNode').exception(f'could not update interface for some node of type {self.type_name()}. resetting node\'s inrerface')
 
 
             # TODO: if and whenever expressions are introduced - u need to take care of expressions here too!
