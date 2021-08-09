@@ -1374,7 +1374,11 @@ async def main_async(db_path=None):
 def main():
     config = get_config('scheduler')
     db_path = config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
-    asyncio.run(main_async(db_path))
+    global_logger = logging.getLogger('scheduler')
+    try:
+        asyncio.run(main_async(db_path))
+    except KeyboardInterrupt:
+        global_logger.info('SIGINT caught. Scheduler is stopped now.')
 
 
 if __name__ == '__main__':
