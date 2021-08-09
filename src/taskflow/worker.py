@@ -452,6 +452,7 @@ def main():
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:
+        global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Worker is stopped now.')
 
 

@@ -1378,6 +1378,7 @@ def main():
     try:
         asyncio.run(main_async(db_path))
     except KeyboardInterrupt:
+        global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')
 
 
