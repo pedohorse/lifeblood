@@ -1086,7 +1086,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
                 all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
-            async with con.execute('SELECT * from "node_connections"') as cur:
+            async with con.execute('SELECT * FROM "node_connections"') as cur:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
             if not task_groups:  # None or []
                 all_tasks = dict()
