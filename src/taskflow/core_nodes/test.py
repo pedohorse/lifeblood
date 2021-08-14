@@ -60,7 +60,7 @@ class Test(BaseNode):
                             '    sleep 1\n'
                             'done\n'
                             'echo "ended"\n'],
-                           InvocationEnvironment())
+                           env=InvocationEnvironment())
         time.sleep(6)  # IMITATE LAUNCHING LONG BLOCKING OPERATION
         if int(time.time()) % 10 == 0:
             raise RuntimeError('just happened to be in a wrong time in a wrong place')

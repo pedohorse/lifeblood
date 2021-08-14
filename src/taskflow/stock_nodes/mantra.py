@@ -37,7 +37,7 @@ class Mantra(BaseNode):
 
         env = InvocationEnvironment()
 
-        invoc = InvocationJob(['mantra', '-V', '2a', args['file'], args['outimage']], env)
+        invoc = InvocationJob(['mantra', '-V', '2a', args['file'], args['outimage']], env=env)
         res = ProcessingResult(invoc)
         return res
 

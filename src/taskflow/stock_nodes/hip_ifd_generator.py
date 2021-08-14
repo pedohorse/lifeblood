@@ -84,7 +84,7 @@ class HipIfdGenerator(BaseNode):
             f'{spawnlines}' \
             f'print("all done!")\n'
 
-        inv = InvocationJob(['hython', '-c', script], env)
+        inv = InvocationJob(['hython', '-c', script], env=env)
         res = ProcessingResult(job=inv)
         return res
 

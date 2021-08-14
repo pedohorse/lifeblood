@@ -121,7 +121,7 @@ class HipDriverRenderer(BaseNode):
 
         script += f'print("all done!")\n'
 
-        inv = InvocationJob(['hython', ':/work_to_do.py'], env)
+        inv = InvocationJob(['hython', ':/work_to_do.py'], env=env)
         inv.set_extra_file('work_to_do.py', script)
         res = ProcessingResult(job=inv)
         return res
