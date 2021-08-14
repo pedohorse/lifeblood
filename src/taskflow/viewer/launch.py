@@ -14,8 +14,8 @@ from . import breeze_resources
 
 
 def main(argv):  # TODO: parse cmdline (argv)
-    config_path = os.path.join(os.getcwd(), 'node_viewer.db')
-    start_viewer(config_path=config_path)
+    # config_path = os.path.join(os.getcwd(), 'node_viewer.db')
+    start_viewer()  # config_path=config_path)
 
 
 def start_viewer(config_path=None):
