@@ -10,7 +10,6 @@ def main(argv):
 
     subparsers = parser.add_subparsers(title='command', required=True, dest='command')
     schedparser = subparsers.add_parser('scheduler', description='run main scheduler server')
-    schedparser.add_argument('--db_path', help='path to sqlite database to use')
 
     workerparser = subparsers.add_parser('worker', description='run a worker')
     workerparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the worker')
@@ -27,14 +26,6 @@ def main(argv):
         if opts.loglevel is not None:
             logging.set_default_loglevel(opts.loglevel)
         from .scheduler import main
-        overrides = {}
-        if opts.db_path:
-            if 'scheduler' not in overrides:
-                overrides['scheduler'] = {}
-            overrides['scheduler']['db_path'] = opts.db_path
-
-        if overrides:
-            config.set_config_overrides('scheduler', overrides)
         return main(cmd_argv)
     elif opts.command == 'worker':
         if opts.loglevel is not None:

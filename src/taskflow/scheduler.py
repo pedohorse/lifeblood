@@ -18,6 +18,7 @@ from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
+from .scheduler_worker_pool import SchedulerWorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
@@ -72,6 +73,8 @@ class Scheduler:
         else:
             self.__broadcasting_server_task = loop.create_future()
             self.__broadcasting_server_task.set_result('noop')
+
+        self.__worker_pool = SchedulerWorkerPool()
 
         self.__ping_interval = 1
         self.__processing_interval = 2
@@ -139,12 +142,15 @@ class Scheduler:
                               (WorkerState.OFF.value,))
             await con.commit()
 
+        # start
+        self.__worker_pool.start()
         # run
         await asyncio.gather(self.task_processor(),
                              self.worker_pinger(),
                              self.__server,
                              self.__ui_server,
-                             self.__broadcasting_server_task)
+                             self.__broadcasting_server_task,
+                             self.__worker_pool.wait_till_stops())
 
     async def set_worker_ping_state(self, wid: int, state: WorkerPingState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         await self._set_value('workers', 'ping_state', wid, state.value, con, nocommit)
@@ -1372,8 +1378,13 @@ async def main_async(db_path=None):
 
 
 def main(argv):
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--db_path', help='path to sqlite database to use')
+    opts = parser.parse_args(argv)
+
     config = get_config('scheduler')
-    db_path = config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
+    db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
     global_logger = logging.get_logger('scheduler')
     try:
         asyncio.run(main_async(db_path))
