@@ -18,7 +18,7 @@ class SchedulerWorkerPool:
         self.__logger = get_logger(self.__class__.__name__.lower())
 
     def start(self):
-        if self.__pool_task is not None:
+        if self.__pool_task is not None and not self.__pool_task.done():
             return
         self.__pool_task = asyncio.create_task(self.local_worker_pool_manager())
 
@@ -26,6 +26,14 @@ class SchedulerWorkerPool:
         if self.__pool_task is None:
             return
         self.__stop_event.set()
+
+    def __await__(self):
+        return self.wait_till_stops().__await__()
+
+    async def wait_till_stops(self):
+        if self.__pool_task is None:
+            return
+        await self.__pool_task
 
     async def add_worker(self):
         self.__workers_to_merge.append(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', 'SCHEDULER_HELPER'))
