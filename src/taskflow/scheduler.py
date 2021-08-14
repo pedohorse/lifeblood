@@ -417,12 +417,17 @@ class Scheduler:
                                       (TaskState.DEAD.value, task_id))
                 else:
                     if process_result.invocation_job is None:  # if no job to do
-                        await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                          (skip_state.value, task_id))
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
+                                          'WHERE "id" = ?',
+                                          (None, skip_state.value, None,
+                                           task_id))
                     else:
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
-                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ? WHERE "id" = ?',
-                                          (taskdada_serialized, TaskState.READY.value, task_id))
+                        invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
+                                          'WHERE "id" = ?',
+                                          (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql,
+                                           task_id))
                 if process_result.do_split_remove:
                     async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
                         res = await sealcur.fetchone()
@@ -653,7 +658,7 @@ class Scheduler:
                     #
                     # real scheduling should happen here
                     elif task_row['state'] == TaskState.READY.value:
-                        async with con.execute('SELECT * from workers WHERE state == ?', (WorkerState.IDLE.value,)) as worcur:
+                        async with con.execute(f'SELECT * from workers WHERE state == ? AND {task_row["_invoc_requirement_clause"]}', (WorkerState.IDLE.value,)) as worcur:
                             worker = await worcur.fetchone()
                         if worker is None:  # nothing available
                             continue
