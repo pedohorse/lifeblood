@@ -1371,7 +1371,7 @@ async def main_async(db_path=None):
     await scheduler.run()
 
 
-def main():
+def main(argv):
     config = get_config('scheduler')
     db_path = config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
     global_logger = logging.get_logger('scheduler')
@@ -1383,4 +1383,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

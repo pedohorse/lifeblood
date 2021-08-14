@@ -13,7 +13,12 @@ from .. import paths
 from . import breeze_resources
 
 
-def main(config_path=None):
+def main(argv):  # TODO: parse cmdline (argv)
+    config_path = os.path.join(os.getcwd(), 'node_viewer.db')
+    start_viewer(config_path=config_path)
+
+
+def start_viewer(config_path=None):
     qapp = QApplication(sys.argv)
 
     # set stylesheet
@@ -71,4 +76,4 @@ def main(config_path=None):
 
 
 if __name__ == '__main__':
-    main(config_path=os.path.join(os.getcwd(), 'node_viewer.db'))
+    main(sys.argv[1:])

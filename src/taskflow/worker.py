@@ -411,7 +411,7 @@ class Worker:
         await self.__server.wait_closed()
 
 
-async def main_async():
+async def main_async(worker_type=WorkerType.STANDARD):
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -438,7 +438,7 @@ async def main_async():
             ip = await config.get_option('worker.scheduler_ip', get_default_addr())
             port = await config.get_option('worker.scheduler_port', 7979)
             try:
-                worker = await create_worker(ip, port)
+                worker = await create_worker(ip, port, worker_type=worker_type)
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
@@ -447,14 +447,25 @@ async def main_async():
             logger.info('worker quited')
 
 
-def main():
+def main(argv):
+    import argparse
+    parser = argparse.ArgumentParser('taskflow.worker', description='executes invocations from scheduler')
+    parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
+    args = parser.parse_args(argv)
+    if args.type == 'STANDARD':
+        wtype = WorkerType.STANDARD
+    elif args.type == 'SCHEDULER_HELPER':
+        wtype = WorkerType.SCHEDULER_HELPER
+    else:
+        raise NotImplementedError(f'worker type {args.type} is not yet implemented')
     global_logger = logging.get_logger('worker')
     try:
-        asyncio.run(main_async())
+        asyncio.run(main_async(wtype))
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Worker is stopped now.')
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    main(sys.argv)
