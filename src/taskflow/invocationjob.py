@@ -4,6 +4,7 @@ from copy import copy, deepcopy
 import asyncio
 import pickle
 from types import MappingProxyType
+from .enums import WorkerType
 
 from typing import Optional, Iterable, Union, Dict, List
 
@@ -95,11 +96,24 @@ class InvocationEnvironment:
         self._enqueue_kv_method('append', key, value)
 
 
+class InvocationRequirements:
+    """
+    requirements a worker has to match in order to be able to pick this task
+    """
+    def __init__(self, *, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
+        self.__groups = set(groups) if groups is not None else set()  # TODO: GROUPS NOT YET IMPLEMENTED!
+        self.__worker_type = worker_type
+
+    def final_where_clause(self):
+        return f'("worker_type" = {self.__worker_type.value})'
+
+
 class InvocationJob:
     """
     serializable data about launching something
     """
-    def __init__(self, args: List[str], env: Optional[InvocationEnvironment] = None, invocation_id=None,
+    def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None, invocation_id=None,
+                 requirements: Optional[InvocationRequirements] = None,
                  good_exitcodes: Optional[Iterable[int]] = None,
                  retry_exitcodes: Optional[Iterable[int]] = None):
         self.__args = [str(arg) for arg in args]
@@ -109,12 +123,17 @@ class InvocationJob:
         self.__out_progress_regex = re.compile(rb'ALF_PROGRESS\s+(\d+)%')
         self.__err_progress_regex = None
 
+        self.__requirements = requirements or InvocationRequirements()
+
         self.__exitcode = None
         self.__good_exitcodes = set(good_exitcodes or [0])
         self.__retry_exitcodes = set(retry_exitcodes or [])
 
         self.__attrs = {}
         self.__extra_files: Dict[str, Union[str, bytes]] = {}
+
+    def requirements(self):
+        return self.__requirements
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
