@@ -47,6 +47,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         self.__broadcast_count = count
         self.__information = information
         self.__closed_future = self.__loop.create_future()
+        self.__broadcast_task = None
         # TODO: raise on dgram size too big
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
@@ -55,7 +56,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         sock = transport.get_extra_info("socket")  # type: socket.socket
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.__loop.create_task(self.broadcast())
+        self.__broadcast_task = self.__loop.create_task(self.broadcast())
 
     def datagram_received(self, data: Union[bytes, str], addr: Address):
         self.__logger.debug(f'data received: {len(data)}, {data[:64]}, {addr}')
