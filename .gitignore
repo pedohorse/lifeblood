@@ -1,5 +1,6 @@
 venv
 .idea
+.run
 *.db
 **.pyc
 **/__pycache__
