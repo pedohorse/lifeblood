@@ -80,6 +80,10 @@ def get_default_addr():
     return myip
 
 
+def get_localhost():
+    return '127.0.0.1'
+
+
 def get_default_broadcast_addr():
     addr = get_default_addr()
     return addr[:addr.rfind('.')+1] + '0'
