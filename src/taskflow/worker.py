@@ -10,14 +10,15 @@ import psutil
 import datetime
 import tempfile
 from . import logging
-from .nethelpers import get_addr_to, get_default_addr
+from .nethelpers import get_addr_to, get_default_addr, get_localhost
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
+from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config
 from .environment_wrapper import TrivialEnvironmentWrapper
-from .enums import WorkerType
+from .enums import WorkerType, WorkerState
 
 
 from .worker_runtime_pythonpath import taskflow_connection
@@ -26,10 +27,10 @@ import inspect
 from typing import Optional, Dict, Tuple
 
 
-async def create_worker(scheduler_ip: str, scheduler_port: int, worker_type=WorkerType.STANDARD, loop=None):
-    worker = Worker(scheduler_ip, scheduler_port, worker_type)
-    if loop is None:
-        loop = asyncio.get_event_loop()
+async def create_worker(scheduler_ip: str, scheduler_port: int, *, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
+    worker = Worker(scheduler_ip, scheduler_port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
+
+    loop = asyncio.get_event_loop()
     my_ip = get_addr_to(scheduler_ip)
     my_port = 6969
     for i in range(1024):  # big but finite
@@ -56,7 +57,7 @@ async def create_worker(scheduler_ip: str, scheduler_port: int, worker_type=Work
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_ip: int, worker_type=WorkerType.STANDARD):
+    def __init__(self, scheduler_addr: str, scheduler_ip: int, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
         """
 
         :param scheduler_addr:
@@ -85,6 +86,11 @@ class Worker:
         self.__scheduler_pinger_stop_event = asyncio.Event()
         self.__extra_files_base_dir = None
         self.__my_addr: Optional[Tuple[str, int]] = None
+        self.__worker_id = worker_id
+        if pool_address is None:
+            self.__pool_address = (get_localhost(), 7959)
+        else:
+            self.__pool_address: Tuple[str, int] = pool_address
 
         self.__worker_type = worker_type
 
@@ -209,6 +215,9 @@ class Worker:
 
         self.__running_task = task
         self.__where_to_report = report_to
+        if self.__worker_id is not None:
+            async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                await client.report_state(WorkerState.BUSY)
         self.__running_awaiter = asyncio.create_task(self._awaiter())
         self.__running_task_progress = 0
 
@@ -260,6 +269,11 @@ class Worker:
                     for task in tasks_to_wait:
                         task.cancel()
                     raise
+                finally:
+                    # report to the pool
+                    if self.__worker_id is not None:
+                        async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                            await client.report_state(WorkerState.IDLE)
 
         await self.__running_process.wait()
         await self.task_finished()
@@ -272,6 +286,7 @@ class Worker:
             return
         self.__logger.info('cancelling running task')
         self.__running_awaiter.cancel()
+        cancelling_awaiter = self.__running_awaiter
         self.__running_awaiter = None
         puproc = psutil.Process(self.__running_process.pid)
         all_proc = puproc.children(recursive=True)
@@ -316,6 +331,8 @@ class Worker:
         self.__where_to_report = None
         self.__running_task_progress = None
         await self._cleanup_extra_files()
+
+        await asyncio.wait((cancelling_awaiter,))  # ensure everything is done before we proceed
 
         # stop ourselves if we are a small task helper
         if self.__worker_type == WorkerType.SCHEDULER_HELPER:
@@ -411,7 +428,7 @@ class Worker:
         await self.__server.wait_closed()
 
 
-async def main_async(worker_type=WorkerType.STANDARD):
+async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None):
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -430,7 +447,7 @@ async def main_async(worker_type=WorkerType.STANDARD):
             addr = scheduler_info['worker']
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
-            worker = await create_worker(ip, port)
+            worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
             await worker.wait_to_finish()
             logger.info('worker quited')
     else:
@@ -438,7 +455,7 @@ async def main_async(worker_type=WorkerType.STANDARD):
             ip = await config.get_option('worker.scheduler_ip', get_default_addr())
             port = await config.get_option('worker.scheduler_port', 7979)
             try:
-                worker = await create_worker(ip, port, worker_type=worker_type)
+                worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
@@ -451,6 +468,8 @@ def main(argv):
     import argparse
     parser = argparse.ArgumentParser('taskflow.worker', description='executes invocations from scheduler')
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
+    parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
+    parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
     args = parser.parse_args(argv)
     if args.type == 'STANDARD':
         wtype = WorkerType.STANDARD
@@ -459,8 +478,16 @@ def main(argv):
     else:
         raise NotImplementedError(f'worker type {args.type} is not yet implemented')
     global_logger = logging.get_logger('worker')
+
+    # check legality of the address
+    paddr = None
+    if args.pool_address is not None:
+        if args.pool_address.count(':') != 1:
+            raise ValueError('bad address format in --pool-address')
+        paddr = args.pool_address.split(':')
+        paddr = (paddr[0], int(paddr[1]))
     try:
-        asyncio.run(main_async(wtype))
+        asyncio.run(main_async(wtype, worker_id=args.id, pool_address=paddr))
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Worker is stopped now.')
