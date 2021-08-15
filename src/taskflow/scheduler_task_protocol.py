@@ -21,7 +21,7 @@ class SpawnStatus(Enum):
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler: "Scheduler", limit=2**16):
         self.__logger = logging.get_logger('scheduler')
-        self.__timeout = 5.0
+        self.__timeout = 60.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__scheduler = scheduler
         super(SchedulerTaskProtocol, self).__init__(self.__reader, self.connection_cb)
