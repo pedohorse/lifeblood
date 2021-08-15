@@ -465,6 +465,13 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
 
 
 def main(argv):
+    # import signal
+    # prev = None
+    # def signal_handler(sig, frame):
+    #     print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! You pressed Ctrl+C !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    #     prev(sig, frame)
+    #
+    # prev = signal.signal(signal.SIGINT, signal_handler)
     import argparse
     parser = argparse.ArgumentParser('taskflow.worker', description='executes invocations from scheduler')
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
@@ -489,6 +496,8 @@ def main(argv):
     try:
         asyncio.run(main_async(wtype, worker_id=args.id, pool_address=paddr))
     except KeyboardInterrupt:
+        # if u see errors in pycharm around this area when running from scheduler -
+        # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Worker is stopped now.')
 
