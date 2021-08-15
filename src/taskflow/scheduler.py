@@ -32,7 +32,7 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 
 class Scheduler:
-    def __init__(self, db_file_path, do_broadcasting=True, loop=None):
+    def __init__(self, db_file_path, do_broadcasting=True):
         self.__logger = logging.get_logger('scheduler')
         self.__logger.info('loading core plugins')
         pluginloader.init()  # TODO: move it outside of constructor
@@ -55,24 +55,26 @@ class Scheduler:
         #     self.__plugins[filebasename] = mod
         # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
 
-        if loop is None:
-            loop = asyncio.get_event_loop()
+        loop = asyncio.get_event_loop()
         self.db_path = db_file_path
         config = get_config('scheduler')
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
         ui_port = config.get_option_noasync('core.ui_port', 7989)
-        self.__server = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
+        self.__server = None
+        self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
-        self.__ui_server = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
+        self.__ui_server = None
+        self.__ui_server_coro = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting:
             broadcast_info = json.dumps({'worker': self.__server_address, 'ui': self.__ui_address})
-            self.__broadcasting_server_task = create_broadcaster('taskflow_scheduler', broadcast_info, ip=get_default_broadcast_addr())
+            self.__broadcasting_server = None
+            self.__broadcasting_server_coro = create_broadcaster('taskflow_scheduler', broadcast_info, ip=get_default_broadcast_addr())
         else:
-            self.__broadcasting_server_task = loop.create_future()
-            self.__broadcasting_server_task.set_result('noop')
+            self.__broadcasting_server = None
+            self.__broadcasting_server_coro = None
 
         self.__worker_pool = SchedulerWorkerPool()
 
@@ -143,13 +145,16 @@ class Scheduler:
             await con.commit()
 
         # start
-        self.__worker_pool.start()
+        await self.__worker_pool.start()
+        self.__server = await self.__server_coro
+        self.__ui_server = await self.__ui_server_coro
+        if self.__broadcasting_server_coro is not None:
+            self.__broadcasting_server = await self.__broadcasting_server_coro
         # run
         await asyncio.gather(self.task_processor(),
                              self.worker_pinger(),
-                             self.__server,
-                             self.__ui_server,
-                             self.__broadcasting_server_task,
+                             self.__server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
+                             self.__ui_server.wait_closed(),
                              self.__worker_pool.wait_till_stops())
 
     async def set_worker_ping_state(self, wid: int, state: WorkerPingState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
