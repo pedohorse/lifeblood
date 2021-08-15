@@ -5,11 +5,11 @@ from .enums import WorkerState
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
-    from .scheduler_worker_pool import SchedulerWorkerPool
+    from .worker_pool import WorkerPool
 
 
 class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
-    def __init__(self, worker_pool: "SchedulerWorkerPool", limit=2**16, logger=None):
+    def __init__(self, worker_pool: "WorkerPool", limit=2 ** 16, logger=None):
         self.__logger = logger or get_logger(self.__class__.__name__.lower())
         self.__timeout = 60
         self.__worker_pool = worker_pool

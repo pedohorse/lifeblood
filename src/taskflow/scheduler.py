@@ -18,7 +18,7 @@ from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
-from .scheduler_worker_pool import SchedulerWorkerPool
+from .worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
@@ -76,7 +76,7 @@ class Scheduler:
             self.__broadcasting_server = None
             self.__broadcasting_server_coro = None
 
-        self.__worker_pool = SchedulerWorkerPool()
+        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER)
 
         self.__ping_interval = 1
         self.__processing_interval = 2

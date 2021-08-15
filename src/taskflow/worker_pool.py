@@ -8,13 +8,13 @@ from types import MappingProxyType
 from .logging import get_logger
 from .worker_pool_protocol import WorkerPoolProtocol
 from .nethelpers import get_localhost
-from .enums import WorkerState
+from .enums import WorkerState, WorkerType
 
 from typing import Set, Dict, List, Optional
 
 
-async def create_scheduler_worker_pool(*, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
-    swp = SchedulerWorkerPool(minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure)
+async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
+    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure)
     await swp.start()
     return swp
 
@@ -28,8 +28,8 @@ class ProcData:
         self.state: WorkerState = WorkerState.IDLE
 
 
-class SchedulerWorkerPool:
-    def __init__(self, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
+class WorkerPool:
+    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
         # local helper workers' pool
         self.__worker_pool: Dict[asyncio.Future, ProcData] = {}
         self.__workers_to_merge: List[asyncio.subprocess.Process] = []
@@ -41,6 +41,7 @@ class SchedulerWorkerPool:
         self.__ensure_minimum_total = minimal_total_to_ensure
         self.__ensure_minimum_idle = minimal_idle_to_ensure
         self.__maximum_total = 256
+        self.__worker_type = worker_type
 
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
@@ -87,7 +88,7 @@ class SchedulerWorkerPool:
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
-        self.__workers_to_merge.append(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', 'SCHEDULER_HELPER', '--pool-address', f'{self.__my_addr}:{self.__my_port}'))
+        self.__workers_to_merge.append(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', self.__worker_type.name, '--pool-address', f'{self.__my_addr}:{self.__my_port}'))
         self.__logger.debug(f'adding new worker to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
         self.__poke_event.set()
 
