@@ -62,3 +62,13 @@ class WorkerPoolTests(TestCase):
         rnd = random.Random(666)
         for _ in range(3):
             asyncio.run(self._helper_test_max1(rnd))
+
+    async def _helper_test_smth1(self, rnd):
+        swp = await create_worker_pool(minimal_idle_to_ensure=1)
+        await asyncio.sleep(2)
+
+    def test_smth1(self):
+        rnd = random.Random(666)
+        for _ in range(5):
+            asyncio.run(self._helper_test_smth1(rnd))
+
