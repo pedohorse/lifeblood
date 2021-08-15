@@ -166,6 +166,7 @@ class WorkerPool:
             async def _proc_waiter(proc: asyncio.subprocess.Process):
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=10)
+                    self.__logger.debug(f'{proc.pid} has gracefully ended with {await proc.wait()}')
                 except asyncio.TimeoutError:
                     self.__logger.warning('worker ignored SIGINT. killing instead.')
                     proc.kill()
@@ -177,6 +178,7 @@ class WorkerPool:
             wait_tasks = []
             for proc in itertools.chain((x.process for x in self.__worker_pool.values()), self.__workers_to_merge):
                 try:
+                    self.__logger.debug(f'sending SIGINT to {proc.pid}')
                     proc.send_signal(signal.SIGINT)
                 except ProcessLookupError:
                     continue
