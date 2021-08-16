@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, worker_pool: "WorkerPool", limit=2 ** 16, logger=None):
         self.__logger = logger or get_logger(self.__class__.__name__.lower())
+        self.__logger.setLevel('DEBUG')
         self.__timeout = 60
         self.__worker_pool = worker_pool
         self.__reader = asyncio.StreamReader(limit=limit)
@@ -26,14 +27,17 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
 
             while True:
                 command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
+                if command.endswith(b'\n'):
+                    command = command[:-1]
+                self.__logger.debug(f'got command {command}')
                 if command == b'state_report':
-                    state = WorkerState(struct.unpack('>Q', reader.readexactly(8))[0])
+                    state = WorkerState(struct.unpack('>Q', await reader.readexactly(8))[0])
                     await self.__worker_pool._worker_state_change(worker_id, state)
                 elif reader.at_eof():
                     self.__logger.debug('connection closed')
                     return
                 else:
-                    raise NotImplementedError()
+                    raise NotImplementedError(f'{command} command is not implemented')
                 await writer.drain()
 
         except asyncio.exceptions.TimeoutError as e:
