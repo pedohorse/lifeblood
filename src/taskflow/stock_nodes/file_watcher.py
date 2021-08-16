@@ -7,7 +7,8 @@ from taskflow.nodethings import ProcessingResult, ProcessingError
 from taskflow.uidata import NodeParameterType
 from taskflow.processingcontext import ProcessingContext
 from taskflow.invocationjob import InvocationJob
-from taskflow.invocationjob import InvocationJob, InvocationEnvironment
+from taskflow.invocationjob import InvocationJob, InvocationRequirements
+from taskflow.enums import WorkerType
 
 from typing import Iterable
 
@@ -25,36 +26,38 @@ import taskflow_connection
 class FileWatcher(FileSystemEventHandler):
     def on_moved(self, event):
         super(FileWatcher, self).on_moved(event)
-        taskflow_connection.create_task(f'{event.src_path} moved to {event.dst_path}',
+        taskflow_connection.create_task(f'{{event.src_path}} moved to {{event.dest_path}}',
                                         src_path=event.src_path,
-                                        dst_path=event.dst_path,
+                                        dst_path=event.dest_path,
                                         file_event='moved')
 
     def on_created(self, event):
         super(FileWatcher, self).on_created(event)
-        taskflow_connection.create_task(f'{event.src_path} created',
+        taskflow_connection.create_task(f'{{event.src_path}} created',
                                         src_path=event.src_path,
                                         file_event='created')
 
     def on_deleted(self, event):
         super(FileWatcher, self).on_deleted(event)
-        taskflow_connection.create_task(f'{event.src_path} deleted',
+        taskflow_connection.create_task(f'{{event.src_path}} deleted',
                                         src_path=event.src_path,
                                         file_event='deleted')
 
     def on_modified(self, event):
         super(FileWatcher, self).on_modified(event)
-        taskflow_connection.create_task(f'{event.src_path} modified',
+        taskflow_connection.create_task(f'{{event.src_path}} modified',
                                         src_path=event.src_path,
                                         file_event='modified')
 
 def main(path_to_watch, recursive):
     file_observer = Observer()
-    file_observer.schedule(FileWatcher, path_to_watch, recursive)
+    file_observer.schedule(FileWatcher(), path_to_watch, recursive)
+    file_observer.start()
+    file_observer.join()
 
 if __name__ == '__main__':
     import sys
-    sys.exit(main({dir_path}, {recursive}) or 0)
+    sys.exit(main("{dir_path}", {recursive}) or 0)
 
 '''
 
@@ -81,7 +84,7 @@ class FileWatcher(BaseNode):
                 ui.add_parameter('recursive', 'recursive', NodeParameterType.BOOL, False)
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
-        inv = InvocationJob(['python', ':/watcher.py'])
+        inv = InvocationJob(['python', ':/watcher.py'], requirements=InvocationRequirements(worker_type=WorkerType.SCHEDULER_HELPER))
         path = context.param_value('path')
         if not os.path.exists(path):
             raise ProcessingError('watch path must exist')
