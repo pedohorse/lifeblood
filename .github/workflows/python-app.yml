@@ -24,7 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements_tests.txt ]; then pip install -r requirements_tests.txt; fi
     - name: Adjust PYTHONPATH
       run: echo "PYTHONPATH=./src:$PYTHOPATH" >> $GITHUB_ENV
 #     - name: Lint with flake8
