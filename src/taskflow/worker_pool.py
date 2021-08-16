@@ -10,7 +10,7 @@ from .worker_pool_protocol import WorkerPoolProtocol
 from .nethelpers import get_localhost
 from .enums import WorkerState, WorkerType
 
-from typing import Set, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional
 
 
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
@@ -25,14 +25,14 @@ class ProcData:
     def __init__(self, process: asyncio.subprocess.Process, id: int):
         self.process = process
         self.id = id
-        self.state: WorkerState = WorkerState.IDLE
+        self.state: WorkerState = WorkerState.OFF
 
 
 class WorkerPool:
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
         # local helper workers' pool
         self.__worker_pool: Dict[asyncio.Future, ProcData] = {}
-        self.__workers_to_merge: List[asyncio.subprocess.Process] = []
+        self.__workers_to_merge: List[ProcData] = []
         self.__pool_task = None
         self.__worker_server: Optional[asyncio.AbstractServer] = None
         self.__stop_event = asyncio.Event()
@@ -88,8 +88,9 @@ class WorkerPool:
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
-        self.__workers_to_merge.append(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', self.__worker_type.name, '--pool-address', f'{self.__my_addr}:{self.__my_port}'))
-        self.__logger.debug(f'adding new worker to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
+        self.__workers_to_merge.append(ProcData(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', self.__worker_type.name, '--id', str(self.__next_wid), '--pool-address', f'{self.__my_addr}:{self.__my_port}', close_fds=True), self.__next_wid))
+        self.__logger.debug(f'adding new worker (id: {self.__next_wid}) to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
+        self.__next_wid += 1
         self.__poke_event.set()
 
     def list_workers(self):
@@ -135,11 +136,10 @@ class WorkerPool:
                     self.__logger.debug(f'removing finished worker from the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
                 if time_to_stop:
                     break
-                for proc in self.__workers_to_merge:
-                    procdata = ProcData(proc, self.__next_wid)
-                    self.__worker_pool[asyncio.create_task(proc.wait())] = procdata
-                    self.__id_to_procdata[self.__next_wid] = procdata
-                    self.__next_wid += 1
+                for procdata in self.__workers_to_merge:
+                    self.__worker_pool[asyncio.create_task(procdata.process.wait())] = procdata
+                    self.__id_to_procdata[procdata.id] = procdata
+
                 self.__workers_to_merge.clear()
 
                 # ensure the ensure
@@ -148,13 +148,13 @@ class WorkerPool:
                     for _ in range(self.__ensure_minimum_total - len(self.__worker_pool)):
                         await self.add_worker()
                         just_added += 1
-                idle_guys = len([k for k, v in self.__id_to_procdata.items() if v.state == WorkerState.IDLE])
+                idle_guys = len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])  # consider OFF ones as IDLEs that just boot up
                 if idle_guys + just_added < self.__ensure_minimum_idle:
                     for _ in range(self.__ensure_minimum_idle - idle_guys - just_added):
                         await self.add_worker()
 
             # debug logging
-            self.__logger.debug(f'total workers: {len(self.__worker_pool)}, idle: {len([k for k, v in self.__id_to_procdata.items() if v.state == WorkerState.IDLE])}')
+            self.__logger.debug(f'total workers: {len(self.__worker_pool)}, idle: {len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])}')
             # more verbose debug:
             if True:
                 for wid, procdata in self.__id_to_procdata.items():
@@ -176,13 +176,13 @@ class WorkerPool:
 
             # cleanup
             wait_tasks = []
-            for proc in itertools.chain((x.process for x in self.__worker_pool.values()), self.__workers_to_merge):
+            for procdata in itertools.chain(self.__worker_pool.values(), self.__workers_to_merge):
                 try:
-                    self.__logger.debug(f'sending SIGINT to {proc.pid}')
-                    proc.send_signal(signal.SIGINT)
+                    self.__logger.debug(f'sending SIGINT to {procdata.process.pid}')
+                    procdata.process.send_signal(signal.SIGINT)
                 except ProcessLookupError:
                     continue
-                wait_tasks.append(_proc_waiter(proc))
+                wait_tasks.append(_proc_waiter(procdata.process))
             await asyncio.gather(*wait_tasks)
 
             self.__logger.info('worker pool stopped')
