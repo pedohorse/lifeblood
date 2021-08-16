@@ -30,38 +30,16 @@ from typing import Optional, Dict, Tuple
 async def create_worker(scheduler_ip: str, scheduler_port: int, *, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
     worker = Worker(scheduler_ip, scheduler_port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
 
-    loop = asyncio.get_event_loop()
-    my_ip = get_addr_to(scheduler_ip)
-    my_port = 6969
-    for i in range(1024):  # big but finite
-        try:
-            server = await loop.create_server(worker.proto_server_factory, my_ip, my_port, backlog=16)
-            addr = f'{my_ip}:{my_port}'
-            break
-        except OSError as e:
-            if e.errno != errno.EADDRINUSE:
-                raise
-            my_port += 1
-            continue
-    else:
-        raise RuntimeError('could not find an opened port!')
-    worker._set_working_server(server)
-    worker._set_my_addr((my_ip, my_port))
-
-    # now report our address to the scheduler
-    async with SchedulerTaskClient(scheduler_ip, scheduler_port) as client:
-        await client.say_hello(addr, worker_type)
-    #
-    worker._start()  # note that server is already started at this point
+    await worker.start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_ip: int, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
+    def __init__(self, scheduler_addr: str, scheduler_port: int, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
         """
 
         :param scheduler_addr:
-        :param scheduler_ip:
+        :param scheduler_port:
         :param small_task_helper: if True - this worker will assume it's doing a lightweight task to help scheduler.
                                   worker will stop after task is done or cancelled
         """
@@ -81,7 +59,7 @@ class Worker:
         self.__ping_interval = 5
         self.__ping_missed_threshold = 2
         self.__ping_missed = 0
-        self.__scheduler_addr = (scheduler_addr, scheduler_ip)
+        self.__scheduler_addr = (scheduler_addr, scheduler_port)
         self.__scheduler_pinger = None
         self.__scheduler_pinger_stop_event = asyncio.Event()
         self.__extra_files_base_dir = None
@@ -111,13 +89,43 @@ class Worker:
                 f.write(rtmodule_code)
         self.__rt_module_dir = os.path.dirname(filepath)
 
-    def _set_my_addr(self, addr: Tuple[str, int]):
-        self.__my_addr = addr
+        self.__started = False
 
-    def _start(self):
+    async def start(self):
+        if self.__started:
+            return
+        loop = asyncio.get_event_loop()
+        my_ip = get_addr_to(self.__scheduler_addr[0])
+        my_port = 6969
+        for i in range(1024):  # big but finite
+            try:
+                self.__server = await loop.create_server(lambda: WorkerTaskServerProtocol(self), my_ip, my_port, backlog=16)
+                addr = f'{my_ip}:{my_port}'
+                break
+            except OSError as e:
+                if e.errno != errno.EADDRINUSE:
+                    raise
+                my_port += 1
+                continue
+        else:
+            raise RuntimeError('could not find an opened port!')
+        self.__my_addr = (my_ip, my_port)
+
+        # now report our address to the scheduler
+        async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+            await client.say_hello(addr, self.__worker_type)
+        #
+        # and report to the pool
+        if self.__worker_id is not None:
+            async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                await client.report_state(WorkerState.IDLE)
+
         self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
+        self.__started = True
 
-    async def _stop(self):
+    async def stop(self):
+        if not self.__started:
+            return
         self.__server.close()
         self.__scheduler_pinger_stop_event.set()
         try:
@@ -129,12 +137,6 @@ class Worker:
             return
         async with SchedulerTaskClient(*self.__scheduler_addr) as client:
             await client.say_bye('%s:%d' % self.__my_addr)
-
-    def _set_working_server(self, server: asyncio.AbstractServer):  # TODO: i dont like this unclear way of creating worker. either hide constructor somehow, or use it
-        self.__server = server
-
-    def proto_server_factory(self):
-        return WorkerTaskServerProtocol(self)
 
     async def log_error(self, *args):
         await self.log('error', *args)
@@ -336,7 +338,7 @@ class Worker:
 
         # stop ourselves if we are a small task helper
         if self.__worker_type == WorkerType.SCHEDULER_HELPER:
-            await self._stop()
+            await self.stop()
 
     async def task_status(self) -> Optional[float]:
         return self.__running_task_progress
@@ -368,7 +370,7 @@ class Worker:
 
         # stop ourselves if we are a small task helper
         if self.__worker_type == WorkerType.SCHEDULER_HELPER:
-            await self._stop()
+            await self.stop()
 
     async def _cleanup_extra_files(self):
         """
@@ -494,7 +496,7 @@ def main(argv):
         paddr = args.pool_address.split(':')
         paddr = (paddr[0], int(paddr[1]))
     try:
-        asyncio.run(main_async(wtype, worker_id=args.id, pool_address=paddr))
+        asyncio.run(main_async(wtype, worker_id=int(args.id), pool_address=paddr))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
