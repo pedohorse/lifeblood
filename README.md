@@ -1,3 +1,5 @@
+![tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg)
+
 ## Task Flow
 is a task/job management package  
 in terms of CG industry it's a mini render farm manager
