@@ -1,4 +1,4 @@
-![tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg)
+[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)
 
 ## Task Flow
 is a task/job management package  
