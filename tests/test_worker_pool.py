@@ -37,8 +37,9 @@ class WorkerPoolTests(TestCase):
         print('c')
         await asyncio.sleep(rnd.uniform(0, 2))
         workers = swp.list_workers()
-        await asyncio.sleep(rnd.uniform(10, 15))  # awaiting so that worker gets a broadcast from scheduler, which is now every 10s
         self.assertEqual(1, len(workers))
+        await asyncio.sleep(rnd.uniform(10, 15))  # awaiting so that worker gets a broadcast from scheduler, which is now every 10s
+        workers = swp.list_workers()
         self.assertEqual(WorkerState.IDLE, workers[0].state)
         swp.stop()
         await swp.wait_till_stops()
