@@ -51,7 +51,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         # TODO: raise on dgram size too big
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
-        self.__logger.info('started broadcasting')
+        self.__logger.info(f'started broadcasting')
         self.__transport = transport
         sock = transport.get_extra_info("socket")  # type: socket.socket
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -63,7 +63,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
 
     async def broadcast(self):
         while True:
-            self.__logger.info(f'sending broadcast for {self.__identifier}')
+            self.__logger.info(f'sending broadcast for {self.__identifier} on {self.__target}')
             bitent = self.__identifier.encode('UTF-8')
             binfo = self.__information.encode('UTF-8')
             data: bytes = b''.join((_magic, struct.pack('>I', len(bitent)), struct.pack('>I', len(binfo)), bitent, binfo))
@@ -89,9 +89,9 @@ class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
         self.__closed_future = self.__loop.create_future()
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
-        self.__logger.info('started listening')
         self.__transport = transport
         sock = transport.get_extra_info("socket")  # type: socket.socket
+        self.__logger.info(f'started listening on {sock.getsockname()}')
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         #sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
         #sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
