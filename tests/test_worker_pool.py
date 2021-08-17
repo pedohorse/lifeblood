@@ -17,6 +17,7 @@ class WorkerPoolTests(TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db_path', 'test_empty.db'], close_fds=True)
+        time.sleep(5)  # this is very arbitrary, but i'm too lazy to
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -34,8 +35,9 @@ class WorkerPoolTests(TestCase):
         print('b')
         await swp.add_worker()
         print('c')
-        await asyncio.sleep(rnd.uniform(0, 12))
+        await asyncio.sleep(rnd.uniform(0, 2))
         workers = swp.list_workers()
+        await asyncio.sleep(rnd.uniform(10, 15))  # awaiting so that worker gets a broadcast from scheduler, which is now every 10s
         self.assertEqual(1, len(workers))
         self.assertEqual(WorkerState.IDLE, workers[0].state)
         swp.stop()
