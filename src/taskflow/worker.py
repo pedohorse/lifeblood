@@ -48,7 +48,7 @@ class Worker:
         self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
 
         if not os.path.exists(self.log_root_path):
-            os.makedirs(self.log_root_path)
+            os.makedirs(self.log_root_path, exist_ok=True)
         self.__status = {}
         self.__running_process: Optional[asyncio.subprocess.Process] = None
         self.__running_task: Optional[InvocationJob] = None
