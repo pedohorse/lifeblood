@@ -104,6 +104,7 @@ class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
         identlen, bodylen = struct.unpack('>II', data[:8])
         identifier = data[8:8+identlen].decode('UTF-8')
         message = data[8+identlen:8+identlen+bodylen].decode('UTF-8')
+        self.__logger.info(f'broadcast received from {identifier} at {addr}')
         self.__logger.debug(f'received: {identifier}, {message}')
         self.__transport.close()
         self.__closed_future.set_result(message)
