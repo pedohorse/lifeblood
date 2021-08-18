@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -5,12 +6,16 @@ from typing import Optional
 org = 'xxx'
 basename = 'taskflow'
 
+env_var_name = 'TASKFLOW_CONFIG_LOCATION'
+
 
 def config_path(config_name: str, subname: Optional[str] = None) -> Path:
     return config_unexpanded_path(config_name, subname).expanduser()
 
 
 def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> Path:
+    if env_var_name in os.environ:
+        return Path(os.environ[env_var_name])
     base = Path('~')
     if subname is None:
         subname = 'common'
