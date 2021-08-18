@@ -434,7 +434,7 @@ class Worker:
         await self.__finished.wait()
 
 
-async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None):
+async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None, noloop=False):
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -456,6 +456,8 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
             worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
             await worker.wait_to_finish()
             logger.info('worker quited')
+            if noloop:
+                break
     else:
         logger.info('boradcast listening disabled')
         while True:
@@ -470,7 +472,8 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
                 continue
             await worker.wait_to_finish()
             logger.info('worker quited')
-            break
+            if noloop:
+                break
 
 
 def main(argv):
@@ -485,6 +488,8 @@ def main(argv):
     parser = argparse.ArgumentParser('taskflow.worker', description='executes invocations from scheduler')
     parser.add_argument('--scheduler-address', help='manually specify scheduler to connect to. if not specified - by default worker will start listening to broadcasts from schedulers')
     parser.add_argument('--no-listen-broadcast', action='store_true', help='do not listen to scheduler\'s broadcast, use config')
+    parser.add_argument('--no-loop', action='store_true', help='by default worker will return into the loop of waiting for scheduler every time it quits because of connection loss, or other errors. '
+                                                               'but this flag will force worker to just completely quit instead')
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
     parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
@@ -510,7 +515,7 @@ def main(argv):
         config.set_override('worker.scheduler_ip', saddr[0])
         config.set_override('worker.scheduler_port', saddr[1])
     try:
-        asyncio.run(main_async(wtype, worker_id=int(args.id), pool_address=paddr))
+        asyncio.run(main_async(wtype, worker_id=int(args.id), pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
