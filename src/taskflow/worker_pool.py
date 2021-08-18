@@ -99,6 +99,7 @@ class WorkerPool:
         args = [sys.executable, '-m', 'taskflow.launch',
                 'worker',
                 '--type', self.__worker_type.name,
+                '--no-loop',
                 '--id', str(self.__next_wid),
                 '--pool-address', f'{self.__my_addr}:{self.__my_port}']
         if self.__scheduler_address is not None:
