@@ -1,0 +1,20 @@
+name: "Documentation"
+
+on:
+  push:
+    branches: [ dev, master ]
+  pull_request:
+    branches: [ dev, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+  
+    steps:
+    - name: Sphinx Pages
+      uses: seanzhengw/sphinx-pages@d29427677b3b89c1b5311d9eb135fb4168f4ba4a
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        create_readme: true
+        source_dir: docs
+        install_extensions: true

@@ -1,4 +1,6 @@
-[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)
+|master|dev|
+|---|---|
+|[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)|
 
 ## Task Flow
 is a task/job management package  
