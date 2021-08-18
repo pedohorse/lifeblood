@@ -13,8 +13,8 @@ from .enums import WorkerState, WorkerType
 from typing import Tuple, Dict, List, Optional
 
 
-async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
-    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure)
+async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, scheduler_address: Optional[Tuple[str, int]] = None):
+    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, scheduler_address=scheduler_address)
     await swp.start()
     return swp
 
@@ -29,7 +29,14 @@ class ProcData:
 
 
 class WorkerPool:
-    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0):
+    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, scheduler_address: Optional[Tuple[str, int]] = None):
+        """
+        manages a pool of workers.
+        :param worker_type: workers are created of given type
+        :param minimal_total_to_ensure:  at minimum this amount of workers will be always upheld
+        :param minimal_idle_to_ensure:  at minimum this amount of IDLE or OFF(as we assume they are OFF only while they are booting up) workers will be always upheld
+        :param scheduler_address:  force created workers to use this scheduler address. otherwise workers will use their configuration
+        """
         # local helper workers' pool
         self.__worker_pool: Dict[asyncio.Future, ProcData] = {}
         self.__workers_to_merge: List[ProcData] = []
@@ -42,6 +49,7 @@ class WorkerPool:
         self.__ensure_minimum_idle = minimal_idle_to_ensure
         self.__maximum_total = 256
         self.__worker_type = worker_type
+        self.__scheduler_address = scheduler_address
 
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
@@ -88,7 +96,17 @@ class WorkerPool:
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
-        self.__workers_to_merge.append(ProcData(await asyncio.create_subprocess_exec(sys.executable, '-m', 'taskflow.launch', 'worker', '--type', self.__worker_type.name, '--id', str(self.__next_wid), '--pool-address', f'{self.__my_addr}:{self.__my_port}', close_fds=True), self.__next_wid))
+        args = [sys.executable, '-m', 'taskflow.launch',
+                'worker',
+                '--type', self.__worker_type.name,
+                '--id', str(self.__next_wid),
+                '--pool-address', f'{self.__my_addr}:{self.__my_port}']
+        if self.__scheduler_address is not None:
+            args += ['--scheduler-address', ':'.join(str(x) for x in self.__scheduler_address)]
+
+        self.__workers_to_merge.append(ProcData(await asyncio.create_subprocess_exec(*args,
+                                                                                     close_fds=True
+                                                                                     ), self.__next_wid))
         self.__logger.debug(f'adding new worker (id: {self.__next_wid}) to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
         self.__next_wid += 1
         self.__poke_event.set()
