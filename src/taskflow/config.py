@@ -1,4 +1,5 @@
 import os
+import copy
 import toml
 import asyncio
 from threading import Lock
@@ -47,13 +48,23 @@ class Config:
         self.__overrides = {}
         self.set_overrides(overrides)
 
-    def set_overrides(self, overrides):
+    def set_overrides(self, overrides: dict) -> None:
+        """
+        sets overrides to a prepared dictionary of items.
+        :param overrides:
+        """
         if overrides is not None:
-            self.__overrides = overrides
+            self.__overrides = copy.deepcopy(overrides)
         else:
             self.__overrides = {}
 
     def set_override(self, option_name: str, val: Any) -> None:
+        """
+        set one item override
+        :param option_name: option path, like foo.bar.cat.dog
+        :param val: any serializable value
+        :return:
+        """
         names = option_name.split('.')
         clevel = self.__overrides
         for name in names[:-1]:
@@ -101,7 +112,7 @@ class Config:
                 else:
                     clevel[name] = value
             clevel = clevel[name]
-        self.write_config()
+        self.write_config_noasync()
 
     def set_option_noasync(self, option_name: str, value: Any) -> None:
         with self.__conf_lock:
@@ -110,12 +121,12 @@ class Config:
     async def set_option(self, option_name: str, value: Any) -> None:
         return await asyncio.get_event_loop().run_in_executor(None, self.set_option_noasync, option_name, value)
 
-    def write_config(self):
+    def write_config_noasync(self):
         with self.__write_file_lock:
             if not os.path.exists(self.__config_path):
                 os.makedirs(os.path.dirname(self.__config_path), exist_ok=True)
             with open(self.__config_path, 'w') as f:
                 toml.dump(self.__stuff, f)
 
-    async def write_config_async(self):
-        return await asyncio.get_event_loop().run_in_executor(None, self.write_config)
+    async def write_config(self):
+        return await asyncio.get_event_loop().run_in_executor(None, self.write_config_noasync)
