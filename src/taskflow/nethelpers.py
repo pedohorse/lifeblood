@@ -117,5 +117,7 @@ def recv_exactly(sock: socket.socket, numbytes) -> bytes:
 
 
 def address_to_ip_port(addr_str: str) -> (str, int):
+    if addr_str.count(':') != 1:
+        raise ValueError('bad address format')
     addr, sport = addr_str.split(':')
     return addr, int(sport)
