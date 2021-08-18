@@ -76,7 +76,7 @@ class Scheduler:
             self.__broadcasting_server = None
             self.__broadcasting_server_coro = None
 
-        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=1)
+        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=1, scheduler_address=(server_ip, server_port))
 
         self.__ping_interval = 1
         self.__processing_interval = 2
