@@ -8,12 +8,12 @@ on:
 
 jobs:
   build:
-  runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
   
-  steps:
-  - name: Sphinx Pages
-    uses: seanzhengw/sphinx-pages@v1
-    with:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
-      create_readme: true
-      source_dir: src
+    steps:
+    - name: Sphinx Pages
+      uses: seanzhengw/sphinx-pages@v1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        create_readme: true
+        source_dir: src
