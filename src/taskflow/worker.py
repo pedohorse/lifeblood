@@ -10,7 +10,7 @@ import psutil
 import datetime
 import tempfile
 from . import logging
-from .nethelpers import get_addr_to, get_default_addr, get_localhost
+from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
@@ -90,6 +90,7 @@ class Worker:
         self.__rt_module_dir = os.path.dirname(filepath)
 
         self.__started = False
+        self.__finished = asyncio.Event()
 
     async def start(self):
         if self.__started:
@@ -135,8 +136,10 @@ class Worker:
         await self.cancel_task()
         if self.__my_addr is None:
             return
+        await self.__server.wait_closed()
         async with SchedulerTaskClient(*self.__scheduler_addr) as client:
             await client.say_bye('%s:%d' % self.__my_addr)
+        self.__finished.set()
 
     async def log_error(self, *args):
         await self.log('error', *args)
@@ -420,14 +423,15 @@ class Worker:
                 return
 
     async def wait_to_finish(self):
-        if self.__scheduler_pinger is not None:
-            #try:
-            await self.__scheduler_pinger
-            #except asyncio.CancelledError:
-            #    self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
-            #    #raise
-            self.__scheduler_pinger = None
-        await self.__server.wait_closed()
+        # if self.__scheduler_pinger is not None:
+        #     #try:
+        #     await self.__scheduler_pinger
+        #     #except asyncio.CancelledError:
+        #     #    self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
+        #     #    #raise
+        #     self.__scheduler_pinger = None
+        # await self.__server.wait_closed()
+        await self.__finished.wait()
 
 
 async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None):
@@ -453,9 +457,11 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
             await worker.wait_to_finish()
             logger.info('worker quited')
     else:
+        logger.info('boradcast listening disabled')
         while True:
             ip = await config.get_option('worker.scheduler_ip', get_default_addr())
             port = await config.get_option('worker.scheduler_port', 7979)
+            logger.debug(f'using {ip}:{port}')
             try:
                 worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
             except ConnectionRefusedError as e:
@@ -464,6 +470,7 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
                 continue
             await worker.wait_to_finish()
             logger.info('worker quited')
+            break
 
 
 def main(argv):
@@ -476,6 +483,8 @@ def main(argv):
     # prev = signal.signal(signal.SIGINT, signal_handler)
     import argparse
     parser = argparse.ArgumentParser('taskflow.worker', description='executes invocations from scheduler')
+    parser.add_argument('--scheduler-address', help='manually specify scheduler to connect to. if not specified - by default worker will start listening to broadcasts from schedulers')
+    parser.add_argument('--no-listen-broadcast', action='store_true', help='do not listen to scheduler\'s broadcast, use config')
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
     parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
@@ -491,10 +500,15 @@ def main(argv):
     # check legality of the address
     paddr = None
     if args.pool_address is not None:
-        if args.pool_address.count(':') != 1:
-            raise ValueError('bad address format in --pool-address')
-        paddr = args.pool_address.split(':')
-        paddr = (paddr[0], int(paddr[1]))
+        paddr = address_to_ip_port(args.pool_address)
+    config = get_config('worker')
+    if args.no_listen_broadcast:
+        config.set_override('worker.listen_to_broadcast', False)
+    if args.scheduler_address is not None:
+        config.set_override('worker.listen_to_broadcast', False)
+        saddr = address_to_ip_port(args.scheduler_address)
+        config.set_override('worker.scheduler_ip', saddr[0])
+        config.set_override('worker.scheduler_port', saddr[1])
     try:
         asyncio.run(main_async(wtype, worker_id=int(args.id), pool_address=paddr))
     except KeyboardInterrupt:
