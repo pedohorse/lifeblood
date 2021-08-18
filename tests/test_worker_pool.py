@@ -10,13 +10,23 @@ import time
 from taskflow.logging import get_logger
 from taskflow.worker_pool import WorkerPool, create_worker_pool
 from taskflow.enums import WorkerType, WorkerState
+from taskflow.config import get_config
+from taskflow.nethelpers import get_default_addr
 from taskflow import launch
 
 
 class WorkerPoolTests(TestCase):
+    sched_addr = None
+    _scheduler_proc = None
+
+    # TODO: broadcasting is NOT tested here at all
     @classmethod
     def setUpClass(cls) -> None:
         cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db_path', 'test_empty.db'], close_fds=True)
+        config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
+        server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
+        server_port = config.get_option_noasync('core.server_port', 7979)
+        cls.sched_addr = (server_ip, server_port)
         time.sleep(5)  # this is very arbitrary, but i'm too lazy to
 
     @classmethod
@@ -31,7 +41,7 @@ class WorkerPoolTests(TestCase):
 
     async def _helper_test_basic(self, rnd):
         print('a')
-        swp = await create_worker_pool()
+        swp = await create_worker_pool(scheduler_address=WorkerPoolTests.sched_addr)
         print('b')
         await swp.add_worker()
         print('c')
@@ -53,7 +63,7 @@ class WorkerPoolTests(TestCase):
     async def _helper_test_min1(self, rnd):
         mint = 4
         mini = 1
-        swp = await create_worker_pool(minimal_total_to_ensure=mint, minimal_idle_to_ensure=mini)
+        swp = await create_worker_pool(minimal_total_to_ensure=mint, minimal_idle_to_ensure=mini, scheduler_address=WorkerPoolTests.sched_addr)
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
@@ -73,7 +83,7 @@ class WorkerPoolTests(TestCase):
 
     async def _helper_test_max1(self, rnd):
         maxt = 5
-        swp = await create_worker_pool()
+        swp = await create_worker_pool(scheduler_address=WorkerPoolTests.sched_addr)
         swp.set_maximum_workers(maxt)
         for i in range(maxt+5):
             await swp.add_worker()
@@ -89,7 +99,7 @@ class WorkerPoolTests(TestCase):
             asyncio.run(self._helper_test_max1(rnd))
 
     async def _helper_test_smth1(self, rnd):
-        swp = await create_worker_pool(minimal_idle_to_ensure=1)
+        swp = await create_worker_pool(minimal_idle_to_ensure=1, scheduler_address=WorkerPoolTests.sched_addr)
         await asyncio.sleep(2)
         swp.stop()
         await swp.wait_till_stops()
