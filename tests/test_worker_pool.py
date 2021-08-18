@@ -22,7 +22,7 @@ class WorkerPoolTests(TestCase):
     # TODO: broadcasting is NOT tested here at all
     @classmethod
     def setUpClass(cls) -> None:
-        cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db_path', 'test_empty.db'], close_fds=True)
+        cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)

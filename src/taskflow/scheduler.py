@@ -1390,7 +1390,7 @@ async def main_async(db_path=None):
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--db_path', help='path to sqlite database to use')
+    parser.add_argument('--db-path', help='path to sqlite database to use')
     opts = parser.parse_args(argv)
 
     config = get_config('scheduler')
