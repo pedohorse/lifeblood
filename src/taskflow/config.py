@@ -53,6 +53,15 @@ class Config:
         else:
             self.__overrides = {}
 
+    def set_override(self, option_name: str, val: Any) -> None:
+        names = option_name.split('.')
+        clevel = self.__overrides
+        for name in names[:-1]:
+            if name not in clevel:
+                clevel[name] = {}
+            clevel = clevel[name]
+        clevel[names[-1]] = val
+
     async def get_option(self, option_name: str, default_val: Any = None) -> Any:
         return await asyncio.get_event_loop().run_in_executor(None, self.get_option_noasync, option_name, default_val)
 
