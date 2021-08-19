@@ -57,11 +57,11 @@ class WorkerPool:
         self.__my_port = 7957
 
         self.__poke_event.set()
+        self.__stopped = False
 
     async def start(self):
         if self.__pool_task is not None and not self.__pool_task.done():
             return
-        self.__pool_task = asyncio.create_task(self.local_worker_pool_manager())
 
         for i in range(1024):  # big but finite
             try:
@@ -77,11 +77,14 @@ class WorkerPool:
 
         else:
             raise RuntimeError('could not find an opened port!')
+
+        self.__pool_task = asyncio.create_task(self.local_worker_pool_manager())
         self.__logger.debug(f'worker pool protocol listening on {self.__my_port}')
 
     def stop(self):
         self.__worker_server.close()
         self.__stop_event.set()
+        self.__stopped = True
 
     def __await__(self):
         return self.wait_till_stops().__await__()
@@ -93,6 +96,9 @@ class WorkerPool:
         await self.__worker_server.wait_closed()
 
     async def add_worker(self):
+        if self.__stopped:
+            self.__logger.warning('add_worker called after stop()')
+            return
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
@@ -143,6 +149,8 @@ class WorkerPool:
                     if x == stop_waiter:
                         time_to_stop = True
                         self.__logger.info('stopping worker pool...')
+                        if not poke_waiter.done():
+                            poke_waiter.cancel()
                         break
                     elif x == poke_waiter:
                         self.__poke_event.clear()
@@ -173,7 +181,7 @@ class WorkerPool:
                         await self.add_worker()
 
             # debug logging
-            self.__logger.debug(f'total workers: {len(self.__worker_pool)}, idle: {len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])}')
+            self.__logger.debug(f'at pool closing, before cleanup: total workers: {len(self.__worker_pool)}, idle: {len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])}')
             # more verbose debug:
             if True:
                 for wid, procdata in self.__id_to_procdata.items():
@@ -203,11 +211,13 @@ class WorkerPool:
                     continue
                 wait_tasks.append(_proc_waiter(procdata.process))
             await asyncio.gather(*wait_tasks)
+            await asyncio.gather(*self.__worker_pool.keys())  # since all processes are killed now - this SHOULD take no time at all
 
             self.__logger.info('worker pool stopped')
         # tidyup
         for fut in self.__worker_pool:
-            fut.cancel()
+            if not fut.done():
+                fut.cancel()
 
     #
     # callbacks
