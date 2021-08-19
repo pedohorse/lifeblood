@@ -1,11 +1,11 @@
 
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 import asyncio
 import random
 import signal
 import subprocess
 import time
-#import tracemalloc
+import tracemalloc
 
 from taskflow.logging import get_logger
 from taskflow.worker_pool import WorkerPool, create_worker_pool
@@ -15,25 +15,31 @@ from taskflow.nethelpers import get_default_addr
 from taskflow import launch
 
 
-class WorkerPoolTests(TestCase):
+class WorkerPoolTests(IsolatedAsyncioTestCase):
     sched_addr = None
     _scheduler_proc = None
 
     # TODO: broadcasting is NOT tested here at all
     @classmethod
     def setUpClass(cls) -> None:
+        print('settingup')
+        tracemalloc.start()
         cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)
         cls.sched_addr = (server_ip, server_port)
         time.sleep(5)  # this is very arbitrary, but i'm too lazy to
+        print('settingup done')
 
     @classmethod
     def tearDownClass(cls) -> None:
+        print('tearingdown')
         cls._scheduler_proc: subprocess.Popen
         cls._scheduler_proc.send_signal(signal.SIGINT)
         cls._scheduler_proc.wait()
+        tracemalloc.stop()
+        print('tearingdown done')
 
     def __init__(self, method='runTest'):
         super(WorkerPoolTests, self).__init__(method)
@@ -54,11 +60,11 @@ class WorkerPoolTests(TestCase):
         swp.stop()
         await swp.wait_till_stops()
 
-    def test_basic(self):
+    async def test_basic(self):
         rnd = random.Random(666)
         for _ in range(3):
-            asyncio.run(self._helper_test_basic(rnd))
-            time.sleep(1)
+            await self._helper_test_basic(rnd)
+            await asyncio.sleep(1)
 
     async def _helper_test_min1(self, rnd):
         mint = 4
@@ -76,10 +82,10 @@ class WorkerPoolTests(TestCase):
         swp.stop()
         await swp.wait_till_stops()
 
-    def test_min1(self):
+    async def test_min1(self):
         rnd = random.Random(666)
         for _ in range(3):
-            asyncio.run(self._helper_test_min1(rnd))
+            await self._helper_test_min1(rnd)
 
     async def _helper_test_max1(self, rnd):
         maxt = 5
@@ -93,10 +99,10 @@ class WorkerPoolTests(TestCase):
         swp.stop()
         await swp.wait_till_stops()
 
-    def test_max1(self):
+    async def test_max1(self):
         rnd = random.Random(666)
         for _ in range(3):
-            asyncio.run(self._helper_test_max1(rnd))
+            await self._helper_test_max1(rnd)
 
     async def _helper_test_smth1(self, rnd):
         swp = await create_worker_pool(minimal_idle_to_ensure=1, scheduler_address=WorkerPoolTests.sched_addr)
@@ -104,8 +110,8 @@ class WorkerPoolTests(TestCase):
         swp.stop()
         await swp.wait_till_stops()
 
-    def test_smth1(self):
+    async def test_smth1(self):
         rnd = random.Random(666)
         for _ in range(5):
-            asyncio.run(self._helper_test_smth1(rnd))
+            await self._helper_test_smth1(rnd)
 
