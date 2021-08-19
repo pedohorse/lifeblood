@@ -187,3 +187,6 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         except Exception as e:
             self.__logger.exception('unknown error. UI disconnected %s', e)
             raise
+        finally:
+            writer.close()
+            await writer.wait_closed()

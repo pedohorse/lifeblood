@@ -148,6 +148,9 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
         except EOFError:
             self.__logger.error('connection was abruptly closed')
             raise
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
 
 class WorkerTaskClient:

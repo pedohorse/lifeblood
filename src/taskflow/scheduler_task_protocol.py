@@ -109,6 +109,9 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         except Exception as e:
             self.__logger.exception('unknown error. disconnected %s', e)
             raise
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
 
 class SchedulerTaskClient:

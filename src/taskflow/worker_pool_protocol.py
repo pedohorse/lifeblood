@@ -49,7 +49,13 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
         except Exception as e:
             self.__logger.exception('unknown error. disconnected %s', e)
             raise
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
+    # def connection_lost(self, exc):
+    #     self.__
+    #     super(WorkerPoolProtocol, self).connection_lost(exc)
 
 class WorkerPoolClient:
     async def write_string(self, s: str):
