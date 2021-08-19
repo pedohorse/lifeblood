@@ -89,8 +89,9 @@ class Worker:
                 f.write(rtmodule_code)
         self.__rt_module_dir = os.path.dirname(filepath)
 
-        self.__started = False
+        self.__stopping_waiters = []
         self.__finished = asyncio.Event()
+        self.__started = False
 
     async def start(self):
         if self.__started:
@@ -124,22 +125,40 @@ class Worker:
         self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
         self.__started = True
 
-    async def stop(self):
+    def stop(self):
+        async def _send_byebye():
+            try:
+                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                    await client.say_bye('%s:%d' % self.__my_addr)
+            except ConnectionRefusedError:  # if scheduler is down
+                self.__logger.info('couldn\'t say bye to scheduler as it seem to be down')
+            except Exception:
+                self.__logger.exception('couldn\'t say bye to scheduler for unknown reason')
+
         if not self.__started:
             return
         self.__server.close()
         self.__scheduler_pinger_stop_event.set()
-        try:
-            await self.__scheduler_pinger
-        except asyncio.CancelledError:
-            pass
-        await self.cancel_task()
+        self.__stopping_waiters.append(asyncio.create_task(self.cancel_task()))
         if self.__my_addr is None:
             return
-        await self.__server.wait_closed()
-        async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-            await client.say_bye('%s:%d' % self.__my_addr)
+        self.__stopping_waiters.append(asyncio.create_task(_send_byebye()))
         self.__finished.set()
+
+    async def wait_till_stops(self):
+        # if self.__scheduler_pinger is not None:
+        #     #try:
+        #     await self.__scheduler_pinger
+        #     #except asyncio.CancelledError:
+        #     #    self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
+        #     #    #raise
+        #     self.__scheduler_pinger = None
+        # await self.__server.wait_closed()
+        await self.__finished.wait()
+        await self.__server.wait_closed()
+        await self.__scheduler_pinger
+        for waiter in self.__stopping_waiters:
+            await waiter
 
     async def log_error(self, *args):
         await self.log('error', *args)
@@ -341,7 +360,7 @@ class Worker:
 
         # stop ourselves if we are a small task helper
         if self.__worker_type == WorkerType.SCHEDULER_HELPER:
-            await self.stop()
+            self.stop()
 
     async def task_status(self) -> Optional[float]:
         return self.__running_task_progress
@@ -373,7 +392,7 @@ class Worker:
 
         # stop ourselves if we are a small task helper
         if self.__worker_type == WorkerType.SCHEDULER_HELPER:
-            await self.stop()
+            self.stop()
 
     async def _cleanup_extra_files(self):
         """
@@ -417,21 +436,8 @@ class Worker:
                 self.__logger.info(f'server ping missed. total misses: {self.__ping_missed}')
             if self.__ping_missed >= self.__ping_missed_threshold:
                 # assume scheruler down, drop everything and look for another scheruler
-                await self.cancel_task()
-                self.__server.close()
-                exit_wait.cancel()
+                self.stop()
                 return
-
-    async def wait_to_finish(self):
-        # if self.__scheduler_pinger is not None:
-        #     #try:
-        #     await self.__scheduler_pinger
-        #     #except asyncio.CancelledError:
-        #     #    self.__logger.debug('wait_to_finished: scheduler_pinger was cancelled')
-        #     #    #raise
-        #     self.__scheduler_pinger = None
-        # await self.__server.wait_closed()
-        await self.__finished.wait()
 
 
 async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None, noloop=False):
@@ -454,7 +460,7 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
             worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
-            await worker.wait_to_finish()
+            await worker.wait_till_stops()
             logger.info('worker quited')
             if noloop:
                 break
@@ -470,7 +476,7 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
                 continue
-            await worker.wait_to_finish()
+            await worker.wait_till_stops()
             logger.info('worker quited')
             if noloop:
                 break
@@ -515,7 +521,7 @@ def main(argv):
         config.set_override('worker.scheduler_ip', saddr[0])
         config.set_override('worker.scheduler_port', saddr[1])
     try:
-        asyncio.run(main_async(wtype, worker_id=int(args.id), pool_address=paddr, noloop=args.no_loop))
+        asyncio.run(main_async(wtype, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
