@@ -2,7 +2,7 @@ import re
 import json
 import shlex
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QSpinBox, QPushButton
-from PySide2.QtCore import Slot
+from PySide2.QtCore import Slot, QSize
 
 
 class CreateTaskDialog(QDialog):
@@ -43,6 +43,9 @@ class CreateTaskDialog(QDialog):
 
         self.__attrcount_spinbox.valueChanged.connect(self.attribute_count_changed)
 
+    def sizeHint(self) -> QSize:
+        return QSize(384, 128)
+
     @Slot(int)
     def attribute_count_changed(self, val):
         old_attr_count = self.__attrs_layout.count()
@@ -59,8 +62,8 @@ class CreateTaskDialog(QDialog):
                 name.setPlaceholderText('attribute name')
                 val = QLineEdit()
                 val.setPlaceholderText('json-style value')
-                attr_layout.addWidget(name)
-                attr_layout.addWidget(val)
+                attr_layout.addWidget(name, 1)
+                attr_layout.addWidget(val, 3)
                 self.__attrs_layout.addLayout(attr_layout)
 
     def get_task_name(self):
