@@ -76,7 +76,7 @@ class CreateTaskDialog(QDialog):
         grps_raw = self.__groups_edit.text().strip()
         return shlex.split(grps_raw)
 
-    def get_attributes(self):
+    def get_task_attributes(self):
         attrs = {}
         for i in range(self.__attrs_layout.count()):
             attr_layout = self.__attrs_layout.itemAt(i).layout()
@@ -105,7 +105,7 @@ def test():
     def _show_stuff():
         print(f'name: {wgt.get_task_name()}')
         print(f'groups: {wgt.get_task_groups()}')
-        print(f'attrs: {wgt.get_attributes()}')
+        print(f'attrs: {wgt.get_task_attributes()}')
 
     wgt.show()
     wgt.accepted.connect(_show_stuff)
