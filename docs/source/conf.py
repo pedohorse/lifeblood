@@ -18,9 +18,10 @@ sys.path.insert(0, os.path.abspath('../../src'))
 # -- Project information -----------------------------------------------------
 
 project = 'Taskflow'
-copyright = '2021, XAPKOHHEH'
+copyright = '10132 BC - 2021 AD, XAPKOHHEH'
 author = 'XAPKOHHEH'
-
+version = '1.0.0'
+release = version
 
 # -- General configuration ---------------------------------------------------
 
