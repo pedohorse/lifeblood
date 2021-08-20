@@ -3,9 +3,10 @@ import pickle
 import asyncio
 from . import logging
 from .uidata import NodeUi
-from .enums import NodeParameterType, TaskState
+from .enums import NodeParameterType, TaskState, SpawnStatus
 from . import pluginloader
 from .net_classes import NodeTypeMetadata
+from .taskspawn import NewTask
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -170,6 +171,12 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
                     await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
+                # create new task
+                elif command == b'addtask':
+                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
+                    ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
+                    writer.write(struct.pack('>I', ret.value))
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
