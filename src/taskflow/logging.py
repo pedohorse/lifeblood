@@ -24,14 +24,14 @@ def get_logger(name):
     logger = logging.getLogger(name)
     __logger_cache[name] = logger
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s'))
+    handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s] %(message)s'))
     handler.setStream(sys.stdout)
     handler.setLevel(logging.NOTSET)
     handler.addFilter(UnimportantOnlyFilter())
     logger.addHandler(handler)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s][%(funcName)s] %(message)s'))
+    handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
     handler.setLevel(logging.WARNING)
     handler.setStream(sys.stderr)
     logger.addHandler(handler)
