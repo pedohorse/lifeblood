@@ -6,16 +6,11 @@ from enum import Enum
 from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
-from .enums import WorkerType
+from .enums import WorkerType, SpawnStatus
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .scheduler import Scheduler
-
-
-class SpawnStatus(Enum):
-    SUCCEEDED = 0
-    FAILED = 1
 
 
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):

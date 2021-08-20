@@ -47,3 +47,8 @@ class InvocationState(Enum):
     IN_PROGRESS = 0
     FINISHED = 1
     INVOKING = 2
+
+
+class SpawnStatus(Enum):
+    SUCCEEDED = 0
+    FAILED = 1
