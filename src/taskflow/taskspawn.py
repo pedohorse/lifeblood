@@ -6,7 +6,7 @@ import pickle
 import asyncio
 from io import BytesIO
 
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Iterable
 
 
 class Unpickler(pickle.Unpickler):
@@ -52,6 +52,9 @@ class TaskSpawn:
 
     def add_extra_group_name(self, group_name: str) -> None:
         self.__extra_groups.append(group_name)
+
+    def add_extra_group_names(self, group_names: Iterable[str]) -> None:
+        self.__extra_groups += group_names
 
     def extra_group_names(self) -> List[str]:
         return self.__extra_groups
