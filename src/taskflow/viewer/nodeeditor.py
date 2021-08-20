@@ -10,11 +10,13 @@ from math import sqrt
 from ..uidata import UiData, NodeUi, Parameter, ParametersLayoutBase, OneLineParametersLayout, VerticalParametersLayout
 from ..enums import TaskState, InvocationState
 from ..broadcasting import await_broadcast
-from ..nethelpers import recv_exactly, get_default_addr
+from ..nethelpers import recv_exactly, get_default_addr, address_to_ip_port
 from ..config import get_config
 from .. import logging
 from .. import paths
 from ..net_classes import NodeTypeMetadata
+from ..scheduler_task_protocol import SchedulerTaskClient
+from ..taskspawn import NewTask
 from ..node_visualization_classes import NodeColorScheme
 
 from ..enums import NodeParameterType
@@ -30,6 +32,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent, QSurfac
 from .dialogs import MessageWithSelectableText
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
+from .create_task_dialog import CreateTaskDialog
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -1527,7 +1530,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
     _signal_set_task_node_requested = Signal(int, int)
-    _signal_cancel_task = Signal(int)
+    _signal_cancel_task_requested = Signal(int)
+    _signal_add_task_requested = Signal(NewTask)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -1573,7 +1577,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
-        self._signal_cancel_task.connect(self.__ui_connection_worker.cancel_task)
+        self._signal_cancel_task_requested.connect(self.__ui_connection_worker.cancel_task)
+        self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -1625,10 +1630,13 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_tasks_paused.emit(task_ids_or_group, paused)
 
     def request_task_cancel(self, task_id: int):
-        self._signal_cancel_task.emit(task_id)
+        self._signal_cancel_task_requested.emit(task_id)
 
     def request_set_task_node(self, task_id: int, node_id:int):
         self._signal_set_task_node_requested.emit(task_id, node_id)
+
+    def request_add_task(self, new_task: NewTask):
+        self._signal_add_task_requested.emit(new_task)
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -1943,8 +1951,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 return False
             logger.debug('received broadcast: %s', message)
             schedata = json.loads(message)
-            sche_addr, sche_port = schedata['ui'].split(':')
-            sche_port = int(sche_port)
+
+            sche_addr, sche_port = address_to_ip_port(schedata['ui'])  #schedata['ui'].split(':')
+            #sche_port = int(sche_port)
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
             sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
@@ -2319,6 +2328,21 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except:
             logger.exception('problems in network operations')
 
+    @Slot()
+    def add_task(self, new_task: NewTask):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        data = new_task.serialize()
+        try:
+            self.__conn.sendall(b'addtask\n')
+            self.__conn.sendall(struct.pack('>Q', len(data)))
+            self.__conn.sendall(data)
+            _ = recv_exactly(self.__conn, 4)  # reply that we don't care about for now
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except:
+            logger.exception('problem in network operations')
 
 
 class NodeEditor(QGraphicsView):
@@ -2408,7 +2432,11 @@ class NodeEditor(QGraphicsView):
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
+        menu.addSeparator()
 
+        menu.addAction('create new task').triggered.connect(lambda checked=False, x=node: self._popup_create_task(x))
+
+        menu.addSeparator()
         del_submenu = menu.addMenu('extra')
 
         def _action(checked=False, nid=node.get_id()):
@@ -2439,6 +2467,20 @@ class NodeEditor(QGraphicsView):
         wgt.setText(node.node_name())
         wgt.show()
         wgt.setFocus()
+
+    def _popup_create_task_callback(self, node_id: int, wgt: CreateTaskDialog):
+        print(wgt.get_task_name())
+        print(wgt.get_task_groups())
+        print(wgt.get_task_attributes())
+        new_task = NewTask(wgt.get_task_name(), node_id, **wgt.get_task_attributes())
+        new_task.add_extra_group_names(wgt.get_task_groups())
+        self.__scene.request_add_task(new_task)
+
+    def _popup_create_task(self, node: Node):
+        wgt = CreateTaskDialog(self)
+        wgt.accepted.connect(lambda i=node.get_id(), w=wgt: self._popup_create_task_callback(i, w))
+        wgt.finished.connect(wgt.deleteLater)
+        wgt.show()
 
     @Slot()
     def __unblock_imgui_input(self):
