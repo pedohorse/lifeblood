@@ -76,7 +76,6 @@ class CreateTaskDialog(QDialog):
         grps_raw = self.__groups_edit.text().strip()
         return shlex.split(grps_raw)
 
-
     def get_attributes(self):
         attrs = {}
         for i in range(self.__attrs_layout.count()):
