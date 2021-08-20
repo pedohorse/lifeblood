@@ -1,5 +1,6 @@
 import re
 import json
+import shlex
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QSpinBox, QPushButton
 from PySide2.QtCore import Slot
 
@@ -13,6 +14,10 @@ class CreateTaskDialog(QDialog):
         self.__name_edit = QLineEdit()
         self.__name_edit.setPlaceholderText('task name')
         self.__main_layout.addWidget(self.__name_edit)
+
+        self.__groups_edit = QLineEdit()
+        self.__groups_edit.setPlaceholderText('space separated task group list')
+        self.__main_layout.addWidget(self.__groups_edit)
 
         attrcnt_layout = QHBoxLayout()
         attrcnt_layout.addWidget(QLabel('attribute count'))
@@ -59,7 +64,15 @@ class CreateTaskDialog(QDialog):
                 self.__attrs_layout.addLayout(attr_layout)
 
     def get_task_name(self):
-        return self.__name_edit.text()
+        name = self.__name_edit.text().strip()
+        if name == '':
+            name = 'untitled'
+        return name
+
+    def get_task_groups(self):
+        grps_raw = self.__groups_edit.text().strip()
+        return shlex.split(grps_raw)
+
 
     def get_attributes(self):
         attrs = {}
@@ -89,6 +102,7 @@ def test():
 
     def _show_stuff():
         print(f'name: {wgt.get_task_name()}')
+        print(f'groups: {wgt.get_task_groups()}')
         print(f'attrs: {wgt.get_attributes()}')
 
     wgt.show()
