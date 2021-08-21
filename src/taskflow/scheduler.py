@@ -1374,6 +1374,22 @@ class Scheduler:
         return {node_id: logs}
 
 
+default_config = '''
+[core]
+## you can uncomment stuff below to specify some static values
+## 
+# server_ip = "192.168.0.2"
+# server_port = 7979
+# ui_ip = "192.168.0.2"
+# ui_port = 7989
+
+[scheduler]
+## you may specify here some db to load
+## ore use --db-path cmd argument to override whatever is in the config
+# db_path = "~/some_special_place/main.db"
+'''
+
+
 async def main_async(db_path=None):
     if db_path is None:
         config = get_config('scheduler')
@@ -1392,6 +1408,12 @@ def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('--db-path', help='path to sqlite database to use')
     opts = parser.parse_args(argv)
+
+    # check and create default config if none
+    user_conf_path = paths.config_path('config.toml', 'scheduler')
+    if not os.path.exists(user_conf_path):
+        with open(user_conf_path, 'w') as f:
+            f.write(default_config)
 
     config = get_config('scheduler')
     db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
