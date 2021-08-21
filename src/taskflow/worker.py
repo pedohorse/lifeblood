@@ -17,6 +17,7 @@ from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config
+from . import paths
 from .environment_wrapper import TrivialEnvironmentWrapper
 from .enums import WorkerType, WorkerState
 
@@ -482,6 +483,12 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
                 break
 
 
+default_config = '''
+[worker]
+listen_to_broadcast = true
+'''
+
+
 def main(argv):
     # import signal
     # prev = None
@@ -507,6 +514,12 @@ def main(argv):
     else:
         raise NotImplementedError(f'worker type {args.type} is not yet implemented')
     global_logger = logging.get_logger('worker')
+
+    # check and create default config if none
+    user_conf_path = paths.config_path('config.toml', 'worker')
+    if not os.path.exists(user_conf_path):
+        with open(user_conf_path, 'w') as f:
+            f.write(default_config)
 
     # check legality of the address
     paddr = None
