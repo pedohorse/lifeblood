@@ -5,7 +5,9 @@ import asyncio
 from threading import Lock
 from . import paths
 
-from typing import Any
+from typing import Any, List, Tuple, TYPE_CHECKING
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 _conf_cache = {}
@@ -35,11 +37,14 @@ class Config:
 
     def __init__(self, subname: str, overrides=None):
         config_path = paths.config_path('config.toml', subname)
-        self.__config_path = config_path
+        self.__writable_config_path = config_path
         self.__conf_lock = Lock()
         self.__write_file_lock = Lock()
 
+        self.__sources: List["Path"] = []
+
         if os.path.exists(config_path):
+            self.__sources.append(config_path)
             with open(config_path, 'r') as f:
                 self.__stuff = toml.load(f)
         else:
@@ -47,6 +52,26 @@ class Config:
 
         self.__overrides = {}
         self.set_overrides(overrides)
+
+    def reload(self, keep_overrides=True) -> None:
+        self.__stuff = {}
+        if not keep_overrides:
+            self.__overrides = {}
+
+        if self.__writable_config_path not in self.__sources and self.__writable_config_path.exists():
+            self.__sources.append(self.__writable_config_path)
+
+        for source in self.__sources:
+            with open(source, 'r') as f:
+                self.__stuff.update(toml.load(f))
+
+    def loaded_files(self) -> Tuple["Path"]:
+        """
+        list files from which this config was sourced
+
+        :return: tuple of file paths
+        """
+        return tuple(self.__sources)
 
     def set_overrides(self, overrides: dict) -> None:
         """
@@ -123,9 +148,9 @@ class Config:
 
     def write_config_noasync(self):
         with self.__write_file_lock:
-            if not os.path.exists(self.__config_path):
-                os.makedirs(os.path.dirname(self.__config_path), exist_ok=True)
-            with open(self.__config_path, 'w') as f:
+            if not os.path.exists(self.__writable_config_path):
+                os.makedirs(os.path.dirname(self.__writable_config_path), exist_ok=True)
+            with open(self.__writable_config_path, 'w') as f:
                 toml.dump(self.__stuff, f)
 
     async def write_config(self):
