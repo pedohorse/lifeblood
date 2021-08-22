@@ -28,15 +28,15 @@ import inspect
 from typing import Optional, Dict, Tuple
 
 
-async def create_worker(scheduler_ip: str, scheduler_port: int, *, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
-    worker = Worker(scheduler_ip, scheduler_port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
+async def create_worker(scheduler_ip: str, scheduler_port: int, *, worker_type: WorkerType = WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
+    worker = Worker(scheduler_ip, scheduler_port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
 
     await worker.start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_port: int, worker_type: WorkerType = WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
+    def __init__(self, scheduler_addr: str, scheduler_port: int, worker_type: WorkerType = WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
         """
 
         :param scheduler_addr:
@@ -71,7 +71,8 @@ class Worker:
         else:
             self.__pool_address: Tuple[str, int] = pool_address
 
-        self.__worker_type = worker_type
+        self.__worker_type: WorkerType = worker_type
+        self.__singleshot: bool = singleshot or worker_type == WorkerType.SCHEDULER_HELPER
 
         self.__env_writer = TrivialEnvironmentWrapper()
 
@@ -360,7 +361,7 @@ class Worker:
         await asyncio.wait((cancelling_awaiter,))  # ensure everything is done before we proceed
 
         # stop ourselves if we are a small task helper
-        if self.__worker_type == WorkerType.SCHEDULER_HELPER:
+        if self.__singleshot:
             self.stop()
 
     async def task_status(self) -> Optional[float]:
@@ -392,7 +393,7 @@ class Worker:
         await self._cleanup_extra_files()
 
         # stop ourselves if we are a small task helper
-        if self.__worker_type == WorkerType.SCHEDULER_HELPER:
+        if self.__singleshot:
             self.stop()
 
     async def _cleanup_extra_files(self):
@@ -441,7 +442,7 @@ class Worker:
                 return
 
 
-async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] = None, pool_address=None, noloop=False):
+async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address=None, noloop=False):
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -460,7 +461,7 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
             addr = scheduler_info['worker']
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
-            worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
+            worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             await worker.wait_till_stops()
             logger.info('worker quited')
             if noloop:
@@ -472,7 +473,7 @@ async def main_async(worker_type=WorkerType.STANDARD, worker_id: Optional[int] =
             port = await config.get_option('worker.scheduler_port', 7979)
             logger.debug(f'using {ip}:{port}')
             try:
-                worker = await create_worker(ip, port, worker_type=worker_type, worker_id=worker_id, pool_address=pool_address)
+                worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
@@ -503,6 +504,8 @@ def main(argv):
     parser.add_argument('--no-listen-broadcast', action='store_true', help='do not listen to scheduler\'s broadcast, use config')
     parser.add_argument('--no-loop', action='store_true', help='by default worker will return into the loop of waiting for scheduler every time it quits because of connection loss, or other errors. '
                                                                'but this flag will force worker to just completely quit instead')
+    parser.add_argument('--singleshot', action='store_true', help='worker will pick one job and exit after that job is completed or cancelled. '
+                                                                  'this is on by default when type=SCHEDULER_HELPER')
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
     parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
@@ -531,7 +534,7 @@ def main(argv):
         config.set_override('worker.scheduler_ip', saddr[0])
         config.set_override('worker.scheduler_port', saddr[1])
     try:
-        asyncio.run(main_async(wtype, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
+        asyncio.run(main_async(wtype, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
