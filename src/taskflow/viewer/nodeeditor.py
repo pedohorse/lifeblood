@@ -1518,6 +1518,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_log_meta_has_been_requested = Signal(int)
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int)
+    _signal_task_invocation_job_requested = Signal(int)
     _signal_node_parameter_change_requested = Signal(int, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
@@ -1536,6 +1537,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
+    task_invocation_job_fetched = Signal(int, InvocationJob)
 
     def __init__(self, db_path: str = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -1558,6 +1560,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
         self.__ui_connection_worker.task_attribs_fetched.connect(self.task_attribs_fetched)
+        self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
         self.__ui_connection_worker.node_created.connect(self._node_created)
 
@@ -1580,6 +1583,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_cancel_task_requested.connect(self.__ui_connection_worker.cancel_task)
         self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
+        self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
         # self.__ui_connection_thread.full_update.connect(self.full_update)
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -1774,6 +1778,10 @@ class QGraphicsImguiScene(QGraphicsScene):
             logger.warning('attribs fetched, but task not found!')
             return
         task.update_attributes(attribs)
+
+    @Slot(object, object)
+    def _task_invocation_job_fetched(self, task_id: int, invjob: InvocationJob):
+        self.task_invocation_job_fetched.emit(task_id, invjob)
 
     @Slot(int)
     def _node_created(self, node_id, node_type, node_name, pos):
