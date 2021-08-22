@@ -5,7 +5,7 @@ import asyncio
 from threading import Lock
 from . import paths
 
-from typing import Any, List, Tuple, TYPE_CHECKING
+from typing import Any, List, Tuple, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -23,12 +23,40 @@ def get_config(subname: str) -> "Config":
 
 
 def set_config_overrides(subname: str, overrides=None):
+    """
+    convenient method to set config's overrides without actually creating config object explicitly
+
+    :param subname:
+    :param overrides:
+    :return:
+    """
     global _glock, _conf_cache
     with _glock:
         if subname not in _conf_cache:
             _conf_cache[subname] = Config(subname, overrides)
         else:
             _conf_cache[subname].set_overrides(overrides)
+
+
+def create_default_user_config_file(subname: str, default_config: Union[str, dict], force: bool = False):
+    """
+    create user configuration file
+    useful for initialization, but can be forced to overwrite
+
+    :param subname:
+    :param default_config:
+    :param force: if true - user config will be overriden even if it exists
+    :return:
+    """
+    user_conf_path = paths.config_path('config.toml', subname)
+    if os.path.exists(user_conf_path) and not force:
+        return
+    os.makedirs(os.path.dirname(user_conf_path), exist_ok=True)
+    with open(user_conf_path, 'w') as f:
+        if isinstance(default_config, str):
+            f.write(default_config)
+        else:
+            toml.dump(default_config, f)
 
 
 class Config:
@@ -120,8 +148,7 @@ class Config:
             clevel = self.__stuff
             for name in names:
                 if name not in clevel:
-                    self._set_option_noasync_nolock(option_name, default_val)
-                    assert name in clevel
+                    return default_val
                 clevel = clevel[name]
 
             return clevel
