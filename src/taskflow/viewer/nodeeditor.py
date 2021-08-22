@@ -141,6 +141,9 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_attributes(self, task_id: int):
         self._signal_task_ui_attributes_has_been_requested.emit(task_id)
 
+    def request_invocation_job(self, task_id: int):
+        self._signal_task_invocation_job_requested.emit(task_id)
+
     def request_node_ui(self, node_id: int):
         self._signal_node_ui_has_been_requested.emit(node_id)
 
@@ -633,7 +636,10 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'gettaskinvoc\n')
             self.__conn.sendall(struct.pack('>Q', task_id))
             rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
-            invoc = InvocationJob.deserialize(recv_exactly(self.__conn, rcvsize))
+            if rcvsize == 0:
+                invoc = InvocationJob([])
+            else:
+                invoc = InvocationJob.deserialize(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -952,6 +958,7 @@ class NodeEditor(QGraphicsView):
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
 
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
+        self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
 
         self.__scene.request_node_types_update()
 
@@ -971,6 +978,8 @@ class NodeEditor(QGraphicsView):
         else:
             menu.addAction('state message').triggered.connect(lambda _=False, x=task: self.show_task_details(x))
         menu.addAction('-paused-' if task.paused() else 'active').setEnabled(False)
+
+        menu.addAction('show invocation info').triggered.connect(lambda ckeched=False, x=task.get_id(): self.__scene.request_invocation_job(x))
 
         menu.addSeparator()
 
@@ -1055,6 +1064,28 @@ class NodeEditor(QGraphicsView):
         wgt.accepted.connect(lambda i=node.get_id(), w=wgt: self._popup_create_task_callback(i, w))
         wgt.finished.connect(wgt.deleteLater)
         wgt.show()
+
+    @Slot(object, object)
+    def _popup_show_invocation_info(self, task_id: int, invjob: InvocationJob):
+        popup = QDialog(parent=self)
+        layout = QVBoxLayout(popup)
+        edit = QTextEdit()
+        edit.setReadOnly(True)
+        layout.addWidget(edit)
+        #popup = QMessageBox(QMessageBox.Information, f'invocation job information for task #{task_id}', 'see details', parent=self)
+        popup.finished.connect(popup.deleteLater)
+        popup.setModal(False)
+        popup.setSizeGripEnabled(True)
+        popup.setWindowTitle(f'invocation job information for task #{task_id}')
+
+        env = 'Extra environment:\n' + '\n'.join(f'\t{k}={v}' for k, v in invjob.env().resolve().items()) if invjob.env() is not None else 'none'
+        argv = f'Command line:\n\t{repr(invjob.args())}'
+        extra_files = 'Extra Files:\n' + '\n'.join(f'\t{name}: {len(data):,d}B' for name, data in invjob.extra_files().items())
+
+        #popup.setDetailedText('\n\n'.join((argv, env, extra_files)))
+        edit.setPlainText('\n\n'.join((argv, env, extra_files)))
+
+        popup.show()
 
     @Slot()
     def __unblock_imgui_input(self):
