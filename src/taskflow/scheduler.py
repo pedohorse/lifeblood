@@ -129,6 +129,19 @@ class Scheduler:
                 raise RuntimeError('task with specified id was not found')
             return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes'])
 
+    async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
+        async with aiosqlite.connect(self.db_path) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT work_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+                res = await cur.fetchone()
+            return res
+
+    async def get_task_invocation(self, task_id: int):
+        data = await self.get_task_invocation_serialized(task_id)
+        if data is None:
+            return None
+        return await InvocationJob.deserialize_async(data)
+
     async def run(self):
         # prepare
         async with aiosqlite.connect(self.db_path) as con:
