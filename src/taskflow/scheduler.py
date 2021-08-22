@@ -134,7 +134,9 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT work_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 res = await cur.fetchone()
-            return res
+            if res is None:
+                raise RuntimeError('task with specified id was not found')
+            return res[0]
 
     async def get_task_invocation(self, task_id: int):
         data = await self.get_task_invocation_serialized(task_id)
