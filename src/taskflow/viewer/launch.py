@@ -9,12 +9,23 @@ from .taskflow_viewer import TaskflowViewer
 from .db_misc import sql_init_script
 
 from .. import paths
+from ..config import create_default_user_config_file
 
 from . import breeze_resources
 
 
+default_config = '''
+[viewer]
+listen_to_broadcast = true
+
+[imgui]
+# ini_file = "path/to/some/special/imgui.ini"
+'''
+
+
 def main(argv):  # TODO: parse cmdline (argv)
     # config_path = os.path.join(os.getcwd(), 'node_viewer.db')
+    create_default_user_config_file('viewer', default_config)
     start_viewer()  # config_path=config_path)
 
 

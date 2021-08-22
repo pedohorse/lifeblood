@@ -26,7 +26,7 @@ from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType
-from .config import get_config
+from .config import get_config, create_default_user_config_file
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -1410,10 +1410,7 @@ def main(argv):
     opts = parser.parse_args(argv)
 
     # check and create default config if none
-    user_conf_path = paths.config_path('config.toml', 'scheduler')
-    if not os.path.exists(user_conf_path):
-        with open(user_conf_path, 'w') as f:
-            f.write(default_config)
+    create_default_user_config_file('scheduler', default_config)
 
     config = get_config('scheduler')
     db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))

@@ -16,7 +16,7 @@ from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
-from .config import get_config
+from .config import get_config, create_default_user_config_file
 from . import paths
 from .environment_wrapper import TrivialEnvironmentWrapper
 from .enums import WorkerType, WorkerState
@@ -516,10 +516,7 @@ def main(argv):
     global_logger = logging.get_logger('worker')
 
     # check and create default config if none
-    user_conf_path = paths.config_path('config.toml', 'worker')
-    if not os.path.exists(user_conf_path):
-        with open(user_conf_path, 'w') as f:
-            f.write(default_config)
+    create_default_user_config_file('worker', default_config)
 
     # check legality of the address
     paddr = None
