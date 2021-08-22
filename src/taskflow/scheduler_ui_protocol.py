@@ -83,6 +83,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
                     writer.write(struct.pack('>Q', len(data)))
                     writer.write(data)
+                elif command == b'gettaskinvoc':
+                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    data = await self.__scheduler.get_task_invocation_serialized(task_id)
+                    writer.write(struct.pack('>Q', len(data)))
+                    writer.write(data)
                 #
                 # node related commands
                 elif command == b'listnodetypes':
