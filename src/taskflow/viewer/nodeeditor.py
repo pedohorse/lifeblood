@@ -1559,7 +1559,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.full_update.connect(self.full_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
-        self.__ui_connection_worker.task_attribs_fetched.connect(self.task_attribs_fetched)
+        self.__ui_connection_worker.task_attribs_fetched.connect(self._task_attribs_fetched)
         self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
         self.__ui_connection_worker.node_created.connect(self._node_created)
@@ -1772,7 +1772,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         node.update_nodeui(nodeui)
 
     @Slot(object, object)
-    def task_attribs_fetched(self, task_id: int, attribs: dict):
+    def _task_attribs_fetched(self, task_id: int, attribs: dict):
         task = self.get_task(task_id)
         if task is None:
             logger.warning('attribs fetched, but task not found!')
