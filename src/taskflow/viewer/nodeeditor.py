@@ -17,6 +17,7 @@ from .. import paths
 from ..net_classes import NodeTypeMetadata
 from ..scheduler_task_protocol import SchedulerTaskClient
 from ..taskspawn import NewTask
+from ..invocationjob import InvocationJob
 from ..node_visualization_classes import NodeColorScheme
 
 from ..enums import NodeParameterType
@@ -1881,6 +1882,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, dict)
+    task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
     node_created = Signal(int, str, str, QPointF)
 
@@ -2066,6 +2068,24 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
         else:
             self.task_attribs_fetched.emit(task_id, attribs)
+
+    @Slot(int)
+    def get_task_invocation_job(self, task_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        try:
+            self.__conn.sendall(b'gettaskinvoc\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+            rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            invoc = InvocationJob.deserialize(recv_exactly(self.__conn, rcvsize))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except:
+            logger.exception('problems in network operations')
+        else:
+            self.task_invocation_job_fetched.emit(task_id, invoc)
 
     @Slot(int, int, int)
     def get_log(self, task_id: int, node_id: int, invocation_id: int):
