@@ -213,8 +213,8 @@ class Worker:
 
         if task.environment_wrapper_arguments() is None:
             config = get_config('worker')
-            env = environment_wrapper.get_wrapper(config.get_option_noasync('default_env_wrapper/name', 'TrivialEnvironmentWrapper'))\
-                .get_environment(config.get_option_noasync('default_env_wrapper/arguments', []))
+            env = environment_wrapper.get_wrapper(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentWrapper'))\
+                .get_environment(config.get_option_noasync('default_env_wrapper.arguments', []))
         else:
             env = task.environment_wrapper_arguments().get_environment()
 
@@ -492,6 +492,12 @@ async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, 
 default_config = '''
 [worker]
 listen_to_broadcast = true
+
+[default_env_wrapper]
+## here you can uncomment lines below to specify your own default environment wrapper and default arguments
+## this will only be used by invocation jobs that have NO environment wrappers specified
+# name = TrivialEnvironmentWrapper
+# arguments = [ "project_name", "or", "config_name", "idunno", "maybe rez packages requirements?", [1,4,11] ]
 '''
 
 
