@@ -12,16 +12,55 @@ As I see the it, a freelancer or a studio would implement one specific to them e
 for all workers, not several different wrappers
 """
 import os
-from .invocationjob import Environment, InvocationEnvironment
+from types import MappingProxyType
+from . import invocationjob
+
+from typing import Dict, Mapping
+
+
+_wrappers: Dict[str, "BaseEnvironmentWrapper"] = {}  # this should be loaded from plugins
+
+
+def _populate_wrappers():
+    for k, v in dict(globals()).items():
+        if type(v) != type or v.__module__ != __name__:
+            continue
+        _wrappers[k] = v
+
+
+def get_wrapper(name: str) -> "BaseEnvironmentWrapper":
+    return _wrappers[name]
+
+
+class EnvironmentWrapperArguments:
+    """
+    this class objects specity requirements a task/invocation have for int's worker environment wrapper.
+    """
+    def __init__(self, wrapper_name, **arguments):
+        self.__wrapper_name = wrapper_name
+        self.__args = arguments
+
+    def name(self):
+        return self.__wrapper_name
+
+    def arguiments(self):
+        return MappingProxyType(self.__args)
+
+    def get_wrapper(self):
+        return get_wrapper(self.__wrapper_name)
+
+    def get_environment(self) -> "invocationjob.Environment":
+        return get_wrapper(self.name()).get_environment(self.arguiments())
 
 
 class BaseEnvironmentWrapper:
-    def get_environment(self, requirements: dict, additional_env: InvocationEnvironment):
+    def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
         """
         this is the main reason for environment wrapper's existance.
-        give it your specific requirements
+        give it your specific arguments
+
         :param additional_env:
-        :param requirements:
+        :param arguments:
         :return:
         """
         raise NotImplementedError()
@@ -31,6 +70,9 @@ class TrivialEnvironmentWrapper(BaseEnvironmentWrapper):
     """
     trivial environment wrapper does nothing
     """
-    def get_environment(self, requirements: dict, additional_env: InvocationEnvironment):
-        env = Environment(os.environ)
-        return additional_env.resolve(base_env=env)
+    def get_environment(self, arguments: dict) -> "invocationjob.Environment":
+        env = invocationjob.Environment(os.environ)
+        return env
+
+
+_populate_wrappers()

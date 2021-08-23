@@ -18,7 +18,7 @@ from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config, create_default_user_config_file
 from . import paths
-from .environment_wrapper import TrivialEnvironmentWrapper
+from . import environment_wrapper
 from .enums import WorkerType, WorkerState
 
 
@@ -73,8 +73,6 @@ class Worker:
 
         self.__worker_type: WorkerType = worker_type
         self.__singleshot: bool = singleshot or worker_type == WorkerType.SCHEDULER_HELPER
-
-        self.__env_writer = TrivialEnvironmentWrapper()
 
         # deploy a copy of runtime module somewhere in temp
         rtmodule_code = inspect.getsource(taskflow_connection)
@@ -213,7 +211,14 @@ class Worker:
         else:
             args = task.args()
 
-        env = self.__env_writer.get_environment(None, task.env())
+        if task.environment_wrapper_arguments() is None:
+            config = get_config('worker')
+            env = environment_wrapper.get_wrapper(config.get_option_noasync('default_env_wrapper/name', 'TrivialEnvironmentWrapper'))\
+                .get_environment(config.get_option_noasync('default_env_wrapper/arguments', []))
+        else:
+            env = task.environment_wrapper_arguments().get_environment()
+
+        env = task.env().resolve(env)
 
         env.prepend('PYTHONPATH', self.__rt_module_dir)
         env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()

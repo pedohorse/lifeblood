@@ -5,6 +5,7 @@ import asyncio
 import pickle
 from types import MappingProxyType
 from .enums import WorkerType
+from .environment_wrapper import EnvironmentWrapperArguments
 
 from typing import Optional, Iterable, Union, Dict, List
 
@@ -114,8 +115,21 @@ class InvocationJob:
     """
     def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None, invocation_id=None,
                  requirements: Optional[InvocationRequirements] = None,
+                 environment_wrapper_arguments: Optional[EnvironmentWrapperArguments] = None,
                  good_exitcodes: Optional[Iterable[int]] = None,
                  retry_exitcodes: Optional[Iterable[int]] = None):
+        """
+
+        :param args: list of args passed to exec
+        :param env: extra special environment variables to be set. in most cases you don't need that
+        :param invocation_id: invocation ID in scheduler's DB this invocation is connected to
+        :param requirements: requirements for the worker to satisfy in order to be able to pick up this invocation job
+        :param environment_wrapper_arguments: environment wrapper and arguments to pass to it. if None - worker's configured default wrapper will be invoked
+        :param good_exitcodes: set of process exit codes to consider as success. default would be just 0
+        :param retry_exitcodes: set of process exit codes to consider as retry is needed. for ex in case of sidefx products exit code 3 means there was a license error
+                                which can occur due to delay in license return or network problems or bad license management.
+                                in that case you might just want to restart the invocation job automatically. there are no codes in this set by default.
+        """
         self.__args = [str(arg) for arg in args]
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
@@ -124,6 +138,7 @@ class InvocationJob:
         self.__err_progress_regex = None
 
         self.__requirements = requirements or InvocationRequirements()
+        self.__envwrap_args = environment_wrapper_arguments
 
         self.__exitcode = None
         self.__good_exitcodes = set(good_exitcodes or [0])
@@ -134,6 +149,9 @@ class InvocationJob:
 
     def requirements(self):
         return self.__requirements
+
+    def environment_wrapper_arguments(self):
+        return self.__envwrap_args
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
