@@ -12,6 +12,7 @@ As I see the it, a freelancer or a studio would implement one specific to them e
 for all workers, not several different wrappers
 """
 import os
+import json
 from types import MappingProxyType
 from . import invocationjob
 
@@ -51,6 +52,15 @@ class EnvironmentWrapperArguments:
 
     def get_environment(self) -> "invocationjob.Environment":
         return get_wrapper(self.name()).get_environment(self.arguiments())
+
+    def serialize(self) -> bytes:
+        return json.dumps(self.__dict__).encode('utf-8')
+
+    @classmethod
+    def deserialize(cls, data: bytes):
+        wrp = EnvironmentWrapperArguments(None)
+        wrp.__dict__.update(json.loads(data.decode('utf-8')))
+        return wrp
 
 
 class BaseEnvironmentWrapper:
