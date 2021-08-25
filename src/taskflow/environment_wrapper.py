@@ -11,6 +11,7 @@ and produce an environment fitting those requirements
 As I see the it, a freelancer or a studio would implement one specific to them environment wrapper
 for all workers, not several different wrappers
 """
+import asyncio
 import os
 import json
 from types import MappingProxyType
@@ -56,11 +57,18 @@ class EnvironmentWrapperArguments:
     def serialize(self) -> bytes:
         return json.dumps(self.__dict__).encode('utf-8')
 
+    async def serialize_async(self):
+        return await asyncio.get_running_loop().run_in_executor(None, self.serialize)
+
     @classmethod
     def deserialize(cls, data: bytes):
         wrp = EnvironmentWrapperArguments(None)
         wrp.__dict__.update(json.loads(data.decode('utf-8')))
         return wrp
+
+    @classmethod
+    async def deserialize_async(cls, data: bytes):
+        return await asyncio.get_running_loop().run_in_executor(None, cls.deserialize, data)
 
 
 class BaseEnvironmentWrapper:
