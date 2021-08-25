@@ -115,7 +115,7 @@ class InvocationJob:
     """
     def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None, invocation_id=None,
                  requirements: Optional[InvocationRequirements] = None,
-                 environment_wrapper_arguments: Optional[EnvironmentWrapperArguments] = None,
+                 # environment_wrapper_arguments: Optional[EnvironmentWrapperArguments] = None,
                  good_exitcodes: Optional[Iterable[int]] = None,
                  retry_exitcodes: Optional[Iterable[int]] = None):
         """
@@ -124,7 +124,7 @@ class InvocationJob:
         :param env: extra special environment variables to be set. in most cases you don't need that
         :param invocation_id: invocation ID in scheduler's DB this invocation is connected to
         :param requirements: requirements for the worker to satisfy in order to be able to pick up this invocation job
-        :param environment_wrapper_arguments: environment wrapper and arguments to pass to it. if None - worker's configured default wrapper will be invoked
+        # :param environment_wrapper_arguments: environment wrapper and arguments to pass to it. if None - worker's configured default wrapper will be invoked
         :param good_exitcodes: set of process exit codes to consider as success. default would be just 0
         :param retry_exitcodes: set of process exit codes to consider as retry is needed. for ex in case of sidefx products exit code 3 means there was a license error
                                 which can occur due to delay in license return or network problems or bad license management.
@@ -138,7 +138,7 @@ class InvocationJob:
         self.__err_progress_regex = None
 
         self.__requirements = requirements or InvocationRequirements()
-        self.__envwrap_args = environment_wrapper_arguments
+        self.__envwrap_args = None # environment_wrapper_arguments
 
         self.__exitcode = None
         self.__good_exitcodes = set(good_exitcodes or [0])
@@ -247,6 +247,9 @@ class InvocationJob:
 
     def _set_task_attributes(self, attr_dict):
         self.__attrs = deepcopy(attr_dict)
+
+    def _set_envwrapper_arguments(self, args: EnvironmentWrapperArguments):
+        self.__envwrap_args = args
 
     def __repr__(self):
         return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
