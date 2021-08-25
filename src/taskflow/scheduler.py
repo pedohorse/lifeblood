@@ -16,6 +16,7 @@ from .worker_task_protocol import WorkerTaskClient, WorkerPingReply, TaskSchedul
 from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
+from .environment_wrapper import EnvironmentWrapperArguments
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
 from .worker_pool import WorkerPool
@@ -336,11 +337,11 @@ class Scheduler:
         for split_element in range(into):
             async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
                                    '"node_input_name", "node_output_name", '
-                                   '"work_data", "name", "attributes", "split_level") '
-                                   'VALUES (?,?,?,?,?,?,?,?,?)',
+                                   '"work_data", "environment_wrapper_data", "name", "attributes", "split_level") '
+                                   'VALUES (?,?,?,?,?,?,?,?,?,?)',
                                    (None, task_row['state'], task_row['node_id'],
                                     task_row['node_input_name'], task_row['node_output_name'],
-                                    task_row['work_data'], task_row['name'], task_row['attributes'], new_split_level)) \
+                                    task_row['work_data'], task_row['environment_wrapper_data'], task_row['name'], task_row['attributes'], new_split_level)) \
                     as insert_cur:
                 new_task_id = insert_cur.lastrowid
 
@@ -442,6 +443,9 @@ class Scheduler:
                                           (None, skip_state.value, None,
                                            task_id))
                     else:
+                        # if there is an invocation - we force environment wrapper arguments from task onto it
+                        process_result.invocation_job._set_envwrapper_arguments(await EnvironmentWrapperArguments.deserialize_async(task_row['environment_wrapper_data']))
+                        
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
                         await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
@@ -1283,10 +1287,11 @@ class Scheduler:
                     self.__logger.error('ERROR CREATING SPAWN TASK: Malformed source')
                     continue
 
-                async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name") VALUES (?, ?, ?, ?, ?, ?)',
+                async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_wrapper_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
                                        (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,
                                         TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
-                                        node_id, newtask.node_output_name())) as newcur:
+                                        node_id, newtask.node_output_name(),
+                                        newtasks.environment_arguments().serialize() if newtasks.environment_arguments() is not None else None)) as newcur:
                     new_id = newcur.lastrowid
 
                 if parent_task_id is not None:  # inherit all parent's groups
