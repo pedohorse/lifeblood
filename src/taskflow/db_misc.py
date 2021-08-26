@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"attributes"	TEXT NOT NULL DEFAULT '{}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
 	"_invoc_requirement_clause"	TEXT,
+	"environment_resolver_data"	BLOB,
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("parent_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE SET NULL
 );
