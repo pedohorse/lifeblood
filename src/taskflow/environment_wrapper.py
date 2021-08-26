@@ -100,4 +100,8 @@ class TrivialEnvironmentWrapper(BaseEnvironmentWrapper):
         return env
 
 
+class StandardEnvironmentWrapper(BaseEnvironmentWrapper):
+    pass
+
+
 _populate_wrappers()
