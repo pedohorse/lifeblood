@@ -5,7 +5,6 @@ import asyncio
 import pickle
 from types import MappingProxyType
 from .enums import WorkerType
-from .environment_resolver import EnvironmentResolverArguments
 
 from typing import Optional, Iterable, Union, Dict, List
 
@@ -248,7 +247,7 @@ class InvocationJob:
     def _set_task_attributes(self, attr_dict):
         self.__attrs = deepcopy(attr_dict)
 
-    def _set_envresolver_arguments(self, args: EnvironmentResolverArguments):
+    def _set_envresolver_arguments(self, args: "EnvironmentResolverArguments"):
         self.__envres_args = args
 
     def __repr__(self):
