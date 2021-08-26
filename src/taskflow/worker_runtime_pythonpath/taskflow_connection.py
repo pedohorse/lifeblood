@@ -16,9 +16,10 @@ class TaskSpawn:
     keep it up-to-date
     and keep it 2-3 compatible!!
     """
-    def __init__(self, name, source_invocation_id, **attribs):
+    def __init__(self, name, source_invocation_id, env_args=None, **attribs):
         self.__name = name
         self.__attributes = attribs
+        self.__env_args = env_args
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
@@ -66,6 +67,9 @@ class TaskSpawn:
 
     def _attributes(self):
         return self.__attributes
+
+    def environment_arguments(self):
+        return self.__env_args
 
     def serialize(self):
         return pickle.dumps(self)
