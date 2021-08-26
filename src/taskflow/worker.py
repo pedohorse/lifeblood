@@ -18,7 +18,7 @@ from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob, Environment
 from .config import get_config, create_default_user_config_file
 from . import paths
-from . import environment_wrapper
+from . import environment_resolver
 from .enums import WorkerType, WorkerState
 
 
@@ -211,12 +211,12 @@ class Worker:
         else:
             args = task.args()
 
-        if task.environment_wrapper_arguments() is None:
+        if task.environment_resolver_arguments() is None:
             config = get_config('worker')
-            env = environment_wrapper.get_wrapper(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentWrapper'))\
+            env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
                 .get_environment(config.get_option_noasync('default_env_wrapper.arguments', []))
         else:
-            env = task.environment_wrapper_arguments().get_environment()
+            env = task.environment_resolver_arguments().get_environment()
 
         env = task.env().resolve(env)
 
@@ -496,7 +496,7 @@ listen_to_broadcast = true
 [default_env_wrapper]
 ## here you can uncomment lines below to specify your own default environment wrapper and default arguments
 ## this will only be used by invocation jobs that have NO environment wrappers specified
-# name = TrivialEnvironmentWrapper
+# name = TrivialEnvironmentResolver
 # arguments = [ "project_name", "or", "config_name", "idunno", "maybe rez packages requirements?", [1,4,11] ]
 '''
 

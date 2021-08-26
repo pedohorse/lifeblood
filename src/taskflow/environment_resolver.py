@@ -20,46 +20,46 @@ from . import invocationjob
 from typing import Dict, Mapping
 
 
-_wrappers: Dict[str, "BaseEnvironmentWrapper"] = {}  # this should be loaded from plugins
+_resolvers: Dict[str, "BaseEnvironmentResolver"] = {}  # this should be loaded from plugins
 
 
-def _populate_wrappers():
+def _populate_resolvers():
     for k, v in dict(globals()).items():
         if type(v) != type or v.__module__ != __name__:
             continue
-        _wrappers[k] = v
+        _resolvers[k] = v
 
 
-def get_wrapper(name: str) -> "BaseEnvironmentWrapper":
-    return _wrappers[name]
+def get_resolver(name: str) -> "BaseEnvironmentResolver":
+    return _resolvers[name]
 
 
-class EnvironmentWrapperArguments:
+class EnvironmentResolverArguments:
     """
     this class objects specity requirements a task/invocation have for int's worker environment wrapper.
     """
-    def __init__(self, wrapper_name=None, **arguments):
+    def __init__(self, resolver_name=None, **arguments):
         """
 
-        :param wrapper_name: if None - treat as no arguments at all
+        :param resolver_name: if None - treat as no arguments at all
         :param arguments:
         """
-        if wrapper_name is None and len(arguments) > 0:
+        if resolver_name is None and len(arguments) > 0:
             raise ValueError('if name is None - no arguments are allowed')
-        self.__wrapper_name = wrapper_name
+        self.__resolver_name = resolver_name
         self.__args = arguments
 
     def name(self):
-        return self.__wrapper_name
+        return self.__resolver_name
 
     def arguiments(self):
         return MappingProxyType(self.__args)
 
-    def get_wrapper(self):
-        return get_wrapper(self.__wrapper_name)
+    def get_resolver(self):
+        return get_resolver(self.__resolver_name)
 
     def get_environment(self) -> "invocationjob.Environment":
-        return get_wrapper(self.name()).get_environment(self.arguiments())
+        return get_resolver(self.name()).get_environment(self.arguiments())
 
     def serialize(self) -> bytes:
         return json.dumps(self.__dict__).encode('utf-8')
@@ -69,7 +69,7 @@ class EnvironmentWrapperArguments:
 
     @classmethod
     def deserialize(cls, data: bytes):
-        wrp = EnvironmentWrapperArguments(None)
+        wrp = EnvironmentResolverArguments(None)
         wrp.__dict__.update(json.loads(data.decode('utf-8')))
         return wrp
 
@@ -78,7 +78,7 @@ class EnvironmentWrapperArguments:
         return await asyncio.get_running_loop().run_in_executor(None, cls.deserialize, data)
 
 
-class BaseEnvironmentWrapper:
+class BaseEnvironmentResolver:
     def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
         """
         this is the main reason for environment wrapper's existance.
@@ -91,7 +91,7 @@ class BaseEnvironmentWrapper:
         raise NotImplementedError()
 
 
-class TrivialEnvironmentWrapper(BaseEnvironmentWrapper):
+class TrivialEnvironmentResolver(BaseEnvironmentResolver):
     """
     trivial environment wrapper does nothing
     """
@@ -100,8 +100,8 @@ class TrivialEnvironmentWrapper(BaseEnvironmentWrapper):
         return env
 
 
-class StandardEnvironmentWrapper(BaseEnvironmentWrapper):
+class StandardEnvironmentResolver(BaseEnvironmentResolver):
     pass
 
 
-_populate_wrappers()
+_populate_resolvers()

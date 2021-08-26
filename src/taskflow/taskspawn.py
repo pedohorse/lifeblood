@@ -5,7 +5,7 @@ worker jobs to spawn new tasks
 import pickle
 import asyncio
 from io import BytesIO
-from .environment_wrapper import EnvironmentWrapperArguments
+from .environment_resolver import EnvironmentResolverArguments
 
 from typing import Optional, Tuple, List, Iterable
 
@@ -21,7 +21,7 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentWrapperArguments] = None, **attribs):
+    def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentResolverArguments] = None, **attribs):
         """
 
         :param name:
@@ -103,7 +103,7 @@ class TaskSpawn:
 
 
 class NewTask(TaskSpawn):
-    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentWrapperArguments] = None, **attribs):
+    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentResolverArguments] = None, **attribs):
         super(NewTask, self).__init__(name, None, env_args, **attribs)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)

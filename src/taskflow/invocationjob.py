@@ -5,7 +5,7 @@ import asyncio
 import pickle
 from types import MappingProxyType
 from .enums import WorkerType
-from .environment_wrapper import EnvironmentWrapperArguments
+from .environment_resolver import EnvironmentResolverArguments
 
 from typing import Optional, Iterable, Union, Dict, List
 
@@ -115,7 +115,7 @@ class InvocationJob:
     """
     def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None, invocation_id=None,
                  requirements: Optional[InvocationRequirements] = None,
-                 # environment_wrapper_arguments: Optional[EnvironmentWrapperArguments] = None,
+                 # environment_wrapper_arguments: Optional[EnvironmentResolverArguments] = None,
                  good_exitcodes: Optional[Iterable[int]] = None,
                  retry_exitcodes: Optional[Iterable[int]] = None):
         """
@@ -138,7 +138,7 @@ class InvocationJob:
         self.__err_progress_regex = None
 
         self.__requirements = requirements or InvocationRequirements()
-        self.__envwrap_args = None # environment_wrapper_arguments
+        self.__envres_args = None # environment_wrapper_arguments
 
         self.__exitcode = None
         self.__good_exitcodes = set(good_exitcodes or [0])
@@ -150,8 +150,8 @@ class InvocationJob:
     def requirements(self):
         return self.__requirements
 
-    def environment_wrapper_arguments(self):
-        return self.__envwrap_args
+    def environment_resolver_arguments(self):
+        return self.__envres_args
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
         if regex is None:
@@ -248,8 +248,8 @@ class InvocationJob:
     def _set_task_attributes(self, attr_dict):
         self.__attrs = deepcopy(attr_dict)
 
-    def _set_envwrapper_arguments(self, args: EnvironmentWrapperArguments):
-        self.__envwrap_args = args
+    def _set_envresolver_arguments(self, args: EnvironmentResolverArguments):
+        self.__envres_args = args
 
     def __repr__(self):
         return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
