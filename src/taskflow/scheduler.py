@@ -444,7 +444,8 @@ class Scheduler:
                                            task_id))
                     else:
                         # if there is an invocation - we force environment wrapper arguments from task onto it
-                        process_result.invocation_job._set_envresolver_arguments(await EnvironmentResolverArguments.deserialize_async(task_row['environment_resolver_data']))
+                        if task_row['environment_resolver_data'] is not None:
+                            process_result.invocation_job._set_envresolver_arguments(await EnvironmentResolverArguments.deserialize_async(task_row['environment_resolver_data']))
 
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
@@ -1291,7 +1292,7 @@ class Scheduler:
                                        (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,
                                         TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
                                         node_id, newtask.node_output_name(),
-                                        newtasks.environment_arguments().serialize() if newtasks.environment_arguments() is not None else None)) as newcur:
+                                        newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:
                     new_id = newcur.lastrowid
 
                 if parent_task_id is not None:  # inherit all parent's groups
