@@ -445,7 +445,7 @@ class Scheduler:
                     else:
                         # if there is an invocation - we force environment wrapper arguments from task onto it
                         process_result.invocation_job._set_envwrapper_arguments(await EnvironmentWrapperArguments.deserialize_async(task_row['environment_wrapper_data']))
-                        
+
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
                         await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
@@ -1295,6 +1295,11 @@ class Scheduler:
                     new_id = newcur.lastrowid
 
                 if parent_task_id is not None:  # inherit all parent's groups
+                    # check and inherit parent's environment wrapper arguments
+                    if newtask.environment_arguments() is None:
+                        await con.execute('UPDATE tasks SET environment_wrapper_data = (SELECT environment_wrapper_data FROM tasks WHERE "id" == ?) WHERE "id" == ?',
+                                          (parent_task_id, new_id))
+
                     # inc children count
                     await con.execute('UPDATE "tasks" SET children_count = children_count + 1 WHERE "id" == ?', (parent_task_id,))
                     # inherit groups
