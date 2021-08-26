@@ -38,7 +38,14 @@ class EnvironmentWrapperArguments:
     """
     this class objects specity requirements a task/invocation have for int's worker environment wrapper.
     """
-    def __init__(self, wrapper_name, **arguments):
+    def __init__(self, wrapper_name=None, **arguments):
+        """
+
+        :param wrapper_name: if None - treat as no arguments at all
+        :param arguments:
+        """
+        if wrapper_name is None and len(arguments) > 0:
+            raise ValueError('if name is None - no arguments are allowed')
         self.__wrapper_name = wrapper_name
         self.__args = arguments
 
