@@ -22,6 +22,13 @@ class Unpickler(pickle.Unpickler):
 
 class TaskSpawn:
     def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentWrapperArguments] = None, **attribs):
+        """
+
+        :param name:
+        :param source_invocation_id:
+        :param env_args: if None - will inherit parent's. if no parent and none, or if empty arguments- default worker's env wrapper will be used
+        :param attribs:
+        """
         self.__name = name
         self.__attributes = attribs
         self.__env_args = env_args
