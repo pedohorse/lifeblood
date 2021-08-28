@@ -1,0 +1,16 @@
+[packages.houdini."18.5.666"]
+    priority = 60
+    env.PATH.prepend=[
+        "/path/to/hfs/bin",
+        "/some/other/path/dunno"
+    ]
+    env.PATH.append=[
+        "/whatever/you/want/to/append"
+    ]
+    env.PYTHONPATH.prepend="/dunno/smth"
+
+
+[packages.assmouth."2.3.4-beta"]
+    env.PATH.prepend = "bananus"
+    env.PATH.append = "who/are/you"
+    env.WooF='yEs'
