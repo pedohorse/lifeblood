@@ -35,18 +35,7 @@ class Environment(dict):
 
     def prepend(self, key: str, value):
         """
-        treat key as path list and prepemd to the list
-        """
-        if key not in self:
-            self[key] = value
-            return
-        if not isinstance(value, str):
-            value = str(value)
-        self[key] = os.pathsep.join((self[key], self.expand(value)))
-
-    def append(self, key: str, value):
-        """
-        treat key as path list and appemd to the list
+        treat key as path list and prepend to the list
         """
         if key not in self:
             self[key] = value
@@ -54,6 +43,17 @@ class Environment(dict):
         if not isinstance(value, str):
             value = str(value)
         self[key] = os.pathsep.join((self.expand(value), self[key]))
+
+    def append(self, key: str, value):
+        """
+        treat key as path list and append to the list
+        """
+        if key not in self:
+            self[key] = value
+            return
+        if not isinstance(value, str):
+            value = str(value)
+        self[key] = os.pathsep.join((self[key], self.expand(value)))
 
 
 class InvocationEnvironment:
