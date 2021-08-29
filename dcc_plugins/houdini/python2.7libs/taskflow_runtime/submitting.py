@@ -18,9 +18,10 @@ class TaskSpawn(object):
     keep it up-to-date
     and keep it 2-3 compatible!!
     """
-    def __init__(self, name, source_invocation_id, **attribs):
+    def __init__(self, name, source_invocation_id, env_args, **attribs):
         self.__name = name
         self.__attributes = attribs
+        self.__env_args = env_args
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
@@ -69,13 +70,32 @@ class TaskSpawn(object):
     def _attributes(self):
         return self.__attributes
 
+    def environment_arguments(self):
+        return self.__env_args
+
+    def set_environment_resolver(self, resolver_name, resolver_arguments):
+        self.__env_args = EnvironmentResolverArguments(resolver_name, resolver_arguments)
+
     def serialize(self):
         return pickle.dumps(self)
 
 
+class EnvironmentResolverArguments:
+    """
+    this is a copy of envirionment_resolver.EnvironmentResolverArguments class purely for pickling
+    """
+    def __init__(self, resolver_name=None, arguments=None):
+        if arguments is None:
+            arguments = {}
+        if resolver_name is None and len(arguments) > 0:
+            raise ValueError('if name is None - no arguments are allowed')
+        self.__resolver_name = resolver_name
+        self.__args = arguments
+
+
 class NewTask(TaskSpawn):
-    def __init__(self, name, node_id, scheduler_addr, **attribs):
-        super(NewTask, self).__init__(name, None, **attribs)
+    def __init__(self, name, node_id, scheduler_addr, env_args, **attribs):
+        super(NewTask, self).__init__(name, None, env_args, **attribs)
         self.__scheduler_addr = scheduler_addr
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
@@ -117,5 +137,5 @@ def create_task(name, node_id_or_name, scheduler_addr, **attributes):
         assert isinstance(node_id_or_name, int)
         node_id = node_id_or_name
 
-    task = NewTask(name, node_id, scheduler_addr, **attributes)
+    task = NewTask(name, node_id, scheduler_addr, None, **attributes)
     return task
