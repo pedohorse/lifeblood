@@ -2,6 +2,8 @@ import os
 import unittest
 from taskflow import environment_resolver
 from taskflow.invocationjob import Environment
+from taskflow.toml_coders import TomlFlatConfigEncoder
+import toml
 from taskflow import config
 
 
@@ -52,3 +54,55 @@ class StandardEnvResTest(unittest.TestCase):
             'yEs',
             env['WooF']
         )
+
+    def test_special_encoder(self):
+        d = {'packages': {
+            'houdini.py2': {
+                '18.0.597': {
+                    'env': {
+                        'PATH': {
+                            'prepend': '/opt/hfs18.0.597/bin',
+                            'append': 'ass'
+                        }
+                    },
+                    'label': 'ass'
+                },
+                '18.5.408': {
+                    'env': {
+                        'PATH': {
+                            'prepend': '/opt/hfs18.5.408/bin'
+                        },
+                        'vata': [1, 2, 5]
+                    }
+                }
+            },
+            'houdini.py3': {
+                '18.5.499': {
+                    'env': {
+                        'PATH': {
+                            'prepend': '/opt/hfs18.5.499.py3/bin',
+                            'append': 'me'
+                        }
+                    }
+                }
+            },
+            'bonker': {
+                '18.5.499': {
+                    'lobe.cabe': 2.3,
+                    'iii': -1,
+                    'env.shmenv': {
+                        'PATH.SHMATH': {
+                            'prepend': '/opt/hfs18.5.499.py3/bin',
+                            'append': 'me'
+                        }
+                    }
+                }
+            }
+        }
+        }
+        r = toml.dumps(d, encoder=TomlFlatConfigEncoder())
+        r2 = toml.dumps(d)
+        # print(r)
+        # print('\n\n============================\n\n')
+        # print(r2)
+        self.assertDictEqual(toml.loads(r), toml.loads(r2))
