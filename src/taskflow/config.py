@@ -5,7 +5,7 @@ import asyncio
 from threading import Lock
 from . import paths
 
-from typing import Any, List, Tuple, Union, TYPE_CHECKING
+from typing import Any, List, Tuple, Union, Callable, TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -38,7 +38,7 @@ def set_config_overrides(subname: str, overrides=None):
             _conf_cache[subname].set_overrides(overrides)
 
 
-def create_default_user_config_file(subname: str, default_config: Union[str, dict], force: bool = False):
+def create_default_user_config_file(subname: str, default_config: Union[str, dict], force: bool = False, toml_encoder=None):
     """
     create user configuration file
     useful for initialization, but can be forced to overwrite
@@ -46,6 +46,7 @@ def create_default_user_config_file(subname: str, default_config: Union[str, dic
     :param subname:
     :param default_config:
     :param force: if true - user config will be overriden even if it exists
+    :param toml_encoder: config backend is currently TOML, and i already kinda regret it... so you can pass special encoders here
     :return:
     """
     user_conf_path = paths.config_path('config.toml', subname)
@@ -56,7 +57,7 @@ def create_default_user_config_file(subname: str, default_config: Union[str, dic
         if isinstance(default_config, str):
             f.write(default_config)
         else:
-            toml.dump(default_config, f)
+            toml.dump(default_config, f, encoder=toml_encoder)
 
 
 class Config:
@@ -78,6 +79,7 @@ class Config:
         else:
             self.__stuff = {}
 
+        self.__encoder_generator = None
         self.__overrides = {}
         self.set_overrides(overrides)
 
@@ -92,6 +94,15 @@ class Config:
         for source in self.__sources:
             with open(source, 'r') as f:
                 self.__stuff.update(toml.load(f))
+
+    def writeable_file(self) -> "Path":
+        """
+        Get the path to the file chis config changes will be saved into.
+        The file might not yet exist
+
+        :return:
+        """
+        return self.__writable_config_path
 
     def loaded_files(self) -> Tuple["Path"]:
         """
@@ -173,12 +184,15 @@ class Config:
     async def set_option(self, option_name: str, value: Any) -> None:
         return await asyncio.get_event_loop().run_in_executor(None, self.set_option_noasync, option_name, value)
 
+    def set_toml_encoder_generator(self, generator: Callable):
+        self.__encoder_generator = generator
+
     def write_config_noasync(self):
         with self.__write_file_lock:
             if not os.path.exists(self.__writable_config_path):
                 os.makedirs(os.path.dirname(self.__writable_config_path), exist_ok=True)
             with open(self.__writable_config_path, 'w') as f:
-                toml.dump(self.__stuff, f)
+                toml.dump(self.__stuff, f, encoder=self.__encoder_generator() if self.__encoder_generator is not None else None)
 
     async def write_config(self):
         return await asyncio.get_event_loop().run_in_executor(None, self.write_config_noasync)
