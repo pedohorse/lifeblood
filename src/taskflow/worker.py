@@ -213,7 +213,7 @@ class Worker:
 
         if task.environment_resolver_arguments() is None:
             config = get_config('worker')
-            env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))()\
+            env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
                 .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
         else:
             env = task.environment_resolver_arguments().get_environment()
