@@ -17,6 +17,8 @@ class Unpickler(pickle.Unpickler):
                 return TaskSpawn
             elif name == 'NewTask':
                 return NewTask
+            elif name == 'EnvironmentResolverArguments':
+                return EnvironmentResolverArguments
         return super(Unpickler, self).find_class(module, name)
 
 
@@ -85,6 +87,9 @@ class TaskSpawn:
 
     def environment_arguments(self):
         return self.__env_args
+
+    def set_environment_resolver(self, resolver_name, resolver_arguments):
+        self.__env_args = EnvironmentResolverArguments(resolver_name, resolver_arguments)
 
     def serialize(self) -> bytes:
         return pickle.dumps(self)
