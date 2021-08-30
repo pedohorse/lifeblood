@@ -38,11 +38,11 @@ class FramerangeSplitter(BaseNode):
             return ProcessingResult()
         res = ProcessingResult()
         chunksize = context.param_value('chunk size')
-        if len(frames) <= chunksize:
-            return ProcessingResult()
 
         # res.set_attribute('frames', frames[:chunksize])
         split_into = 1 + (len(frames) - 1) // chunksize
+        # yes we can split into 1 part. this should behave the same way as when splitting into multiple parts
+        # in order to have consistent behaviour in the graph
         res.split_task(split_into)
         for i in range(split_into):
             res.set_split_task_attrib(i, 'frames', frames[chunksize*i:chunksize*(i+1)])
