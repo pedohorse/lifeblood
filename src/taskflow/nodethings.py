@@ -52,8 +52,8 @@ class ProcessingResult:
         self._split_attribs = None
 
     def split_task(self, into: int):
-        if into <= 1:
-            raise ValueError('cannot split into less than or eq to 1 parts')
+        if into < 1:
+            raise ValueError('cannot split into less than to 1 parts')
 
         self._split_attribs = [{} for _ in range(into)]
 
