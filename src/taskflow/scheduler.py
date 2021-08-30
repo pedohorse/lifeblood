@@ -320,8 +320,8 @@ class Scheduler:
         :param con:
         :return:
         """
-        if into <= 1:
-            raise ValueError('cant split into less or eq than 1 part')
+        if into < 1:
+            raise ValueError('cant split into less than 1 part')
 
         async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
             task_row = await cur.fetchone()
