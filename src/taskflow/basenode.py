@@ -228,3 +228,11 @@ class BaseNode:
     @classmethod
     async def deserialize_async(cls, data: bytes, parent_scheduler, node_id):
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data, parent_scheduler, node_id)
+
+
+class BaseTaskRequirementsNode(BaseNode):
+    def __init__(self, name: str):
+        super(BaseTaskRequirementsNode, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            pass

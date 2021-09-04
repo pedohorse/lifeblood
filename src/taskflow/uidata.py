@@ -160,6 +160,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__menu_items: Optional[Dict[str, str]] = None
         self.__menu_items_order: List[str] = []
         self.__vis_when = None
+        self.__force_hidden = False
         self.__is_readonly = False  # set it False until the end of constructor
 
         self.__expression = None
@@ -351,7 +352,12 @@ class Parameter(ParameterHierarchyLeaf):
             if self.parent() is not None and isinstance(self.parent(), ParametersLayoutBase):
                 self.parent()._children_appearance_changed([self])
 
+    def set_hidden(self, hidden):
+        self.__force_hidden = hidden
+
     def visible(self) -> bool:
+        if self.__force_hidden:
+            return False
         if self.__vis_cache is not None:
             return self.__vis_cache
         if self.__vis_when is not None:
@@ -668,6 +674,29 @@ class VerticalParametersLayout(OrderedParametersLayout):
     pass
 
 
+class CollapsableVerticalGroup(VerticalParametersLayout):
+    """
+    a vertical parameter layout to be drawn as collapsable block
+    """
+    def __init__(self, group_name, group_label):
+        super(CollapsableVerticalGroup, self).__init__()
+
+        # for now it's here just to ensure name uniqueness. in future - maybe store collapsed state
+        self.__unused_param = Parameter(group_name, group_name, NodeParameterType.BOOL, True)
+
+        self.__group_name = group_name
+        self.__group_label = group_label
+
+    def is_collapsed(self):
+        return True
+
+    def name(self):
+        return self.__group_name
+
+    def label(self):
+        return self.__group_label
+
+
 class OneLineParametersLayout(OrderedParametersLayout):
     """
     horizontal parameter layout.
@@ -817,12 +846,13 @@ class NodeUi(ParameterHierarchyItem):
         return _iiLock(self)
 
     class _slwrapper:
-        def __init__(self, ui: "NodeUi", layout_creator):
+        def __init__(self, ui: "NodeUi", layout_creator, layout_creator_kwargs=None):
             self.__ui = ui
             self.__layout_creator = layout_creator
+            self.__layout_creator_kwargs = layout_creator_kwargs or {}
 
         def __enter__(self):
-            new_layout = self.__layout_creator()
+            new_layout = self.__layout_creator(**self.__layout_creator_kwargs)
             self.__ui._NodeUi__groups_stack.append(new_layout)
             with self.__ui._NodeUi__parameter_layout.initializing_interface_lock():
                 self.__ui._NodeUi__parameter_layout.add_layout(new_layout)
@@ -872,6 +902,17 @@ class NodeUi(ParameterHierarchyItem):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self, name)
+
+    def collapsable_group_block(self, group_title: str):
+        """
+        use it in with statement
+        creates a visually distinct group of parameters that renderer should draw as a collapsable block
+
+        :return:
+        """
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        return NodeUi._slwrapper(self, CollapsableVerticalGroup, {'group_name': group_title})
 
     def _add_layout(self, new_layout):
         if not self.__block_ui_callbacks:
