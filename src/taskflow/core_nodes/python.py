@@ -1,6 +1,6 @@
 import time
 
-from taskflow.basenode import BaseNode
+from taskflow.basenode import BaseNodeWithTaskRequirements
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
 from taskflow.nodethings import ProcessingResult
 from taskflow.uidata import NodeParameterType
@@ -28,8 +28,8 @@ invoke_help = "# use task variable to get attribs, e.g.     task['attr'] = 123\n
               "\n"
 
 
-class Python(BaseNode):
-    def __init__(self, name):
+class Python(BaseNodeWithTaskRequirements):
+    def __init__(self, name: str):
         super(Python, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
