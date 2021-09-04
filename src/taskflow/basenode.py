@@ -39,6 +39,18 @@ class BaseNode:
         self._parameters: NodeUi = NodeUi(self)
         self.__name = name
         # subclass is expected to add parameters at this point
+        self.initialize(name)
+
+    def initialize(self, name: str):
+        """
+        method called by constructor for subclass initialization
+        custom node classes subclassing this are supposed to override this method
+        instead of overriding __init__
+
+        :param context:
+        :return:
+        """
+        return
 
     def _set_parent(self, parent_scheduler, node_id):
         self.__parent = parent_scheduler
