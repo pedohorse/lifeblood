@@ -1,5 +1,10 @@
 sql_init_script = '''
 BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "worker_groups" (
+	"worker_id"	INTEGER NOT NULL,
+	"group"	TEXT NOT NULL,
+	FOREIGN KEY("worker_id") REFERENCES "workers"("id") ON UPDATE CASCADE ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS "tasks" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	"parent_id"	INTEGER,
