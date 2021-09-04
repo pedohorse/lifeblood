@@ -683,7 +683,7 @@ class Scheduler:
                     #
                     # real scheduling should happen here
                     elif task_row['state'] == TaskState.READY.value:
-                        async with con.execute(f'SELECT * from workers WHERE state == ? AND {task_row["_invoc_requirement_clause"]}', (WorkerState.IDLE.value,)) as worcur:
+                        async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
                             worker = await worcur.fetchone()
                         if worker is None:  # nothing available
                             continue
