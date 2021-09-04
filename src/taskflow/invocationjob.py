@@ -104,8 +104,27 @@ class InvocationRequirements:
         self.__groups = set(groups) if groups is not None else set()  # TODO: GROUPS NOT YET IMPLEMENTED!
         self.__worker_type = worker_type
 
+    def groups(self):
+        return tuple(self.__groups)
+
+    def set_groups(self, groups):
+        self.__groups = groups
+
+    def add_groups(self, groups):
+        self.__groups.update(set(groups))
+
+    def add_group(self, group: str):
+        self.__groups.add(group)
+
     def final_where_clause(self):
-        return f'("worker_type" = {self.__worker_type.value})'
+        conds = [f'("worker_type" = {self.__worker_type.value})']
+        if len(self.__groups) > 0:
+            esc = '\\'
+
+            def _morph(s: str):
+                return re.sub(r'(?<!\\)\?', '_', re.sub(r'(?<!\\)\*', '%', s.replace('%', r'\%').replace('_', r'\_')))
+            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' EXCAPE '{esc}'""" for x in self.__groups)} )))''')
+        return ' AND '.join(conds)
 
 
 class InvocationJob:
@@ -148,6 +167,9 @@ class InvocationJob:
 
     def requirements(self):
         return self.__requirements
+
+    def set_requirements(self, requirements: InvocationRequirements):
+        self.__requirements = requirements
 
     def environment_resolver_arguments(self):
         return self.__envres_args
