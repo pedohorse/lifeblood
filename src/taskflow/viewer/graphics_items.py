@@ -501,6 +501,13 @@ class Node(NetworkItemWithUI):
                 else:
                     imgui.same_line()
                 self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
+        elif isinstance(item, CollapsableVerticalGroup):
+            expanded, _ = imgui.collapsing_header(f'{item.label()}##{item.name()}')
+            if expanded:
+                for child in item.items(recursive=False):
+                    h, w = item.relative_size_for_child(child)
+                    self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
+                imgui.separator()
         elif isinstance(item, ParametersLayoutBase):
             for child in item.items(recursive=False):
                 h, w = item.relative_size_for_child(child)
@@ -508,12 +515,6 @@ class Node(NetworkItemWithUI):
                     if not child.visible():
                         continue
                 self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
-        elif isinstance(item, CollapsableVerticalGroup):
-            expanded, _ = imgui.collapsing_header(f'{item.label()}##{item.name()}')
-            if expanded:
-                for child in item.items(recursive=False):
-                    h, w = item.relative_size_for_child(child)
-                    self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
         else:
             raise NotImplementedError(f'unknown parameter hierarchy item to display {type(item)}')
 
