@@ -2,6 +2,7 @@ import asyncio
 from enum import Enum
 import pickle
 import json
+import re
 from copy import copy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
@@ -9,6 +10,7 @@ from .uidata import NodeUi, ParameterNotFound, ParameterReadonly
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 from .logging import get_logger
+from .enums import NodeParameterType
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -39,18 +41,6 @@ class BaseNode:
         self._parameters: NodeUi = NodeUi(self)
         self.__name = name
         # subclass is expected to add parameters at this point
-        self.initialize(name)
-
-    def initialize(self, name: str):
-        """
-        method called by constructor for subclass initialization
-        custom node classes subclassing this are supposed to override this method
-        instead of overriding __init__
-
-        :param context:
-        :return:
-        """
-        return
 
     def _set_parent(self, parent_scheduler, node_id):
         self.__parent = parent_scheduler
@@ -230,9 +220,48 @@ class BaseNode:
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data, parent_scheduler, node_id)
 
 
-class BaseTaskRequirementsNode(BaseNode):
+class BaseNodeWithTaskRequirements(BaseNode):
     def __init__(self, name: str):
-        super(BaseTaskRequirementsNode, self).__init__(name)
+        super(BaseNodeWithTaskRequirements, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            pass
+            with ui.collapsable_group_block('main worker requirements', 'worker requirements'):
+                ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
+                ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
+                ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
+    
+    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
+        context = ProcessingContext(self, task_dict)
+        reqs = result.invocation_job.requirements()
+        reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
+        result.invocation_job.set_requirements(reqs)
+
+
+# class BaseNodeWithEnvironmentRequirements(BaseNode):
+#     def __init__(self, name: str):
+#         super(BaseNodeWithEnvironmentRequirements, self).__init__(name)
+#         ui = self.get_ui()
+#         with ui.initializing_interface_lock():
+#             with ui.collapsable_group_block('main environment resolver', 'task environment resolver additional requirements'):
+#                 ui.add_parameter('main env resolver name', 'resolver name', NodeParameterType.STRING, 'StandardEnvironmentResolver')
+#                 with ui.multigroup_parameter_block('main env resolver arguments'):
+#                     with ui.parameters_on_same_line_block():
+#                         type_param = ui.add_parameter('main env resolver arg type', '', NodeParameterType.INT, 0)
+#                         type_param.add_menu((('int', NodeParameterType.INT.value),
+#                                              ('bool', NodeParameterType.BOOL.value),
+#                                              ('float', NodeParameterType.FLOAT.value),
+#                                              ('string', NodeParameterType.STRING.value),
+#                                              ('json', -1)
+#                                              ))
+#
+#                         ui.add_parameter('main env resolver arg svalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
+#                         ui.add_parameter('main env resolver arg ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
+#                         ui.add_parameter('main env resolver arg fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
+#                         ui.add_parameter('main env resolver arg bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+#                         ui.add_parameter('main env resolver arg jvalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', -1)
+#
+#     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+#         result = super(BaseNodeWithEnvironmentRequirements, self)._process_task_wrapper(task_dict)
+#         result.invocation_job.environment_resolver_arguments()
+#         return result
