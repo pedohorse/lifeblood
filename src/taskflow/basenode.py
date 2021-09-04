@@ -120,12 +120,24 @@ class BaseNode:
         return self.process_task(ProcessingContext(self, task_dict))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
+        """
+        custom node classes subclassing this are supposed to override this method
+
+        :param context:
+        :return:
+        """
         raise NotImplementedError()
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
         return self.postprocess_task(ProcessingContext(self, task_dict))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
+        """
+        custom node classes subclassing this are supposed to override this method
+
+        :param context:
+        :return:
+        """
         raise NotImplementedError()
 
     # # some helpers
