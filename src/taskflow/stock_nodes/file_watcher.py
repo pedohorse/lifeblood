@@ -92,6 +92,31 @@ watcher_onclosed = \
                                         file_type=ftype)
 '''
 
+watcher_existings = \
+'''
+    from pathlib import Path
+    
+    def _check_one_dir(dir, do_dirs, do_files, recursive):
+        for file in dir.iterdir():
+            if all(not fnmatch(file.name, x) for x in {fpats}):
+                continue
+            if file.is_dir():
+                if do_dirs:
+                    taskflow_connection.create_task(f'{{file}} {event_type}',
+                                                    src_path=str(file),
+                                                    file_event='{event_type}',
+                                                    file_type='dir')
+                if recursive:
+                    _check_one_dir(file, do_dirs, do_files, recursive)
+            elif file.is_file() and do_files:
+                taskflow_connection.create_task(f'{{file}} {event_type}',
+                                                src_path=str(file),
+                                                file_event='{event_type}',
+                                                file_type='file')
+
+    _check_one_dir(Path(path_to_watch), {do_dirs}, {do_files}, recursive)
+'''
+
 watcher_code = \
 '''
 import os
@@ -109,6 +134,7 @@ class FileWatcher(FileSystemEventHandler):
 {onmodified}
 
 def main(path_to_watch, recursive):
+    {existings}
     file_observer = Observer()
     file_observer.schedule(FileWatcher(), path_to_watch, recursive)
     file_observer.start()
@@ -142,6 +168,13 @@ class FileWatcher(BaseNode):
             with ui.parameters_on_same_line_block():
                 ui.add_parameter('path', 'dir/file to watch', NodeParameterType.STRING, '')
                 ui.add_parameter('recursive', 'recursive', NodeParameterType.BOOL, False)
+
+            with ui.parameters_on_same_line_block():
+                ui.add_parameter('doexistings', None, NodeParameterType.STRING, 'create tasks for existing items', readonly=True)
+                ui.add_parameter('exist dir', 'dirs', NodeParameterType.BOOL, False)
+                ui.add_parameter('exist file', 'files', NodeParameterType.BOOL, False)
+                ui.add_parameter('exist pattern', 'file pattern', NodeParameterType.STRING, '*')
+                ui.add_parameter('exist label', 'label for existing items', NodeParameterType.STRING, 'closed')
 
             with ui.parameters_on_same_line_block():
                 ui.add_parameter('onclose', None, NodeParameterType.STRING, 'on close', readonly=True)
@@ -182,8 +215,9 @@ class FileWatcher(BaseNode):
         del_ct = []
         mov_ct = []
         mod_ct = []
-        all = {'onclose': clo_ct, 'oncreate': cre_ct, 'ondelete': del_ct, 'onmove': mov_ct, 'onmodify': mod_ct}
-        for base in ('oncreate', 'ondelete', 'onmove', 'onmodify', 'onclose'):
+        exs_ct = []
+        all = {'onclose': clo_ct, 'oncreate': cre_ct, 'ondelete': del_ct, 'onmove': mov_ct, 'onmodify': mod_ct, 'exist': exs_ct}
+        for base in ('oncreate', 'ondelete', 'onmove', 'onmodify', 'onclose', 'exist'):
             for ftype in ('dir', 'file'):
                 if context.param_value(f'{base} {ftype}'):
                     all[base].append(ftype)
@@ -203,7 +237,13 @@ class FileWatcher(BaseNode):
                                                                                                 ) if len(del_ct) > 0 else '',
                                                              onmodified=watcher_onmodified.format(ct=repr(mod_ct),
                                                                                                   fpats=repr(tuple(re.split('[, ]+', context.param_value(f'onmodify pattern').strip())))
-                                                                                                  ) if len(mod_ct) > 0 else ''))
+                                                                                                  ) if len(mod_ct) > 0 else '',
+                                                             existings=watcher_existings.format(do_dirs='dir' in exs_ct,
+                                                                                                do_files='file' in exs_ct,
+                                                                                                event_type=context.param_value('exist label'),
+                                                                                                fpats=repr(tuple(re.split('[, ]+', context.param_value('exist pattern').strip())))
+                                                                                                ) if len(exs_ct) > 0 else ''
+                                                             ))
         #print(inv.extra_files()['watcher.py'])
         return ProcessingResult(inv)
 
