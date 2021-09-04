@@ -903,7 +903,7 @@ class NodeUi(ParameterHierarchyItem):
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self, name)
 
-    def collapsable_group_block(self, group_title: str):
+    def collapsable_group_block(self, group_name: str, group_label: str = ''):
         """
         use it in with statement
         creates a visually distinct group of parameters that renderer should draw as a collapsable block
@@ -912,7 +912,7 @@ class NodeUi(ParameterHierarchyItem):
         """
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        return NodeUi._slwrapper(self, CollapsableVerticalGroup, {'group_name': group_title})
+        return NodeUi._slwrapper(self, CollapsableVerticalGroup, {'group_name': group_name, 'group_label': group_label})
 
     def _add_layout(self, new_layout):
         if not self.__block_ui_callbacks:
