@@ -30,6 +30,7 @@ class SwitchTasks(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.add_parameter('output', 'select output', NodeParameterType.INT, 0, can_have_expressions=True)
+            ui.add_output('output1')
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         switch = context.param_value('output')
