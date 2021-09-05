@@ -35,6 +35,7 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 class Scheduler:
     def __init__(self, db_file_path, do_broadcasting=True):
         self.__logger = logging.get_logger('scheduler')
+        self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         self.__logger.info('loading core plugins')
         pluginloader.init()  # TODO: move it outside of constructor
         self.__node_objects: Dict[int, BaseNode] = {}
@@ -239,17 +240,17 @@ class Scheduler:
                     return False
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
-            self.__logger.debug('    :: pinger started')
+            self.__pinger_logger.debug('    :: pinger started')
             await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
             await self._set_value('workers', 'last_checked', worker_row['id'], int(time.time()), con, nocommit=True)
             await con.commit()
 
             addr = worker_row['last_address']
             ip, port = addr.split(':')  # type: str, str
-            self.__logger.debug('    :: checking %s, %s', ip, port)
+            self.__pinger_logger.debug('    :: checking %s, %s', ip, port)
 
             if not port.isdigit():
-                self.__logger.debug('    :: malformed address')
+                self.__pinger_logger.debug('    :: malformed address')
                 await asyncio.gather(
                     self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                     self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
@@ -261,7 +262,7 @@ class Scheduler:
                 async with WorkerTaskClient(ip, int(port)) as client:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
-                self.__logger.debug('    :: network error')
+                self.__pinger_logger.debug('    :: network error')
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
                                      )
@@ -269,7 +270,7 @@ class Scheduler:
                 await con.commit()
                 return
             except ConnectionRefusedError as e:
-                self.__logger.debug('    :: host down %s', str(e))
+                self.__pinger_logger.debug('    :: host down %s', str(e))
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
                                      )
@@ -277,7 +278,7 @@ class Scheduler:
                 await con.commit()
                 return
             except Exception as e:
-                self.__logger.debug('    :: ping failed %s %s', type(e), e)
+                self.__pinger_logger.debug('    :: ping failed %s %s', type(e), e)
                 await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
                                      self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
                                      )
@@ -311,7 +312,7 @@ class Scheduler:
                                  self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
                                  )
             await con.commit()
-            self.__logger.debug('    :: %s', ping_code)
+            self.__pinger_logger.debug('    :: %s', ping_code)
 
     async def split_task(self, task_id: int, into: int, con: aiosqlite.Connection) -> List[int]:
         """
@@ -377,7 +378,7 @@ class Scheduler:
             while True:
                 nowtime = time.time()
 
-                self.__logger.debug('    ::selecting workers...')
+                self.__pinger_logger.debug('    ::selecting workers...')
                 async with con.execute("SELECT * from workers WHERE ping_state != 1") as cur:
                     # TODO: don't scan the errored and off ones as often?
 
@@ -393,7 +394,7 @@ class Scheduler:
 
                 # now clean the list
                 tasks = [x for x in tasks if not x.done()]
-                self.__logger.debug('    :: remaining ping tasks: %d', len(tasks))
+                self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
                 await asyncio.sleep(self.__ping_interval)
 
@@ -1433,6 +1434,7 @@ def main(argv):
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--db-path', help='path to sqlite database to use')
+    parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
     opts = parser.parse_args(argv)
 
     # check and create default config if none
@@ -1441,6 +1443,8 @@ def main(argv):
     config = get_config('scheduler')
     db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
     global_logger = logging.get_logger('scheduler')
+    if opts.verbosity_pinger:
+        logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
     try:
         asyncio.run(main_async(db_path))
     except KeyboardInterrupt:
