@@ -19,6 +19,17 @@ async def create_uidata(ui_nodes, ui_connections, ui_tasks, all_task_groups):
     return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks, all_task_groups)
 
 
+class ParameterExpressionError(Exception):
+    def __init__(self, inner_exception):
+        self.__inner_exception = inner_exception
+
+    def __str__(self):
+        return f'ParameterExpressionError: {str(self.__inner_exception)}'
+
+    def inner_expection(self):
+        return self.__inner_exception
+
+
 class UiData:
     def __init__(self, ui_nodes, ui_connections, ui_tasks, all_task_groups):
         self.__nodes = ui_nodes
@@ -143,7 +154,10 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 
 
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
-    return eval(expression, {'os': os, 'pathlib': pathlib}, context.locals() if context is not None else {})
+    try:
+        return eval(expression, {'os': os, 'pathlib': pathlib}, context.locals() if context is not None else {})
+    except Exception as e:
+        raise ParameterExpressionError(e)
 
 
 class Parameter(ParameterHierarchyLeaf):
@@ -151,7 +165,7 @@ class Parameter(ParameterHierarchyLeaf):
     class DontChange:
         pass
 
-    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expression: bool = False, readonly: bool = False):
+    def __init__(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expression: bool = True, readonly: bool = False, default_value = None):
         super(Parameter, self).__init__()
         self.__name = param_name
         self.__label = param_label
@@ -180,7 +194,9 @@ class Parameter(ParameterHierarchyLeaf):
         # caches
         self.__vis_cache = None
 
+        assert default_value is None or type(default_value) == type(param_val)
         self.set_value(param_val)
+        self.__default_value = default_value or param_val
         self.__is_readonly = readonly
 
     def name(self) -> str:
@@ -203,12 +219,23 @@ class Parameter(ParameterHierarchyLeaf):
     def unexpanded_value(self, context: Optional[ProcessingContext] = None):
         return self.__value
 
+    def default_value(self):
+        """
+        note that this value will be unexpanded
+
+        :return:
+        """
+        return self.__default_value
+
     def value(self, context: Optional[ProcessingContext] = None) -> Any:
         """
         returns value of this parameter
         :param context: optional dict like locals, for expression evaluations
         """
-        # TODO: implement expressions!
+
+        if self.__expression is not None:
+            return evaluate_expression(self.__expression, context)
+
         if self.__type != NodeParameterType.STRING:
             return self.__value
 
@@ -328,6 +355,12 @@ class Parameter(ParameterHierarchyLeaf):
     def can_have_expressions(self):
         return self.__can_have_expressions
 
+    def has_expression(self):
+        return self.__expression is not None
+
+    def expression(self):
+        return self.__expression
+
     def set_expression(self, expression: Union[str, None]):
         """
         sets or removes expression from a parameter
@@ -336,7 +369,13 @@ class Parameter(ParameterHierarchyLeaf):
         """
         if not self.__can_have_expressions:
             raise RuntimeError('this parameter cannot have expressions')
-        self.__expression = expression
+        if expression != self.__expression:
+            self.__expression = expression
+            if self.parent() is not None:
+                self.parent()._children_definition_changed([self])
+
+    def remove_expression(self):
+        self.set_expression(None)
 
     def _referencing_param_value_changed(self, other_parameter):
         """
@@ -744,7 +783,7 @@ class MultiGroupLayout(OrderedParametersLayout):
     def __init__(self, name):
         super(MultiGroupLayout, self).__init__()
         self.__template: Union[ParametersLayoutBase, Parameter, None] = None
-        self.__count_param = Parameter(name, 'count', NodeParameterType.INT, 0)
+        self.__count_param = Parameter(name, 'count', NodeParameterType.INT, 0, can_have_expression=False)
         self.__count_param.set_parent(self)
         self.__last_count = 0
 
@@ -923,7 +962,7 @@ class NodeUi(ParameterHierarchyItem):
         with layout.initializing_interface_lock():
             layout.add_layout(new_layout)
 
-    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = False, readonly: bool = False):
+    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = True, readonly: bool = False):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout

@@ -66,6 +66,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_task_ui_attributes_has_been_requested = Signal(int)
     _signal_task_invocation_job_requested = Signal(int)
     _signal_node_parameter_change_requested = Signal(int, object)
+    _signal_node_parameter_expression_change_requested = Signal(int, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
     _signal_create_node_requested = Signal(str, str, QPointF)
@@ -115,6 +116,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
+        self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         self._signal_set_node_name_requested.connect(self.__ui_connection_worker.set_node_name)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
@@ -149,6 +151,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def send_node_parameter_change(self, node_id: int, param: Parameter):
         self._signal_node_parameter_change_requested.emit(node_id, param)
+
+    def send_node_parameter_expression_change(self, node_id: int, param: Parameter):
+        self._signal_node_parameter_expression_change_requested.emit(node_id, param)
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
@@ -706,6 +711,24 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(param_str_data)
             else:
                 raise NotImplementedError()
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def send_node_parameter_expression_change(self, node_id: int, param: Parameter):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            set_or_unset = param.has_expression()
+            self.__conn.sendall(b'setnodeparamexpression\n')
+            self.__conn.sendall(struct.pack('>Q?', node_id, set_or_unset))
+            self._send_string(param.name())
+            if set_or_unset:
+                expression = param.expression()
+                self._send_string(expression)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:

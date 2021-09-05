@@ -4,7 +4,7 @@ from math import sqrt
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
-from ..uidata import UiData, NodeUi, Parameter, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
+from ..uidata import UiData, NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
 from ..enums import TaskState, InvocationState
 from .. import logging
 
@@ -418,8 +418,15 @@ class Node(NetworkItemWithUI):
             parent_layout = item.parent()
             assert isinstance(parent_layout, ParametersLayoutBase)
             imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2 / 3)
+            changed = False
+            expr_changed = False
             try:
-                if item.has_menu():
+                if item.has_expression():
+                    with imgui.colored(imgui.COLOR_FRAME_BACKGROUND, 0.1, 0.4, 0.1):
+                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.expression(), 256)
+                    if expr_changed:
+                        item.set_expression(newval)
+                elif item.has_menu():
                     menu_order, menu_items = item.get_menu_items()
 
                     if param_name not in self.__nodeui_menucache:
@@ -480,6 +487,25 @@ class Node(NetworkItemWithUI):
                         raise NotImplementedError()
                     if changed:
                         item.set_value(newval)
+
+                # item context menu popup
+                popupid = '##'.join((param_label, param_name))  # just to make sure no names will collide with full param imgui lables
+                if imgui.begin_popup_context_item(f'Item Context Menu##{popupid}', 2):
+                    if item.can_have_expressions() and not item.has_expression():
+                        if imgui.selectable(f'enable expression##{popupid}')[0]:
+                            item.set_expression(repr(item.value()))
+                            expr_changed = True
+                    if item.has_expression():
+                        if imgui.selectable(f'delete expression##{popupid}')[0]:
+                            try:
+                                value = item.value()
+                            except ParameterExpressionError as e:
+                                value = item.default_value()
+                            item.set_expression(None)
+                            expr_changed = True
+                            item.set_value(value)
+                            changed = True
+                    imgui.end_popup()
             finally:
                 imgui.pop_item_width()
 
@@ -489,6 +515,10 @@ class Node(NetworkItemWithUI):
                 # here and on scheduler side
                 # so we just inform scheduler of the value change
                 # anyway it's scheduler side that matters
+            if expr_changed:
+                # same here.
+                self.scene().send_node_parameter_expression_change(self.get_id(), item)
+
         elif isinstance(item, OneLineParametersLayout):
             first_time = True
             for child in item.items(recursive=False):

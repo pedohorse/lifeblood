@@ -129,6 +129,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         raise NotImplementedError()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
                     node.set_param_value(param_name, param_value)
+                elif command == b'setnodeparamexpression':
+                    node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
+                    param_name = await read_string()
+                    node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                    if set_or_unset:
+                        expression = await read_string()
+                        print(param_name)
+                        node.param(param_name).set_expression(expression)
+                    else:
+                        node.param(param_name).remove_expression()
                 elif command == b'renamenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     node_name = await read_string()

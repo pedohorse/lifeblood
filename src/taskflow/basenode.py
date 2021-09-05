@@ -6,7 +6,7 @@ import re
 from copy import copy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
-from .uidata import NodeUi, ParameterNotFound, ParameterReadonly
+from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, Parameter
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 from .logging import get_logger
@@ -62,6 +62,15 @@ class BaseNode:
     #     """
     #     return self._parameters.parameter(param_name).value(context)
     #
+    def param(self, param_name) -> Parameter:
+        """
+        shortcut to node.get_ui().parameter
+
+        :param param_name:
+        :return:
+        """
+        return self._parameters.parameter(param_name)
+
     def set_param_value(self, param_name, param_value) -> None:
         """
         shortcut to node.get_ui().set_parameter
@@ -140,7 +149,7 @@ class BaseNode:
         :param context:
         :return:
         """
-        raise NotImplementedError()
+        return ProcessingResult()
 
     # # some helpers
     # def _get_task_attributes(self, task_row):
