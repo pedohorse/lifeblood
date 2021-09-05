@@ -78,6 +78,7 @@ class SplitAwaiterNode(BaseNode):
             if split_id not in self.__cache:
                 self.__cache[split_id] = {'arrived': {},
                                           'awaiting': set(range(context.task_field('split_count'))),
+                                          'processed': set(),
                                           'first_to_arrive': None}
             if self.__cache[split_id]['first_to_arrive'] is None and len(self.__cache[split_id]['arrived']) == 0:
                 self.__cache[split_id]['first_to_arrive'] = task_id
@@ -87,74 +88,88 @@ class SplitAwaiterNode(BaseNode):
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
-        if context.param_value('wait for all'):
-            with self.__main_lock:
-                if self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']:
+        changed = False
+        try:
+            if context.param_value('wait for all'):
+                with self.__main_lock:
+                    if self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']:
+                        res = ProcessingResult()
+                        res.kill_task()
+                        self.__cache[split_id]['processed'].add(context.task_field('split_element'))
+                        attribs_to_promote = {}
+                        if self.__cache[split_id]['first_to_arrive'] == task_id:
+                            # transfer attributes  # TODO: delete cache for already processed splits
+                            num_attribs = context.param_value('transfer_attribs')
+                            for i in range(num_attribs):
+                                src_attr_name = context.param_value(f'src_attr_name_{i}')
+                                transfer_type = context.param_value(f'transfer_type_{i}')
+                                dst_attr_name = context.param_value(f'dst_attr_name_{i}')
+                                sort_attr_name = context.param_value(f'sort_by_{i}')
+                                sort_reversed = context.param_value(f'reversed_{i}')
+                                if transfer_type == 'append':
+                                    gathered_values = []
+                                    for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                                        if src_attr_name not in attribs:
+                                            continue
+
+                                        attr_val = attribs[src_attr_name]
+                                        gathered_values.append(attr_val)
+                                    attribs_to_promote[dst_attr_name] = gathered_values
+                                elif transfer_type == 'extend':
+                                    gathered_values = []
+                                    for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                                        if src_attr_name not in attribs:
+                                            continue
+
+                                        attr_val = attribs[src_attr_name]
+                                        if isinstance(attr_val, list):
+                                            gathered_values.extend(attr_val)
+                                        else:
+                                            gathered_values.append(attr_val)
+                                    attribs_to_promote[dst_attr_name] = gathered_values
+                                elif transfer_type == 'first':
+                                    _acd = self.__cache[split_id]['arrived']
+                                    if len(_acd) > 0:
+                                        if sort_reversed:
+                                            attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                                        else:
+                                            attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                                        if src_attr_name in attribs:
+                                            attribs_to_promote[dst_attr_name] = attribs[src_attr_name]
+                                elif transfer_type == 'sum':
+                                    # we don't care about the order, assume sum is associative
+                                    gathered_values = None
+                                    for attribs in self.__cache[split_id]['arrived'].values():
+                                        if src_attr_name not in attribs:
+                                            continue
+                                        if gathered_values is None:
+                                            gathered_values = attribs[src_attr_name]
+                                        else:
+                                            gathered_values += attribs[src_attr_name]
+                                    attribs_to_promote[dst_attr_name] = gathered_values
+                                else:
+                                    raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
+
+                            res.remove_split(attributes_to_set=attribs_to_promote)
+                        changed = True
+                        return res
+            else:
+                with self.__main_lock:
                     res = ProcessingResult()
                     res.kill_task()
-                    attribs_to_promote = {}
+                    self.__cache[split_id]['processed'].add(context.task_field('split_element'))
                     if self.__cache[split_id]['first_to_arrive'] == task_id:
-                        # transfer attributes  # TODO: delete cache for already processed splits
-                        num_attribs = context.param_value('transfer_attribs')
-                        for i in range(num_attribs):
-                            src_attr_name = context.param_value(f'src_attr_name_{i}')
-                            transfer_type = context.param_value(f'transfer_type_{i}')
-                            dst_attr_name = context.param_value(f'dst_attr_name_{i}')
-                            sort_attr_name = context.param_value(f'sort_by_{i}')
-                            sort_reversed = context.param_value(f'reversed_{i}')
-                            if transfer_type == 'append':
-                                gathered_values = []
-                                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                    if src_attr_name not in attribs:
-                                        continue
-
-                                    attr_val = attribs[src_attr_name]
-                                    gathered_values.append(attr_val)
-                                attribs_to_promote[dst_attr_name] = gathered_values
-                            elif transfer_type == 'extend':
-                                gathered_values = []
-                                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                    if src_attr_name not in attribs:
-                                        continue
-
-                                    attr_val = attribs[src_attr_name]
-                                    if isinstance(attr_val, list):
-                                        gathered_values.extend(attr_val)
-                                    else:
-                                        gathered_values.append(attr_val)
-                                attribs_to_promote[dst_attr_name] = gathered_values
-                            elif transfer_type == 'first':
-                                _acd = self.__cache[split_id]['arrived']
-                                if len(_acd) > 0:
-                                    if sort_reversed:
-                                        attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                    else:
-                                        attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                    if src_attr_name in attribs:
-                                        attribs_to_promote[dst_attr_name] = attribs[src_attr_name]
-                            elif transfer_type == 'sum':
-                                # we don't care about the order, assume sum is associative
-                                gathered_values = None
-                                for attribs in self.__cache[split_id]['arrived'].values():
-                                    if src_attr_name not in attribs:
-                                        continue
-                                    if gathered_values is None:
-                                        gathered_values = attribs[src_attr_name]
-                                    else:
-                                        gathered_values += attribs[src_attr_name]
-                                attribs_to_promote[dst_attr_name] = gathered_values
-                            else:
-                                raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
-
-                        res.remove_split(attributes_to_set=attribs_to_promote)
+                        res.remove_split()
+                    changed = True
                     return res
-        else:
-            with self.__main_lock:
-                res = ProcessingResult()
-                res.kill_task()
-                if self.__cache[split_id]['first_to_arrive'] == task_id:
-                    res.remove_split()
-                return res
+
+        finally:
+            if self.__cache[split_id]['processed'] == self.__cache[split_id]['awaiting']:  # kinda precheck, to avoid extra lockings
+                with self.__main_lock:
+                    if self.__cache[split_id]['processed'] == self.__cache[split_id]['awaiting']:  # and proper check inside lock
+                        del self.__cache[split_id]
+            if changed:
+                self._state_changed()
 
         raise NodeNotReadyToProcess()
 
