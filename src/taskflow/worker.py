@@ -57,7 +57,7 @@ class Worker:
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
         self.__where_to_report = None
-        self.__ping_interval = 5
+        self.__ping_interval = 10
         self.__ping_missed_threshold = 2
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_port)
