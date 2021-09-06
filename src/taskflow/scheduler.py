@@ -1103,7 +1103,7 @@ class Scheduler:
 
     #
     # node reports it's interface was changed. not sure why it exists
-    async def node_reports_ui_update(self, node_id):
+    async def node_reports_changes_needs_saving(self, node_id):
         assert node_id in self.__node_objects, 'this may be caused by race condition with node deletion'
         # TODO: introduce __node_objects lock? or otherwise secure access
         node_object = self.__node_objects[node_id]
