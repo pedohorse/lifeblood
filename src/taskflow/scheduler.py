@@ -654,8 +654,8 @@ class Scheduler:
                             await con.commit()
                             _debug_tc += time.perf_counter() - _debug_tmp
 
-                            asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
-                                                         abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
+                            tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
+                                                                           abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING)))
                         _debug_tw += time.perf_counter() - _debug_tmpw
                         _debug_wait_cnt += 1
                     #
