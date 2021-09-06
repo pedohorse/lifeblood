@@ -119,6 +119,8 @@ class BaseNode:
         :return:
         """
         if self.__parent is not None:
+            # TODO: note that this may happen at any point in processing,
+            #  so IF node subclass has internal state - it has to deal with ensuring state is consistent at time or writing
             asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     def ready_to_process_task(self, task_dict) -> bool:
