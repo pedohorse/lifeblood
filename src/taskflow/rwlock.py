@@ -21,12 +21,10 @@ class RWLock:
                 self.__wlock.release()
 
     def acquire_writer(self):
-        with self.__helper_lock:
-            self.__wlock.acquire()
+        self.__wlock.acquire()
 
     def release_writer(self):
-        with self.__helper_lock:
-            self.__wlock.release()
+        self.__wlock.release()
 
     @contextmanager
     def reader_lock(self):
