@@ -111,7 +111,15 @@ class BaseNode:
         :return:
         """
         if self.__parent is not None:
-            asyncio.get_event_loop().create_task(self.__parent.node_reports_ui_update(self.__parent_nid))
+            asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
+
+    def _state_changed(self):
+        """
+        this methods should be called when important node state was changes to trigger node's database update
+        :return:
+        """
+        if self.__parent is not None:
+            asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     def ready_to_process_task(self, task_dict) -> bool:
         """
@@ -241,10 +249,21 @@ class BaseNodeWithTaskRequirements(BaseNode):
     
     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
         result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
-        context = ProcessingContext(self, task_dict)
-        reqs = result.invocation_job.requirements()
-        reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
-        result.invocation_job.set_requirements(reqs)
+        if result.invocation_job is not None:
+            context = ProcessingContext(self, task_dict)
+            reqs = result.invocation_job.requirements()
+            reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
+            result.invocation_job.set_requirements(reqs)
+        return result
+
+    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
+        result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict)
+        if result.invocation_job is not None:
+            context = ProcessingContext(self, task_dict)
+            reqs = result.invocation_job.requirements()
+            reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
+            result.invocation_job.set_requirements(reqs)
+        return result
 
 
 # class BaseNodeWithEnvironmentRequirements(BaseNode):
