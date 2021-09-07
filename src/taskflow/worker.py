@@ -9,6 +9,7 @@ import json
 import psutil
 import datetime
 import tempfile
+import signal
 from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
@@ -92,10 +93,14 @@ class Worker:
         self.__stopping_waiters = []
         self.__finished = asyncio.Event()
         self.__started = False
+        self.__stopped = False
 
     async def start(self):
         if self.__started:
             return
+        if self.__stopped:
+            raise RuntimeError('already stopped, cannot start again')
+
         loop = asyncio.get_event_loop()
         my_ip = get_addr_to(self.__scheduler_addr[0])
         my_port = 6969
@@ -135,8 +140,9 @@ class Worker:
             except Exception:
                 self.__logger.exception('couldn\'t say bye to scheduler for unknown reason')
 
-        if not self.__started:
+        if not self.__started or self.__stopped:
             return
+        self.__logger.info('STOPPING WORKER')
         self.__server.close()
         self.__scheduler_pinger_stop_event.set()
         self.__stopping_waiters.append(asyncio.create_task(self.cancel_task()))
@@ -144,6 +150,7 @@ class Worker:
             return
         self.__stopping_waiters.append(asyncio.create_task(_send_byebye()))
         self.__finished.set()
+        self.__stopped = True
 
     async def wait_till_stops(self):
         # if self.__scheduler_pinger is not None:
@@ -455,12 +462,32 @@ async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, 
     and listenting for broadcast starts again
     :return: Never!
     """
+
+    def graceful_closer():
+        nonlocal noloop
+        noloop = True
+        stop_event.set()
+        if worker is not None:
+            worker.stop()
+
+    worker = None
+    stop_event = asyncio.Event()
+    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
     config = get_config('worker')
     logger = logging.get_logger('worker')
     if await config.get_option('worker.listen_to_broadcast', True):
+        stop_task = asyncio.create_task(stop_event.wait())
         while True:
             logger.info('listening for scheduler broadcasts...')
-            message = await await_broadcast('taskflow_scheduler')
+            broadcast_task = asyncio.create_task(await_broadcast('taskflow_scheduler'))
+            done, _ = await asyncio.wait((broadcast_task, stop_task), return_when=asyncio.FIRST_COMPLETED)
+            if stop_task in done:
+                broadcast_task.cancel()
+                logger.info('broadcast listening cancelled')
+                break
+            assert broadcast_task.done()
+            message = await broadcast_task
             scheduler_info = json.loads(message)
             logger.debug('received', scheduler_info)
             addr = scheduler_info['worker']
