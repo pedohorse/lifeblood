@@ -19,6 +19,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         self.__logger = logging.get_logger('scheduler.uiprotocol')
         self.__scheduler: "Scheduler" = scheduler
         self.__reader = asyncio.StreamReader()
+        self.__timeout = 60.0
         super(SchedulerUiProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -34,12 +35,20 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(b)
 
         try:
-            proto = await reader.readexactly(4)
+            proto = await asyncio.wait_for(reader.readexactly(4), timeout=self.__timeout)
             if proto != b'\0\0\0\0':
                 raise NotImplementedError(f'protocol version unsupported {proto}')
 
+            wait_stop_task = asyncio.create_task(self.__scheduler._stop_event_wait())
             while True:
-                command: bytes = await reader.readline()
+                readline_task = asyncio.create_task(reader.readline())
+                done, pending = await asyncio.wait((readline_task, wait_stop_task), return_when=asyncio.FIRST_COMPLETED)
+                if wait_stop_task in done:
+                    self.__logger.debug(f'scheduler is stopping: closing ui connections')
+                    readline_task.cancel()
+                    return
+                assert readline_task.done()
+                command: bytes = await readline_task
                 if command.endswith(b'\n'):
                     command = command[:-1]
                 self.__logger.debug(f'got command {command}')
