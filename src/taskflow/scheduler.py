@@ -8,6 +8,7 @@ import itertools
 from enum import Enum
 import asyncio
 import aiosqlite
+import signal
 
 from . import logging
 from . import paths
@@ -64,6 +65,7 @@ class Scheduler:
         server_port = config.get_option_noasync('core.server_port', 7979)
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
         ui_port = config.get_option_noasync('core.ui_port', 7989)
+        self.__stop_event = asyncio.Event()
         self.__server = None
         self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
@@ -146,6 +148,17 @@ class Scheduler:
             return None
         return await InvocationJob.deserialize_async(data)
 
+    def stop(self):
+        self.__stop_event.set()
+        if self.__server is not None:
+            self.__server.close()
+        if self.__ui_server is not None:
+            self.__ui_server.close()
+        self.__worker_pool.stop()
+
+    def _stop_event_wait(self):
+        return self.__stop_event.wait()
+
     async def run(self):
         # prepare
         async with aiosqlite.connect(self.db_path) as con:
@@ -174,6 +187,9 @@ class Scheduler:
                              self.__ui_server.wait_closed(),
                              self.__worker_pool.wait_till_stops())
 
+    #
+    # helper functions
+    #
     async def set_worker_ping_state(self, wid: int, state: WorkerPingState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         await self._set_value('workers', 'ping_state', wid, state.value, con, nocommit)
 
@@ -375,7 +391,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
 
             tasks = []
-            while True:
+            while not self.__stop_event.is_set():
                 nowtime = time.time()
 
                 self.__pinger_logger.debug('    ::selecting workers...')
@@ -397,6 +413,11 @@ class Scheduler:
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
                 await asyncio.sleep(self.__ping_interval)
+
+        self.__logger.info('finishing worker pinger...')
+        if len(tasks) > 0:
+            await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        self.__logger.info('worker pinger finished')
 
     #
     # task processing thread
@@ -567,7 +588,7 @@ class Scheduler:
 
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
-        while True:
+        while not self.__stop_event.is_set():
 
             # first prune awaited tasks
             for task_to_wait in tasks_to_wait:
@@ -839,6 +860,16 @@ class Scheduler:
         #         print('\n\ntest over\n\n')
         #     await asyncio.sleep(10)
 
+        # Out of while - means we are stopping. time to save all the nodes
+        self.__logger.info('finishing task processor...')
+        if len(tasks_to_wait) > 0:
+            await asyncio.wait(tasks_to_wait, return_when=asyncio.ALL_COMPLETED)
+        self.__logger.info('saving nodes to db')
+        for node_id in self.__node_objects:
+            await self.save_node_to_database(node_id)
+            self.__logger.debug(f'node {node_id} saved to db')
+        self.__logger.info('task processor finished')
+
     #
     # invocation consistency checker
     async def invocation_consistency_checker(self):
@@ -1105,6 +1136,19 @@ class Scheduler:
     # node reports it's interface was changed. not sure why it exists
     async def node_reports_changes_needs_saving(self, node_id):
         assert node_id in self.__node_objects, 'this may be caused by race condition with node deletion'
+        # TODO: introduce __node_objects lock? or otherwise secure access
+        await self.save_node_to_database(node_id)
+
+    #
+    # save node to database.
+    async def save_node_to_database(self, node_id):
+        """
+        save node with given node_id to database
+        if node is not in our list of nodes - we assume it was not touched, not changed, so no saving needed
+
+        :param node_id:
+        :return:
+        """
         # TODO: introduce __node_objects lock? or otherwise secure access
         node_object = self.__node_objects[node_id]
         if node_object is None:
@@ -1418,6 +1462,9 @@ default_config = '''
 
 
 async def main_async(db_path=None):
+    def graceful_closer():
+        scheduler.stop()
+
     if db_path is None:
         config = get_config('scheduler')
         db_path = await config.get_option('scheduler.db_path', str(paths.default_main_database_location()))
@@ -1427,6 +1474,8 @@ async def main_async(db_path=None):
         await con.executescript(sql_init_script)
 
     scheduler = Scheduler(db_path)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
     await scheduler.run()
 
 
