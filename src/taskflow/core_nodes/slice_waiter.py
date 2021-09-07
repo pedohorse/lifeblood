@@ -168,8 +168,8 @@ class SplitAwaiterNode(BaseNode):
                 with self.__main_lock:
                     if self.__cache[split_id]['processed'] == self.__cache[split_id]['awaiting']:  # and proper check inside lock
                         del self.__cache[split_id]
-            if changed:
-                self._state_changed()
+            # if changed:
+            #     self._state_changed()  # this cannot be called from non asyncio thread as this.
 
         raise NodeNotReadyToProcess()
 
