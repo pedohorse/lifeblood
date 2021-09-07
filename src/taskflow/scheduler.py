@@ -149,6 +149,9 @@ class Scheduler:
         return await InvocationJob.deserialize_async(data)
 
     def stop(self):
+        if self.__stop_event.is_set():
+            return  # no double stopping
+        self.__logger.info('STOPPING SCHEDULER')
         self.__stop_event.set()
         if self.__server is not None:
             self.__server.close()
