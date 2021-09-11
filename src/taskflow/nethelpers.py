@@ -1,7 +1,7 @@
 import socket
 import asyncio
 
-from typing import AnyStr
+from typing import Any, AnyStr
 
 
 class BaseFeeder:
@@ -121,3 +121,33 @@ def address_to_ip_port(addr_str: str) -> (str, int):
         raise ValueError('bad address format')
     addr, sport = addr_str.split(':')
     return addr, int(sport)
+
+
+class TimeCachedData:
+    class CacheInvalid(Exception):
+        pass
+
+    def __init__(self, data: Any, valid_period=1, auto_recache_function=None):
+        self.__creation_time = time.time()
+        self.__valid_period = valid_period
+        self.__expiration_time = self.__creation_time + valid_period
+        self.__data = data
+        self.__recacher = auto_recache_function
+
+    def is_cache_valid(self):
+        """
+        note that checking is_cache_valid just before getting cached_data does NOT guarantee a no throw
+
+        :return:
+        """
+        return time.time() < self.__creation_time
+
+    def cached_data(self):
+        if not self.is_cache_valid():
+            if self.__recacher is None:
+                raise TimeCachedData.CacheInvalid()
+            else:
+                self.__data = self.__recacher()
+                self.__creation_time = time.time()
+                self.__expiration_time = self.__creation_time + self.__valid_period
+        return self.__data
