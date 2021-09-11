@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
-from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel
+from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
+from .connection_worker import SchedulerConnectionWorker
 
 from typing import Dict
 
@@ -124,10 +125,20 @@ class GroupsView(QTreeView):
 class TaskflowViewer(QMainWindow):
     def __init__(self, db_path: str, parent=None):
         super(TaskflowViewer, self).__init__(parent)
+
+        # worker thread
+        self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
+        self.__ui_connection_worker = SchedulerConnectionWorker()
+        self.__ui_connection_worker.moveToThread(self.__ui_connection_thread)
+
+        self.__ui_connection_thread.started.connect(self.__ui_connection_worker.start)
+        self.__ui_connection_thread.finished.connect(self.__ui_connection_worker.finish)
+
+        # interface
         self.__central_widget = QSplitter()
         self.setCentralWidget(self.__central_widget)
         #self.__main_layout = QHBoxLayout(self.centralWidget())
-        self.__node_editor = NodeEditor(db_path)
+        self.__node_editor = NodeEditor(db_path, self.__ui_connection_worker)
         self.__group_list = GroupsView()
         self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
@@ -152,7 +163,7 @@ class TaskflowViewer(QMainWindow):
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
 
         # start
-        self.__node_editor.start()
+        self.start()
 
     def update_groups(self, groups):
         do_select = self.__model_main.rowCount() == 0
@@ -167,5 +178,15 @@ class TaskflowViewer(QMainWindow):
         return self.__node_editor.sceneRect()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.__node_editor.stop()
+        self.stop()
         super(TaskflowViewer, self).closeEvent(event)
+
+    def start(self):
+        self.__node_editor.start()
+        self.__ui_connection_thread.start()
+
+    def stop(self):
+        self.__node_editor.stop()
+        self.__ui_connection_worker.request_interruption()
+        self.__ui_connection_thread.exit()
+        self.__ui_connection_thread.wait()
