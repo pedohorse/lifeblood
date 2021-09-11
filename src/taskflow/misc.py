@@ -1,4 +1,6 @@
 import random
+import time
+from .logging import get_logger, logging
 
 from typing import List, Optional
 
@@ -20,3 +22,18 @@ def generate_name(word_length: int = 6, max_word_length: Optional[int] = None):
 
     parts[0] = parts[0].capitalize()
     return ''.join(parts)
+
+
+def atimeit(func):
+    logger = get_logger('timeit')
+    if not logger.isEnabledFor(logging.DEBUG):
+        return func
+
+    async def _wrapper(*args, **kwargs):
+        _start = time.perf_counter()
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            logger.debug(f'ran {func.__name__} in {time.perf_counter() - _start}s')
+
+    return _wrapper
