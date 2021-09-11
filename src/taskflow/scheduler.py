@@ -29,6 +29,7 @@ from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType
 from .config import get_config, create_default_user_config_file
+from .misc import atimeit
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -1164,6 +1165,7 @@ class Scheduler:
 
     #
     # stuff
+    @atimeit
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path) as con:
