@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     from .basenode import BaseNode
 
 
-async def create_uidata(ui_nodes, ui_connections, ui_tasks, all_task_groups):
-    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks, all_task_groups)
+async def create_uidata(ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
+    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups)
 
 
 class ParameterExpressionError(Exception):
@@ -31,10 +31,11 @@ class ParameterExpressionError(Exception):
 
 
 class UiData:
-    def __init__(self, ui_nodes, ui_connections, ui_tasks, all_task_groups):
+    def __init__(self, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
         self.__nodes = ui_nodes
         self.__conns = ui_connections
         self.__tasks = ui_tasks
+        self.__workers = ui_workers
         self.__task_groups = all_task_groups
         # self.__conns = {}
         # for conn in raw_connections:
@@ -54,6 +55,9 @@ class UiData:
 
     def tasks(self):
         return self.__tasks
+
+    def workers(self):
+        return self.__workers
 
     def task_groups(self):
         return self.__task_groups

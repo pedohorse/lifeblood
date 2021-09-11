@@ -1212,7 +1212,9 @@ class Scheduler:
                             all_tasks[task['id']] = task
             async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group";') as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
-            data = await create_uidata(all_nodes, all_conns, all_tasks, all_task_groups)
+            async with con.execute('SELECT "id", cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, "state", worker_type FROM workers') as cur:
+                all_workers = tuple(dict(x) for x in await cur.fetchall())
+            data = await create_uidata(all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
 
     #
