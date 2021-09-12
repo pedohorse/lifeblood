@@ -156,6 +156,7 @@ class TaskflowViewer(QMainWindow):
         self.__node_editor.setFocusPolicy(Qt.ClickFocus)
 
         # cOnNeC1
+        # TODO: Now that taskflow_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiScene)
         scene.task_groups_updated.connect(self.update_groups)
