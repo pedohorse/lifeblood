@@ -4,6 +4,7 @@ from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
+from .worker_list import WorkerListWidget
 
 from typing import Dict
 
@@ -147,11 +148,14 @@ class TaskflowViewer(QMainWindow):
         self.__group_list.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.__group_list.header().setStretchLastSection(True)
 
+        self.__worker_list = WorkerListWidget(self.__ui_connection_worker, self)
+
         #self.__main_layout.addWidget(self.__group_list)
         #self.__main_layout.addWidget(self.__node_editor)
         self.__central_widget.addWidget(self.__group_list)
+        self.__central_widget.addWidget(self.__worker_list)
         self.__central_widget.addWidget(self.__node_editor)
-        self.__central_widget.setSizes([1, 999999])
+        self.__central_widget.setSizes([1, 1, 999999])
         self.__group_list.setFocusPolicy(Qt.ClickFocus)
         self.__node_editor.setFocusPolicy(Qt.ClickFocus)
 
