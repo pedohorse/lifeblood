@@ -38,8 +38,8 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, dict] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem', 'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type'}
-        self.__cols_order = ('id', 'state', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'last_seen', 'worker_type')
+        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem', 'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type', 'progress': 'task progress'}
+        self.__cols_order = ('id', 'state', 'progress', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'last_seen', 'worker_type')
         assert len(self.__cols) == len(self.__cols_order)
 
         self.start()
@@ -74,13 +74,19 @@ class WorkerModel(QAbstractTableModel):
             if role == Qt.DisplayRole:
                 return data.name
             elif role == Qt.BackgroundRole:
-                if data in (WorkerState.BUSY, WorkerState.IDLE, WorkerState.INVOKING):
+                if data in (WorkerState.BUSY, WorkerState.INVOKING):
+                    return QColor.fromRgb(255, 255, 0, 64)
+                if data == WorkerState.IDLE:
                     return QColor.fromRgb(0, 255, 0, 64)
                 if data == WorkerState.OFF:
                     return QColor.fromRgb(0, 0, 0, 64)
                 if data == WorkerState.ERROR:
                     return QColor.fromRgb(255, 0, 0, 64)
                 return None
+        if col_name == 'progress':
+            if self.__workers[self.__order[row]]['state'] == WorkerState.BUSY.value and raw_data is not None:
+                return f'{raw_data}%'
+            return ''
         if col_name == 'last_seen':
             return datetime.fromtimestamp(raw_data).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
