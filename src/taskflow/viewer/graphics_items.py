@@ -1098,7 +1098,7 @@ class Task(NetworkItemWithUI):
 
     def set_progress(self, progress: float):
         self.__progress = progress
-        logger.debug('progress %d', progress)
+        # logger.debug('progress %d', progress)
         self.update()
         self.update_ui()
 
