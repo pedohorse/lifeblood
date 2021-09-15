@@ -1,10 +1,11 @@
 from datetime import datetime
 from ..uidata import UiData
-from ..enums import WorkerType
+from ..enums import WorkerType, WorkerState
 from .connection_worker import SchedulerConnectionWorker
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView
-from PySide2.QtCore import Slot, Qt, QAbstractTableModel, QModelIndex
+from PySide2.QtCore import Slot, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PySide2.QtGui import QColor
 
 from typing import Optional, Dict, List
 
@@ -14,11 +15,20 @@ class WorkerListWidget(QWidget):
         super(WorkerListWidget, self).__init__(parent, Qt.Tool)
         self.__worker_list = QTableView()
         self.__worker_model = WorkerModel(worker, self)
-        self.__worker_list.setModel(self.__worker_model)
+        self.__sort_model = QSortFilterProxyModel(self)
+        self.__sort_model.setSourceModel(self.__worker_model)
+        self.__sort_model.setSortRole(Qt.UserRole)
+        self.__sort_model.setDynamicSortFilter(True)  # careful with this if we choose to modify model through interface in future
+        self.__worker_list.setModel(self.__sort_model)
         self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.__worker_list.setSortingEnabled(True)
+        self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
 
         layout = QHBoxLayout(self)
         layout.addWidget(self.__worker_list)
+
+    def stop(self):
+        self.__worker_model.stop()
 
 
 class WorkerModel(QAbstractTableModel):
@@ -28,8 +38,8 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, dict] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem', 'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type'}
-        self.__cols_order = ('id', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'last_seen', 'worker_type')
+        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem', 'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type'}
+        self.__cols_order = ('id', 'state', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'last_seen', 'worker_type')
         assert len(self.__cols) == len(self.__cols_order)
 
         self.start()
@@ -50,16 +60,31 @@ class WorkerModel(QAbstractTableModel):
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         if not index.isValid():
             return None
-        if role != Qt.DisplayRole:
+        if role not in (Qt.DisplayRole, Qt.BackgroundRole, Qt.UserRole):
             return None
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
         raw_data = self.__workers[self.__order[row]][col_name]
+        if role == Qt.UserRole:  # for sorting
+            return raw_data
+
+        if col_name == 'state':
+            data = WorkerState(raw_data)
+            if role == Qt.DisplayRole:
+                return data.name
+            elif role == Qt.BackgroundRole:
+                if data in (WorkerState.BUSY, WorkerState.IDLE, WorkerState.INVOKING):
+                    return QColor.fromRgb(0, 255, 0, 64)
+                if data == WorkerState.OFF:
+                    return QColor.fromRgb(0, 0, 0, 64)
+                if data == WorkerState.ERROR:
+                    return QColor.fromRgb(255, 0, 0, 64)
+                return None
         if col_name == 'last_seen':
             return datetime.fromtimestamp(raw_data).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
-            return str(WorkerType(raw_data))
+            return WorkerType(raw_data).name
         return raw_data
 
     @Slot(object)
@@ -76,7 +101,7 @@ class WorkerModel(QAbstractTableModel):
         # insert
         to_insert = new_keys - old_keys
         if len(to_insert) > 0:
-            self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(to_insert))
+            self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(to_insert) - 1)
             for key in to_insert:
                 assert key not in self.__workers
                 assert key not in self.__inv_order
