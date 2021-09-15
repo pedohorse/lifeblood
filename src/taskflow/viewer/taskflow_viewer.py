@@ -138,6 +138,7 @@ class TaskflowViewer(QMainWindow):
         # interface
         self.__central_widget = QSplitter()
         self.setCentralWidget(self.__central_widget)
+        self.__workerview_splitter = QSplitter(Qt.Vertical)
         #self.__main_layout = QHBoxLayout(self.centralWidget())
         self.__node_editor = NodeEditor(db_path, self.__ui_connection_worker)
         self.__group_list = GroupsView()
@@ -153,9 +154,13 @@ class TaskflowViewer(QMainWindow):
         #self.__main_layout.addWidget(self.__group_list)
         #self.__main_layout.addWidget(self.__node_editor)
         self.__central_widget.addWidget(self.__group_list)
-        self.__central_widget.addWidget(self.__worker_list)
-        self.__central_widget.addWidget(self.__node_editor)
-        self.__central_widget.setSizes([1, 1, 999999])
+        self.__central_widget.addWidget(self.__workerview_splitter)
+
+        self.__workerview_splitter.addWidget(self.__node_editor)
+        self.__workerview_splitter.addWidget(self.__worker_list)
+
+        self.__central_widget.setSizes([1, 999999])
+        self.__workerview_splitter.setSizes([999999, 1])
         self.__group_list.setFocusPolicy(Qt.ClickFocus)
         self.__node_editor.setFocusPolicy(Qt.ClickFocus)
 
@@ -192,6 +197,7 @@ class TaskflowViewer(QMainWindow):
 
     def stop(self):
         self.__node_editor.stop()
+        self.__worker_list.stop()
         self.__ui_connection_worker.request_interruption()
         self.__ui_connection_thread.exit()
         self.__ui_connection_thread.wait()
