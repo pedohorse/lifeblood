@@ -697,10 +697,16 @@ class Scheduler:
                     # real scheduling should happen here
                     elif task_state == TaskState.READY:
                         submitters = []
+                        # there may be a lot of similar queries, and if there's nothing available at some point - we may just leave it for next submission iteration
+                        # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
+                        where_empty_cache = set()
                         for task_row in all_task_rows:
+                            if task_row["_invoc_requirement_clause"] in where_empty_cache:
+                                continue
                             async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
                                 worker = await worcur.fetchone()
                             if worker is None:  # nothing available
+                                where_empty_cache.add(task_row["_invoc_requirement_clause"])
                                 continue
 
                             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
