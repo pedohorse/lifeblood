@@ -310,8 +310,9 @@ class Scheduler:
             # this inconsistencies should only occur shortly after scheduler restart
             # due to desync of still working workers and scheduler
             workerstate = await self.get_worker_state(worker_row['id'], con=con)
-            if workerstate == WorkerState.OFF:
+            if workerstate == WorkerState.OFF:  # TODO: this can cause race conditions (theoretically) if worker saz goodbye right after getting the ping, so we get OFF state from db. or all vice-versa
                 if ping_code == WorkerPingReply.IDLE:
+                    self.__logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as idle... scheduler must have been restarted recently. fixing potential problems...')
                     await self.set_worker_state(worker_row['id'], WorkerState.IDLE, con=con, nocommit=True)
                 elif ping_code == WorkerPingReply.BUSY:
                     await self.set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
