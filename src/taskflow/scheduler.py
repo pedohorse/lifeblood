@@ -84,7 +84,7 @@ class Scheduler:
         self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=1, scheduler_address=(server_ip, server_port))
 
         self.__ping_interval = 1
-        self.__processing_interval = 2
+        self.__processing_interval = 0.5
 
         self.__event_loop = asyncio.get_running_loop()
         assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
@@ -431,19 +431,19 @@ class Scheduler:
         # task processing coroutimes
         @atimeit
         async def _awaiter(processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
-            _blo = time.perf_counter()
+            #_blo = time.perf_counter()
             task_id = task_row['id']
             loop = asyncio.get_event_loop()
             try:
                 process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
-                async with aiosqlite.connect(self.db_path) as con:
+                async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
                     await con.commit()
                 return
             except Exception as e:
-                async with aiosqlite.connect(self.db_path) as con:
+                async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value, task_id))
                     await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
@@ -461,11 +461,11 @@ class Scheduler:
             async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
-                print(f'up till block: {time.perf_counter() - _blo}')
+                #print(f'up till block: {time.perf_counter() - _blo}')
                 await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                   (process_result.output_name, task_id))
-                _blo = time.perf_counter()
-                _bla1 = time.perf_counter()
+                #_blo = time.perf_counter()
+                #_bla1 = time.perf_counter()
                 if process_result.do_kill_task:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.DEAD.value, task_id))
@@ -486,8 +486,8 @@ class Scheduler:
                                           'WHERE "id" = ?',
                                           (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql,
                                            task_id))
-                print(f'kill/invoc: {time.perf_counter() - _bla1}')
-                _bla1 = time.perf_counter()
+                #print(f'kill/invoc: {time.perf_counter() - _bla1}')
+                #_bla1 = time.perf_counter()
                 if process_result.do_split_remove:
                     async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
                         res = await sealcur.fetchone()
@@ -514,8 +514,8 @@ class Scheduler:
                                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                                   (result_serialized, task_row['split_origin_task_id']))
 
-                print(f'splitrem: {time.perf_counter() - _bla1}')
-                _bla1 = time.perf_counter()
+                #print(f'splitrem: {time.perf_counter() - _bla1}')
+                #_bla1 = time.perf_counter()
                 if process_result.attributes_to_set:  # not None or {}
                     attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'])
                     attributes.update(process_result.attributes_to_set)
@@ -525,13 +525,13 @@ class Scheduler:
                     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                     await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                       (result_serialized, task_id))
-                print(f'attset: {time.perf_counter() - _bla1}')
-                _bla1 = time.perf_counter()
+                #print(f'attset: {time.perf_counter() - _bla1}')
+                #_bla1 = time.perf_counter()
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
-                print(f'spawn: {time.perf_counter() - _bla1}')
-                _bla1 = time.perf_counter()
+                #print(f'spawn: {time.perf_counter() - _bla1}')
+                #_bla1 = time.perf_counter()
                 if process_result._split_attribs is not None:
                     split_count = len(process_result._split_attribs)
                     for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
@@ -541,11 +541,11 @@ class Scheduler:
                         split_task_attrs = json.loads(split_task_dict['attributes'])
                         split_task_attrs.update(attr_dict)
                         await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))
-                print(f'split: {time.perf_counter()-_bla1}')
+                #print(f'split: {time.perf_counter()-_bla1}')
 
-                _precum = time.perf_counter()-_blo
+                #_precum = time.perf_counter()-_blo
                 await con.commit()
-                print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
+                #print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
         @atimeit
@@ -562,7 +562,7 @@ class Scheduler:
             assert work_data is not None
             task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
             if not task.args():
-                async with aiosqlite.connect(self.db_path) as skipwork_transaction:
+                async with awaiter_lock, aiosqlite.connect(self.db_path) as skipwork_transaction:
                     await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                        (TaskState.POST_WAITING.value, task_row['id']))
                     await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
@@ -572,11 +572,12 @@ class Scheduler:
 
             # so task.args() is not None
             async with aiosqlite.connect(self.db_path) as submit_transaction:
-                async with submit_transaction.execute(
-                        'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
-                        (task_row['id'], worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
-                    invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
-                await submit_transaction.commit()
+                with awaiter_lock:
+                    async with submit_transaction.execute(
+                            'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
+                            (task_row['id'], worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
+                        invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
+                    await submit_transaction.commit()
 
                 task._set_invocation_id(invocation_id)
                 task._set_task_attributes(json.loads(task_row['attributes']))
@@ -592,22 +593,23 @@ class Scheduler:
                     self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
                     reply = TaskScheduleStatus.FAILED
 
-                if reply == TaskScheduleStatus.SUCCESS:
-                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                     (TaskState.IN_PROGRESS.value, task_row['id']))
-                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                     (WorkerState.BUSY.value, worker_row['id']))
-                    await submit_transaction.execute('UPDATE invocations SET state = ? WHERE "id" = ?',
-                                                     (InvocationState.IN_PROGRESS.value, invocation_id))
-                    await submit_transaction.commit()
-                else:  # on anything but success - cancel transaction
-                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                     (TaskState.READY.value, task_row['id']))
-                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                     (WorkerState.IDLE.value, worker_row['id']))
-                    await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
-                                                     (invocation_id,))
-                    await submit_transaction.commit()
+                with awaiter_lock:
+                    if reply == TaskScheduleStatus.SUCCESS:
+                        await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                         (TaskState.IN_PROGRESS.value, task_row['id']))
+                        await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                         (WorkerState.BUSY.value, worker_row['id']))
+                        await submit_transaction.execute('UPDATE invocations SET state = ? WHERE "id" = ?',
+                                                         (InvocationState.IN_PROGRESS.value, invocation_id))
+                        await submit_transaction.commit()
+                    else:  # on anything but success - cancel transaction
+                        await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                         (TaskState.READY.value, task_row['id']))
+                        await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                         (WorkerState.IDLE.value, worker_row['id']))
+                        await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
+                                                         (invocation_id,))
+                        await submit_transaction.commit()
 
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
