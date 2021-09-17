@@ -153,10 +153,13 @@ class Worker:
         self.__logger.info('STOPPING WORKER')
         self.__server.close()
         self.__scheduler_pinger_stop_event.set()
-        self.__stopping_waiters.append(asyncio.create_task(self.cancel_task()))
-        if self.__my_addr is None:
-            return
-        self.__stopping_waiters.append(asyncio.create_task(_send_byebye()))
+
+        async def _finalizer():
+            await self.__server.wait_closed()  # first we wait for server to fully close all connections
+            await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler
+            await _send_byebye()  # and only after that we report OFF to scheduler
+
+        self.__stopping_waiters.append(asyncio.create_task(_finalizer()))
         self.__finished.set()
         self.__stopped = True
 
