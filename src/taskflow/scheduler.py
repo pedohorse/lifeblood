@@ -427,8 +427,11 @@ class Scheduler:
     # task processing thread
     async def task_processor(self):
 
+        awaiter_lock = asyncio.Lock()
         # task processing coroutimes
+        @atimeit
         async def _awaiter(processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
+            _blo = time.perf_counter()
             task_id = task_row['id']
             loop = asyncio.get_event_loop()
             try:
@@ -454,11 +457,15 @@ class Scheduler:
                     self.__logger.exception('error happened %s %s', type(e), e)
                 return
 
-            async with aiosqlite.connect(self.db_path) as con:
+            # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
+            async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
+                print(f'up till block: {time.perf_counter() - _blo}')
                 await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                   (process_result.output_name, task_id))
+                _blo = time.perf_counter()
+                _bla1 = time.perf_counter()
                 if process_result.do_kill_task:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.DEAD.value, task_id))
@@ -479,6 +486,8 @@ class Scheduler:
                                           'WHERE "id" = ?',
                                           (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql,
                                            task_id))
+                print(f'kill/invoc: {time.perf_counter() - _bla1}')
+                _bla1 = time.perf_counter()
                 if process_result.do_split_remove:
                     async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
                         res = await sealcur.fetchone()
@@ -505,6 +514,8 @@ class Scheduler:
                                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                                   (result_serialized, task_row['split_origin_task_id']))
 
+                print(f'splitrem: {time.perf_counter() - _bla1}')
+                _bla1 = time.perf_counter()
                 if process_result.attributes_to_set:  # not None or {}
                     attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'])
                     attributes.update(process_result.attributes_to_set)
@@ -514,9 +525,13 @@ class Scheduler:
                     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                     await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                       (result_serialized, task_id))
+                print(f'attset: {time.perf_counter() - _bla1}')
+                _bla1 = time.perf_counter()
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
+                print(f'spawn: {time.perf_counter() - _bla1}')
+                _bla1 = time.perf_counter()
                 if process_result._split_attribs is not None:
                     split_count = len(process_result._split_attribs)
                     for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
@@ -526,10 +541,14 @@ class Scheduler:
                         split_task_attrs = json.loads(split_task_dict['attributes'])
                         split_task_attrs.update(attr_dict)
                         await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))
+                print(f'split: {time.perf_counter()-_bla1}')
 
+                _precum = time.perf_counter()-_blo
                 await con.commit()
+                print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
+        @atimeit
         async def _submitter(task_row, worker_row):
             addr = worker_row['last_address']
             try:
@@ -595,274 +614,255 @@ class Scheduler:
         while not self.__stop_event.is_set():
 
             # first prune awaited tasks
+            to_remove = set()
             for task_to_wait in tasks_to_wait:
                 if task_to_wait.done():
+                    to_remove.add(task_to_wait)
                     try:
                         await task_to_wait
                     except Exception as e:
                         self.__logger.exception('awaited task raised some problems')
+            tasks_to_wait -= to_remove
 
             # now proceed with processing
+            _debug_con = time.perf_counter()
             async with aiosqlite.connect(self.db_path) as con:
                 con.row_factory = aiosqlite.Row
-                _debug_t0 = time.perf_counter()
-                async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
-                                       'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
-                                       'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
-                                       'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
-                                       'WHERE (state = ? OR state = ? OR state = ? OR state = ? OR state = ? ) '
-                                       'AND paused = 0 '
-                                       'ORDER BY RANDOM()',
-                                       (TaskState.WAITING.value, TaskState.READY.value,
-                                        TaskState.DONE.value, TaskState.POST_WAITING.value, TaskState.SPAWNED.value)) as cur:
-                    all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
-                    # if too much tasks here - consider adding LIMIT to execute and work on portions only
-                _debug_t1 = time.perf_counter()
-                _debug_tc = 0.0
-                _debug_tw = 0.0
-                _debug_tpw = 0.0
-                _debug_tr = 0.0
-                _debug_td = 0.0
-                _debug_done_cnt = 0
-                _debug_wait_cnt = 0
-                for task_row in all_task_rows:
 
+                for task_state in (TaskState.WAITING, TaskState.READY, TaskState.DONE, TaskState.POST_WAITING, TaskState.SPAWNED):
+                    _debug_sel = time.perf_counter()
+                    async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
+                                           'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
+                                           'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
+                                           'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
+                                           'WHERE (state = ?) '
+                                           'AND paused = 0 '
+                                           'ORDER BY RANDOM()',
+                                           (task_state.value,)) as cur:
+                        all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
+                        # if too much tasks here - consider adding LIMIT to execute and work on portions only
 
-                    # async def _post_awaiter(task_id, node_object, task_row):  # TODO: this is almost the same as _awaiter - so merge!
-                    #     loop = asyncio.get_event_loop()
-                    #     try:
-                    #         new_attributes, newtasks = await loop.run_in_executor(None, node_object.postprocess_task, task_row)  # TODO: this should have task and node attributes!
-                    #     except NodeNotReadyToProcess:
-                    #         async with aiosqlite.connect(self.db_path) as con:
-                    #             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                    #                               (TaskState.POST_WAITING.value, task_id))
-                    #             await con.commit()
-                    #         return
-                    #     except:  # TODO: save error information into database
-                    #         async with aiosqlite.connect(self.db_path) as con:
-                    #             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                    #                               (TaskState.ERROR.value, task_id))
-                    #             await con.commit()
-                    #         return
+                    _debug_pstart = time.perf_counter()
+                    if _debug_pstart - _debug_sel > 0.05:  # we shouldn't even worry if it's less
+                        self.__logger.debug(f'SELECT took {_debug_pstart - _debug_sel}')
+
+                    if len(all_task_rows) == 0:
+                        continue
+                    self.__logger.debug(f'total {task_state.name}: {len(all_task_rows)}')
                     #
-                    #     attributes = task_row['attributes']
-                    #     attributes.update(new_attributes)
-                    #     attributes = {k: v for k, v in attributes.items() if v is not None}
-                    #     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
-                    #     async with aiosqlite.connect(self.db_path) as con:
-                    #         await con.execute('UPDATE tasks SET "attributes" = ?, "state" = ? WHERE "id" = ?',
-                    #                           (result_serialized, TaskState.DONE.value, task_id))
-                    #         if newtasks is None or not isinstance(newtasks, list):
-                    #             await con.commit()
-                    #             return
-                    #         await self.spawn_tasks(newtasks, con=con)
-                    #         await con.commit()
+                    # waiting to be processed
+                    if task_state == TaskState.WAITING:
+                        awaiters = []
+                        for task_row in all_task_rows:
+                            if task_row['node_type'] not in pluginloader.plugins:
+                                self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.ERROR.value, task_row['id']))
+                            else:
+                                if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
+                                    continue
 
-                    # means task just arrived in the node and is ready to be processed by the node.
-                    # processing node generates args,
-                    _debug_tmpw = time.perf_counter()
-                    if task_row['state'] == TaskState.WAITING.value:
-                        if task_row['node_type'] not in pluginloader.plugins:
-                            self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.DONE.value, task_row['id']))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
-                        else:
-                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
-                                continue
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.GENERATING.value, task_row['id']))
 
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.GENERATING.value, task_row['id']))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
-
-                            tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
-                                                                           abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING)))
-                        _debug_tw += time.perf_counter() - _debug_tmpw
-                        _debug_wait_cnt += 1
+                                awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
+                                                         abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
+                        await con.commit()
+                        for coro in awaiters:
+                            tasks_to_wait.add(asyncio.create_task(coro))
                     #
                     # waiting to be post processed
-                    elif task_row['state'] == TaskState.POST_WAITING.value:
-                        if task_row['node_type'] not in pluginloader.plugins:
-                            self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.DONE.value, task_row['id']))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
-                        else:
-                            if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
-                                continue
+                    elif task_state == TaskState.POST_WAITING:
+                        awaiters = []
+                        for task_row in all_task_rows:
+                            if task_row['node_type'] not in pluginloader.plugins:
+                                self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.ERROR.value, task_row['id']))
+                            else:
+                                if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
+                                    continue
 
-                            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                              (TaskState.POST_GENERATING.value, task_row['id']))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
+                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                                  (TaskState.POST_GENERATING.value, task_row['id']))
 
-                            tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
-                                                                           abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE)))
-                        _debug_tpw += time.perf_counter() - _debug_tmpw
+                                awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
+                                                         abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
+                        await con.commit()
+                        for coro in awaiters:
+                            tasks_to_wait.add(asyncio.create_task(coro))
                     #
                     # real scheduling should happen here
-                    elif task_row['state'] == TaskState.READY.value:
-                        async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
-                            worker = await worcur.fetchone()
-                        if worker is None:  # nothing available
-                            continue
+                    elif task_state == TaskState.READY:
+                        submitters = []
+                        for task_row in all_task_rows:
+                            async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
+                                worker = await worcur.fetchone()
+                            if worker is None:  # nothing available
+                                continue
 
-                        async with aiosqlite.connect(self.db_path) as presubmit_transaction:
-                            await presubmit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                            await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                                 (TaskState.INVOKING.value, task_row['id']))
-                            await presubmit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                            await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                                 (WorkerState.INVOKING.value, worker['id']))
-                            await presubmit_transaction.commit()
 
-                        tasks_to_wait.add(asyncio.create_task(_submitter(dict(task_row), dict(worker))))
-                        # addr = worker['last_address']
-                        # try:
-                        #     ip, port = addr.split(':')
-                        #     port = int(port)
-                        # except:
-                        #     self.__logger.error('error addres converting during unexpected here. ping should have cought it')
-                        #     continue
-                        #
-                        # async with aiosqlite.connect(self.db_path) as submit_transaction:
-                        #     async with submit_transaction.execute(
-                        #             'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
-                        #             (task_row['id'], worker['id'], InvocationState.IN_PROGRESS.value, task_row['node_id'])) as incur:
-                        #         invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
-                        #
-                        #     work_data = task_row['work_data']
-                        #     assert work_data is not None
-                        #     task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-                        #     if not task.args():
-                        #         await submit_transaction.rollback()
-                        #         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                        #                                          (TaskState.POST_WAITING.value, task_row['id']))
-                        #         _debug_tmp = time.perf_counter()
-                        #         await submit_transaction.commit()
-                        #         _debug_tc += time.perf_counter() - _debug_tmp
-                        #     else:
-                        #         task._set_invocation_id(invocation_id)
-                        #         task._set_task_attributes(json.loads(task_row['attributes']))
-                        #         # TaskData(['bash', '-c', 'echo "boo" && sleep 10 && echo meow'], None, invocation_id)
-                        #         self.__logger.debug(f'submitting task to {addr}')
-                        #         try:
-                        #             # TODO: this can be very slow for slow network or huge tasks. so this should happen async
-                        #             async with WorkerTaskClient(ip, port) as client:
-                        #                 reply = await client.give_task(task, self.__server_address)
-                        #             self.__logger.debug(f'got reply {reply}')
-                        #         except Exception as e:
-                        #             self.__logger.error('some unexpected error %s', e)
-                        #             reply = TaskScheduleStatus.FAILED
-                        #         if reply == TaskScheduleStatus.SUCCESS:
-                        #             await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                        #                                              (TaskState.IN_PROGRESS.value, task_row['id']))
-                        #             await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                        #                                              (WorkerState.BUSY.value, worker['id']))
-                        #             _debug_tmp = time.perf_counter()
-                        #             await submit_transaction.commit()
-                        #             _debug_tc += time.perf_counter() - _debug_tmp
-                        #         else:  # on anything but success - cancel transaction
-                        #             await submit_transaction.rollback()
-                        _debug_tr += time.perf_counter() - _debug_tmpw
+                            submitters.append(_submitter(dict(task_row), dict(worker)))
+                        await con.commit()
+                        for coro in submitters:
+                            tasks_to_wait.add(asyncio.create_task(coro))
                     #
                     # means task is done being processed by current node,
                     # now it should be passed to the next node
-                    elif task_row['state'] == TaskState.DONE.value\
-                            or task_row['state'] == TaskState.SPAWNED.value:
-                        if task_row['state'] == TaskState.DONE.value:
-                            out_plug_name = task_row['node_output_name'] or 'main'
-                        else:
-                            out_plug_name = task_row['node_output_name'] or 'spawned'
-                        async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
-                                               (task_row['node_id'], out_plug_name)) as wire_cur:
-                            all_wires = await wire_cur.fetchall()
-                        wire_count = len(all_wires)
-                        if wire_count > 0:
-                            if wire_count == 1:
-                                wire = all_wires[0]
-                                await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ? '
-                                                  'WHERE "id" = ?',
-                                                  (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
+                    elif task_state == TaskState.DONE or task_state == TaskState.SPAWNED:
+                        for task_row in all_task_rows:
+                            if task_row['state'] == TaskState.DONE.value:
+                                out_plug_name = task_row['node_output_name'] or 'main'
                             else:
-                                for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
-                                    await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
+                                out_plug_name = task_row['node_output_name'] or 'spawned'
+                            async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
+                                                   (task_row['node_id'], out_plug_name)) as wire_cur:
+                                all_wires = await wire_cur.fetchall()
+                            wire_count = len(all_wires)
+                            if wire_count > 0:
+                                if wire_count == 1:
+                                    wire = all_wires[0]
+                                    await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ? '
                                                       'WHERE "id" = ?',
-                                                      (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
-                                                       splited_task_id))
-                                # new_split_level = task_row['split_level'] + 1
-                                # await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?, split_level = ?'
-                                #                   'WHERE "id" = ?',
-                                #                   (all_wires[0]['node_id_in'], all_wires[0]['in_name'], TaskState.WAITING.value, None, new_split_level,
-                                #                    task_row['id']))
-                                # async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
-                                #     next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
-                                # await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                                #                   (next_split_id, task_row['id'], 0, wire_count, new_split_level, task_row['id']))
-                                # for split_element, wire in enumerate(all_wires[1:], 1):
-                                #     async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", "node_input_name", '
-                                #                            '"work_data", "name", "attributes", "split_level") '
-                                #                            'VALUES (?,?,?,?,?,?,?,?)',
-                                #                            (task_row['parent_id'], TaskState.WAITING.value, wire['node_id_in'], wire['in_name'],
-                                #                             None, task_row['name'], task_row['attributes'], new_split_level)) \
-                                #             as insert_cur:
-                                #         new_task_id = insert_cur.lastrowid
-                                #     await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "split_level", "origin_task_id") VALUES (?,?,?,?,?,?)',
-                                #                       (next_split_id, new_task_id, split_element, wire_count, new_split_level, task_row['id']))
-                                # # now increase number of children to the parent of the task being splitted
-                                # if task_row['parent_id'] is not None:
-                                #     await con.execute('UPDATE "tasks" SET children_count = children_count + ? WHERE "id" = ?', (wire_count-1, task_row['parent_id']))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
-                        else:
-                            # the problem is that there are tasks that done, but have no wires to go anywhere
-                            # and that is the point, they are done done. But processing thousands of them every time is painful
-                            # so we need to somehow prevent them from being amilessly processed
-                            # this is a testing desicion, TODO: test and see if thes is a good way to deal with the problem
-                            await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
-                            _debug_tmp = time.perf_counter()
-                            await con.commit()
-                            _debug_tc += time.perf_counter() - _debug_tmp
+                                                      (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
+                                else:
+                                    for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
+                                        await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
+                                                          'WHERE "id" = ?',
+                                                          (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
+                                                           splited_task_id))
 
-                        _debug_td += time.perf_counter() - _debug_tmpw
-                        _debug_done_cnt += 1
+                            else:
+                                # the problem is that there are tasks that done, but have no wires to go anywhere
+                                # and that is the point, they are done done. But processing thousands of them every time is painful
+                                # so we need to somehow prevent them from being amilessly processed
+                                # this is a testing desicion, TODO: test and see if thes is a good way to deal with the problem
+                                await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
 
-            _debug_t2 = time.perf_counter()
-            self.__logger.debug(f'SELECT took {_debug_t1-_debug_t0} s, process took {_debug_t2-_debug_t1}s, commits {_debug_tc}s')
-            self.__logger.debug(f'waiting: {_debug_wait_cnt} in {_debug_tw}, postwaiting: {_debug_tpw}, ready: {_debug_tr}, done: {_debug_done_cnt} in {_debug_td}')
+                        await con.commit()
+
+                    self.__logger.debug(f'{task_state.name} took: {time.perf_counter() - _debug_pstart}')
+            self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
             await asyncio.sleep(self.__processing_interval)
-        # test = 0
-        # while True:
-        #     if test == 0:
-        #         test += 1
-        #         await asyncio.sleep(21)
-        #         # submit a fake task to all working workers
-        #         print('\n\ntime to test shit out\n\n')
-        #         async with aiosqlite.connect(self.db_path) as con:
-        #             con.row_factory = aiosqlite.Row
-        #             invocation = 0
-        #             async with con.execute('SELECT * from workers WHERE state = 1') as cur:
-        #                 async for row in cur:
-        #                     task = TaskData(['bash', '-c', 'echo "boo" && sleep 17 && echo meow'], None, invocation)
-        #                     addr = row['last_address']
-        #                     try:
-        #                         ip, port = addr.split(':')
-        #                         port = int(port)
-        #                     except:
-        #                         print('error addres converting during unexpected here. ping should have cought it')
-        #                         continue
-        #                     print(f'submitting task to {addr}')
-        #                     client = WorkerTaskClient(ip, port)
-        #                     reply = await client.give_task(task, self.__server_address)
-        #                     print(f'got reply {reply}')
-        #         print('\n\ntest over\n\n')
-        #     await asyncio.sleep(10)
+
+            #     for task_row in all_task_rows:
+            #         #
+            #         # # means task just arrived in the node and is ready to be processed by the node.
+            #         # # processing node generates args,
+            #         # _debug_tmpw = time.perf_counter()
+            #         # if task_row['state'] == TaskState.WAITING.value:
+            #         #     if task_row['node_type'] not in pluginloader.plugins:
+            #         #         self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
+            #         #         await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+            #         #                           (TaskState.ERROR.value, task_row['id']))
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #     else:
+            #         #         if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
+            #         #             continue
+            #         #
+            #         #         await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+            #         #                           (TaskState.GENERATING.value, task_row['id']))
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #
+            #         #         tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
+            #         #                                                        abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING)))
+            #         #     _debug_tw += time.perf_counter() - _debug_tmpw
+            #         #     _debug_wait_cnt += 1
+            #         # #
+            #         # # waiting to be post processed
+            #         # elif task_row['state'] == TaskState.POST_WAITING.value:
+            #         #     if task_row['node_type'] not in pluginloader.plugins:
+            #         #         self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
+            #         #         await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+            #         #                           (TaskState.ERROR.value, task_row['id']))
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #     else:
+            #         #         if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
+            #         #             continue
+            #         #
+            #         #         await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+            #         #                           (TaskState.POST_GENERATING.value, task_row['id']))
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #
+            #         #         tasks_to_wait.add(asyncio.create_task(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
+            #         #                                                        abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE)))
+            #         #     _debug_tpw += time.perf_counter() - _debug_tmpw
+            #         # #
+            #         # # real scheduling should happen here
+            #         # elif task_row['state'] == TaskState.READY.value:
+            #         #     async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
+            #         #         worker = await worcur.fetchone()
+            #         #     if worker is None:  # nothing available
+            #         #         continue
+            #         #
+            #         #     async with aiosqlite.connect(self.db_path) as presubmit_transaction:
+            #         #         await presubmit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+            #         #                                             (TaskState.INVOKING.value, task_row['id']))
+            #         #         await presubmit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+            #         #                                             (WorkerState.INVOKING.value, worker['id']))
+            #         #         await presubmit_transaction.commit()
+            #         #
+            #         #     tasks_to_wait.add(asyncio.create_task(_submitter(dict(task_row), dict(worker))))
+            #         #
+            #         #     _debug_tr += time.perf_counter() - _debug_tmpw
+            #         # #
+            #         # # means task is done being processed by current node,
+            #         # # now it should be passed to the next node
+            #         # elif task_row['state'] == TaskState.DONE.value\
+            #         #         or task_row['state'] == TaskState.SPAWNED.value:
+            #         #     if task_row['state'] == TaskState.DONE.value:
+            #         #         out_plug_name = task_row['node_output_name'] or 'main'
+            #         #     else:
+            #         #         out_plug_name = task_row['node_output_name'] or 'spawned'
+            #         #     async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
+            #         #                            (task_row['node_id'], out_plug_name)) as wire_cur:
+            #         #         all_wires = await wire_cur.fetchall()
+            #         #     wire_count = len(all_wires)
+            #         #     if wire_count > 0:
+            #         #         if wire_count == 1:
+            #         #             wire = all_wires[0]
+            #         #             await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ? '
+            #         #                               'WHERE "id" = ?',
+            #         #                               (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
+            #         #         else:
+            #         #             for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
+            #         #                 await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
+            #         #                                   'WHERE "id" = ?',
+            #         #                                   (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
+            #         #                                    splited_task_id))
+            #         #
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #     else:
+            #         #         # the problem is that there are tasks that done, but have no wires to go anywhere
+            #         #         # and that is the point, they are done done. But processing thousands of them every time is painful
+            #         #         # so we need to somehow prevent them from being amilessly processed
+            #         #         # this is a testing desicion, TODO: test and see if thes is a good way to deal with the problem
+            #         #         await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
+            #         #         _debug_tmp = time.perf_counter()
+            #         #         await con.commit()
+            #         #         _debug_tc += time.perf_counter() - _debug_tmp
+            #         #
+            #         #     _debug_td += time.perf_counter() - _debug_tmpw
+            #         #     _debug_done_cnt += 1
+            #
+            # _debug_t2 = time.perf_counter()
+            # self.__logger.debug(f'SELECT took {_debug_t1-_debug_t0} s, process took {_debug_t2-_debug_t1}s, commits {_debug_tc}s')
+            # self.__logger.debug(f'waiting: {_debug_wait_cnt} in {_debug_tw}, postwaiting: {_debug_tpw}, ready: {_debug_tr}, done: {_debug_done_cnt} in {_debug_td}')
+            # await asyncio.sleep(self.__processing_interval)
 
         # Out of while - means we are stopping. time to save all the nodes
         self.__logger.info('finishing task processor...')
