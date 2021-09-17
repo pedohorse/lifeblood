@@ -54,6 +54,8 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
             writer.write(b)
 
         try:
+            await self.__worker.wait_till_started()  # important that worker is fully up before we actually start listening to shit
+
             prot = await asyncio.wait_for(reader.readexactly(4), timeout=self.__timeout)
             if prot == b'\0\0\0\0':
                 # TODO: either we need timeout here - then add it to all reading operations below

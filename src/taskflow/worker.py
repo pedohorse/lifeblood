@@ -93,6 +93,7 @@ class Worker:
         self.__stopping_waiters = []
         self.__finished = asyncio.Event()
         self.__started = False
+        self.__started_event = asyncio.Event()
         self.__stopped = False
 
     async def start(self):
@@ -129,6 +130,13 @@ class Worker:
 
         self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
         self.__started = True
+        self.__started_event.set()
+
+    def is_started(self):
+        return self.__started
+
+    def wait_till_started(self):  # we can await this function cuz it returns a future...
+        return self.__started_event.wait()
 
     def stop(self):
         async def _send_byebye():
