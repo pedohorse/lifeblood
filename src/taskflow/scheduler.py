@@ -256,7 +256,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
 
             async def _check_lastseen_and_drop_invocations():
-                if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 32:
+                if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 64:  # TODO: make this time a configurable parameter
                     return False
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
