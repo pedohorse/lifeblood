@@ -31,9 +31,13 @@ def atimeit(func):
 
     async def _wrapper(*args, **kwargs):
         _start = time.perf_counter()
+        raised = False
         try:
             return await func(*args, **kwargs)
+        except Exception:
+            raised = True
+            raise
         finally:
-            logger.debug(f'ran {func.__name__} in {time.perf_counter() - _start}s')
+            logger.debug(f'ran{"(raised)" if raised else ""} {func.__name__} in {time.perf_counter() - _start}s')
 
     return _wrapper
