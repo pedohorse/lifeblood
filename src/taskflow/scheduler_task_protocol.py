@@ -6,7 +6,7 @@ from enum import Enum
 from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
-from .enums import WorkerType, SpawnStatus
+from .enums import WorkerType, SpawnStatus, WorkerState
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
@@ -43,7 +43,11 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     command = command[:-1]
                 self.__logger.debug(f'scheduler got command: {command.decode("UTF-8")}')
                 if command == b'ping':
-                    writer.write(b'p')
+                    # when worker pings scheduler - scheduler returns the state it thinks the worker is in
+                    addr = await read_string()
+                    wid = await self.__scheduler.worker_id_from_address(addr)
+                    state = await self.__scheduler.get_worker_state(wid)
+                    writer.write(struct.pack('>I', state.value))
                 elif command == b'done':
                     tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
                     task = await reader.readexactly(tasksize)
@@ -60,17 +64,13 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     await self.__scheduler.task_cancel_reported(task, stdout, stderr)
                 elif command == b'hello':
                     # worker reports for duty
-                    addrsize = await reader.readexactly(4)
-                    addrsize = struct.unpack('>I', addrsize)[0]
-                    addr = await reader.readexactly(addrsize)
+                    addr = await read_string()
                     workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
-                    await self.__scheduler.add_worker(addr.decode('UTF-8'), workertype, assume_active=True)
+                    await self.__scheduler.add_worker(addr, workertype, assume_active=True)
                 elif command == b'bye':
                     # worker reports he's quitting
-                    addrsize = await reader.readexactly(4)
-                    addrsize = struct.unpack('>I', addrsize)[0]
-                    addr = await reader.readexactly(addrsize)
-                    await self.__scheduler.worker_stopped(addr.decode('UTF-8'))
+                    addr = await read_string()
+                    await self.__scheduler.worker_stopped(addr)
                 #
                 # spawn a child task for task being processed
                 elif command == b'spawn':
@@ -162,31 +162,28 @@ class SchedulerTaskClient:
         await self.__writer.drain()
         # do we need a reply? doesn't seem so
 
-    async def ping(self):
+    async def ping(self, my_address: str) -> WorkerState:
         await self._ensure_conn_open()
         self.__writer.write(b'ping\n')
         try:
+            await self.write_string(my_address)
             await self.__writer.drain()
-            retcode = await self.__reader.readexactly(1)
+            return WorkerState(struct.unpack('>I', await self.__reader.readexactly(4))[0])
         except ConnectionResetError as e:
             self.__logger.error('ping failed. %s', e)
-        # ignore retcode
+            raise
 
     async def say_hello(self, address_to_advertise: str, worker_type: WorkerType):
         await self._ensure_conn_open()
         self.__writer.write(b'hello\n')
-        data = address_to_advertise.encode('UTF-8')
-        self.__writer.write(struct.pack('>I', len(data)))
-        self.__writer.write(data)
+        await self.write_string(address_to_advertise)
         self.__writer.write(struct.pack('>I', worker_type.value))
         await self.__writer.drain()
 
     async def say_bye(self, address_of_worker: str):
         await self._ensure_conn_open()
         self.__writer.write(b'bye\n')
-        data = address_of_worker.encode('UTF-8')
-        self.__writer.write(struct.pack('>I', len(data)))
-        self.__writer.write(data)
+        await self.write_string(address_of_worker)
         await self.__writer.drain()
 
     async def spawn(self, taskspawn: TaskSpawn) -> SpawnStatus:
