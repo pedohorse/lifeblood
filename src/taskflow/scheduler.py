@@ -166,16 +166,18 @@ class Scheduler:
     async def run(self):
         # prepare
         async with aiosqlite.connect(self.db_path) as con:
+            # we play it the safest for now:
+            # all workers set to UNKNOWN state, all active invocations are reset, all tasks in the middle of processing are reset to closest waiting state
             con.row_factory = aiosqlite.Row
-            async with con.execute("SELECT id from workers") as cur:
-                async for row in cur:
-                    await self.set_worker_ping_state(row['id'], WorkerPingState.OFF, con, nocommit=True)
-            await con.commit()
-            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" IN (?, ?, ?)',
-                              (TaskState.WAITING.value,
-                               TaskState.GENERATING.value, TaskState.POST_GENERATING.value, TaskState.INVOKING.value))
-            await con.execute('UPDATE "workers" SET "state" = ?',
-                              (WorkerState.OFF.value,))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" IN (?, ?)',
+                              (TaskState.READY.value, TaskState.IN_PROGRESS.value, TaskState.INVOKING.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.WAITING.value, TaskState.GENERATING.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
+            await con.execute('UPDATE "invocations" SET "state" = ? WHERE "state" = ?', (InvocationState.FINISHED.value, InvocationState.IN_PROGRESS.value))
+            await con.execute('UPDATE workers SET "ping_state" = ?', (WorkerPingState.UNKNOWN.value,))
+            await con.execute('UPDATE "workers" SET "state" = ?', (WorkerState.UNKNOWN.value,))
             await con.commit()
 
         # start
@@ -200,11 +202,19 @@ class Scheduler:
     async def set_worker_state(self, wid: int, state: WorkerState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         await self._set_value('workers', 'state', wid, state.value, con, nocommit)
 
+    async def worker_id_from_address(self, addr: str) -> Optional[int]:
+        async with aiosqlite.connect(self.db_path) as con:
+            async with con.execute('SELECT "id" FROM workers WHERE last_address = ?', (addr,)) as cur:
+                ret = await cur.fetchone()
+        if ret is None:
+            return None
+        return ret[0]
+
     async def get_worker_state(self, wid: int, con: Optional[aiosqlite.Connection] = None) -> WorkerState:
         if con is None:
             async with aiosqlite.connect(self.db_path) as con:
                 async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
-                    res = cur.fetchone()
+                    res = await cur.fetchone()
         else:
             async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
                 res = await cur.fetchone()
@@ -255,9 +265,11 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=30) as con:
             con.row_factory = aiosqlite.Row
 
-            async def _check_lastseen_and_drop_invocations():
+            async def _check_lastseen_and_drop_invocations(switch_state_on_reset: Optional[WorkerState] = None):
                 if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 64:  # TODO: make this time a configurable parameter
                     return False
+                if switch_state_on_reset is not None:
+                    await self.set_worker_state(worker_row['id'], switch_state_on_reset, con, nocommit=True)
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
             self.__pinger_logger.debug('    :: pinger started')
@@ -283,25 +295,20 @@ class Scheduler:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
                 self.__pinger_logger.debug('    :: network error')
-                await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
-                                     self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
-                                     )
-                await _check_lastseen_and_drop_invocations()
+                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
+                await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR)
                 await con.commit()
                 return
             except ConnectionRefusedError as e:
                 self.__pinger_logger.debug('    :: host down %s', str(e))
-                await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True),
-                                     self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
-                                     )
-                await _check_lastseen_and_drop_invocations()
+                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
+                await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF)
                 await con.commit()
                 return
             except Exception as e:
                 self.__pinger_logger.debug('    :: ping failed %s %s', type(e), e)
-                await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
-                                     self.set_worker_state(worker_row['id'], WorkerState.OFF, con, nocommit=True)
-                                     )
+                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
+                await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF)
                 await con.commit()
                 return
 
@@ -310,12 +317,15 @@ class Scheduler:
             # this inconsistencies should only occur shortly after scheduler restart
             # due to desync of still working workers and scheduler
             workerstate = await self.get_worker_state(worker_row['id'], con=con)
-            if workerstate == WorkerState.OFF:  # TODO: this can cause race conditions (theoretically) if worker saz goodbye right after getting the ping, so we get OFF state from db. or all vice-versa
+            if workerstate == WorkerState.OFF:
+                # there can be race conditions (theoretically) if worker saz goodbye right after getting the ping, so we get OFF state from db. or all vice-versa
+                # so there is nothing but warnings here. inconsistencies should be reliably resolved by worker
                 if ping_code == WorkerPingReply.IDLE:
-                    self.__logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as idle... scheduler must have been restarted recently. fixing potential problems...')
-                    await self.set_worker_state(worker_row['id'], WorkerState.IDLE, con=con, nocommit=True)
+                    self.__logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as IDLE... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
+                    # await self.set_worker_state(worker_row['id'], WorkerState.IDLE, con=con, nocommit=True)
                 elif ping_code == WorkerPingReply.BUSY:
-                    await self.set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
+                    self.__logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as BUSY... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
+                    # await self.set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
 
             if ping_code == WorkerPingReply.IDLE:
                 pass
@@ -400,7 +410,7 @@ class Scheduler:
                 nowtime = time.time()
 
                 self.__pinger_logger.debug('    ::selecting workers...')
-                async with con.execute("SELECT * from workers WHERE ping_state != 1") as cur:
+                async with con.execute("SELECT * from workers WHERE ping_state != ?", (WorkerPingState.CHECKING.value,)) as cur:
                     # TODO: don't scan the errored and off ones as often?
 
                     async for row in cur:
@@ -573,7 +583,7 @@ class Scheduler:
 
             # so task.args() is not None
             async with aiosqlite.connect(self.db_path) as submit_transaction:
-                with awaiter_lock:
+                async with awaiter_lock:
                     async with submit_transaction.execute(
                             'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
                             (task_row['id'], worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
@@ -594,7 +604,7 @@ class Scheduler:
                     self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
                     reply = TaskScheduleStatus.FAILED
 
-                with awaiter_lock:
+                async with awaiter_lock:
                     if reply == TaskScheduleStatus.SUCCESS:
                         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                          (TaskState.IN_PROGRESS.value, task_row['id']))
