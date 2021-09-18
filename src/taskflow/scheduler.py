@@ -327,7 +327,7 @@ class Scheduler:
                     self.__logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as BUSY... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
                     # await self.set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
 
-            if ping_code == WorkerPingReply.IDLE:
+            if ping_code == WorkerPingReply.IDLE:  # TODO, just like above - add warnings, but leave solving to worker
                 pass
                 #workerstate = WorkerState.IDLE
                 # TODO: commented below as it seem to cause race conditions with worker invocation done reporting. NEED CHECKING
