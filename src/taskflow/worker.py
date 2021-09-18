@@ -471,9 +471,6 @@ class Worker:
 
             if result in (WorkerState.OFF, WorkerState.UNKNOWN):
                 # something is wrong, lets try to reintroduce ourselves:
-                # TODO: do the same for when result is BUSY and we are not, and the other way around
-                #  wait if it changes over some timeout, like 10 sec at least - what if we introduced ourself,
-                #  but because of the network lag
                 self.__logger.warning(f'scheduler replied it thinks i\'m {result.name}. canceling tasks if any and reintroducing myself')
                 # Note that we can be sure that there cannot be race conditions here:
                 # pinger starts working always AFTER hello, OR it saz hello itself.
