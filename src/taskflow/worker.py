@@ -471,7 +471,33 @@ class Worker:
 
             if result in (WorkerState.OFF, WorkerState.UNKNOWN):
                 # something is wrong, lets try to reintroduce ourselves:
-                self.__logger.warning(f'scheduler replied it thinks i am {result.name}. canceling tasks if any and reintroducing myself')
+                # TODO: do the same for when result is BUSY and we are not, and the other way around
+                #  wait if it changes over some timeout, like 10 sec at least - what if we introduced ourself,
+                #  but because of the network lag
+                self.__logger.warning(f'scheduler replied it thinks i\'m {result.name}. canceling tasks if any and reintroducing myself')
+                # Note that we can be sure that there cannot be race conditions here:
+                # pinger starts working always AFTER hello, OR it saz hello itself.
+                # and scheduler will immediately switch worker state on hello, so ping coming after confirmed hello will ALWAYS get newer state
+                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                    assert self.__my_addr is not None
+                    addr = '%s:%d' % self.__my_addr
+                    await client.say_bye(addr)
+                    await self.cancel_task()
+                    await client.say_hello(addr, self.__worker_type)
+            elif result == WorkerState.BUSY and not self.is_task_running():
+                # Note: the order is:
+                # - sched sets worker to invoking
+                # - shced sends "task"
+                # - worker receives task, sets is_task_running
+                # - worker answers to sched
+                # - sched sets worker to BUSY
+                # and when finished:
+                # - worker reports done
+                # - sched sets worker to IDLE
+                # - shed unsets is_task_running
+                # so there is no way it can be not task_running AND sched state busy.
+                # if it is - it must be an error
+                self.__logger.warning(f'scheduler replied it thinks i\'m BUSY, but i\'m free, so something is inconsistent. resolving by reintroducing myself')
                 async with SchedulerTaskClient(*self.__scheduler_addr) as client:
                     assert self.__my_addr is not None
                     addr = '%s:%d' % self.__my_addr
