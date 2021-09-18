@@ -14,13 +14,15 @@ class WorkerState(Enum):
     BUSY = 2
     ERROR = 3
     INVOKING = 4  # worker is being fed data to start an invocation job
+    UNKNOWN = 5  # this state the worker should be initialized in, then scheduler should figure it out
 
 
 class WorkerPingState(Enum):
     OFF = 0
-    CHECKING = 1
-    ERROR = 2
-    WORKING = 3
+    CHECKING = 2
+    ERROR = 3
+    WORKING = 1
+    UNKNOWN = 5
 
 
 class TaskState(Enum):
