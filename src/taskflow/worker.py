@@ -59,7 +59,7 @@ class Worker:
         self.__server: asyncio.AbstractServer = None
         self.__where_to_report = None
         self.__ping_interval = 10
-        self.__ping_missed_threshold = 2
+        self.__ping_missed_threshold = 6
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_port)
         self.__scheduler_pinger = None
@@ -155,7 +155,8 @@ class Worker:
         self.__scheduler_pinger_stop_event.set()
 
         async def _finalizer():
-            await self.__server.wait_closed()  # first we wait for server to fully close all connections
+            await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
+            await self.__server.wait_closed()  # before doing anything else we wait for server to fully close all connections
             await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler
             await _send_byebye()  # and only after that we report OFF to scheduler
 
@@ -449,20 +450,36 @@ class Worker:
                 continue
             try:
                 async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    result = await client.ping()
+                    result = await client.ping(f'{self.__my_addr[0]}:{self.__my_addr[1]}')
             except ConnectionRefusedError as e:
                 self.__logger.error('scheduler ping connection was refused')
-                result = b''
+                result = None
             except ConnectionResetError as e:
                 self.__logger.error('scheduler ping connection was reset')
-                result = b''
-            if result == b'':  # this means EOF
+                result = None
+            except Exception as e:
+                self.__logger.exception('unexpected exception happened')
+                result = None
+
+            if result is None:  # this means EOF
                 self.__ping_missed += 1
                 self.__logger.info(f'server ping missed. total misses: {self.__ping_missed}')
             if self.__ping_missed >= self.__ping_missed_threshold:
                 # assume scheruler down, drop everything and look for another scheruler
                 self.stop()
                 return
+
+            if result in (WorkerState.OFF, WorkerState.UNKNOWN):
+                # something is wrong, lets try to reintroduce ourselves:
+                self.__logger.warning(f'scheduler replied it thinks i am {result.name}. canceling tasks if any and reintroducing myself')
+                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                    assert self.__my_addr is not None
+                    addr = '%s:%d' % self.__my_addr
+                    await client.say_bye(addr)
+                    await self.cancel_task()
+                    await client.say_hello(addr, self.__worker_type)
+            elif result is not None:
+                self.__ping_missed = 0
 
 
 async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address=None, noloop=False):
