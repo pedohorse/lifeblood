@@ -983,6 +983,7 @@ class Scheduler:
     async def add_worker(self, addr: str, worker_type: WorkerType, assume_active=True):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
             if assume_active:
@@ -1014,6 +1015,7 @@ class Scheduler:
         """
         async with aiosqlite.connect(self.db_path) as con:
             con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
             wid = worker_row['id']
