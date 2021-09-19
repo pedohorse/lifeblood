@@ -1,3 +1,4 @@
+import asyncio
 import random
 import time
 from .logging import get_logger, logging
@@ -37,3 +38,12 @@ def atimeit(func):
             logger.debug(f'ran {func.__name__} in {time.perf_counter() - _start}s')
 
     return _wrapper
+
+
+def alocking(lock: asyncio.Lock):
+    def decorator(func):
+        async def _wrapper(*args, **kwargs):
+            async with lock:
+                return await func(*args, **kwargs)
+        return _wrapper
+    return decorator
