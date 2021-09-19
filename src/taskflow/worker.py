@@ -491,7 +491,7 @@ class Worker:
                 # and when finished:
                 # - worker reports done
                 # - sched sets worker to IDLE
-                # - shed unsets is_task_running
+                # - worker unsets is_task_running
                 # so there is no way it can be not task_running AND sched state busy.
                 # if it is - it must be an error
                 self.__logger.warning(f'scheduler replied it thinks i\'m BUSY, but i\'m free, so something is inconsistent. resolving by reintroducing myself')
@@ -501,6 +501,7 @@ class Worker:
                     await client.say_bye(addr)
                     await self.cancel_task()
                     await client.say_hello(addr, self.__worker_type)
+            # TODO: what if result == WorkerState.IDLE and self.is_task_running() ?
             elif result is not None:
                 self.__ping_missed = 0
 
