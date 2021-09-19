@@ -1,5 +1,8 @@
 import sys
+import os
+import time
 import logging
+from .paths import log_path
 # init default logging
 
 
@@ -36,6 +39,30 @@ def get_logger(name):
     handler.setStream(sys.stderr)
     logger.addHandler(handler)
 
+    logpath = log_path(f'{os.getpid()}.log', 'log')
+    if logpath is not None:
+        logfile_handler = logging.FileHandler(logpath)
+        logfile_handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
+        logfile_handler.setLevel(logging.INFO)
+        logger.addHandler(logfile_handler)
+
     logger.setLevel(__default_loglevel)
     logger.propagate = False
     return logger
+
+
+def cleanup_logs():
+    log_base_path = log_path(None, 'log', ensure_path_exists=False)
+    if not log_base_path.exists():
+        return
+    keep_logs_period = 30 * 24 * 60 * 60
+    now = time.time()
+    for log in log_base_path.iterdir():
+        if now - log.stat().st_mtime > keep_logs_period:
+            try:
+                log.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+# on first import - cleanup logs
+cleanup_logs()

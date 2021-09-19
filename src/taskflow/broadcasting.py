@@ -62,8 +62,9 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
         self.__logger.debug(f'data received: {len(data)}, {data[:64]}, {addr}')
 
     async def broadcast(self):
+        self.__logger.info(f'starting broadcast for {self.__identifier} on {self.__target}')
         while True:
-            self.__logger.info(f'sending broadcast for {self.__identifier} on {self.__target}')
+            self.__logger.debug(f'sending broadcast for {self.__identifier} on {self.__target}')
             bitent = self.__identifier.encode('UTF-8')
             binfo = self.__information.encode('UTF-8')
             data: bytes = b''.join((_magic, struct.pack('>I', len(bitent)), struct.pack('>I', len(binfo)), bitent, binfo))
