@@ -161,8 +161,12 @@ class TaskflowViewer(QMainWindow):
 
         self.__central_widget.setSizes([1, 999999])
         self.__workerview_splitter.setSizes([999999, 1])
+
+        self.__central_widget.setFocusPolicy(Qt.ClickFocus)
+        self.__workerview_splitter.setFocusPolicy(Qt.ClickFocus)
         self.__group_list.setFocusPolicy(Qt.ClickFocus)
         self.__node_editor.setFocusPolicy(Qt.ClickFocus)
+        self.__worker_list.setFocusPolicy(Qt.ClickFocus)
 
         # cOnNeC1
         # TODO: Now that taskflow_viewer owns connection worker - we may reconnect these in a more straight way...

@@ -23,6 +23,7 @@ class WorkerListWidget(QWidget):
         self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.__worker_list.setSortingEnabled(True)
         self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
+        self.__worker_list.setFocusPolicy(Qt.NoFocus)
 
         layout = QHBoxLayout(self)
         layout.addWidget(self.__worker_list)
