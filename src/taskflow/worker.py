@@ -22,7 +22,6 @@ from . import paths
 from . import environment_resolver
 from .enums import WorkerType, WorkerState
 
-
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
 
@@ -57,6 +56,7 @@ class Worker:
         self.__running_task_progress: Optional[float] = None
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
+        self.__task_changing_state_lock = asyncio.Lock()
         self.__where_to_report = None
         self.__ping_interval = 10
         self.__ping_missed_threshold = 6
@@ -197,79 +197,80 @@ class Worker:
             return os.path.join(self.log_root_path, 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
 
     async def run_task(self, task: InvocationJob, report_to: str):
-        assert len(task.args()) > 0
-        if self.__running_process is not None:
-            raise AlreadyRunning('Task already in progress')
-        # prepare logging
-        self.__logger.info(f'running task {task}')
-        logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
+        async with self.__task_changing_state_lock:
+            assert len(task.args()) > 0
+            if self.__running_process is not None:
+                raise AlreadyRunning('Task already in progress')
+            # prepare logging
+            self.__logger.info(f'running task {task}')
+            logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
 
-        # save external files
-        self.__extra_files_base_dir = None
-        extra_files_map: Dict[str, str] = {}
-        if len(task.extra_files()) > 0:
-            self.__extra_files_base_dir = tempfile.mkdtemp(prefix='taskflow_efs_')  # TODO: add base temp dir to config
-            self.__logger.debug(f'creating extra file temporary dir at {self.__extra_files_base_dir}')
-        for exfilepath, exfiledata in task.extra_files().items():
-            self.__logger.info(f'saving extra job file {exfilepath}')
-            exfilepath_parts = exfilepath.split('/')
-            tmpfilepath = os.path.join(self.__extra_files_base_dir, *exfilepath_parts)
-            os.makedirs(os.path.dirname(tmpfilepath), exist_ok=True)
-            with open(tmpfilepath, 'w' if isinstance(exfiledata, str) else 'wb') as f:
-                f.write(exfiledata)
-            extra_files_map[exfilepath] = tmpfilepath
+            # save external files
+            self.__extra_files_base_dir = None
+            extra_files_map: Dict[str, str] = {}
+            if len(task.extra_files()) > 0:
+                self.__extra_files_base_dir = tempfile.mkdtemp(prefix='taskflow_efs_')  # TODO: add base temp dir to config
+                self.__logger.debug(f'creating extra file temporary dir at {self.__extra_files_base_dir}')
+            for exfilepath, exfiledata in task.extra_files().items():
+                self.__logger.info(f'saving extra job file {exfilepath}')
+                exfilepath_parts = exfilepath.split('/')
+                tmpfilepath = os.path.join(self.__extra_files_base_dir, *exfilepath_parts)
+                os.makedirs(os.path.dirname(tmpfilepath), exist_ok=True)
+                with open(tmpfilepath, 'w' if isinstance(exfiledata, str) else 'wb') as f:
+                    f.write(exfiledata)
+                extra_files_map[exfilepath] = tmpfilepath
 
-        # check args for extra file references
-        if len(task.extra_files()) > 0:
-            args = []
-            for arg in task.args():
-                if isinstance(arg, str) and arg.startswith(':/') and arg[2:] in task.extra_files():
-                    args.append(extra_files_map[arg[2:]])
-                else:
-                    args.append(arg)
-        else:
-            args = task.args()
+            # check args for extra file references
+            if len(task.extra_files()) > 0:
+                args = []
+                for arg in task.args():
+                    if isinstance(arg, str) and arg.startswith(':/') and arg[2:] in task.extra_files():
+                        args.append(extra_files_map[arg[2:]])
+                    else:
+                        args.append(arg)
+            else:
+                args = task.args()
 
-        if task.environment_resolver_arguments() is None:
-            config = get_config('worker')
-            env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
-                .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
-        else:
-            env = task.environment_resolver_arguments().get_environment()
+            if task.environment_resolver_arguments() is None:
+                config = get_config('worker')
+                env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
+                    .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
+            else:
+                env = task.environment_resolver_arguments().get_environment()
 
-        env = task.env().resolve(env)
+            env = task.env().resolve(env)
 
-        env.prepend('PYTHONPATH', self.__rt_module_dir)
-        env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
-        env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
-        for aname, aval in task.attributes().items():
-            env['TFATTR_%s' % aname] = str(aval)
-        env['TFATTRS_JSON'] = json.dumps(dict(task.attributes())).encode('UTF-8')
-        if self.__extra_files_base_dir is not None:
-            env['TF_EF_ROOT'] = self.__extra_files_base_dir
-        if not os.path.exists(logbasedir):
-            os.makedirs(logbasedir)
-        try:
-            #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
-            #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
-            self.__running_process: asyncio.subprocess.Process = \
-                await asyncio.create_subprocess_exec(  # TODO: process subprocess exceptions
-                    *args,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env
-                )
-        except Exception as e:
-            await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
-            raise
+            env.prepend('PYTHONPATH', self.__rt_module_dir)
+            env['TASKFLOW_RUNTIME_IID'] = task.invocation_id()
+            env['TASKFLOW_RUNTIME_SCHEDULER_ADDR'] = report_to
+            for aname, aval in task.attributes().items():
+                env['TFATTR_%s' % aname] = str(aval)
+            env['TFATTRS_JSON'] = json.dumps(dict(task.attributes())).encode('UTF-8')
+            if self.__extra_files_base_dir is not None:
+                env['TF_EF_ROOT'] = self.__extra_files_base_dir
+            if not os.path.exists(logbasedir):
+                os.makedirs(logbasedir)
+            try:
+                #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
+                #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
+                self.__running_process: asyncio.subprocess.Process = \
+                    await asyncio.create_subprocess_exec(  # TODO: process subprocess exceptions
+                        *args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        env=env
+                    )
+            except Exception as e:
+                await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
+                raise
 
-        self.__running_task = task
-        self.__where_to_report = report_to
-        if self.__worker_id is not None:
-            async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
-                await client.report_state(WorkerState.BUSY)
-        self.__running_awaiter = asyncio.create_task(self._awaiter())
-        self.__running_task_progress = 0
+            self.__running_task = task
+            self.__where_to_report = report_to
+            if self.__worker_id is not None:
+                async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                    await client.report_state(WorkerState.BUSY)
+            self.__running_awaiter = asyncio.create_task(self._awaiter())
+            self.__running_task_progress = 0
 
     # callback awaiter
     async def _awaiter(self):
@@ -332,61 +333,62 @@ class Worker:
         return self.__running_task is not None
 
     async def cancel_task(self):
-        if self.__running_process is None:
-            return
-        self.__logger.info('cancelling running task')
-        self.__running_awaiter.cancel()
-        cancelling_awaiter = self.__running_awaiter
-        self.__running_awaiter = None
-        puproc = psutil.Process(self.__running_process.pid)
-        all_proc = puproc.children(recursive=True)
-        all_proc.append(puproc)
-        for proc in all_proc:
-            try:
-                proc.terminate()
-            except psutil.NoSuchProcess:
-                pass
-        for i in range(20):  # TODO: make a parameter out of this!
-            if not all(not proc.is_running() for proc in all_proc):
-                await asyncio.sleep(0.5)
-            else:
-                break
-        else:
+        async with self.__task_changing_state_lock:
+            if self.__running_process is None:
+                return
+            self.__logger.info('cancelling running task')
+            self.__running_awaiter.cancel()
+            cancelling_awaiter = self.__running_awaiter
+            self.__running_awaiter = None
+            puproc = psutil.Process(self.__running_process.pid)
+            all_proc = puproc.children(recursive=True)
+            all_proc.append(puproc)
             for proc in all_proc:
-                if not proc.is_running():
-                    continue
                 try:
-                    proc.kill()
+                    proc.terminate()
                 except psutil.NoSuchProcess:
                     pass
+            for i in range(20):  # TODO: make a parameter out of this!
+                if not all(not proc.is_running() for proc in all_proc):
+                    await asyncio.sleep(0.5)
+                else:
+                    break
+            else:
+                for proc in all_proc:
+                    if not proc.is_running():
+                        continue
+                    try:
+                        proc.kill()
+                    except psutil.NoSuchProcess:
+                        pass
 
-        await self.__running_process.wait()
+            await self.__running_process.wait()
 
-        # report to scheduler that cancel was a success
-        self.__logger.info(f'reporting cancel back to {self.__where_to_report}')
-        try:
-            ip, port = self.__where_to_report.split(':', 1)
-            async with SchedulerTaskClient(ip, int(port)) as client:
-                await client.report_task_canceled(self.__running_task,
-                                                  self.get_log_filepath('output', self.__running_task.invocation_id()),
-                                                  self.get_log_filepath('error', self.__running_task.invocation_id()))
-        except Exception as e:
-            self.__logger.exception(f'could not report cuz of {e}')
-        except:
-            self.__logger.exception('could not report cuz i have no idea')
-        # end reporting
+            # report to scheduler that cancel was a success
+            self.__logger.info(f'reporting cancel back to {self.__where_to_report}')
+            try:
+                ip, port = self.__where_to_report.split(':', 1)
+                async with SchedulerTaskClient(ip, int(port)) as client:
+                    await client.report_task_canceled(self.__running_task,
+                                                      self.get_log_filepath('output', self.__running_task.invocation_id()),
+                                                      self.get_log_filepath('error', self.__running_task.invocation_id()))
+            except Exception as e:
+                self.__logger.exception(f'could not report cuz of {e}')
+            except:
+                self.__logger.exception('could not report cuz i have no idea')
+            # end reporting
 
-        self.__running_task = None
-        self.__running_process = None
-        self.__where_to_report = None
-        self.__running_task_progress = None
-        await self._cleanup_extra_files()
+            self.__running_task = None
+            self.__running_process = None
+            self.__where_to_report = None
+            self.__running_task_progress = None
+            await self._cleanup_extra_files()
 
-        await asyncio.wait((cancelling_awaiter,))  # ensure everything is done before we proceed
+            await asyncio.wait((cancelling_awaiter,))  # ensure everything is done before we proceed
 
-        # stop ourselves if we are a small task helper
-        if self.__singleshot:
-            self.stop()
+            # stop ourselves if we are a small task helper
+            if self.__singleshot:
+                self.stop()
 
     async def task_status(self) -> Optional[float]:
         return self.__running_task_progress
@@ -396,29 +398,30 @@ class Worker:
         is called when current process finishes
         :return:
         """
-        self.__logger.info('task finished')
-        self.__logger.info(f'reporting done back to {self.__where_to_report}')
-        self.__running_task.finish(await self.__running_process.wait())
-        try:
-            ip, port = self.__where_to_report.split(':', 1)
-            async with SchedulerTaskClient(ip, int(port)) as client:
-                await client.report_task_done(self.__running_task,
-                                              self.get_log_filepath('output', self.__running_task.invocation_id()),
-                                              self.get_log_filepath('error', self.__running_task.invocation_id()))
-        except Exception as e:
-            self.__logger.exception(f'could not report cuz of {e}')
-        except:
-            self.__logger.exception('could not report cuz i have no idea')
-        self.__where_to_report = None
-        self.__running_task = None
-        self.__running_process = None
-        self.__running_awaiter = None
-        self.__running_task_progress = None
-        await self._cleanup_extra_files()
+        async with self.__task_changing_state_lock:
+            self.__logger.info('task finished')
+            self.__logger.info(f'reporting done back to {self.__where_to_report}')
+            self.__running_task.finish(await self.__running_process.wait())
+            try:
+                ip, port = self.__where_to_report.split(':', 1)
+                async with SchedulerTaskClient(ip, int(port)) as client:
+                    await client.report_task_done(self.__running_task,
+                                                  self.get_log_filepath('output', self.__running_task.invocation_id()),
+                                                  self.get_log_filepath('error', self.__running_task.invocation_id()))
+            except Exception as e:
+                self.__logger.exception(f'could not report cuz of {e}')
+            except:
+                self.__logger.exception('could not report cuz i have no idea')
+            self.__where_to_report = None
+            self.__running_task = None
+            self.__running_process = None
+            self.__running_awaiter = None
+            self.__running_task_progress = None
+            await self._cleanup_extra_files()
 
-        # stop ourselves if we are a small task helper
-        if self.__singleshot:
-            self.stop()
+            # stop ourselves if we are a small task helper
+            if self.__singleshot:
+                self.stop()
 
     async def _cleanup_extra_files(self):
         """
@@ -439,6 +442,15 @@ class Worker:
         ping scheduler once in a while. if it misses too many pings - close worker and wait for new broadcasts
         :return:
         """
+
+        async def _reintroduce_ourself():
+            async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                assert self.__my_addr is not None
+                addr = '%s:%d' % self.__my_addr
+                await client.say_bye(addr)
+                await self.cancel_task()
+                await client.say_hello(addr, self.__worker_type)
+
         exit_wait = asyncio.create_task(self.__scheduler_pinger_stop_event.wait())
         while True:
             done, pend = await asyncio.wait((exit_wait, ), timeout=self.__ping_interval, return_when=asyncio.FIRST_COMPLETED)
@@ -448,18 +460,21 @@ class Worker:
             #await asyncio.sleep(self.__ping_interval)
             if self.__ping_missed_threshold == 0:
                 continue
-            try:
-                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    result = await client.ping(f'{self.__my_addr[0]}:{self.__my_addr[1]}')
-            except ConnectionRefusedError as e:
-                self.__logger.error('scheduler ping connection was refused')
-                result = None
-            except ConnectionResetError as e:
-                self.__logger.error('scheduler ping connection was reset')
-                result = None
-            except Exception as e:
-                self.__logger.exception('unexpected exception happened')
-                result = None
+            # Here we are locking to prevent unexpected task state changes while checking for state inconsistencies
+            async with self.__task_changing_state_lock:
+                try:
+                    async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                        result = await client.ping(f'{self.__my_addr[0]}:{self.__my_addr[1]}')
+                except ConnectionRefusedError as e:
+                    self.__logger.error('scheduler ping connection was refused')
+                    result = None
+                except ConnectionResetError as e:
+                    self.__logger.error('scheduler ping connection was reset')
+                    result = None
+                except Exception as e:
+                    self.__logger.exception('unexpected exception happened')
+                    result = None
+                task_running = self.is_task_running()
 
             if result is None:  # this means EOF
                 self.__ping_missed += 1
@@ -470,38 +485,33 @@ class Worker:
                 return
 
             if result in (WorkerState.OFF, WorkerState.UNKNOWN):
-                # something is wrong, lets try to reintroduce ourselves:
-                self.__logger.warning(f'scheduler replied it thinks i\'m {result.name}. canceling tasks if any and reintroducing myself')
+                # something is wrong, lets try to reintroduce ourselves.
                 # Note that we can be sure that there cannot be race conditions here:
                 # pinger starts working always AFTER hello, OR it saz hello itself.
                 # and scheduler will immediately switch worker state on hello, so ping coming after confirmed hello will ALWAYS get newer state
-                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    assert self.__my_addr is not None
-                    addr = '%s:%d' % self.__my_addr
-                    await client.say_bye(addr)
-                    await self.cancel_task()
-                    await client.say_hello(addr, self.__worker_type)
-            elif result == WorkerState.BUSY and not self.is_task_running():
+                self.__logger.warning(f'scheduler replied it thinks i\'m {result.name}. canceling tasks if any and reintroducing myself')
+                await _reintroduce_ourself()
+            elif result == WorkerState.BUSY and not task_running:
                 # Note: the order is:
-                # - sched sets worker to invoking
+                # - sched sets worker to INVOKING
                 # - shced sends "task"
                 # - worker receives task, sets is_task_running
                 # - worker answers to sched
                 # - sched sets worker to BUSY
                 # and when finished:
-                # - worker reports done
-                # - sched sets worker to IDLE
-                # - worker unsets is_task_running
+                # - worker reports done             |
+                # - sched sets worker to IDLE       | under __task_changing_state_lock
+                # - worker unsets is_task_running   |
                 # so there is no way it can be not task_running AND sched state busy.
                 # if it is - it must be an error
                 self.__logger.warning(f'scheduler replied it thinks i\'m BUSY, but i\'m free, so something is inconsistent. resolving by reintroducing myself')
-                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    assert self.__my_addr is not None
-                    addr = '%s:%d' % self.__my_addr
-                    await client.say_bye(addr)
-                    await self.cancel_task()
-                    await client.say_hello(addr, self.__worker_type)
-            # TODO: what if result == WorkerState.IDLE and self.is_task_running() ?
+                await _reintroduce_ourself()
+            elif result == WorkerState.IDLE and task_running:
+                # Note from scheme above - this is not possible,
+                #  the only period where scheduler can think IDLE while is_task_running set is in __task_changing_state_lock-ed area
+                #  but we aquired sched state and our is_task_running above inside that __task_changing_state_lock
+                self.__logger.warning(f'scheduler replied it thinks i\'m IDLE, but i\'m doing a task, so something is inconsistent. resolving by reintroducing myself')
+                await _reintroduce_ourself()
             elif result is not None:
                 self.__ping_missed = 0
 
