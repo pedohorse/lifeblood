@@ -111,7 +111,7 @@ class InvocationRequirements:
         self.__groups = groups
 
     def add_groups(self, groups):
-        self.__groups.update(set(groups))
+        self.__groups.update(set(x for x in groups if x != ''))
 
     def add_group(self, group: str):
         self.__groups.add(group)
@@ -123,7 +123,7 @@ class InvocationRequirements:
 
             def _morph(s: str):
                 return re.sub(r'(?<!\\)\?', '_', re.sub(r'(?<!\\)\*', '%', s.replace('%', r'\%').replace('_', r'\_')))
-            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' EXCAPE '{esc}'""" for x in self.__groups)} )))''')
+            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
 
 
