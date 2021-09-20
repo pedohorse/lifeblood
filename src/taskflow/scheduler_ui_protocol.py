@@ -115,6 +115,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'removenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node(node_id)
+                    writer.write(b'\1')
                 elif command == b'addnode':
                     node_type = await read_string()
                     node_name = await read_string()
@@ -123,6 +124,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'wipenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.wipe_node_state(node_id)
+                    writer.write(b'\1')
                 elif command == b'setnodeparam':
                     node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
                     param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
@@ -138,16 +140,29 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         raise NotImplementedError()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
                     node.set_param_value(param_name, param_value)
+                    #
+                    # send back actual result
+                    value = node.param(param_name).unexpanded_value()
+                    if param_type == NodeParameterType.FLOAT.value:
+                        writer.write(struct.pack('>d', value))
+                    elif param_type == NodeParameterType.INT.value:
+                        writer.write(struct.pack('>q', value))
+                    elif param_type == NodeParameterType.BOOL.value:
+                        writer.write(struct.pack('>?', value))
+                    elif param_type == NodeParameterType.STRING.value:
+                        await write_string(value)
+                    else:
+                        raise NotImplementedError()
                 elif command == b'setnodeparamexpression':
                     node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
                     param_name = await read_string()
                     node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
                     if set_or_unset:
                         expression = await read_string()
-                        print(param_name)
                         node.param(param_name).set_expression(expression)
                     else:
                         node.param(param_name).remove_expression()
+                    writer.write(b'\1')
                 elif command == b'renamenode':
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     node_name = await read_string()
@@ -167,6 +182,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     else:
                         new_id_in = None
                     await self.__scheduler.change_node_connection(connection_id, new_id_out, out_name, new_id_in, in_name)
+                    writer.write(b'\1')
                 elif command == b'addconnection':
                     id_out, id_in = struct.unpack('>QQ', await reader.readexactly(16))
                     out_name = await read_string()
@@ -176,28 +192,34 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'removeconnection':
                     connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node_connection(connection_id)
+                    writer.write(b'\1')
                 elif command == b'tpauselst':  # pause tasks
                     task_ids = [-1]
                     numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
                     await self.__scheduler.set_task_paused(task_ids, bool(paused))
+                    writer.write(b'\1')
                 elif command == b'tpausegrp':  # pause task group
                     paused = struct.unpack('>?', await reader.readexactly(1))[0]
                     task_group = await read_string()
                     await self.__scheduler.set_task_paused(task_group, bool(paused))
+                    writer.write(b'\1')
                 elif command == b'tcancel':  # cancel task invocation
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.cancel_invocation_for_task(task_id)
+                    writer.write(b'\1')
                 elif command == b'tsetnode':  # set task node
                     task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
                     await self.__scheduler.force_set_node_task(task_id, node_id)
+                    writer.write(b'\1')
                 elif command == b'tcstate':  # change task state
                     task_ids = [-1]
                     numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
                     await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
+                    writer.write(b'\1')
                 # create new task
                 elif command == b'addtask':
                     tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]

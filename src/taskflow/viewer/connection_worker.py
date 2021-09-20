@@ -288,14 +288,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(param_name_data)
             if param_type == NodeParameterType.FLOAT:
                 self.__conn.sendall(struct.pack('>d', param_value))
+                recv_exactly(self.__conn, 8)
             elif param_type == NodeParameterType.INT:
                 self.__conn.sendall(struct.pack('>q', param_value))
+                recv_exactly(self.__conn, 8)
             elif param_type == NodeParameterType.BOOL:
                 self.__conn.sendall(struct.pack('>?', param_value))
+                recv_exactly(self.__conn, 1)
             elif param_type == NodeParameterType.STRING:
-                param_str_data = param_value.encode('UTF-8')
-                self.__conn.sendall(struct.pack('>Q', len(param_str_data)))
-                self.__conn.sendall(param_str_data)
+                self._send_string(param_value)
+                self._recv_string()
             else:
                 raise NotImplementedError()
         except ConnectionError as e:
@@ -316,6 +318,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if set_or_unset:
                 expression = param.expression()
                 self._send_string(expression)
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -367,6 +370,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'removenode\n')
             self.__conn.sendall(struct.pack('>Q', node_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -380,6 +384,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'wipenode\n')
             self.__conn.sendall(struct.pack('>Q', node_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -413,6 +418,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self._send_string(outname)
             if innode_id is not None:
                 self._send_string(inname)
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -442,6 +448,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'removeconnection\n')
             self.__conn.sendall(struct.pack('>Q', connection_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -469,6 +476,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids_or_group[0]))
                 if numtasks > 1:
                     self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks-1), *task_ids_or_group[1:]))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -482,6 +490,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'tsetnode\n')
             self.__conn.sendall(struct.pack('>QQ', task_id, node_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -500,6 +509,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>QIQ', numtasks, state.value, task_ids[0]))
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), *task_ids[1:]))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -513,6 +523,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         try:
             self.__conn.sendall(b'tcancel\n')
             self.__conn.sendall(struct.pack('>Q', task_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
