@@ -253,18 +253,22 @@ class BaseNodeWithTaskRequirements(BaseNode):
         result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
         if result.invocation_job is not None:
             context = ProcessingContext(self, task_dict)
-            reqs = result.invocation_job.requirements()
-            reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
-            result.invocation_job.set_requirements(reqs)
+            raw_groups = context.param_value('worker groups').strip()
+            if raw_groups != '':
+                reqs = result.invocation_job.requirements()
+                reqs.add_groups(re.split(r'[ ,]+', raw_groups))
+                result.invocation_job.set_requirements(reqs)
         return result
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
         result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict)
         if result.invocation_job is not None:
             context = ProcessingContext(self, task_dict)
-            reqs = result.invocation_job.requirements()
-            reqs.add_groups(re.split(r'[ ,]+', context.param_value('worker groups').strip()))
-            result.invocation_job.set_requirements(reqs)
+            raw_groups = context.param_value('worker groups').strip()
+            if raw_groups != '':
+                reqs = result.invocation_job.requirements()
+                reqs.add_groups(re.split(r'[ ,]+', raw_groups))
+                result.invocation_job.set_requirements(reqs)
         return result
 
 
