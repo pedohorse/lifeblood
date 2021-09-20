@@ -1,5 +1,6 @@
 
 from unittest import IsolatedAsyncioTestCase
+from pathlib import Path
 import asyncio
 import random
 import signal
@@ -24,6 +25,10 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
     def setUpClass(cls) -> None:
         print('settingup')
         tracemalloc.start()
+        testdbpath = Path('test_empty.db')
+        if testdbpath.exists():
+            testdbpath.unlink()
+        testdbpath.touch()
         cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
