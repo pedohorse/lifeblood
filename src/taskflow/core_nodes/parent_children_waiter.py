@@ -196,5 +196,4 @@ class ParentChildrenWaiterNode(BaseNode):
         d = super(ParentChildrenWaiterNode, self).__getstate__()
         assert '_ParentChildrenWaiterNode__main_lock' in d
         del d['_ParentChildrenWaiterNode__main_lock']
-        del d['_ParentChildrenWaiterNode__cache_children']
         return d
