@@ -135,7 +135,7 @@ class Worker:
     def is_started(self):
         return self.__started
 
-    def wait_till_started(self):  # we can await this function cuz it returns a future...
+    def wait_till_starts(self):  # we can await this function cuz it returns a future...
         return self.__started_event.wait()
 
     def stop(self):
