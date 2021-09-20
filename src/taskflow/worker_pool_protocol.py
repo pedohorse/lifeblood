@@ -33,6 +33,7 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
                 if command == b'state_report':
                     state = WorkerState(struct.unpack('>Q', await reader.readexactly(8))[0])
                     await self.__worker_pool._worker_state_change(worker_id, state)
+                    writer.write(b'\1')
                 elif reader.at_eof():
                     self.__logger.debug('connection closed')
                     return
@@ -56,6 +57,7 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
     # def connection_lost(self, exc):
     #     self.__
     #     super(WorkerPoolProtocol, self).connection_lost(exc)
+
 
 class WorkerPoolClient:
     async def write_string(self, s: str):
@@ -92,3 +94,4 @@ class WorkerPoolClient:
         self.__writer.write(b'state_report\n')
         self.__writer.write(struct.pack('>Q', state.value))
         await self.__writer.drain()
+        assert await self.__reader.readexactly(1) == b'\1'
