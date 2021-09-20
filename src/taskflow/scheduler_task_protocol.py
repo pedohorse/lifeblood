@@ -55,6 +55,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     stdout = await read_string()
                     stderr = await read_string()
                     await self.__scheduler.task_done_reported(task, stdout, stderr)
+                    writer.write(b'\1')
                 elif command == b'dropped':
                     tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
                     task = await reader.readexactly(tasksize)
@@ -62,15 +63,18 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     stdout = await read_string()
                     stderr = await read_string()
                     await self.__scheduler.task_cancel_reported(task, stdout, stderr)
+                    writer.write(b'\1')
                 elif command == b'hello':
                     # worker reports for duty
                     addr = await read_string()
                     workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
                     await self.__scheduler.add_worker(addr, workertype, assume_active=True)
+                    writer.write(b'\1')
                 elif command == b'bye':
                     # worker reports he's quitting
                     addr = await read_string()
                     await self.__scheduler.worker_stopped(addr)
+                    writer.write(b'\1')
                 #
                 # spawn a child task for task being processed
                 elif command == b'spawn':
@@ -148,7 +152,8 @@ class SchedulerTaskClient:
             async with aiofiles.open(std_file, 'r') as f:
                 await self.write_string(await f.read())
         await self.__writer.drain()
-        # do we need a reply? doesn't seem so
+        # we DO need a reply to ensure proper sequence of events
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def report_task_canceled(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
@@ -160,7 +165,8 @@ class SchedulerTaskClient:
             async with aiofiles.open(std_file, 'r') as f:
                 await self.write_string(await f.read())
         await self.__writer.drain()
-        # do we need a reply? doesn't seem so
+        # we DO need a reply to ensure proper sequence of events
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def ping(self, my_address: str) -> WorkerState:
         await self._ensure_conn_open()
@@ -179,12 +185,16 @@ class SchedulerTaskClient:
         await self.write_string(address_to_advertise)
         self.__writer.write(struct.pack('>I', worker_type.value))
         await self.__writer.drain()
+        # we DO need a reply to ensure proper sequence of events
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def say_bye(self, address_of_worker: str):
         await self._ensure_conn_open()
         self.__writer.write(b'bye\n')
         await self.write_string(address_of_worker)
         await self.__writer.drain()
+        # we DO need a reply to ensure proper sequence of events
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def spawn(self, taskspawn: TaskSpawn) -> SpawnStatus:
         await self._ensure_conn_open()
