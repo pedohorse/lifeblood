@@ -59,6 +59,10 @@ class Scheduler:
         #     self.__plugins[filebasename] = mod
         # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
 
+        self.__ping_interval = 1
+        self.__processing_interval = 0.5
+        self.__db_lock_timeout = 30
+        
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
         config = get_config('scheduler')
@@ -83,9 +87,6 @@ class Scheduler:
 
         self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=1, scheduler_address=(server_ip, server_port))
 
-        self.__ping_interval = 1
-        self.__processing_interval = 0.5
-
         self.__event_loop = asyncio.get_running_loop()
         assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
 
@@ -101,7 +102,7 @@ class Scheduler:
     async def get_node_object_by_id(self, node_id: int) -> BaseNode:
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
                 node_row = await nodecur.fetchone()
@@ -126,7 +127,7 @@ class Scheduler:
             return newnode
 
     async def get_task_attributes(self, task_id: int):
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 res = await cur.fetchone()
@@ -135,7 +136,7 @@ class Scheduler:
             return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes'])
 
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT work_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 res = await cur.fetchone()
@@ -165,7 +166,7 @@ class Scheduler:
 
     async def run(self):
         # prepare
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             # we play it the safest for now:
             # all workers set to UNKNOWN state, all active invocations are reset, all tasks in the middle of processing are reset to closest waiting state
             con.row_factory = aiosqlite.Row
@@ -203,7 +204,7 @@ class Scheduler:
         await self._set_value('workers', 'state', wid, state.value, con, nocommit)
 
     async def worker_id_from_address(self, addr: str) -> Optional[int]:
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             async with con.execute('SELECT "id" FROM workers WHERE last_address = ?', (addr,)) as cur:
                 ret = await cur.fetchone()
         if ret is None:
@@ -212,7 +213,7 @@ class Scheduler:
 
     async def get_worker_state(self, wid: int, con: Optional[aiosqlite.Connection] = None) -> WorkerState:
         if con is None:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
                     res = await cur.fetchone()
         else:
@@ -240,7 +241,7 @@ class Scheduler:
                                   (TaskState.READY.value, invoc_row['task_id']))
             return need_commit
         if con is None:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 if await _inner_(con):
                     await con.commit()
                 return False
@@ -252,7 +253,7 @@ class Scheduler:
         if con is None:
             # TODO: safe check table and field, allow only text
             # TODO: handle db errors
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 await con.execute("UPDATE %s SET %s= ? WHERE id = ?" % (table, field), (value, wid))
                 if not nocommit:
                     await con.commit()
@@ -262,7 +263,7 @@ class Scheduler:
                 await con.commit()
 
     async def _iter_iter_func(self, worker_row):
-        async with aiosqlite.connect(self.db_path, timeout=30) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
 
             async def _check_lastseen_and_drop_invocations(switch_state_on_reset: Optional[WorkerState] = None):
@@ -402,7 +403,7 @@ class Scheduler:
         :return: NEVER !!
         """
 
-        async with aiosqlite.connect(self.db_path, timeout=30) as con:  # TODO: is it good to keep con always open?
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:  # TODO: is it good to keep con always open?
             con.row_factory = aiosqlite.Row
 
             tasks = []
@@ -448,13 +449,13 @@ class Scheduler:
             try:
                 process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
-                async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
+                async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
                     await con.commit()
                 return
             except Exception as e:
-                async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
+                async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value, task_id))
                     await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
@@ -469,7 +470,7 @@ class Scheduler:
                 return
 
             # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
-            async with awaiter_lock, aiosqlite.connect(self.db_path) as con:
+            async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
                 #print(f'up till block: {time.perf_counter() - _blo}')
@@ -573,7 +574,7 @@ class Scheduler:
             assert work_data is not None
             task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
             if not task.args():
-                async with awaiter_lock, aiosqlite.connect(self.db_path) as skipwork_transaction:
+                async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as skipwork_transaction:
                     await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                        (TaskState.POST_WAITING.value, task_row['id']))
                     await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
@@ -582,7 +583,7 @@ class Scheduler:
                     return
 
             # so task.args() is not None
-            async with aiosqlite.connect(self.db_path) as submit_transaction:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as submit_transaction:
                 async with awaiter_lock:
                     async with submit_transaction.execute(
                             'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
@@ -639,7 +640,7 @@ class Scheduler:
 
             # now proceed with processing
             _debug_con = time.perf_counter()
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
 
                 for task_state in (TaskState.WAITING, TaskState.READY, TaskState.DONE, TaskState.POST_WAITING, TaskState.SPAWNED):
@@ -826,7 +827,7 @@ class Scheduler:
             #         #     if worker is None:  # nothing available
             #         #         continue
             #         #
-            #         #     async with aiosqlite.connect(self.db_path) as presubmit_transaction:
+            #         #     async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as presubmit_transaction:
             #         #         await presubmit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
             #         #                                             (TaskState.INVOKING.value, task_row['id']))
             #         #         await presubmit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
@@ -910,7 +911,7 @@ class Scheduler:
     # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
             async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
@@ -953,7 +954,7 @@ class Scheduler:
     # worker reports canceled task
     async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task cancelled reported %s', repr(task))
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
             async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
@@ -981,7 +982,7 @@ class Scheduler:
     #
     # add new worker to db
     async def add_worker(self, addr: str, worker_type: WorkerType, assume_active=True):  # TODO: all resource should also go here
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
@@ -1013,7 +1014,7 @@ class Scheduler:
         :param addr:
         :return:
         """
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
@@ -1033,7 +1034,7 @@ class Scheduler:
     # cancel invocation
     async def cancel_invocation(self, invocation_id: str):
         self.__logger.debug(f'canceling invocation {invocation_id}')
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT * FROM "invocations" WHERE "id" = ?', (invocation_id,)) as cur:
                 invoc = await cur.fetchone()
@@ -1059,7 +1060,7 @@ class Scheduler:
     #
     async def cancel_invocation_for_task(self, task_id: int):
         self.__logger.debug(f'canceling invocation for task {task_id}')
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id" FROM "invocations" WHERE "task_id" = ? AND state = ?', (task_id, InvocationState.IN_PROGRESS.value)) as cur:
                 invoc = await cur.fetchone()
@@ -1072,7 +1073,7 @@ class Scheduler:
     async def force_set_node_task(self, task_id: int, node_id: int):
         self.__logger.debug(f'forcing task {task_id} to node {node_id}')
         try:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('UPDATE "tasks" SET "node_id" = ? WHERE "id" = ?', (node_id, task_id))
@@ -1097,7 +1098,7 @@ class Scheduler:
             task_ids = [task_ids]
         query = 'UPDATE "tasks" SET "state" = %d WHERE "id" = ?' % state.value
         #print('beep')
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             for task_id in task_ids:
                 await con.execute('BEGIN IMMEDIATE') #
                 async with con.execute('SELECT "state" FROM tasks WHERE "id" = ?', (task_id,)) as cur:
@@ -1120,7 +1121,7 @@ class Scheduler:
     # change task's paused state
     async def set_task_paused(self, task_ids_or_group: Union[int, Iterable[int], str], paused: bool):
         if isinstance(task_ids_or_group, str):
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 await con.execute('UPDATE "tasks" SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
                                   (int(paused), task_ids_or_group))
                 await con.commit()
@@ -1128,7 +1129,7 @@ class Scheduler:
         if isinstance(task_ids_or_group, int):
             task_ids_or_group = [task_ids_or_group]
         query = 'UPDATE "tasks" SET "paused" = %d WHERE "id" = ?' % int(paused)
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.executemany(query, ((x,) for x in task_ids_or_group))
             await con.commit()
 
@@ -1141,7 +1142,7 @@ class Scheduler:
         :param node_name: proposed node name
         :return: actual node name set
         """
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET "name" = ? WHERE "id" = ?', (node_name, node_id))
             if node_id in self.__node_objects:
                 self.__node_objects[node_id].set_name(node_name)
@@ -1151,7 +1152,7 @@ class Scheduler:
     #
     # reset node's stored state
     async def wipe_node_state(self, node_id):
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET node_object = NULL WHERE "id" = ?', (node_id,))
             if node_id in self.__node_objects:
                 del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. but a proper __node_object lock should be in place instead
@@ -1179,7 +1180,7 @@ class Scheduler:
         if node_object is None:
             self.__logger.error('node_object is None while')
             return
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
                               (await node_object.serialize_async(), node_id))
             await con.commit()
@@ -1189,7 +1190,7 @@ class Scheduler:
     @atimeit
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
         self.__logger.debug('full update for %s', task_groups)
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
                 all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
@@ -1259,7 +1260,7 @@ class Scheduler:
             vals.append(new_in_name)
         if len(vals) == 0:  # nothing to do
             return
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             vals.append(node_connection_id)
             await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE "id" = ?', vals)
@@ -1268,7 +1269,7 @@ class Scheduler:
     #
     # add node connection callback
     async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str) -> int:
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
                                    (out_node_id, out_name, in_node_id, in_name)) as cur:
@@ -1280,7 +1281,7 @@ class Scheduler:
     # remove node connection callback
     async def remove_node_connection(self, node_connection_id: int):
         try:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
@@ -1293,7 +1294,7 @@ class Scheduler:
     async def add_node(self, node_type: str, node_name: str) -> int:
         if node_type not in pluginloader.plugins:
             raise RuntimeError('unknown node type')
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO "nodes" ("type", "name") VALUES (?,?)',
                                    (node_type, node_name)) as cur:
@@ -1303,7 +1304,7 @@ class Scheduler:
 
     async def remove_node(self, node_id: int):
         try:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
@@ -1326,7 +1327,7 @@ class Scheduler:
         else:
             nodecol = 'node_id_out'
             namecol = 'out_name'
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             if name is None:
                 async with con.execute('SELECT * FROM node_connections WHERE "%s" = ?' % (nodecol,),
@@ -1400,7 +1401,7 @@ class Scheduler:
         if con is not None:
             await _inner_shit()
         else:
-            async with aiosqlite.connect(self.db_path) as con:
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 await _inner_shit()
                 await con.commit()
@@ -1413,7 +1414,7 @@ class Scheduler:
         :param name:
         :return:
         """
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             async with con.execute('SELECT "id" FROM "nodes" WHERE "name" = ?', (name,)) as cur:
                 return list(x[0] for x in await cur.fetchall())
 
@@ -1424,7 +1425,7 @@ class Scheduler:
         :param task_id:
         :return: dict[node_id -> dict[invocation_id: None]]
         """
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f'fetching log metadata for {task_id}')
@@ -1438,7 +1439,7 @@ class Scheduler:
             return logs
 
     async def get_logs(self, task_id: int, node_id: int, invocation_id: Optional[int] = None):
-        async with aiosqlite.connect(self.db_path) as con:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f"fetching for {task_id}, {node_id} {'' if invocation_id is None else invocation_id}")
