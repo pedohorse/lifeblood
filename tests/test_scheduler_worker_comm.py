@@ -45,7 +45,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
     async def test_simple_start_stop(self):
         purge_db()
-        sched = Scheduler('test_swc.db', do_broadcasting=False)
+        sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         ip, port = sched.server_address().split(':')
         worker = Worker(ip, int(port))
 
@@ -53,7 +53,6 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         await worker.start()
         await asyncio.gather(sched.wait_till_starts(),
                              worker.wait_till_starts())
-
 
         sched.stop()
         worker.stop()
