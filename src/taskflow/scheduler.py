@@ -35,7 +35,7 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 
 class Scheduler:
-    def __init__(self, db_file_path, do_broadcasting=True):
+    def __init__(self, db_file_path, *, do_broadcasting=True, helpers_minimal_idle_to_ensure=1):
         self.__logger = logging.get_logger('scheduler')
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         self.__logger.info('loading core plugins')
@@ -62,6 +62,9 @@ class Scheduler:
         self.__ping_interval = 1
         self.__processing_interval = 0.5
         self.__db_lock_timeout = 30
+
+        self.__all_components = None
+        self.__started_event = asyncio.Event()
         
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
@@ -85,7 +88,7 @@ class Scheduler:
             self.__broadcasting_server = None
             self.__broadcasting_server_coro = None
 
-        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=1, scheduler_address=(server_ip, server_port))
+        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=helpers_minimal_idle_to_ensure, scheduler_address=(server_ip, server_port))
 
         self.__event_loop = asyncio.get_running_loop()
         assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
@@ -152,7 +155,11 @@ class Scheduler:
 
     def stop(self):
         if self.__stop_event.is_set():
+            self.__logger.error('cannot double stop!')
             return  # no double stopping
+        if not self.__started_event.is_set():
+            self.__logger.error('cannot stop what is not started!')
+            return
         self.__logger.info('STOPPING SCHEDULER')
         self.__stop_event.set()
         if self.__server is not None:
@@ -164,7 +171,7 @@ class Scheduler:
     def _stop_event_wait(self):
         return self.__stop_event.wait()
 
-    async def run(self):
+    async def start(self):
         # prepare
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             # we play it the safest for now:
@@ -188,12 +195,25 @@ class Scheduler:
         if self.__broadcasting_server_coro is not None:
             self.__broadcasting_server = await self.__broadcasting_server_coro
         # run
-        await asyncio.gather(self.task_processor(),
+        self.__all_components = \
+              asyncio.gather(self.task_processor(),
                              self.worker_pinger(),
                              self.__server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
                              self.__ui_server.wait_closed(),
                              self.__worker_pool.wait_till_stops())
 
+        self.__started_event.set()
+
+    async def wait_till_starts(self):
+        return await self.__started_event.wait()
+
+    async def wait_till_stops(self):
+        await self.__started_event.wait()
+        assert self.__all_components is not None
+        await self.__all_components
+
+    def is_started(self):
+        return self.__started_event.is_set()
     #
     # helper functions
     #
@@ -1474,6 +1494,9 @@ class Scheduler:
                     logs[entry['id']] = entry
         return {node_id: logs}
 
+    def server_address(self) -> str:
+        return self.__server_address
+
 
 default_config = '''
 [core]
@@ -1506,7 +1529,8 @@ async def main_async(db_path=None):
     scheduler = Scheduler(db_path)
     asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
     asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
-    await scheduler.run()
+    await scheduler.start()
+    await scheduler.wait_till_stops()
 
 
 def main(argv):
