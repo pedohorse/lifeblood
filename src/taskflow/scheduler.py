@@ -461,7 +461,7 @@ class Scheduler:
 
         awaiter_lock = asyncio.Lock()
         # task processing coroutimes
-        @atimeit
+        @atimeit()
         async def _awaiter(processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
             #_blo = time.perf_counter()
             task_id = task_row['id']
@@ -580,7 +580,7 @@ class Scheduler:
                 #print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
-        @atimeit
+        @atimeit()
         async def _submitter(task_row, worker_row):
             addr = worker_row['last_address']
             try:
@@ -1207,7 +1207,7 @@ class Scheduler:
 
     #
     # stuff
-    @atimeit
+    @atimeit(0.1)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
