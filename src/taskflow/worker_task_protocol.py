@@ -75,7 +75,6 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                         pstatus = WorkerPingReply.IDLE.value
                         pvalue = 0
                     writer.write(struct.pack('>Bl', pstatus, pvalue))
-                    await asyncio.wait_for(writer.drain(), timeout=self.__timeout)
                 #
                 # command enqueue task
                 elif command == b'task':  # scheduler wants us to pick up task
@@ -105,6 +104,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                         await self.__worker.cancel_task()
                     except:
                         self.__logger.exception('task drop failed')
+                    writer.write(b'\1')
                 #
                 # command check worker status
                 elif command == b'status':  # scheduler wants to know the status of current task
@@ -122,7 +122,6 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                             all_data = (await f.read()).encode('UTF-8')
                             writer.write(struct.pack('>I', len(all_data)))
                             writer.write(all_data)
-                    await writer.drain()
                 #
                 # command get worker's log line by line
                 elif command == b'logiter':  # scheduler wants to have the log:
@@ -138,7 +137,6 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                             writer.write(b'\x01')
                             writer.write(line)
                         writer.write(b'\x00')
-                    await writer.drain()
 
                 # now wait for answer to be delivered
                 await writer.drain()
@@ -211,6 +209,7 @@ class WorkerTaskClient:
         await self._ensure_conn_open()
         self.__writer.write(b'drop\n')
         await asyncio.wait_for(self.__writer.drain(), self.__timeout)
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def status(self):
         raise NotImplementedError()
