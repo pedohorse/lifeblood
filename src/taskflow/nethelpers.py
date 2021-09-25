@@ -1,5 +1,8 @@
 import socket
+import netifaces
 import asyncio
+
+from .logging import get_logger
 
 from typing import Any, AnyStr
 
@@ -74,7 +77,7 @@ def get_default_addr():
         s.connect(('10.255.255.255', 1))
         myip = s.getsockname()[0]
     except Exception:
-        myip = '127.0.0.1'
+        myip = get_localhost()
     finally:
         s.close()
     return myip
@@ -85,7 +88,18 @@ def get_localhost():
 
 
 def get_default_broadcast_addr():
+    addr = get_default_addr()
+    for iface in netifaces.interfaces():
+        ifaddrs = netifaces.ifaddresses(iface)
+        if netifaces.AF_INET not in ifaddrs:
+            continue
+        for inet_addr in ifaddrs[netifaces.AF_INET]:
+            if inet_addr.get('addr', None) == addr and 'broadcast' in inet_addr:
+                return inet_addr['broadcast']
+    # if all fails
+    get_logger('NETWORK').warning('could not detect a proper broadcast address, trying general 255.255.255.255')
     return '<broadcast>'
+
 
 def get_addr_to(ip):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
