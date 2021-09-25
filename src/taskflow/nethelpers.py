@@ -85,8 +85,7 @@ def get_localhost():
 
 
 def get_default_broadcast_addr():
-    addr = get_default_addr()
-    return addr[:addr.rfind('.')+1] + '0'
+    return '<broadcast>'
 
 def get_addr_to(ip):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
