@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"ctime"	INTEGER NOT NULL
 );
 CREATE TRIGGER IF NOT EXISTS flush_task_state
-AFTER UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
+BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
 BEGIN
 UPDATE "tasks" SET "state_details" = NULL WHERE "id" == new.id;
 END;

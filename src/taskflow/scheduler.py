@@ -476,10 +476,9 @@ class Scheduler:
                 return
             except Exception as e:
                 async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-                    await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                      (TaskState.ERROR.value, task_id))
-                    await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
-                                      (json.dumps({'message': traceback.format_exc(),
+                    await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                      (TaskState.ERROR.value,
+                                       json.dumps({'message': traceback.format_exc(),
                                                    'happened_at': task_row['state'],
                                                    'type': 'exception',
                                                    'exception_str': str(e),
@@ -735,8 +734,20 @@ class Scheduler:
                         for task_row in all_task_rows:
                             if task_row["_invoc_requirement_clause"] in where_empty_cache:
                                 continue
-                            async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
-                                worker = await worcur.fetchone()
+                            try:
+                                async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
+                                    worker = await worcur.fetchone()
+                            except aiosqlite.Error as e:
+                                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                                  (TaskState.ERROR.value,
+                                                   json.dumps({'message': traceback.format_exc(),
+                                                               'happened_at': task_row['state'],
+                                                               'type': 'exception',
+                                                               'exception_str': str(e),
+                                                               'exception_type': str(type(e))}),
+                                                   task_row['id']))
+                                self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
+                                continue
                             if worker is None:  # nothing available
                                 where_empty_cache.add(task_row["_invoc_requirement_clause"])
                                 continue
