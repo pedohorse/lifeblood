@@ -312,7 +312,7 @@ class Scheduler:
                 await con.commit()
                 return
             try:
-                async with WorkerTaskClient(ip, int(port)) as client:
+                async with WorkerTaskClient(ip, int(port), timeout=15) as client:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
                 self.__pinger_logger.debug('    :: network error')
@@ -452,7 +452,11 @@ class Scheduler:
 
         self.__logger.info('finishing worker pinger...')
         if len(tasks) > 0:
-            await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+            self.__logger.debug(f'waiting for {len(tasks)} pinger tasks...')
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED, timeout=5)
+            self.__logger.debug(f'waiting enough, cancelling {len(pending)} tasks')
+            for task in pending:
+                task.cancel()
         self.__logger.info('worker pinger finished')
 
     #
