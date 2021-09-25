@@ -6,7 +6,7 @@ import struct
 
 from . import logging
 
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 Address = Tuple[str, int]
 
@@ -15,10 +15,10 @@ Address = Tuple[str, int]
 _magic = b'=\xe2\x88\x88\xe2\xad\x95\xe2\x88\x8b='
 
 
-async def create_broadcaster(identifier, information, broad_port=9000, ip='0.0.0.0', broadcasts_count=None):
+async def create_broadcaster(identifier, information, *, broad_port=9000, ip='0.0.0.0', broadcasts_count: Optional[int] = None, broadcast_interval: int = 10):
     loop = asyncio.get_event_loop()
     return await loop.create_datagram_endpoint(
-        lambda: BroadcastProtocol(identifier, information, (ip, broad_port), broadcasts_count, loop=loop),
+        lambda: BroadcastProtocol(identifier, information, (ip, broad_port), broadcasts_count, broadcast_interval, loop=loop),
         family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
 
 
@@ -31,19 +31,19 @@ async def await_broadcast(identifier, broad_port=9000):
     message = await protocol.till_done()
 
     # rebroadcast to localhost
-    _, protocol = await create_broadcaster(identifier, message, broad_port, ip='127.0.0.1', broadcasts_count=1)  # TODO: bet with my future self - i will regret hardcoding ipv4 localhost like that
+    _, protocol = await create_broadcaster(identifier, message, broad_port=broad_port, ip='127.0.0.1', broadcasts_count=1)  # TODO: bet with my future self - i will regret hardcoding ipv4 localhost like that
     await protocol.till_done()
     return message
 
 
 class BroadcastProtocol(asyncio.DatagramProtocol):
-    def __init__(self, identifier: str, information: str, target: Address, count=None, *, loop: asyncio.AbstractEventLoop = None):
+    def __init__(self, identifier: str, information: str, target: Address, count=None, broadcast_interval=10, *, loop: asyncio.AbstractEventLoop = None):
         self.__logger = logging.get_logger('broadcast')
         self.__target = target
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__transport = None
         self.__identifier = identifier
-        self.__interval = 10
+        self.__interval = broadcast_interval
         self.__broadcast_count = count
         self.__information = information
         self.__closed_future = self.__loop.create_future()
