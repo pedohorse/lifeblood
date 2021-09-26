@@ -39,8 +39,10 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, dict] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem', 'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type', 'progress': 'task progress'}
-        self.__cols_order = ('id', 'state', 'progress', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'last_seen', 'worker_type')
+        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem',
+                       'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
+                       'progress': 'task progress', 'groups': 'groups', 'task_id': 'task id'}
+        self.__cols_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'groups', 'last_seen', 'worker_type')
         assert len(self.__cols) == len(self.__cols_order)
 
         self.start()
