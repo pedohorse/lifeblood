@@ -18,9 +18,9 @@ class TaskSpawn(object):
     keep it up-to-date
     and keep it 2-3 compatible!!
     """
-    def __init__(self, name, source_invocation_id, env_args, **attribs):
+    def __init__(self, name, source_invocation_id, env_args, task_attributes):
         self.__name = name
-        self.__attributes = attribs
+        self.__attributes = dict(task_attributes or {})
         self.__env_args = env_args
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
@@ -94,8 +94,8 @@ class EnvironmentResolverArguments:
 
 
 class NewTask(TaskSpawn):
-    def __init__(self, name, node_id, scheduler_addr, env_args, **attribs):
-        super(NewTask, self).__init__(name, None, env_args, **attribs)
+    def __init__(self, name, node_id, scheduler_addr, env_args, task_attributes):
+        super(NewTask, self).__init__(name, None, env_args, task_attributes)
         self.__scheduler_addr = scheduler_addr
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
@@ -137,5 +137,5 @@ def create_task(name, node_id_or_name, scheduler_addr, **attributes):
         assert isinstance(node_id_or_name, int)
         node_id = node_id_or_name
 
-    task = NewTask(name, node_id, scheduler_addr, None, **attributes)
+    task = NewTask(name, node_id, scheduler_addr, None, task_attributes=attributes)
     return task

@@ -23,16 +23,16 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentResolverArguments] = None, **attribs):
+    def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None):
         """
 
         :param name:
         :param source_invocation_id:
         :param env_args: if None - will inherit parent's. if no parent and none, or if empty arguments- default worker's env wrapper will be used
-        :param attribs:
+        :param task_attributes:
         """
         self.__name = name
-        self.__attributes = attribs
+        self.__attributes = dict(task_attributes or {})
         self.__env_args = env_args
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
@@ -108,8 +108,8 @@ class TaskSpawn:
 
 
 class NewTask(TaskSpawn):
-    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentResolverArguments] = None, **attribs):
-        super(NewTask, self).__init__(name, None, env_args, **attribs)
+    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: Optional[dict] = None):
+        super(NewTask, self).__init__(name, None, env_args, task_attributes)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
         self._create_as_spawned = False

@@ -575,7 +575,7 @@ class NodeEditor(QGraphicsView):
         print(wgt.get_task_name())
         print(wgt.get_task_groups())
         print(wgt.get_task_attributes())
-        new_task = NewTask(wgt.get_task_name(), node_id, **wgt.get_task_attributes())
+        new_task = NewTask(wgt.get_task_name(), node_id, task_attributes=wgt.get_task_attributes())
         new_task.add_extra_group_names(wgt.get_task_groups())
         self.__scene.request_add_task(new_task)
 

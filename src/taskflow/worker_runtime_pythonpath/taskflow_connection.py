@@ -77,7 +77,7 @@ class TaskSpawn:
 
 def create_task(name, **attributes):
     invocation_id = int(os.environ['TASKFLOW_RUNTIME_IID'])
-    spawn = TaskSpawn(name, invocation_id, **attributes)
+    spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
 
     def _send():
         addrport = os.environ['TASKFLOW_RUNTIME_SCHEDULER_ADDR']
