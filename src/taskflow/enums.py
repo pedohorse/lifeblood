@@ -8,6 +8,11 @@ class NodeParameterType(Enum):
     STRING = 3
 
 
+class SchedulerMode(Enum):
+    STANDARD = 0
+    DORMANT = 1
+
+
 class WorkerState(Enum):
     OFF = 0
     IDLE = 1

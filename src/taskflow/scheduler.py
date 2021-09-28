@@ -27,7 +27,7 @@ from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
-from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType
+from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode
 from .config import get_config, create_default_user_config_file
 from .misc import atimeit
 
@@ -60,8 +60,12 @@ class Scheduler:
         # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
 
         self.__ping_interval = 1
+        self.__ping_interval_mult = 1
         self.__processing_interval = 0.5
+        self.__processing_interval_mult = 1
         self.__db_lock_timeout = 30
+
+        self.__mode = SchedulerMode.STANDARD
 
         self.__all_components = None
         self.__started_event = asyncio.Event()
@@ -101,6 +105,23 @@ class Scheduler:
 
     def ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
+
+    def wake(self):
+        if self.__mode == SchedulerMode.DORMANT:
+            self.__logger.info('exiting DORMANT mode. mode is STANDARD now')
+            self.__mode = SchedulerMode.STANDARD
+            self.__processing_interval_mult = 1
+            self.__ping_interval_mult = 1
+
+    def __sleep(self):
+        if self.__mode == SchedulerMode.STANDARD:
+            self.__logger.info('entering DORMANT mode')
+            self.__mode = SchedulerMode.DORMANT
+            self.__processing_interval_mult = 50
+            self.__ping_interval_mult = 10
+
+    def mode(self) -> SchedulerMode:
+        return self.__mode
 
     async def get_node_object_by_id(self, node_id: int) -> BaseNode:
         if node_id in self.__node_objects:
@@ -214,6 +235,7 @@ class Scheduler:
 
     def is_started(self):
         return self.__started_event.is_set()
+
     #
     # helper functions
     #
@@ -267,7 +289,6 @@ class Scheduler:
                 return False
         else:
             return await _inner_(con)
-
 
     async def _set_value(self, table: str, field: str, wid: int, value: Any, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         if con is None:
@@ -373,6 +394,7 @@ class Scheduler:
         :param con:
         :return:
         """
+        self.wake()
         if into < 1:
             raise ValueError('cant split into less than 1 part')
 
@@ -438,17 +460,17 @@ class Scheduler:
                         time_delta = nowtime - (row['last_checked'] or 0)
                         if row['state'] == WorkerState.BUSY.value:
                             tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                        elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval:
+                        elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval * self.__ping_interval_mult:
                             tasks.append(asyncio.create_task(self._iter_iter_func(row)))
                         else:  # worker state is error or off
-                            if time_delta > 15 * self.__ping_interval:
+                            if time_delta > 15 * self.__ping_interval * self.__ping_interval_mult:
                                 tasks.append(asyncio.create_task(self._iter_iter_func(row)))
 
                 # now clean the list
                 tasks = [x for x in tasks if not x.done()]
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
-                await asyncio.sleep(self.__ping_interval)
+                await asyncio.sleep(self.__ping_interval * self.__ping_interval_mult)
 
         self.__logger.info('finishing worker pinger...')
         if len(tasks) > 0:
@@ -663,6 +685,7 @@ class Scheduler:
 
             # now proceed with processing
             _debug_con = time.perf_counter()
+            total_processed = 0
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
 
@@ -685,6 +708,8 @@ class Scheduler:
 
                     if len(all_task_rows) == 0:
                         continue
+                    total_processed += len(all_task_rows)
+
                     self.__logger.debug(f'total {task_state.name}: {len(all_task_rows)}')
                     #
                     # waiting to be processed
@@ -801,8 +826,21 @@ class Scheduler:
                         await con.commit()
 
                     self.__logger.debug(f'{task_state.name} took: {time.perf_counter() - _debug_pstart}')
+
+                # out of processing loop, but still in db connection
+                if total_processed == 0:
+                    # check maybe it's time to sleep
+                    if len(tasks_to_wait) == 0:
+                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
+                            total = await cur.fetchone()
+                            if total is None or total['total'] == 0:
+                                self.__logger.info('no useful tasks seem to be available')
+                                self.__sleep()
+                else:
+                    self.wake()
+
             self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
-            await asyncio.sleep(self.__processing_interval)
+            await asyncio.sleep(self.__processing_interval * self.__processing_interval_mult)
 
             #     for task_row in all_task_rows:
             #         #
@@ -946,6 +984,7 @@ class Scheduler:
     # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
+        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
@@ -989,6 +1028,7 @@ class Scheduler:
     # worker reports canceled task
     async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task cancelled reported %s', repr(task))
+        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
@@ -1107,6 +1147,7 @@ class Scheduler:
     #
     async def force_set_node_task(self, task_id: int, node_id: int):
         self.__logger.debug(f'forcing task {task_id} to node {node_id}')
+        self.wake()
         try:
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
@@ -1126,6 +1167,7 @@ class Scheduler:
         :param state:
         :return:
         """
+        self.wake()
         if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
             self.__logger.error(f'cannot force task {task_ids} into state {state}')
             return
@@ -1155,6 +1197,7 @@ class Scheduler:
     #
     # change task's paused state
     async def set_task_paused(self, task_ids_or_group: Union[int, Iterable[int], str], paused: bool):
+        self.wake()
         if isinstance(task_ids_or_group, str):
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 await con.execute('UPDATE "tasks" SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
@@ -1187,6 +1230,7 @@ class Scheduler:
     #
     # reset node's stored state
     async def wipe_node_state(self, node_id):
+        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET node_object = NULL WHERE "id" = ?', (node_id,))
             if node_id in self.__node_objects:
@@ -1283,6 +1327,7 @@ class Scheduler:
     # change node connection callback
     async def change_node_connection(self, node_connection_id: int, new_out_node_id: Optional[int], new_out_name: Optional[str],
                                      new_in_node_id: Optional[int], new_in_name: Optional[str]):
+        self.wake()
         parts = []
         vals = []
         if new_out_node_id is not None:
@@ -1308,6 +1353,7 @@ class Scheduler:
     #
     # add node connection callback
     async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str) -> int:
+        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
@@ -1435,6 +1481,7 @@ class Scheduler:
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                           zip(itertools.repeat(new_id, len(groups)), groups))
 
+        self.wake()
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
         if con is not None:
