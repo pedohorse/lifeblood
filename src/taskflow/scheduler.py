@@ -449,6 +449,7 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
 
             tasks = []
+            stop_task = asyncio.create_task(self.__stop_event.wait())
             while not self.__stop_event.is_set():
                 nowtime = time.time()
 
@@ -470,7 +471,9 @@ class Scheduler:
                 tasks = [x for x in tasks if not x.done()]
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
-                await asyncio.sleep(self.__ping_interval * self.__ping_interval_mult)
+                done, _ = await asyncio.wait((stop_task,), timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+                if stop_task in done:
+                    break
 
         self.__logger.info('finishing worker pinger...')
         if len(tasks) > 0:
@@ -670,6 +673,7 @@ class Scheduler:
 
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
+        stop_task = asyncio.create_task(self.__stop_event.wait())
         while not self.__stop_event.is_set():
 
             # first prune awaited tasks
@@ -840,7 +844,10 @@ class Scheduler:
                     self.wake()
 
             self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
-            await asyncio.sleep(self.__processing_interval * self.__processing_interval_mult)
+            # and wait for a bit
+            wdone, _ = await asyncio.wait((stop_task,), timeout=self.__processing_interval * self.__processing_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+            if stop_task in wdone:
+                break
 
             #     for task_row in all_task_rows:
             #         #
