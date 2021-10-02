@@ -15,8 +15,8 @@ from ..misc import generate_name
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform
+from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
+from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
@@ -24,6 +24,9 @@ from .connection_worker import SchedulerConnectionWorker
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
+
+import grandalf.graphs
+import grandalf.layouts
 
 from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
@@ -201,7 +204,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 if row is not None:
                     return row['posx'], row['posy']
 
-        return node_id * 125.79 % 400, node_id * 357.17 % 400  # TODO: do something better!
+        raise ValueError(f'node id {node_id} has no stored position')
 
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
@@ -251,12 +254,16 @@ class QGraphicsImguiScene(QGraphicsScene):
                 if item.scene() != self:
                     del existings[item_id]
 
+        nodes_to_layout = []
         for id, newdata in uidata.nodes().items():
             if id in existing_node_ids:
                 existing_node_ids[id].set_name(newdata['name'])
                 continue
             new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
-            new_node.setPos(*self.node_position(id))
+            try:
+                new_node.setPos(*self.node_position(id))
+            except ValueError:
+                nodes_to_layout.append(new_node)
             existing_node_ids[id] = new_node
             self.addItem(new_node)
 
@@ -299,6 +306,10 @@ class QGraphicsImguiScene(QGraphicsScene):
                 task.set_progress(newdata['progress'])
             task.set_groups(newdata['groups'])
             # new_task_groups.update(task.groups())
+
+        # now layout nodes that need it
+        if nodes_to_layout:
+            self.layout_nodes(nodes_to_layout)
 
         if self.__all_task_groups != uidata.task_groups():
             self.__all_task_groups = uidata.task_groups()
@@ -444,6 +455,121 @@ class QGraphicsImguiScene(QGraphicsScene):
     def setSelectionArea(self, *args, **kwargs):
         pass
 
+    #
+    # layout
+    def layout_nodes(self, nodes: Optional[Iterable[Node]] = None, center: Optional[QPointF] = None):
+        if center is None:
+            center = QPointF(0, 0)
+        if nodes is None:
+            nodes = self.nodes()
+
+        if not nodes:
+            return
+
+        nodes_to_vertices = {x: grandalf.graphs.Vertex(x) for x in nodes}
+        graph = grandalf.graphs.Graph(nodes_to_vertices.values())
+        lower_fixed = []
+        upper_fixed = []
+
+        for node in nodes:
+            for output_name in node.output_names():
+                for conn in node.output_connections(output_name):
+                    nextnode, _ = conn.input()
+                    if nextnode not in nodes_to_vertices and nextnode not in lower_fixed:
+                        lower_fixed.append(nextnode)
+                    if nextnode not in lower_fixed and nextnode not in upper_fixed:
+                        graph.add_edge(grandalf.graphs.Edge(nodes_to_vertices[node], nodes_to_vertices[nextnode]))
+            for input_name in node.input_names():
+                for conn in node.input_connections(input_name):
+                    prevnode, _ = conn.output()
+                    if prevnode not in nodes_to_vertices and prevnode not in upper_fixed:
+                        upper_fixed.append(prevnode)
+                    if prevnode not in lower_fixed and prevnode not in upper_fixed:
+                        # double edges will be filtered by networkx, and we wont miss any connection to external nodes this way
+                        graph.add_edge(grandalf.graphs.Edge(nodes_to_vertices[prevnode], nodes_to_vertices[node]))
+
+        upper_middle_point = QPointF()
+        if len(lower_fixed) > 0:
+            for lower in lower_fixed:
+                upper_middle_point.setX(upper_middle_point.x() + lower.pos().x())
+                upper_middle_point.setY(max(upper_middle_point.y(), lower.pos().y()))
+            upper_middle_point.setX(upper_middle_point.x() / len(lower_fixed))
+        else:
+            upper_middle_point = center
+
+        class _viewhelper:
+            def __init__(self, w, h):
+                self.w = w
+                self.h = h
+
+        for node, vert in nodes_to_vertices.items():
+            bounds = node.boundingRect()  # type: QRectF
+            vert.view = _viewhelper(*bounds.size().toTuple())
+            vert.view.h *= 1.5
+
+        vertices_to_nodes = {v: k for k, v in nodes_to_vertices.items()}
+
+        xshift = 0
+        nodewidgh = next(graph.V()).view.w  # just take first for now
+        nodeheight = nodewidgh
+        upper_middle_point -= QPointF(0, 2*nodeheight)
+        #graph.C[0].layers[0].sV[0]
+        for component in graph.C:
+            layout = grandalf.layouts.SugiyamaLayout(component)
+            layout.init_all()
+            layout.draw()
+
+            xmax = -float('inf')
+            ymax = -float('inf')
+            xmin = float('inf')
+            ymin = float('inf')
+            xshiftpoint = QPointF(xshift, 0)
+            for vertex in component.sV:
+                xmax = max(xmax, vertex.view.xy[0])
+                ymax = max(ymax, vertex.view.xy[1])
+                xmin = min(xmin, vertex.view.xy[0])
+                ymin = min(ymin, vertex.view.xy[1])
+            for vertex in component.sV:
+                vertices_to_nodes[vertex].setPos(QPointF(*vertex.view.xy) + xshiftpoint - QPointF((xmax + xmin)/2, 0) + (upper_middle_point - QPointF(0, ymax)))
+            xshift += (xmax - xmin) + 2 * nodewidgh
+
+
+    # def layout_nodes(self, nodes: Optional[Iterable[Node]] = None):
+    #     if nodes is None:
+    #         nodes = self.nodes()
+    #
+    #     nodes_set = set(nodes)
+    #     graph = networkx.Graph()  # wierdly digraph here works way worse for layout
+    #     graph.add_nodes_from(nodes)
+    #     fixed = []
+    #     for node in nodes:
+    #         for output_name in node.output_names():
+    #             for conn in node.output_connections(output_name):
+    #                 nextnode, _ = conn.input()
+    #                 if nextnode not in nodes_set:
+    #                     nodes_set.add(nextnode)
+    #                     fixed.append(nextnode)
+    #                 graph.add_edge(node, nextnode)
+    #         for input_name in node.input_names():
+    #             for conn in node.input_connections(input_name):
+    #                 prevnode, _ = conn.output()
+    #                 if prevnode not in nodes_set:
+    #                     nodes_set.add(prevnode)
+    #                     fixed.append(prevnode)
+    #                 # double edges will be filtered by networkx, and we wont miss any connection to external nodes this way
+    #                 graph.add_edge(prevnode, node)
+    #     print(len(nodes_set), len(graph), len(fixed))
+    #     init_pos = {node: (node.pos()).toTuple() for node in nodes_set}
+    #     print(graph)
+    #     print(graph.edges)
+    #     if not fixed:
+    #         fixed.append(next(iter(nodes_set)))
+    #     final_pos = networkx.drawing.layout.spring_layout(graph, 150, pos=init_pos, fixed=fixed or None, iterations=5)
+    #     from pprint import pprint
+    #     pprint(final_pos)
+    #     for node, pos in final_pos.items():
+    #         node.setPos(QPointF(*pos))
+
 
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, worker=None, parent=None):
@@ -470,6 +596,9 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
 
+        self.__shortcut_layout = QShortcut(QKeySequence('l'), self)
+        self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
+
         self.__create_menu_popup_toopen = False
         self.__node_type_input = ''
         self.__menu_popup_selection_id = 0
@@ -487,6 +616,13 @@ class NodeEditor(QGraphicsView):
         self.__imgui_init = False
         self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
         self.update()
+
+    @Slot()
+    def layout_selected_nodes(self):
+        nodes = [n for n in self.__scene.selectedItems() if isinstance(n, Node)]
+        if not nodes:
+            return
+        self.__scene.layout_nodes(nodes, center=self.sceneRect().center())
 
     def show_task_menu(self, task):
         menu = QMenu(self)
@@ -842,6 +978,7 @@ class NodeEditor(QGraphicsView):
         else:
             if self.__ui_panning_lastpos is not None:
                 rect = self.sceneRect()
+                rect.setSize(QSize(1, 1))
                 self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * self.__view_scale).toTuple()))
                 #self.translate(*(event.screenPos() - self.__ui_panning_lastpos).toTuple())
                 self.__ui_panning_lastpos = event.screenPos()
