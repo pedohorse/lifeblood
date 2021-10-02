@@ -559,6 +559,19 @@ class Node(NetworkItemWithUI):
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
 
+        # if node ui has not yet been updated - we temporary add in/out names to lists
+        # it will get overriden by nodeui update
+        conno = new_connection.output()
+        if conno[0] == self and (self.__outputs is None or conno[1] not in self.__outputs):
+            if self.__outputs is None:
+                self.__outputs = []
+            self.__outputs.append(conno[1])
+        conni = new_connection.input()
+        if conni[0] == self and (self.__inputs is None or conni[1] not in self.__inputs):
+            if self.__inputs is None:
+                self.__inputs = []
+            self.__inputs.append(conni[1])
+
     def remove_connection(self, connection: "NodeConnection"):
         self.__connections.remove(connection)
 
@@ -700,6 +713,9 @@ class NodeConnection(NetworkItem):
         self.__thick_pen = QPen(QColor(144, 144, 144, 128))
         self.__thick_pen.setWidthF(4)
         self.__last_drawn_path: Optional[QPainterPath] = None
+
+        nodein.add_connection(self)
+        nodeout.add_connection(self)
 
     def distance_to_point(self, pos: QPointF):
         """
