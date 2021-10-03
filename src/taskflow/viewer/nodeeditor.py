@@ -488,14 +488,23 @@ class QGraphicsImguiScene(QGraphicsScene):
                         # double edges will be filtered by networkx, and we wont miss any connection to external nodes this way
                         graph.add_edge(grandalf.graphs.Edge(nodes_to_vertices[prevnode], nodes_to_vertices[node]))
 
-        upper_middle_point = QPointF()
+        upper_middle_point = QPointF(0, float('inf'))
+        lower_middle_point = None
+        print(len(lower_fixed), len(upper_fixed))
         if len(lower_fixed) > 0:
             for lower in lower_fixed:
                 upper_middle_point.setX(upper_middle_point.x() + lower.pos().x())
-                upper_middle_point.setY(max(upper_middle_point.y(), lower.pos().y()))
+                upper_middle_point.setY(min(upper_middle_point.y(), lower.pos().y()))
             upper_middle_point.setX(upper_middle_point.x() / len(lower_fixed))
         else:
             upper_middle_point = center
+
+        if len(upper_fixed) > 0:
+            lower_middle_point = QPointF(0, -float('inf'))
+            for upper in upper_fixed:
+                lower_middle_point.setX(lower_middle_point.x() + upper.pos().x())
+                lower_middle_point.setY(max(lower_middle_point.y(), upper.pos().y()))
+            lower_middle_point.setX(lower_middle_point.x() / len(upper_fixed))
 
         class _viewhelper:
             def __init__(self, w, h):
@@ -512,7 +521,9 @@ class QGraphicsImguiScene(QGraphicsScene):
         xshift = 0
         nodewidgh = next(graph.V()).view.w  # just take first for now
         nodeheight = nodewidgh
-        upper_middle_point -= QPointF(0, 2*nodeheight)
+        upper_middle_point -= QPointF(0, 1.5*nodeheight)
+        if lower_middle_point is not None:
+            lower_middle_point += QPointF(0, 1.5*nodeheight)
         #graph.C[0].layers[0].sV[0]
         for component in graph.C:
             layout = grandalf.layouts.SugiyamaLayout(component)
@@ -529,8 +540,12 @@ class QGraphicsImguiScene(QGraphicsScene):
                 ymax = max(ymax, vertex.view.xy[1])
                 xmin = min(xmin, vertex.view.xy[0])
                 ymin = min(ymin, vertex.view.xy[1])
-            for vertex in component.sV:
-                vertices_to_nodes[vertex].setPos(QPointF(*vertex.view.xy) + xshiftpoint - QPointF((xmax + xmin)/2, 0) + (upper_middle_point - QPointF(0, ymax)))
+            if len(lower_fixed) > 0 or lower_middle_point is None:
+                for vertex in component.sV:
+                    vertices_to_nodes[vertex].setPos(QPointF(*vertex.view.xy) + xshiftpoint - QPointF((xmax + xmin)/2, 0) + (upper_middle_point - QPointF(0, ymax)))
+            else:
+                for vertex in component.sV:
+                    vertices_to_nodes[vertex].setPos(QPointF(*vertex.view.xy) + xshiftpoint - QPointF((xmax + xmin)/2, 0) + (lower_middle_point - QPointF(0, ymin)))
             xshift += (xmax - xmin) + 2 * nodewidgh
 
 
