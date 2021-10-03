@@ -490,7 +490,6 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         upper_middle_point = QPointF(0, float('inf'))
         lower_middle_point = None
-        print(len(lower_fixed), len(upper_fixed))
         if len(lower_fixed) > 0:
             for lower in lower_fixed:
                 upper_middle_point.setX(upper_middle_point.x() + lower.pos().x())
@@ -688,6 +687,10 @@ class NodeEditor(QGraphicsView):
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
         menu.addSeparator()
 
+        if len(self.__scene.selectedItems()) > 0:
+            menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
+            menu.addSeparator()
+
         menu.addAction('create new task').triggered.connect(lambda checked=False, x=node: self._popup_create_task(x))
 
         menu.addSeparator()
@@ -703,6 +706,12 @@ class NodeEditor(QGraphicsView):
 
         if pos is None:
             pos = self.mapToGlobal(self.mapFromScene(node.mapToScene(node.boundingRect().topRight())))
+        menu.aboutToHide.connect(menu.deleteLater)
+        menu.popup(pos)
+
+    def show_general_menu(self, pos):
+        menu = QMenu(self)
+        menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
@@ -1007,6 +1016,9 @@ class NodeEditor(QGraphicsView):
         else:
             if event.buttons() & Qt.MiddleButton:
                 self.__ui_panning_lastpos = event.screenPos()
+            elif event.buttons() & Qt.RightButton and self.itemAt(event.pos()) is None:
+                event.accept()
+                self.show_general_menu(event.globalPos())
             else:
                 super(NodeEditor, self).mousePressEvent(event)
 
