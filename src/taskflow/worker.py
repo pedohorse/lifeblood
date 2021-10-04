@@ -2,6 +2,7 @@ import os
 import errno
 import shutil
 import traceback
+import threading
 import asyncio
 import subprocess
 import aiofiles
@@ -12,6 +13,7 @@ import tempfile
 import signal
 from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
+from .net_classes import WorkerResources
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
@@ -57,6 +59,8 @@ class Worker:
         self.__running_awaiter = None
         self.__server: asyncio.AbstractServer = None
         self.__task_changing_state_lock = asyncio.Lock()
+        self.__stop_lock = threading.Lock()
+        self.__start_lock = asyncio.Lock()  # cant use threading lock in async methods - it can yeild out, and deadlock on itself
         self.__where_to_report = None
         self.__ping_interval = 10
         self.__ping_missed_threshold = 6
@@ -102,35 +106,36 @@ class Worker:
         if self.__stopped:
             raise RuntimeError('already stopped, cannot start again')
 
-        loop = asyncio.get_event_loop()
-        my_ip = get_addr_to(self.__scheduler_addr[0])
-        my_port = 6969
-        for i in range(1024):  # big but finite
-            try:
-                self.__server = await loop.create_server(lambda: WorkerTaskServerProtocol(self), my_ip, my_port, backlog=16)
-                addr = f'{my_ip}:{my_port}'
-                break
-            except OSError as e:
-                if e.errno != errno.EADDRINUSE:
-                    raise
-                my_port += 1
-                continue
-        else:
-            raise RuntimeError('could not find an opened port!')
-        self.__my_addr = (my_ip, my_port)
+        async with self.__start_lock:
+            loop = asyncio.get_event_loop()
+            my_ip = get_addr_to(self.__scheduler_addr[0])
+            my_port = 6969
+            for i in range(1024):  # big but finite
+                try:
+                    self.__server = await loop.create_server(lambda: WorkerTaskServerProtocol(self), my_ip, my_port, backlog=16)
+                    addr = f'{my_ip}:{my_port}'
+                    break
+                except OSError as e:
+                    if e.errno != errno.EADDRINUSE:
+                        raise
+                    my_port += 1
+                    continue
+            else:
+                raise RuntimeError('could not find an opened port!')
+            self.__my_addr = (my_ip, my_port)
 
-        # now report our address to the scheduler
-        async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-            await client.say_hello(addr, self.__worker_type)
-        #
-        # and report to the pool
-        if self.__worker_id is not None:
-            async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
-                await client.report_state(WorkerState.IDLE)
+            # now report our address to the scheduler
+            async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                await client.say_hello(addr, self.__worker_type, WorkerResources())
+            #
+            # and report to the pool
+            if self.__worker_id is not None:
+                async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                    await client.report_state(WorkerState.IDLE)
 
-        self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
-        self.__started = True
-        self.__started_event.set()
+            self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
+            self.__started = True
+            self.__started_event.set()
 
     def is_started(self):
         return self.__started
@@ -150,19 +155,20 @@ class Worker:
 
         if not self.__started or self.__stopped:
             return
-        self.__logger.info('STOPPING WORKER')
-        self.__server.close()
-        self.__scheduler_pinger_stop_event.set()
+        with self.__stop_lock:
+            self.__logger.info('STOPPING WORKER')
+            self.__server.close()
+            self.__scheduler_pinger_stop_event.set()
 
-        async def _finalizer():
-            await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
-            await self.__server.wait_closed()  # before doing anything else we wait for server to fully close all connections
-            await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler
-            await _send_byebye()  # and only after that we report OFF to scheduler
+            async def _finalizer():
+                await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
+                await self.__server.wait_closed()  # before doing anything else we wait for server to fully close all connections
+                await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler
+                await _send_byebye()  # and only after that we report OFF to scheduler
 
-        self.__stopping_waiters.append(asyncio.create_task(_finalizer()))
-        self.__finished.set()
-        self.__stopped = True
+            self.__stopping_waiters.append(asyncio.create_task(_finalizer()))
+            self.__finished.set()
+            self.__stopped = True
 
     async def wait_till_stops(self):
         # if self.__scheduler_pinger is not None:
@@ -449,7 +455,7 @@ class Worker:
                 addr = '%s:%d' % self.__my_addr
                 await client.say_bye(addr)
                 await self.cancel_task()
-                await client.say_hello(addr, self.__worker_type)
+                await client.say_hello(addr, self.__worker_type, WorkerResources())
 
         exit_wait = asyncio.create_task(self.__scheduler_pinger_stop_event.wait())
         while True:
