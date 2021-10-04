@@ -7,6 +7,7 @@ from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
 from .enums import WorkerType, SpawnStatus, WorkerState
+from .net_classes import WorkerResources
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
@@ -68,7 +69,9 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     # worker reports for duty
                     addr = await read_string()
                     workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
-                    await self.__scheduler.add_worker(addr, workertype, assume_active=True)
+                    reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
+                    await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
                     writer.write(b'\1')
                 elif command == b'bye':
                     # worker reports he's quitting
@@ -179,11 +182,14 @@ class SchedulerTaskClient:
             self.__logger.error('ping failed. %s', e)
             raise
 
-    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType):
+    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
         await self._ensure_conn_open()
         self.__writer.write(b'hello\n')
         await self.write_string(address_to_advertise)
         self.__writer.write(struct.pack('>I', worker_type.value))
+        resdata = worker_resources.serialize()
+        self.__writer.write(struct.pack('>Q', len(resdata)))
+        self.__writer.write(resdata)
         await self.__writer.drain()
         # we DO need a reply to ensure proper sequence of events
         assert await self.__reader.readexactly(1) == b'\1'
