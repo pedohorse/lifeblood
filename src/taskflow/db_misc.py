@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS "workers" (
 	"last_checked"	INTEGER,
 	"ping_state"	INTEGER NOT NULL,
 	"state"	INTEGER NOT NULL,
-	"worker_type"	INTEGER NOT NULL DEFAULT 0
+	"worker_type"	INTEGER NOT NULL DEFAULT 0,
+	"hwid"	INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS "task_splits" (
 	"split_id"	INTEGER NOT NULL,
