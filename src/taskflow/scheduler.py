@@ -22,6 +22,7 @@ from .uidata import create_uidata
 from .broadcasting import create_broadcaster
 from .worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
+from .net_classes import WorkerResources
 from .taskspawn import TaskSpawn
 from .basenode import BaseNode
 from .nodethings import ProcessingResult
@@ -1063,7 +1064,7 @@ class Scheduler:
 
     #
     # add new worker to db
-    async def add_worker(self, addr: str, worker_type: WorkerType, assume_active=True):  # TODO: all resource should also go here
+    async def add_worker(self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources, assume_active=True):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
@@ -1079,15 +1080,30 @@ class Scheduler:
             if worker_row is not None:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
-                                  'cpu_count=?, mem_size=?, gpu_count=?, gmem_size=?, last_seen=?, ping_state=?, state=?, worker_type=? '
+                                  'hwid=?, '
+                                  'cpu_count=?, '
+                                  'mem_size=?,'
+                                  'gpu_count=?,'
+                                  'gmem_size=?,'
+                                  'last_seen=?, ping_state=?, state=?, worker_type=? '
                                   'WHERE last_address=?',
-                                  (1, 1, 1, 1, int(time.time()), ping_state, state, worker_type.value, addr))
+                                  (worker_resources.hwid,
+                                   worker_resources.cpu_count,
+                                   worker_resources.mem_size,
+                                   worker_resources.gpu_count,
+                                   worker_resources.gmem_size,
+                                   int(time.time()), ping_state, state, worker_type.value, addr))
             else:
                 await con.execute('INSERT INTO "workers" '
-                                  '(cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state, worker_type) '
+                                  '(hwid, cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state, worker_type) '
                                   'VALUES '
-                                  '(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                  (1, 1, 1, 1, addr, int(time.time()), ping_state, state, worker_type.value))
+                                  '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                  (worker_resources.hwid,
+                                   worker_resources.cpu_count,
+                                   worker_resources.mem_size,
+                                   worker_resources.gpu_count,
+                                   worker_resources.gmem_size,
+                                   addr, int(time.time()), ping_state, state, worker_type.value))
             await con.commit()
 
     async def worker_stopped(self, addr: str):
