@@ -100,9 +100,11 @@ class InvocationRequirements:
     """
     requirements a worker has to match in order to be able to pick this task
     """
-    def __init__(self, *, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
-        self.__groups = set(groups) if groups is not None else set()  # TODO: GROUPS NOT YET IMPLEMENTED!
+    def __init__(self, *, min_cpu_count: Optional[int] = None, min_memory_bytes: Optional[int] = None, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
+        self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
+        self.__min_cpu_count = min_cpu_count
+        self.__min_memory_bytes = min_memory_bytes
 
     def groups(self):
         return tuple(self.__groups)
@@ -118,6 +120,10 @@ class InvocationRequirements:
 
     def final_where_clause(self):
         conds = [f'("worker_type" = {self.__worker_type.value})']
+        if self.__min_cpu_count is not None:
+            conds.append(f'("cpu_count" >= {self.__min_cpu_count})')
+        if self.__min_memory_bytes is not None:
+            conds.append(f'("mem_size" >= {self.__min_memory_bytes})')
         if len(self.__groups) > 0:
             esc = '\\'
 
