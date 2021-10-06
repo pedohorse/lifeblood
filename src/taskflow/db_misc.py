@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"node_input_name"	TEXT,
 	"node_output_name"	TEXT,
 	"work_data"	BLOB,
+	"work_data_invocation_attempt"	INTEGER NOT NULL DEFAULT 0,
 	"name"	TEXT,
 	"attributes"	TEXT NOT NULL DEFAULT '{}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
