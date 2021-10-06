@@ -59,12 +59,14 @@ class Scheduler:
         #             continue
         #     self.__plugins[filebasename] = mod
         # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
+        config = get_config('scheduler')
 
         self.__ping_interval = 1
         self.__ping_interval_mult = 1
         self.__processing_interval = 0.5
         self.__processing_interval_mult = 1
         self.__db_lock_timeout = 30
+        self.__invocation_attempts = config.get_option_noasync('invocation.default_attempts', 3)  # TODO: config should be directly used when needed to allow dynamically reconfigure running scheduler
 
         self.__mode = SchedulerMode.STANDARD
 
@@ -73,7 +75,7 @@ class Scheduler:
         
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
-        config = get_config('scheduler')
+
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
@@ -532,7 +534,7 @@ class Scheduler:
                                       (TaskState.DEAD.value, task_id))
                 else:
                     if process_result.invocation_job is None:  # if no job to do
-                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ? '
                                           'WHERE "id" = ?',
                                           (None, skip_state.value, None,
                                            task_id))
@@ -543,7 +545,7 @@ class Scheduler:
 
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
-                        await con.execute('UPDATE tasks SET "work_data" = ?, "state" = ?, "_invoc_requirement_clause" = ? '
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ? '
                                           'WHERE "id" = ?',
                                           (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql,
                                            task_id))
@@ -656,7 +658,9 @@ class Scheduler:
 
                 async with awaiter_lock:
                     if reply == TaskScheduleStatus.SUCCESS:
-                        await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                        await submit_transaction.execute('UPDATE tasks SET state = ?, '
+                                                         '"work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 '
+                                                         'WHERE "id" = ?',
                                                          (TaskState.IN_PROGRESS.value, task_row['id']))
                         await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                          (WorkerState.BUSY.value, worker_row['id']))
@@ -766,6 +770,19 @@ class Scheduler:
                         # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
                         where_empty_cache = set()
                         for task_row in all_task_rows:
+                            # check max attempts first
+                            if task_row['work_data_invocation_attempt'] >= self.__invocation_attempts:
+                                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                                  (TaskState.ERROR.value,
+                                                   json.dumps({'message': 'maximum invocation attempts reached',
+                                                               'happened_at': task_row['state'],
+                                                               'type': 'limit',
+                                                               'limit_threshold': self.__invocation_attempts,
+                                                               'limit_value': task_row['work_data_invocation_attempt']}),
+                                                   task_row['id']))
+                                self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
+                                continue
+                            #
                             if task_row["_invoc_requirement_clause"] in where_empty_cache:
                                 continue
                             try:
