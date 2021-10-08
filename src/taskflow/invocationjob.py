@@ -118,10 +118,16 @@ class InvocationRequirements:
     def add_group(self, group: str):
         self.__groups.add(group)
 
+    def set_min_cpu_count(self, min_cpu_count):
+        self.__min_cpu_count = min_cpu_count
+
+    def set_min_memory_bytes(self, min_memory_bytes):
+        self.__min_memory_bytes = min_memory_bytes
+
     def final_where_clause(self):
         conds = [f'("worker_type" = {self.__worker_type.value})']
         if self.__min_cpu_count is not None:
-            conds.append(f'("cpu_count" >= {self.__min_cpu_count})')
+            conds.append(f'("cpu_count" >= {self.__min_cpu_count - 1e-8 if isinstance(self.__min_cpu_count, float) else self.__min_cpu_count})')   # to ensure sql compare will work
         if self.__min_memory_bytes is not None:
             conds.append(f'("mem_size" >= {self.__min_memory_bytes})')
         if len(self.__groups) > 0:

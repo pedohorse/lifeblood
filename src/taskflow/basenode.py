@@ -254,10 +254,12 @@ class BaseNodeWithTaskRequirements(BaseNode):
         if result.invocation_job is not None:
             context = ProcessingContext(self, task_dict)
             raw_groups = context.param_value('worker groups').strip()
+            reqs = result.invocation_job.requirements()
             if raw_groups != '':
-                reqs = result.invocation_job.requirements()
                 reqs.add_groups(re.split(r'[ ,]+', raw_groups))
-                result.invocation_job.set_requirements(reqs)
+            reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
+            reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
+            result.invocation_job.set_requirements(reqs)
         return result
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
@@ -265,10 +267,12 @@ class BaseNodeWithTaskRequirements(BaseNode):
         if result.invocation_job is not None:
             context = ProcessingContext(self, task_dict)
             raw_groups = context.param_value('worker groups').strip()
+            reqs = result.invocation_job.requirements()
             if raw_groups != '':
-                reqs = result.invocation_job.requirements()
                 reqs.add_groups(re.split(r'[ ,]+', raw_groups))
-                result.invocation_job.set_requirements(reqs)
+            reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
+            reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
+            result.invocation_job.set_requirements(reqs)
         return result
 
 
