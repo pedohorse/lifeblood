@@ -610,7 +610,7 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
 
-        self.__shortcut_layout = QShortcut(QKeySequence('l'), self)
+        self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
 
         self.__create_menu_popup_toopen = False
