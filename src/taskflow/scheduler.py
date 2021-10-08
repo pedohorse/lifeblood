@@ -1037,6 +1037,8 @@ class Scheduler:
                                    addr, int(time.time()), ping_state, state, worker_type.value))
             await con.commit()
 
+    #
+    # worker reports it being stopped
     async def worker_stopped(self, addr: str):
         """
 
