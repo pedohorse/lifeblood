@@ -3,7 +3,7 @@ from enum import Enum
 import pickle
 import json
 import re
-from copy import copy
+from copy import copy, deepcopy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, Parameter
@@ -160,6 +160,11 @@ class BaseNode:
         :return:
         """
         return ProcessingResult()
+
+    def copy_ui_to(self, to_node: "BaseNode"):
+        newui = deepcopy(self._parameters)
+        to_node._parameters = newui
+        newui.attach_to_node(to_node)
 
     # # some helpers
     # def _get_task_attributes(self, task_row):

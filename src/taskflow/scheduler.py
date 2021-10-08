@@ -130,6 +130,15 @@ class Scheduler:
     def mode(self) -> SchedulerMode:
         return self.__mode
 
+    async def get_node_type_and_name_by_id(self, node_id: int) -> (str, str):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "type", "name" FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
+                node_row = await nodecur.fetchone()
+        if node_row is None:
+            raise RuntimeError(f'node with given id {node_id} does not exist')
+        return node_row['type'], node_row['name']
+
     async def get_node_object_by_id(self, node_id: int) -> BaseNode:
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
@@ -1193,6 +1202,31 @@ class Scheduler:
                 del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. but a proper __node_object lock should be in place instead
             await con.commit()
 
+    #
+    # copy nodes
+    async def copy_nodes(self, node_ids: Iterable[int]):
+        old_to_new = {}
+        for nid in node_ids:
+            node_obj = await self.get_node_object_by_id(nid)
+            node_type, node_name = await self.get_node_type_and_name_by_id(nid)
+            new_id = await self.add_node(node_type, f'{node_name} copy')
+            new_node_obj = await self.get_node_object_by_id(new_id)
+            node_obj.copy_ui_to(new_node_obj)
+            old_to_new[nid] = new_id
+
+        # now copy connections
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            node_ids_str = f'({",".join(str(x) for x in node_ids)})'
+            async with con.execute(f'SELECT * FROM node_connections WHERE node_id_in IN {node_ids_str} AND node_id_out IN {node_ids_str}') as cur:
+                all_cons = await cur.fetchall()
+        for nodecon in all_cons:
+            assert nodecon['node_id_in'] in old_to_new
+            assert nodecon['node_id_out'] in old_to_new
+            await self.add_node_connection(old_to_new[nodecon['node_id_out']], nodecon['out_name'], nodecon['node_id_in'], nodecon['in_name'])
+        raise NotImplementedError("recheck and needs testing")
+
+    #
     #
     # node reports it's interface was changed. not sure why it exists
     async def node_reports_changes_needs_saving(self, node_id):

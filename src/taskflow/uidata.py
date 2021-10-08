@@ -862,6 +862,12 @@ class NodeUi(ParameterHierarchyItem):
         self.__color_scheme = NodeColorScheme()
         self.__color_scheme.set_main_color(0.1882, 0.2510, 0.1882)  # dark-greenish
 
+    def is_attached_to_node(self):
+        return self.__attached_node is not None
+
+    def attach_to_node(self, node: "BaseNode"):
+        self.__attached_node = node
+
     def color_scheme(self):
         return self.__color_scheme
 
@@ -1017,13 +1023,22 @@ class NodeUi(ParameterHierarchyItem):
     def items(self, recursive=False) -> Iterable[ParameterHierarchyItem]:
         return self.__parameter_layout.items(recursive=recursive)
 
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        crap = cls.__new__(cls)
+        newdict = self.__dict__.copy()
+        newdict['_NodeUi__attached_node'] = None
+        for k, v in newdict.items():
+            crap.__dict__[k] = deepcopy(v, memo)
+        return crap
+
     def serialize(self) -> bytes:
         """
         note - this serialization disconnects the node to which this UI is connected
         :return:
         """
         obj = deepcopy(self)
-        obj.__attached_node = None
+        assert obj.__attached_node is None
         return pickle.dumps(obj)
 
     async def serialize_async(self) -> bytes:
