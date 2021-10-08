@@ -81,6 +81,8 @@ class Scheduler:
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
         ui_port = config.get_option_noasync('core.ui_port', 7989)
         self.__stop_event = asyncio.Event()
+        self.__wakeup_event = asyncio.Event()
+        self.__wakeup_event.set()
         self.__server = None
         self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
@@ -115,6 +117,7 @@ class Scheduler:
             self.__mode = SchedulerMode.STANDARD
             self.__processing_interval_mult = 1
             self.__ping_interval_mult = 1
+            self.__wakeup_event.set()
 
     def __sleep(self):
         if self.__mode == SchedulerMode.STANDARD:
@@ -122,6 +125,7 @@ class Scheduler:
             self.__mode = SchedulerMode.DORMANT
             self.__processing_interval_mult = 50
             self.__ping_interval_mult = 10
+            self.__wakeup_event.clear()
 
     def mode(self) -> SchedulerMode:
         return self.__mode
@@ -453,6 +457,7 @@ class Scheduler:
 
             tasks = []
             stop_task = asyncio.create_task(self.__stop_event.wait())
+            wakeup_task = None
             while not self.__stop_event.is_set():
                 nowtime = time.time()
 
@@ -474,7 +479,18 @@ class Scheduler:
                 tasks = [x for x in tasks if not x.done()]
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
-                done, _ = await asyncio.wait((stop_task,), timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+                # now wait
+                if wakeup_task is not None:
+                    sleeping_tasks = (stop_task, wakeup_task)
+                else:
+                    if self.__mode == SchedulerMode.DORMANT:
+                        wakeup_task = asyncio.create_task(self.__wakeup_event.wait())
+                        sleeping_tasks = (stop_task, wakeup_task)
+                    else:
+                        sleeping_tasks = (stop_task,)
+                done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+                if wakeup_task is not None and wakeup_task in done:
+                    wakeup_task = None
                 if stop_task in done:
                     break
 
@@ -679,6 +695,7 @@ class Scheduler:
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self.__stop_event.wait())
+        wakeup_task = None
         while not self.__stop_event.is_set():
 
             # first prune awaited tasks
@@ -862,8 +879,19 @@ class Scheduler:
                     self.wake()
 
             self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
+
             # and wait for a bit
-            wdone, _ = await asyncio.wait((stop_task,), timeout=self.__processing_interval * self.__processing_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+            if wakeup_task is not None:
+                sleeping_tasks = (stop_task, wakeup_task)
+            else:
+                if self.__mode == SchedulerMode.DORMANT:
+                    wakeup_task = asyncio.create_task(self.__wakeup_event.wait())
+                    sleeping_tasks = (stop_task, wakeup_task)
+                else:
+                    sleeping_tasks = (stop_task,)
+            wdone, _ = await asyncio.wait(sleeping_tasks, timeout=self.__processing_interval * self.__processing_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+            if wakeup_task is not None and wakeup_task in wdone:
+                wakeup_task = None
             if stop_task in wdone:
                 break
 
