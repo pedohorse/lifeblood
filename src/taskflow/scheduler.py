@@ -1204,7 +1204,14 @@ class Scheduler:
 
     #
     # copy nodes
-    async def copy_nodes(self, node_ids: Iterable[int]):
+    async def copy_nodes(self, node_ids: Iterable[int]) -> Dict[int, int]:
+        """
+        copies given nodes, including connections between given nodes,
+        and returns mapping from given node_ids to respective new copies
+
+        :param node_ids:
+        :return:
+        """
         old_to_new = {}
         for nid in node_ids:
             node_obj = await self.get_node_object_by_id(nid)
@@ -1224,7 +1231,8 @@ class Scheduler:
             assert nodecon['node_id_in'] in old_to_new
             assert nodecon['node_id_out'] in old_to_new
             await self.add_node_connection(old_to_new[nodecon['node_id_out']], nodecon['out_name'], nodecon['node_id_in'], nodecon['in_name'])
-        raise NotImplementedError("recheck and needs testing")
+        return old_to_new
+        # TODO: NotImplementedError("recheck and needs testing")
 
     #
     #

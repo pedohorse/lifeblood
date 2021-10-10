@@ -168,6 +168,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     node_name = await read_string()
                     name = await self.__scheduler.set_node_name(node_id, node_name)
                     await write_string(name)
+                elif command == b'copynodes':
+                    cnt = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    node_ids = [struct.unpack('>Q', await reader.readexactly(8))[0] for _ in range(cnt)]
+                    try:
+                        res = await self.__scheduler.copy_nodes(node_ids)
+                    except Exception as e:
+                        writer.write(b'\0')
+                    else:
+                        writer.write(b'\1')
+                        writer.write(struct.pack('>Q', len(res)))
+                        for old_id, new_id in res.items():
+                            writer.write(struct.pack('>QQ', old_id, new_id))
                 #
                 # node connection related commands
                 elif command == b'changeconnection':

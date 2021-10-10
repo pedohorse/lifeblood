@@ -1,5 +1,6 @@
 import sqlite3
 from types import MappingProxyType
+from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from ..uidata import UiData, NodeUi, Parameter
 from ..enums import TaskState
@@ -28,7 +29,7 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 import grandalf.graphs
 import grandalf.layouts
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
+from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union, Any
 
 logger = logging.get_logger('viewer')
 
@@ -585,6 +586,21 @@ class QGraphicsImguiScene(QGraphicsScene):
     #         node.setPos(QPointF(*pos))
 
 
+class Clipboard:
+    class ClipboardContentsType(Enum):
+        NOTHING = 0
+        NODES = 1
+
+    def __init__(self):
+        self.__contents: Dict[Clipboard.ClipboardContentsType, Any] = {}
+
+    def set_contents(self, ctype: ClipboardContentsType, contents: Any):
+        self.__contents[ctype] = contents
+
+    def contents(self, ctype: ClipboardContentsType):
+        return self.__contents[ctype]
+
+
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, worker=None, parent=None):
         super(NodeEditor, self).__init__(parent=parent)
@@ -609,6 +625,7 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.timeout.connect(lambda: self.__scene.invalidate(layers=QGraphicsScene.ForegroundLayer))
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
+        self.__editor_clipboard = Clipboard()
 
         self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -631,12 +648,24 @@ class NodeEditor(QGraphicsView):
         self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
         self.update()
 
+    #
+    # Actions
+    #
     @Slot()
     def layout_selected_nodes(self):
         nodes = [n for n in self.__scene.selectedItems() if isinstance(n, Node)]
         if not nodes:
             return
         self.__scene.layout_nodes(nodes, center=self.sceneRect().center())
+
+    @Slot()
+    def copy_selected_nodes(self):
+        node_ids = [x.get_id() for x in self.__scene.selectedItems() if isinstance(x, Node)]
+        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, node_ids)
+
+    @Slot(QPointF)
+    def paste_selected_nodes(self, pos):
+        raise NotImplementedError()
 
     def show_task_menu(self, task):
         menu = QMenu(self)
