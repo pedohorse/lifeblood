@@ -34,6 +34,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
     node_created = Signal(int, str, str, QPointF)
+    nodes_copied = Signal(dict, QPointF)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -400,6 +401,31 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', node_id))
             self._send_string(node_name)
             _ = self._recv_string()
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def copy_nodes(self, node_ids: List[int], shift: QPointF):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'copynodes\n')
+            self.__conn.sendall(struct.pack('>Q', len(node_ids)))
+            for node_id in node_ids:
+                self.__conn.sendall(struct.pack('>Q', node_id))
+            result = recv_exactly(self.__conn, 1)
+            if result == b'\0':
+                return
+            cnt = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            ret = {}
+            for i in range(cnt):
+                old_id, new_id = struct.unpack('>QQ', recv_exactly(self.__conn, 16))
+                assert old_id in node_ids
+                ret[old_id] = new_id
+            self.nodes_copied.emit(ret, shift)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
