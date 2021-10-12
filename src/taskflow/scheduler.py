@@ -1204,7 +1204,7 @@ class Scheduler:
 
     #
     # copy nodes
-    async def copy_nodes(self, node_ids: Iterable[int]) -> Dict[int, int]:
+    async def duplicate_nodes(self, node_ids: Iterable[int]) -> Dict[int, int]:
         """
         copies given nodes, including connections between given nodes,
         and returns mapping from given node_ids to respective new copies

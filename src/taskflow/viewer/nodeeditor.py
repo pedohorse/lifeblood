@@ -76,7 +76,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_node_requested = Signal(int, int)
     _signal_cancel_task_requested = Signal(int)
     _signal_add_task_requested = Signal(NewTask)
-    _signal_copy_nodes_requested = Signal(dict, QPointF)
+    _signal_duplicate_nodes_requested = Signal(dict, QPointF)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -123,7 +123,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
         self._signal_wipe_node_requested.connect(self.__ui_connection_worker.wipe_node)
-        self._signal_copy_nodes_requested.connect(self.__ui_connection_worker.copy_nodes)
+        self._signal_duplicate_nodes_requested.connect(self.__ui_connection_worker.duplicate_nodes)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
         self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
@@ -181,8 +181,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_wipe_node(self, node_id: int):
         self._signal_wipe_node_requested.emit(node_id)
 
-    def request_copy_nodes(self, node_ids: List[int], shift: QPointF):
-        self._signal_copy_nodes_requested.emit(node_ids, shift)
+    def request_duplicate_nodes(self, node_ids: List[int], shift: QPointF):
+        self._signal_duplicate_nodes_requested.emit(node_ids, shift)
 
     def set_task_group_filter(self, groups):
         self._signal_set_task_group_filter.emit(groups)
@@ -212,6 +212,17 @@ class QGraphicsImguiScene(QGraphicsScene):
                     return row['posx'], row['posy']
 
         raise ValueError(f'node id {node_id} has no stored position')
+
+    def set_node_position(self, node_id: int, pos: Union[Tuple[float, float], QPointF]):
+        if isinstance(pos, QPointF):
+            pos = pos.toTuple()
+        if self.__db_path is not None:
+            with sqlite3.connect(self.__db_path) as con:
+                con.row_factory = sqlite3.Row
+                cur = con.execute('INSERT INTO "nodes" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
+                row = cur.fetchone()
+                if row is not None:
+                    return row['posx'], row['posy']
 
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
@@ -358,7 +369,13 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(object, object)
     def _nodes_copied(self, old_to_new: Dict[int, int], shift: QPointF):
-        raise NotImplementedError()
+        for old_id, new_id in old_to_new.items():
+            old_pos = QPointF()
+            old_node = self.get_node(old_id)
+            if old_node is not None:
+                old_pos = old_node.pos()
+            raise asdasd
+
 
     @Slot(object)
     def _nodetypes_fetched(self, nodetypes):
@@ -668,29 +685,28 @@ class NodeEditor(QGraphicsView):
             return
         self.__scene.layout_nodes(nodes, center=self.sceneRect().center())
 
-    @Slot()
-    def copy_selected_nodes(self):
-        node_ids = [x.get_id() for x in self.__scene.selectedItems() if isinstance(x, Node)]
-        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, node_ids)
+    # @Slot()
+    # def copy_selected_nodes(self):
+    #     node_ids = [x.get_id() for x in self.__scene.selectedItems() if isinstance(x, Node)]
+    #     self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, node_ids)
 
     @Slot(QPointF)
-    def paste_selected_nodes(self, pos):
-        contents = self.__editor_clipboard.contents(Clipboard.ClipboardContentsType.NODES)
+    def duplicate_selected_nodes(self, pos):
+        contents = self.__scene.selectedItems()
         if not contents:
             return
         node_ids = []
         avg_old_pos = QPointF()
-        for nid in contents:
-            node = self.__scene.get_node(nid)
-            if node is None:
+        for item in contents:
+            if not isinstance(item, Node):
                 continue
-            node_ids.append(nid)
-            avg_old_pos += node.pos()
+            node_ids.append(item.get_id())
+            avg_old_pos += item.pos()
         if len(node_ids) == 0:
             return
         avg_old_pos /= len(node_ids)
 
-        self.__scene.request_copy_nodes(node_ids, pos - avg_old_pos)
+        self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
 
     def show_task_menu(self, task):
         menu = QMenu(self)

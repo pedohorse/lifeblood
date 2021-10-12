@@ -407,12 +407,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
-    def copy_nodes(self, node_ids: List[int], shift: QPointF):
+    def duplicate_nodes(self, node_ids: List[int], shift: QPointF):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
         try:
-            self.__conn.sendall(b'copynodes\n')
+            self.__conn.sendall(b'duplicatenodes\n')
             self.__conn.sendall(struct.pack('>Q', len(node_ids)))
             for node_id in node_ids:
                 self.__conn.sendall(struct.pack('>Q', node_id))
