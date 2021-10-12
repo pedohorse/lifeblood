@@ -1230,7 +1230,7 @@ class Scheduler:
         for nodecon in all_cons:
             assert nodecon['node_id_in'] in old_to_new
             assert nodecon['node_id_out'] in old_to_new
-            await self.add_node_connection(old_to_new[nodecon['node_id_out']], nodecon['out_name'], nodecon['node_id_in'], nodecon['in_name'])
+            await self.add_node_connection(old_to_new[nodecon['node_id_out']], nodecon['out_name'], old_to_new[nodecon['node_id_in']], nodecon['in_name'])
         return old_to_new
         # TODO: NotImplementedError("recheck and needs testing")
 
