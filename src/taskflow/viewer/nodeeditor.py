@@ -110,7 +110,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
         self.__ui_connection_worker.node_created.connect(self._node_created)
-        self.__ui_connection_worker.nodes_copied.connect(self._nodes_copied)
+        self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
 
         self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
@@ -219,7 +219,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         if self.__db_path is not None:
             with sqlite3.connect(self.__db_path) as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute('INSERT INTO "nodes" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
+                cur = con.execute('INSERT INTO "nodes" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
                 row = cur.fetchone()
                 if row is not None:
                     return row['posx'], row['posy']
@@ -368,13 +368,13 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.addItem(node)
 
     @Slot(object, object)
-    def _nodes_copied(self, old_to_new: Dict[int, int], shift: QPointF):
+    def _nodes_duplicated(self, old_to_new: Dict[int, int], shift: QPointF):
         for old_id, new_id in old_to_new.items():
             old_pos = QPointF()
             old_node = self.get_node(old_id)
             if old_node is not None:
                 old_pos = old_node.pos()
-            raise asdasd
+            self.set_node_position(new_id, old_pos + shift)
 
 
     @Slot(object)
@@ -705,7 +705,7 @@ class NodeEditor(QGraphicsView):
         if len(node_ids) == 0:
             return
         avg_old_pos /= len(node_ids)
-
+        print(node_ids, pos, avg_old_pos)
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
 
     def show_task_menu(self, task):
@@ -782,6 +782,7 @@ class NodeEditor(QGraphicsView):
     def show_general_menu(self, pos):
         menu = QMenu(self)
         menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
+        menu.addAction('duplicated selected nodes').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.duplicate_selected_nodes(p))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
