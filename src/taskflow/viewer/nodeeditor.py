@@ -782,7 +782,7 @@ class NodeEditor(QGraphicsView):
     def show_general_menu(self, pos):
         menu = QMenu(self)
         menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
-        menu.addAction('duplicated selected nodes').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.duplicate_selected_nodes(p))
+        menu.addAction('duplicate selected nodes here').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.duplicate_selected_nodes(p))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
