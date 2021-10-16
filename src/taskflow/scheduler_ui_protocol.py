@@ -125,6 +125,19 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.wipe_node_state(node_id)
                     writer.write(b'\1')
+                elif command == b'nodehasparam':
+                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    param_name = await read_string()
+                    try:
+                        node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                    except Exception:
+                        self.__logger.warning(f'FAILED get node {node_id}')
+                        writer.write(b'\0')
+                    else:
+                        if node.param(param_name) is None:
+                            writer.write(b'\0')
+                        else:
+                            writer.write(b'\1')
                 elif command == b'setnodeparam':
                     node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
                     param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')

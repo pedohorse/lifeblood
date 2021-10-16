@@ -60,6 +60,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int)
     _signal_task_invocation_job_requested = Signal(int)
+    _signal_node_has_parameter_requested = Signal(int, str, object)
     _signal_node_parameter_change_requested = Signal(int, object, object)
     _signal_node_parameter_expression_change_requested = Signal(int, object, object)
     _signal_nodetypes_update_requested = Signal()
@@ -111,6 +112,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.task_attribs_fetched.connect(self._task_attribs_fetched)
         self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
+        self.__ui_connection_worker.node_has_parameter.connect(self._node_has_parameter)
         self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
         self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
         self.__ui_connection_worker.node_created.connect(self._node_created)
@@ -120,6 +122,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
         self._signal_node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
+        self._signal_node_has_parameter_requested.connect(self.__ui_connection_worker.send_node_has_parameter)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
@@ -154,6 +157,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_node_ui(self, node_id: int):
         self._signal_node_ui_has_been_requested.emit(node_id)
+
+    def query_node_has_parameter(self, node_id: int, param_name: str, operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_has_parameter_requested.emit(node_id, param_name, operation_data)
 
     def send_node_parameter_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameter_change_requested.emit(node_id, param, operation_data)
@@ -364,6 +370,12 @@ class QGraphicsImguiScene(QGraphicsScene):
     @Slot(object, object)
     def _task_invocation_job_fetched(self, task_id: int, invjob: InvocationJob):
         self.task_invocation_job_fetched.emit(task_id, invjob)
+
+    @Slot(int, str, bool, object)
+    def _node_has_parameter(self, node_id, param_name, exists, data):
+        if data is not None:
+            data.data = (node_id, param_name, exists)
+            self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object, object)
     def _node_parameter_changed(self, node_id, param, newval, data):
@@ -783,6 +795,7 @@ class NodeEditor(QGraphicsView):
                     param_data = {}
                     params[param.name()] = param_data
                     param_data['uvalue'] = param.unexpanded_value()
+                    param_data['type'] = param.type()
                     param_data['expr'] = param.expression()
 
             clipnodes.append(nodedata)
@@ -830,9 +843,9 @@ class NodeEditor(QGraphicsView):
                     #  probably u'll need to
                     #  either implement set_parameter command error value return (sounds like a good idea)
                     #  or add some check parameter existance command (or both)
-                    raise NotImplementedError()
-                    parm = node.get_nodeui().parameter(param_name)
-                    if parm is None:
+                    self.__scene.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
+                    _, _, has_param = yield
+                    if not has_param:
                         if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
                             parm_pairs.append((param_name, param_data))
                             cyclestart = param_name
@@ -842,8 +855,14 @@ class NodeEditor(QGraphicsView):
                             logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
                             break
                     done_smth_this_cycle = True
-                    parm.set_expression(param_data['expr'])
-                    parm.set_value([param_data['uvalue']])
+                    proxy_parm = Parameter(param_name, None, param_data['type'], param_data['uvalue'])
+                    if param_data['expr'] is not None:
+                        proxy_parm.set_expression(param_data['expr'])
+                    self.__scene.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
+                    yield
+                    if proxy_parm.has_expression():
+                        self.__scene.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
+                        yield
 
             for out_tmpid, outname, in_tmpid, inname in clipconns:
                 self.__scene.request_node_connection_add(tmp_to_new[out_tmpid], outname, tmp_to_new[in_tmpid], inname)

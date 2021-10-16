@@ -33,6 +33,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     task_attribs_fetched = Signal(int, dict)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
+    node_has_parameter = Signal(int, str, bool, object)
     node_parameter_changed = Signal(int, Parameter, object, object)
     node_parameter_expression_changed = Signal(int, Parameter, object)
     node_created = Signal(int, str, str, QPointF, object)
@@ -276,6 +277,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
         else:
             self.nodeui_fetched.emit(node_id, nodeui)
+
+    @Slot()
+    def send_node_has_parameter(self, node_id: int, param_name: str, data=None):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'nodehasparam\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+            self._send_string(param_name)
+            good = recv_exactly(self.__conn, 1) == b'\1'
+            self.node_has_parameter.emit(node_id, param_name, good, data)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
 
     @Slot()
     def send_node_parameter_change(self, node_id: int, param: Parameter, data=None):
