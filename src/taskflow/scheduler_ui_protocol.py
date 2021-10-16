@@ -138,21 +138,30 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         param_value = await read_string()
                     else:
                         raise NotImplementedError()
-                    node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                    node.set_param_value(param_name, param_value)
-                    #
-                    # send back actual result
-                    value = node.param(param_name).unexpanded_value()
-                    if param_type == NodeParameterType.FLOAT.value:
-                        writer.write(struct.pack('>d', value))
-                    elif param_type == NodeParameterType.INT.value:
-                        writer.write(struct.pack('>q', value))
-                    elif param_type == NodeParameterType.BOOL.value:
-                        writer.write(struct.pack('>?', value))
-                    elif param_type == NodeParameterType.STRING.value:
-                        await write_string(value)
+                    try:
+                        node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                        node.set_param_value(param_name, param_value)
+                    except Exception:
+                        err_val_prev = str(param_value)
+                        if len(err_val_prev) > 23:
+                            err_val_prev = err_val_prev[:20] + '...'
+                        self.__logger.warning(f'FAILED request to set node {node_id} parameter {param_name}({NodeParameterType(param_type).name}) to {err_val_prev}')
+                        writer.write(b'\0')
                     else:
-                        raise NotImplementedError()
+                        writer.write(b'\1')
+                        #
+                        # send back actual result
+                        value = node.param(param_name).unexpanded_value()
+                        if param_type == NodeParameterType.FLOAT.value:
+                            writer.write(struct.pack('>d', value))
+                        elif param_type == NodeParameterType.INT.value:
+                            writer.write(struct.pack('>q', value))
+                        elif param_type == NodeParameterType.BOOL.value:
+                            writer.write(struct.pack('>?', value))
+                        elif param_type == NodeParameterType.STRING.value:
+                            await write_string(value)
+                        else:
+                            raise NotImplementedError()
                 elif command == b'setnodeparamexpression':
                     node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
                     param_name = await read_string()

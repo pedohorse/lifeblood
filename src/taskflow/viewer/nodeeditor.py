@@ -29,7 +29,7 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 import grandalf.graphs
 import grandalf.layouts
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union, Any
+from typing import Optional, List, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
 
 logger = logging.get_logger('viewer')
 
@@ -60,11 +60,11 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int)
     _signal_task_invocation_job_requested = Signal(int)
-    _signal_node_parameter_change_requested = Signal(int, object)
-    _signal_node_parameter_expression_change_requested = Signal(int, object)
+    _signal_node_parameter_change_requested = Signal(int, object, object)
+    _signal_node_parameter_expression_change_requested = Signal(int, object, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
-    _signal_create_node_requested = Signal(str, str, QPointF)
+    _signal_create_node_requested = Signal(str, str, QPointF, object)
     _signal_remove_node_requested = Signal(int)
     _signal_wipe_node_requested = Signal(int)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
@@ -81,6 +81,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
     task_invocation_job_fetched = Signal(int, InvocationJob)
+
+    long_operation_progressed = Signal(object)  # do we need this signal?
 
     def __init__(self, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -109,6 +111,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.task_attribs_fetched.connect(self._task_attribs_fetched)
         self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
+        self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
+        self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
         self.__ui_connection_worker.node_created.connect(self._node_created)
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
 
@@ -151,11 +155,11 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_node_ui(self, node_id: int):
         self._signal_node_ui_has_been_requested.emit(node_id)
 
-    def send_node_parameter_change(self, node_id: int, param: Parameter):
-        self._signal_node_parameter_change_requested.emit(node_id, param)
+    def send_node_parameter_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_parameter_change_requested.emit(node_id, param, operation_data)
 
-    def send_node_parameter_expression_change(self, node_id: int, param: Parameter):
-        self._signal_node_parameter_expression_change_requested.emit(node_id, param)
+    def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_parameter_expression_change_requested.emit(node_id, param, operation_data)
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
@@ -172,8 +176,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_node_connection_add(self, outnode_id:int , outname: str, innode_id: int, inname: str):
         self._signal_add_node_connection_requested.emit(outnode_id, outname, innode_id, inname)
 
-    def request_create_node(self, typename: str, nodename: str, pos: QPointF):
-        self._signal_create_node_requested.emit(typename, nodename, pos)
+    def request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional["LongOperationData"] = None):
+        self._signal_create_node_requested.emit(typename, nodename, pos, operation_data)
 
     def request_remove_node(self, node_id: int):
         self._signal_remove_node_requested.emit(node_id)
@@ -361,11 +365,26 @@ class QGraphicsImguiScene(QGraphicsScene):
     def _task_invocation_job_fetched(self, task_id: int, invjob: InvocationJob):
         self.task_invocation_job_fetched.emit(task_id, invjob)
 
-    @Slot(int, str, str, object)
-    def _node_created(self, node_id, node_type, node_name, pos):
+    @Slot(int, object, object, object)
+    def _node_parameter_changed(self, node_id, param, newval, data):
+        if data is not None:
+            data.data = (node_id, param.name(), newval)
+            self.long_operation_progressed.emit(data)
+
+    @Slot(int, object, object)
+    def _node_parameter_expression_changed(self, node_id, param, data):
+        if data is not None:
+            data.data = (node_id, param.name())
+            self.long_operation_progressed.emit(data)
+
+    @Slot(int, str, str, object, object)
+    def _node_created(self, node_id, node_type, node_name, pos, data: "LongOperationData"):
         node = Node(node_id, node_type, node_name)
         node.setPos(pos)
         self.addItem(node)
+        if data is not None:
+            data.data = (node_id, node_type, node_name)
+            self.long_operation_progressed.emit(data)
 
     @Slot(object, object)
     def _nodes_duplicated(self, old_to_new: Dict[int, int], shift: QPointF):
@@ -619,13 +638,54 @@ class Clipboard:
         NODES = 1
 
     def __init__(self):
-        self.__contents: Dict[Clipboard.ClipboardContentsType, Any] = {}
+        self.__contents: Dict[Clipboard.ClipboardContentsType, Tuple[int, Any]] = {}
+        self.__copy_operation_id = 0
 
     def set_contents(self, ctype: ClipboardContentsType, contents: Any):
-        self.__contents[ctype] = contents
+        self.__contents[ctype] = (self.__copy_operation_id, contents)
 
-    def contents(self, ctype: ClipboardContentsType):
-        return self.__contents[ctype]
+    def contents(self, ctype: ClipboardContentsType) -> Tuple[Optional[int], Optional[Any]]:
+        return self.__contents.get(ctype, (None, None))
+
+
+class LongOperation:
+    _nextid = 0
+
+    def __init__(self, progress_callback: Callable[["LongOperation"], Generator]):
+        """
+
+        :param progress_callback: this is supposed to be a generator able to take this operation object and opdata as yield arguments.
+        if it returns True - we consider long operation done
+        """
+        self.__id = self._nextid
+        LongOperation._nextid += 1
+        self.__progress_callback_factory = progress_callback
+        self.__progress_callback: Optional[Generator] = None
+
+    def _start(self):
+        """
+        just to make sure it starts when we need.
+        if it starts in constructor - we might potentially have race condition when longop is not yet registered where it's being managed
+        and receive _progress too soon
+        """
+        self.__progress_callback: Generator = self.__progress_callback_factory(self)
+        next(self.__progress_callback)
+
+    def _progress(self, opdata):
+        try:
+            self.__progress_callback.send(opdata)
+        except StopIteration:
+            return True
+        return False
+
+    def opid(self):
+        return self.__id
+
+
+class LongOperationData:
+    def __init__(self, op: LongOperation, data: Any):
+        self.op = op
+        self.data = data
 
 
 class NodeEditor(QGraphicsView):
@@ -664,8 +724,11 @@ class NodeEditor(QGraphicsView):
         self.__menu_popup_arrow_down = False
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
 
+        self.__long_operations: Dict[int, LongOperation] = {}
+
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
+        self.__scene.long_operation_progressed.connect(self.process_operation)
 
         self.__scene.request_node_types_update()
 
@@ -685,13 +748,110 @@ class NodeEditor(QGraphicsView):
             return
         self.__scene.layout_nodes(nodes, center=self.sceneRect().center())
 
-    # @Slot()
-    # def copy_selected_nodes(self):
-    #     node_ids = [x.get_id() for x in self.__scene.selectedItems() if isinstance(x, Node)]
-    #     self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, node_ids)
+    @Slot()
+    def copy_selected_nodes(self):
+        """
+        we save a structure that remembers all selected nodes' names, types and all parameters' values
+        and all connections
+        later on "paste" event these will be used to create all new nodes
+
+        :return:
+        """
+        clipnodes = []
+        clipconns = []
+        old_to_tmp: Dict[int, int] = {}
+        all_clip_nodes = set()
+        avgpos = QPointF()
+        tmpid = 0
+        for node in self.__scene.selectedItems():
+            if not isinstance(node, Node):
+                continue
+            all_clip_nodes.add(node)
+            params = {}
+            old_to_tmp[node.get_id()] = tmpid
+            nodedata = {'tmpid': tmpid,
+                        'type': node.node_type(),
+                        'name': node.node_name(),
+                        'parameters': params,
+                        'pos': node.pos()}
+            tmpid += 1
+            avgpos += node.pos()
+
+            nodeui = node.get_nodeui()
+            if nodeui is not None:
+                for param in nodeui.parameters():
+                    param_data = {}
+                    params[param.name()] = param_data
+                    param_data['uvalue'] = param.unexpanded_value()
+                    param_data['expr'] = param.expression()
+
+            clipnodes.append(nodedata)
+
+        if len(all_clip_nodes) == 0:
+            return
+        avgpos /= len(all_clip_nodes)
+
+        # now connections
+        for node in all_clip_nodes:
+            for out_name in node.output_names():
+                for conn in node.output_connections(out_name):
+                    other_node, other_name = conn.input()
+                    if other_node not in all_clip_nodes:
+                        continue
+                    clipconns.append((old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
+                                      old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
+
+        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, (clipnodes, clipconns, avgpos))
 
     @Slot(QPointF)
-    def duplicate_selected_nodes(self, pos):
+    def paste_copied_nodes(self, pos: QPointF):
+        def pasteop(longop):
+            opid, rawclipdata = self.__editor_clipboard.contents(Clipboard.ClipboardContentsType.NODES)
+            if rawclipdata is None:
+                return
+            clipnodes, clipconns, avgpos = rawclipdata
+
+            tmp_to_new: Dict[int, int] = {}
+            for nodedata in clipnodes:
+                self.__scene.request_create_node(nodedata['type'], f'{nodedata["name"]} copy', nodedata['pos'] + pos - avgpos, LongOperationData(longop, None))
+                # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
+                #  from the same operation. So we request and wait things one by one
+                node_id, _, _ = yield
+                tmp_to_new[nodedata['tmpid']] = node_id
+
+                # now setting parameters.
+                node = self.__scene.get_node(node_id)  # node will already exist at this point as op progress is sent from scene only after everything scene-related is done
+
+                cyclestart = None
+                done_smth_this_cycle = False
+                parm_pairs = list(nodedata['parameters'].items())
+                for param_name, param_data in parm_pairs:
+                    # TODO: implement from here through requests to worker
+                    #  probably u'll need to
+                    #  either implement set_parameter command error value return (sounds like a good idea)
+                    #  or add some check parameter existance command (or both)
+                    raise NotImplementedError()
+                    parm = node.get_nodeui().parameter(param_name)
+                    if parm is None:
+                        if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
+                            parm_pairs.append((param_name, param_data))
+                            cyclestart = param_name
+                            done_smth_this_cycle = False
+                            continue
+                        else:
+                            logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
+                            break
+                    done_smth_this_cycle = True
+                    parm.set_expression(param_data['expr'])
+                    parm.set_value([param_data['uvalue']])
+
+            for out_tmpid, outname, in_tmpid, inname in clipconns:
+                self.__scene.request_node_connection_add(tmp_to_new[out_tmpid], outname, tmp_to_new[in_tmpid], inname)
+
+        self.add_long_operation(pasteop)
+
+    @Slot(QPointF)
+    def duplicate_selected_nodes(self, pos: QPointF):
         contents = self.__scene.selectedItems()
         if not contents:
             return
@@ -707,6 +867,18 @@ class NodeEditor(QGraphicsView):
         avg_old_pos /= len(node_ids)
         print(node_ids, pos, avg_old_pos)
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
+
+    @Slot(LongOperationData)
+    def process_operation(self, op: LongOperationData):
+        assert op.op.opid() in self.__long_operations
+        done = op.op._progress(op.data)
+        if done:
+            del self.__long_operations[op.op.opid()]
+
+    def add_long_operation(self, generator_to_call):
+        newop = LongOperation(generator_to_call)
+        self.__long_operations[newop.opid()] = newop
+        newop._start()
 
     def show_task_menu(self, task):
         menu = QMenu(self)
@@ -783,6 +955,9 @@ class NodeEditor(QGraphicsView):
         menu = QMenu(self)
         menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
         menu.addAction('duplicate selected nodes here').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.duplicate_selected_nodes(p))
+        menu.addSeparator()
+        menu.addAction('copy selected').triggered.connect(self.copy_selected_nodes)
+        menu.addAction('paste').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.paste_copied_nodes(p))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 

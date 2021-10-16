@@ -33,7 +33,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     task_attribs_fetched = Signal(int, dict)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
-    node_created = Signal(int, str, str, QPointF)
+    node_parameter_changed = Signal(int, Parameter, object, object)
+    node_parameter_expression_changed = Signal(int, Parameter, object)
+    node_created = Signal(int, str, str, QPointF, object)
     nodes_copied = Signal(dict, QPointF)
 
     def __init__(self, parent=None):
@@ -276,7 +278,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.nodeui_fetched.emit(node_id, nodeui)
 
     @Slot()
-    def send_node_parameter_change(self, node_id: int, param: Parameter):
+    def send_node_parameter_change(self, node_id: int, param: Parameter, data=None):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
@@ -287,27 +289,33 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             param_name_data = param.name().encode('UTF-8')
             self.__conn.sendall(struct.pack('>QII', node_id, param_type.value, len(param_name_data)))
             self.__conn.sendall(param_name_data)
+            newval = None
             if param_type == NodeParameterType.FLOAT:
                 self.__conn.sendall(struct.pack('>d', param_value))
-                recv_exactly(self.__conn, 8)
+                if recv_exactly(self.__conn, 1) == b'\1':
+                    newval = struct.unpack('>d', recv_exactly(self.__conn, 8))[0]
             elif param_type == NodeParameterType.INT:
                 self.__conn.sendall(struct.pack('>q', param_value))
-                recv_exactly(self.__conn, 8)
+                if recv_exactly(self.__conn, 1) == b'\1':
+                    newval = struct.unpack('>q', recv_exactly(self.__conn, 8))[0]
             elif param_type == NodeParameterType.BOOL:
                 self.__conn.sendall(struct.pack('>?', param_value))
-                recv_exactly(self.__conn, 1)
+                if recv_exactly(self.__conn, 1) == b'\1':
+                    newval = struct.unpack('>?', recv_exactly(self.__conn, 1))[0]
             elif param_type == NodeParameterType.STRING:
                 self._send_string(param_value)
-                self._recv_string()
+                if recv_exactly(self.__conn, 1) == b'\1':
+                    newval = self._recv_string()
             else:
                 raise NotImplementedError()
+            self.node_parameter_changed.emit(node_id, param, newval, data)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
 
     @Slot()
-    def send_node_parameter_expression_change(self, node_id: int, param: Parameter):
+    def send_node_parameter_expression_change(self, node_id: int, param: Parameter, data=None):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
@@ -320,6 +328,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 expression = param.expression()
                 self._send_string(expression)
             assert recv_exactly(self.__conn, 1) == b'\1'
+            self.node_parameter_expression_changed.emit(node_id, param, data)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
@@ -347,7 +356,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.nodetypes_fetched.emit(nodetypes)
 
     @Slot()
-    def create_node(self, node_type, node_name, pos):
+    def create_node(self, node_type, node_name, pos, data=None):
+        """
+        create a new node of given time
+
+        :param node_type:
+        :param node_name:
+        :param pos: just pass through # TODO: maybe better unite it with data?
+        :param data: arbitrary data to pass through, may be used to mark this operation
+        :return:
+        """
         if not self.ensure_connected():
             return
         assert self.__conn is not None
@@ -361,7 +379,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.node_created.emit(node_id, node_type, node_name, pos)
+            self.node_created.emit(node_id, node_type, node_name, pos, data)
 
     @Slot()
     def remove_node(self, node_id: int):

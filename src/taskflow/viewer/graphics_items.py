@@ -167,6 +167,9 @@ class Node(NetworkItemWithUI):
         self.update()  # cuz input count affects visualization in the graph
         self.update_ui()
 
+    def get_nodeui(self) -> Optional[NodeUi]:
+        return self.__nodeui
+
     def set_expanded(self, expanded: bool):
         if self.__expanded == expanded:
             return
