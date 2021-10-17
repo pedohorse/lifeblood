@@ -1264,7 +1264,7 @@ class Scheduler:
 
     #
     # stuff
-    @atimeit(0.1)
+    @atimeit(0.001)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -1292,16 +1292,18 @@ class Scheduler:
             else:
                 all_tasks = dict()
                 for group in task_groups:
+                    # _dbg = time.perf_counter()
                     async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
                                            'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
                                            'task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
+                                           'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
-                                           'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
-                                           'WHERE task_groups."group" LIKE ? '
-                                           'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value, (group,)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
+                                           'WHERE task_groups."group" == ? '
+                                           'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value, (group, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
+                    # print(f'fetch groups: {time.perf_counter() - _dbg}')
                     for task_row in grp_tasks:
                         task = dict(task_row)
                         task['groups'] = set(task['groups'].split(','))
@@ -1309,8 +1311,11 @@ class Scheduler:
                             all_tasks[task['id']]['groups'].update(task['groups'])
                         else:
                             all_tasks[task['id']] = task
+            # _dbg = time.perf_counter()
             async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group";') as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
+            # print(f'distinct groups: {time.perf_counter() - _dbg}')
+            # _dbg = time.perf_counter()
             async with con.execute('SELECT workers."id", cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations.progress, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
@@ -1318,6 +1323,7 @@ class Scheduler:
                                    'LEFT JOIN worker_groups ON workers."id" == worker_groups.worker_id '
                                    'GROUP BY workers."id"') as cur:
                 all_workers = tuple(dict(x) for x in await cur.fetchall())
+            # print(f'workers: {time.perf_counter() - _dbg}')
             data = await create_uidata(all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
 
