@@ -127,16 +127,16 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 elif command == b'logiter':  # scheduler wants to have the log:
                     raise NotImplementedError()
                     # TODO: redo this using line feeder from nethelpers! also pass invocation id
-                    logname = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)
-                    if logname.endswith(b'\n'):
-                        logname = logname[:-1]
-                    logname = logname.decode('UTF-8')
-                    logfilepath = self.__worker.get_log_filepath(logname)
-                    async with aiofiles.open(logfilepath, 'r') as f:
-                        async for line in f:
-                            writer.write(b'\x01')
-                            writer.write(line)
-                        writer.write(b'\x00')
+                    # logname = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)
+                    # if logname.endswith(b'\n'):
+                    #     logname = logname[:-1]
+                    # logname = logname.decode('UTF-8')
+                    # logfilepath = self.__worker.get_log_filepath(logname)
+                    # async with aiofiles.open(logfilepath, 'r') as f:
+                    #     async for line in f:
+                    #         writer.write(b'\x01')
+                    #         writer.write(line)
+                    #     writer.write(b'\x00')
 
                 # now wait for answer to be delivered
                 await writer.drain()
