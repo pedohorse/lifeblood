@@ -48,7 +48,7 @@ class Worker:
         """
         config = get_config('worker')
         self.__logger = logging.get_logger('worker')
-        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', config_path('worker', 'invocations_logs')))
+        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', config_path('logs', 'worker')))
 
         if not os.path.exists(self.log_root_path):
             os.makedirs(self.log_root_path, exist_ok=True)
