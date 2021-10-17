@@ -410,7 +410,6 @@ class Scheduler:
         :param con:
         :return:
         """
-        self.wake()
         if into < 1:
             raise ValueError('cant split into less than 1 part')
 
@@ -449,6 +448,7 @@ class Scheduler:
         # now increase number of children to the parent of the task being splitted
 
         assert into == len(all_split_ids)
+        self.wake()
         return all_split_ids
 
     #
@@ -932,7 +932,6 @@ class Scheduler:
     # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
-        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
@@ -971,12 +970,12 @@ class Scheduler:
                                   (TaskState.POST_WAITING.value, invocation['task_id']))
 
             await con.commit()
+        self.wake()
 
     #
     # worker reports canceled task
     async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
         self.__logger.debug('task cancelled reported %s', repr(task))
-        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             # sanity check
@@ -1001,6 +1000,7 @@ class Scheduler:
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.WAITING.value, invocation['task_id']))
             await con.commit()
+        self.wake()
 
     #
     # add new worker to db
@@ -1112,7 +1112,6 @@ class Scheduler:
     #
     async def force_set_node_task(self, task_id: int, node_id: int):
         self.__logger.debug(f'forcing task {task_id} to node {node_id}')
-        self.wake()
         try:
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
@@ -1121,6 +1120,8 @@ class Scheduler:
                 await con.commit()
         except aiosqlite.IntegrityError:
             self.__logger.error('could not remove node connection because of database integrity check')
+        else:
+            self.wake()
 
     #
     # force change task state
@@ -1132,7 +1133,6 @@ class Scheduler:
         :param state:
         :return:
         """
-        self.wake()
         if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
             self.__logger.error(f'cannot force task {task_ids} into state {state}')
             return
@@ -1142,7 +1142,7 @@ class Scheduler:
         #print('beep')
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             for task_id in task_ids:
-                await con.execute('BEGIN IMMEDIATE') #
+                await con.execute('BEGIN IMMEDIATE')
                 async with con.execute('SELECT "state" FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                     state = await cur.fetchone()
                     if state is None:
@@ -1152,22 +1152,23 @@ class Scheduler:
                 if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
                     self.__logger.warning(f'forcing task out of state {state} is not currently implemented')
                     await con.rollback()
-                    return
+                    continue
 
                 await con.execute(query, (task_id,))
                 #await con.executemany(query, ((x,) for x in task_ids))
                 await con.commit()
         #print('boop')
+        self.wake()
 
     #
     # change task's paused state
     async def set_task_paused(self, task_ids_or_group: Union[int, Iterable[int], str], paused: bool):
-        self.wake()
         if isinstance(task_ids_or_group, str):
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 await con.execute('UPDATE "tasks" SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
                                   (int(paused), task_ids_or_group))
                 await con.commit()
+            self.wake()
             return
         if isinstance(task_ids_or_group, int):
             task_ids_or_group = [task_ids_or_group]
@@ -1175,6 +1176,7 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.executemany(query, ((x,) for x in task_ids_or_group))
             await con.commit()
+        self.wake()
 
     #
     # node stuff
@@ -1195,12 +1197,12 @@ class Scheduler:
     #
     # reset node's stored state
     async def wipe_node_state(self, node_id):
-        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET node_object = NULL WHERE "id" = ?', (node_id,))
             if node_id in self.__node_objects:
                 del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. but a proper __node_object lock should be in place instead
             await con.commit()
+        self.wake()
 
     #
     # copy nodes
@@ -1331,7 +1333,6 @@ class Scheduler:
     # change node connection callback
     async def change_node_connection(self, node_connection_id: int, new_out_node_id: Optional[int], new_out_name: Optional[str],
                                      new_in_node_id: Optional[int], new_in_name: Optional[str]):
-        self.wake()
         parts = []
         vals = []
         if new_out_node_id is not None:
@@ -1353,17 +1354,18 @@ class Scheduler:
             vals.append(node_connection_id)
             await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE "id" = ?', vals)
             await con.commit()
+        self.wake()
 
     #
     # add node connection callback
     async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str) -> int:
-        self.wake()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
                                    (out_node_id, out_name, in_node_id, in_name)) as cur:
                 ret = cur.lastrowid
             await con.commit()
+            self.wake()
             return ret
 
     #
@@ -1485,7 +1487,6 @@ class Scheduler:
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                           zip(itertools.repeat(new_id, len(groups)), groups))
 
-        self.wake()
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
         if con is not None:
@@ -1495,6 +1496,7 @@ class Scheduler:
                 con.row_factory = aiosqlite.Row
                 await _inner_shit()
                 await con.commit()
+        self.wake()
         return SpawnStatus.SUCCEEDED
 
     #
