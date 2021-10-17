@@ -18,11 +18,11 @@ from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
 from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
-from .invocationjob import InvocationJob, Environment
+from .invocationjob import InvocationJob
 from .config import get_config, create_default_user_config_file
-from . import paths
 from . import environment_resolver
 from .enums import WorkerType, WorkerState
+from .paths import config_path
 
 from .worker_runtime_pythonpath import taskflow_connection
 import inspect
@@ -43,12 +43,12 @@ class Worker:
 
         :param scheduler_addr:
         :param scheduler_port:
-        :param small_task_helper: if True - this worker will assume it's doing a lightweight task to help scheduler.
-                                  worker will stop after task is done or cancelled
+        :param worker_type:
+        :param singleshot:
         """
         config = get_config('worker')
         self.__logger = logging.get_logger('worker')
-        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')))
+        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', config_path('worker', 'invocations_logs')))
 
         if not os.path.exists(self.log_root_path):
             os.makedirs(self.log_root_path, exist_ok=True)
@@ -130,7 +130,7 @@ class Worker:
             #
             # and report to the pool
             if self.__worker_id is not None:
-                async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
                     await client.report_state(WorkerState.IDLE)
 
             self.__scheduler_pinger = asyncio.create_task(self.scheduler_pinger())
@@ -184,17 +184,6 @@ class Worker:
         await self.__scheduler_pinger
         for waiter in self.__stopping_waiters:
             await waiter
-
-    async def log_error(self, *args):
-        await self.log('error', *args)
-
-    async def log(self, level, *args):
-        logpath = self.get_log_filepath(level)
-
-        if not os.path.exists(logpath):
-            os.makedirs(os.path.dirname(logpath), exist_ok=True)
-        async with aiofiles.open(logpath, 'a') as f:
-            await f.write(', '.join(args))
 
     def get_log_filepath(self, level, invocation_id: int = None):  # TODO: think of a better, more generator-style way of returning logs
         if self.__running_task is None and invocation_id is None:
@@ -260,20 +249,20 @@ class Worker:
                 #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
                 self.__running_process: asyncio.subprocess.Process = \
-                    await asyncio.create_subprocess_exec(  # TODO: process subprocess exceptions
+                    await asyncio.create_subprocess_exec(
                         *args,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         env=env
                     )
             except Exception as e:
-                await self.log_error('task failed with error: %s\n%s' % (repr(e), traceback.format_exc()))
+                await self.__logger.exception('task creation failed with error: %s' % (repr(e),))
                 raise
 
             self.__running_task = task
             self.__where_to_report = report_to
             if self.__worker_id is not None:
-                async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
                     await client.report_state(WorkerState.BUSY)
             self.__running_awaiter = asyncio.create_task(self._awaiter())
             self.__running_task_progress = 0
@@ -329,7 +318,7 @@ class Worker:
                 finally:
                     # report to the pool
                     if self.__worker_id is not None:
-                        async with WorkerPoolClient(*self.__pool_address, self.__worker_id) as client:
+                        async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
                             await client.report_state(WorkerState.IDLE)
 
         await self.__running_process.wait()
