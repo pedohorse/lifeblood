@@ -48,10 +48,25 @@ class Worker:
         """
         config = get_config('worker')
         self.__logger = logging.get_logger('worker')
-        self.log_root_path = os.path.expandvars(config.get_option_noasync('worker.logpath', config_path('logs', 'worker')))
+        for self.log_root_path in (os.path.expandvars(config.get_option_noasync('worker.logpath', config_path('logs', 'worker'))),
+                                   os.path.join(tempfile.gettempdir(), 'taskflow', 'worker_logs')):
+            logs_ok = True
+            try:
+                if not os.path.exists(self.log_root_path):
+                    os.makedirs(self.log_root_path, exist_ok=True)
+            except PermissionError:
+                logs_ok = False
+            except OSError as e:
+                if e.errno == errno.EACCES:
+                    logs_ok = False
+            logs_ok = logs_ok and os.access(self.log_root_path, os.W_OK)
+            if logs_ok:
+                break
+            self.__logger.warning(f'could not use location {self.log_root_path} for logs, trying another...')
+        else:
+            raise RuntimeError('could not initialize logs directory')
+        self.__logger.info(f'using {self.log_root_path} for logs')
 
-        if not os.path.exists(self.log_root_path):
-            os.makedirs(self.log_root_path, exist_ok=True)
         self.__status = {}
         self.__running_process: Optional[asyncio.subprocess.Process] = None
         self.__running_task: Optional[InvocationJob] = None
