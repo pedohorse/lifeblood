@@ -1,9 +1,10 @@
 import sqlite3
+from dataclasses import dataclass
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from ..uidata import UiData, NodeUi, Parameter
-from ..enums import TaskState
+from ..enums import TaskState, NodeParameterType
 from ..config import get_config
 from .. import logging
 from .. import paths
@@ -51,6 +52,98 @@ class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
     def initializeGL(self) -> None:
         super(QOpenGLWidgetWithSomeShit, self).initializeGL()
         logger.debug('init')
+
+
+class Clipboard:
+    class ClipboardContentsType(Enum):
+        NOTHING = 0
+        NODES = 1
+
+    def __init__(self):
+        self.__contents: Dict[Clipboard.ClipboardContentsType, Tuple[int, Any]] = {}
+        self.__copy_operation_id = 0
+
+    def set_contents(self, ctype: ClipboardContentsType, contents: Any):
+        self.__contents[ctype] = (self.__copy_operation_id, contents)
+
+    def contents(self, ctype: ClipboardContentsType) -> Tuple[Optional[int], Optional[Any]]:
+        return self.__contents.get(ctype, (None, None))
+
+
+class NodeSnippetData:
+    """
+    class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
+    """
+    @dataclass
+    class ParamData:
+        name: str
+        type: NodeParameterType
+        uvalue: Any
+        expr: Optional[str]
+
+    @dataclass
+    class NodeData:
+        tmpid: int
+        type: str
+        name: str
+        parameters: Dict[str, "NodeSnippetData.ParamData"]
+        pos: Tuple[float, float]
+
+    @dataclass
+    class ConnData:
+        tmpout: int
+        out_name: str
+        tmpin: int
+        in_name: str
+
+    @classmethod
+    def from_nodes(cls, nodes: Iterable[Node]):
+        raise NotImplementedError()
+
+    def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], pos: Tuple[float, float]):
+        self.nodes_data = list(nodes_data)
+        self.connections_data = list(connections_data)
+        self.pos = pos
+
+
+class LongOperation:
+    _nextid = 0
+
+    def __init__(self, progress_callback: Callable[["LongOperation"], Generator]):
+        """
+
+        :param progress_callback: this is supposed to be a generator able to take this operation object and opdata as yield arguments.
+        if it returns True - we consider long operation done
+        """
+        self.__id = self._nextid
+        LongOperation._nextid += 1
+        self.__progress_callback_factory = progress_callback
+        self.__progress_callback: Optional[Generator] = None
+
+    def _start(self):
+        """
+        just to make sure it starts when we need.
+        if it starts in constructor - we might potentially have race condition when longop is not yet registered where it's being managed
+        and receive _progress too soon
+        """
+        self.__progress_callback: Generator = self.__progress_callback_factory(self)
+        next(self.__progress_callback)
+
+    def _progress(self, opdata):
+        try:
+            self.__progress_callback.send(opdata)
+        except StopIteration:
+            return True
+        return False
+
+    def opid(self):
+        return self.__id
+
+
+class LongOperationData:
+    def __init__(self, op: LongOperation, data: Any):
+        self.op = op
+        self.data = data
 
 
 class QGraphicsImguiScene(QGraphicsScene):
@@ -105,6 +198,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         else:
             self.__ui_connection_thread = None
             self.__ui_connection_worker = worker
+
+        self.__long_operations: Dict[int, LongOperation] = {}
 
         self.__ui_connection_worker.full_update.connect(self.full_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
@@ -375,18 +470,21 @@ class QGraphicsImguiScene(QGraphicsScene):
     def _node_has_parameter(self, node_id, param_name, exists, data):
         if data is not None:
             data.data = (node_id, param_name, exists)
+            self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object, object)
     def _node_parameter_changed(self, node_id, param, newval, data):
         if data is not None:
             data.data = (node_id, param.name(), newval)
+            self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object)
     def _node_parameter_expression_changed(self, node_id, param, data):
         if data is not None:
             data.data = (node_id, param.name())
+            self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, str, str, object, object)
@@ -396,6 +494,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.addItem(node)
         if data is not None:
             data.data = (node_id, node_type, node_name)
+            self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(object, object)
@@ -440,6 +539,62 @@ class QGraphicsImguiScene(QGraphicsScene):
         super(QGraphicsImguiScene, self).clear()
         self.__task_dict = {}
         self.__node_dict = {}
+
+    @Slot(NodeSnippetData, QPointF)
+    def paste_copied_nodes(self, snippet: NodeSnippetData, pos: QPointF):
+        def pasteop(longop):
+
+            tmp_to_new: Dict[int, int] = {}
+            for nodedata in snippet.nodes_data:
+                self.request_create_node(nodedata.type, f'{nodedata.name} copy', QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
+                # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
+                #  from the same operation. So we request and wait things one by one
+                node_id, _, _ = yield
+                tmp_to_new[nodedata.tmpid] = node_id
+
+                # now setting parameters.
+                cyclestart = None
+                done_smth_this_cycle = False
+                parm_pairs: List[Tuple[str, NodeSnippetData.ParamData]] = list(nodedata.parameters.items())
+                for param_name, param_data in parm_pairs:
+                    self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
+                    _, _, has_param = yield
+                    if not has_param:
+                        if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
+                            parm_pairs.append((param_name, param_data))
+                            cyclestart = param_name
+                            done_smth_this_cycle = False
+                            continue
+                        else:
+                            logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
+                            break
+                    done_smth_this_cycle = True
+                    proxy_parm = Parameter(param_name, None, param_data.type, param_data.uvalue)
+                    if param_data.expr is not None:
+                        proxy_parm.set_expression(param_data.expr)
+                    self.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
+                    yield
+                    if proxy_parm.has_expression():
+                        self.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
+                        yield
+
+            for conndata in snippet.connections_data:
+                self.request_node_connection_add(tmp_to_new[conndata.tmpout], conndata.out_name,
+                                                 tmp_to_new[conndata.tmpin], conndata.in_name)
+
+        self.add_long_operation(pasteop)
+
+    @Slot(LongOperationData)
+    def process_operation(self, op: LongOperationData):
+        assert op.op.opid() in self.__long_operations
+        done = op.op._progress(op.data)
+        if done:
+            del self.__long_operations[op.op.opid()]
+
+    def add_long_operation(self, generator_to_call):
+        newop = LongOperation(generator_to_call)
+        self.__long_operations[newop.opid()] = newop
+        newop._start()
 
     def get_task(self, task_id) -> Optional[Task]:
         return self.__task_dict.get(task_id, None)
@@ -644,62 +799,6 @@ class QGraphicsImguiScene(QGraphicsScene):
     #         node.setPos(QPointF(*pos))
 
 
-class Clipboard:
-    class ClipboardContentsType(Enum):
-        NOTHING = 0
-        NODES = 1
-
-    def __init__(self):
-        self.__contents: Dict[Clipboard.ClipboardContentsType, Tuple[int, Any]] = {}
-        self.__copy_operation_id = 0
-
-    def set_contents(self, ctype: ClipboardContentsType, contents: Any):
-        self.__contents[ctype] = (self.__copy_operation_id, contents)
-
-    def contents(self, ctype: ClipboardContentsType) -> Tuple[Optional[int], Optional[Any]]:
-        return self.__contents.get(ctype, (None, None))
-
-
-class LongOperation:
-    _nextid = 0
-
-    def __init__(self, progress_callback: Callable[["LongOperation"], Generator]):
-        """
-
-        :param progress_callback: this is supposed to be a generator able to take this operation object and opdata as yield arguments.
-        if it returns True - we consider long operation done
-        """
-        self.__id = self._nextid
-        LongOperation._nextid += 1
-        self.__progress_callback_factory = progress_callback
-        self.__progress_callback: Optional[Generator] = None
-
-    def _start(self):
-        """
-        just to make sure it starts when we need.
-        if it starts in constructor - we might potentially have race condition when longop is not yet registered where it's being managed
-        and receive _progress too soon
-        """
-        self.__progress_callback: Generator = self.__progress_callback_factory(self)
-        next(self.__progress_callback)
-
-    def _progress(self, opdata):
-        try:
-            self.__progress_callback.send(opdata)
-        except StopIteration:
-            return True
-        return False
-
-    def opid(self):
-        return self.__id
-
-
-class LongOperationData:
-    def __init__(self, op: LongOperation, data: Any):
-        self.op = op
-        self.data = data
-
-
 class NodeEditor(QGraphicsView):
     def __init__(self, db_path: str = None, worker=None, parent=None):
         super(NodeEditor, self).__init__(parent=parent)
@@ -736,11 +835,8 @@ class NodeEditor(QGraphicsView):
         self.__menu_popup_arrow_down = False
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
 
-        self.__long_operations: Dict[int, LongOperation] = {}
-
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
-        self.__scene.long_operation_progressed.connect(self.process_operation)
 
         self.__scene.request_node_types_update()
 
@@ -779,24 +875,32 @@ class NodeEditor(QGraphicsView):
             if not isinstance(node, Node):
                 continue
             all_clip_nodes.add(node)
-            params = {}
+            params: Dict[str, "NodeSnippetData.ParamData"] = {}
             old_to_tmp[node.get_id()] = tmpid
-            nodedata = {'tmpid': tmpid,
-                        'type': node.node_type(),
-                        'name': node.node_name(),
-                        'parameters': params,
-                        'pos': node.pos()}
+            nodedata = NodeSnippetData.NodeData(tmpid,
+                                                node.node_type(),
+                                                node.node_name(),
+                                                params,
+                                                node.pos().toTuple())
+            # nodedata = {'tmpid': tmpid,
+            #             'type': node.node_type(),
+            #             'name': node.node_name(),
+            #             'parameters': params,
+            #             'pos': node.pos()}
             tmpid += 1
             avgpos += node.pos()
 
             nodeui = node.get_nodeui()
             if nodeui is not None:
                 for param in nodeui.parameters():
-                    param_data = {}
+                    param_data = NodeSnippetData.ParamData(param.name(),
+                                                           param.type(),
+                                                           param.unexpanded_value(),
+                                                           param.expression())
                     params[param.name()] = param_data
-                    param_data['uvalue'] = param.unexpanded_value()
-                    param_data['type'] = param.type()
-                    param_data['expr'] = param.expression()
+                    # param_data['uvalue'] = param.unexpanded_value()
+                    # param_data['type'] = param.type()
+                    # param_data['expr'] = param.expression()
 
             clipnodes.append(nodedata)
 
@@ -811,63 +915,17 @@ class NodeEditor(QGraphicsView):
                     other_node, other_name = conn.input()
                     if other_node not in all_clip_nodes:
                         continue
-                    clipconns.append((old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
-                                      old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
+                    clipconns.append(NodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
+                                                              old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
 
-        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, (clipnodes, clipconns, avgpos))
+        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, NodeSnippetData(clipnodes, clipconns, avgpos.toTuple()))
 
     @Slot(QPointF)
     def paste_copied_nodes(self, pos: QPointF):
-        def pasteop(longop):
-            opid, rawclipdata = self.__editor_clipboard.contents(Clipboard.ClipboardContentsType.NODES)
-            if rawclipdata is None:
-                return
-            clipnodes, clipconns, avgpos = rawclipdata
-
-            tmp_to_new: Dict[int, int] = {}
-            for nodedata in clipnodes:
-                self.__scene.request_create_node(nodedata['type'], f'{nodedata["name"]} copy', nodedata['pos'] + pos - avgpos, LongOperationData(longop, None))
-                # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
-                #  from the same operation. So we request and wait things one by one
-                node_id, _, _ = yield
-                tmp_to_new[nodedata['tmpid']] = node_id
-
-                # now setting parameters.
-                node = self.__scene.get_node(node_id)  # node will already exist at this point as op progress is sent from scene only after everything scene-related is done
-
-                cyclestart = None
-                done_smth_this_cycle = False
-                parm_pairs = list(nodedata['parameters'].items())
-                for param_name, param_data in parm_pairs:
-                    # TODO: implement from here through requests to worker
-                    #  probably u'll need to
-                    #  either implement set_parameter command error value return (sounds like a good idea)
-                    #  or add some check parameter existance command (or both)
-                    self.__scene.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
-                    _, _, has_param = yield
-                    if not has_param:
-                        if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
-                            parm_pairs.append((param_name, param_data))
-                            cyclestart = param_name
-                            done_smth_this_cycle = False
-                            continue
-                        else:
-                            logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
-                            break
-                    done_smth_this_cycle = True
-                    proxy_parm = Parameter(param_name, None, param_data['type'], param_data['uvalue'])
-                    if param_data['expr'] is not None:
-                        proxy_parm.set_expression(param_data['expr'])
-                    self.__scene.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
-                    yield
-                    if proxy_parm.has_expression():
-                        self.__scene.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
-                        yield
-
-            for out_tmpid, outname, in_tmpid, inname in clipconns:
-                self.__scene.request_node_connection_add(tmp_to_new[out_tmpid], outname, tmp_to_new[in_tmpid], inname)
-
-        self.add_long_operation(pasteop)
+        clipdata = self.__editor_clipboard.contents(self.__editor_clipboard.ClipboardContentsType.NODES)
+        if clipdata is None:
+            return
+        self.__scene.paste_copied_nodes(clipdata[1], pos)
 
     @Slot(QPointF)
     def duplicate_selected_nodes(self, pos: QPointF):
@@ -886,18 +944,6 @@ class NodeEditor(QGraphicsView):
         avg_old_pos /= len(node_ids)
         print(node_ids, pos, avg_old_pos)
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
-
-    @Slot(LongOperationData)
-    def process_operation(self, op: LongOperationData):
-        assert op.op.opid() in self.__long_operations
-        done = op.op._progress(op.data)
-        if done:
-            del self.__long_operations[op.op.opid()]
-
-    def add_long_operation(self, generator_to_call):
-        newop = LongOperation(generator_to_call)
-        self.__long_operations[newop.opid()] = newop
-        newop._start()
 
     def show_task_menu(self, task):
         menu = QMenu(self)
