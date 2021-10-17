@@ -88,6 +88,13 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS "task_state_paused_idx" ON "tasks" (
+	"state",
+	"paused"
+);
+CREATE INDEX IF NOT EXISTS "invoc_state_idx" ON "invocations" (
+	"state"
+);
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
 BEGIN
