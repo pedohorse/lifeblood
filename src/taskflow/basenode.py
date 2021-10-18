@@ -213,6 +213,8 @@ class BaseNode:
                             newparam.set_value(param.unexpanded_value())
                         except ParameterReadonly:
                             newparam._Parameter__value = param.unexpanded_value()
+                else:
+                    self.__dict__.update(state)
             except AttributeError:
                 # something changed so much that some core attrs are different
                 get_logger('BaseNode').exception(f'could not update interface for some node of type {self.type_name()}. resetting node\'s inrerface')
