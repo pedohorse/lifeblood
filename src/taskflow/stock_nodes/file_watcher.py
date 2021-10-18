@@ -26,10 +26,10 @@ watcher_onmoved = \
         if all(not fnmatch(os.path.basename(event.src_path), x) for x in {fpats}):
             return
         taskflow_connection.create_task(f'{{event.src_path}} moved to {{event.dest_path}}',
-                                        src_path=event.src_path,
-                                        dst_path=event.dest_path,
-                                        file_event='moved',
-                                        file_type=ftype)
+                                        {{'src_path': event.src_path,
+                                         'dst_path': event.dest_path,
+                                         'file_event': 'moved',
+                                         'file_type': ftype}})
 '''
 
 watcher_oncreated = \
@@ -42,9 +42,9 @@ watcher_oncreated = \
         if all(not fnmatch(os.path.basename(event.src_path), x) for x in {fpats}):
             return
         taskflow_connection.create_task(f'{{event.src_path}} created',
-                                        src_path=event.src_path,
-                                        file_event='created',
-                                        file_type=ftype)
+                                        {{'src_path': event.src_path,
+                                         'file_event': 'created',
+                                         'file_type': ftype}})
 '''
 
 watcher_ondeleted = \
@@ -57,9 +57,9 @@ watcher_ondeleted = \
         if all(not fnmatch(os.path.basename(event.src_path), x) for x in {fpats}):
             return
         taskflow_connection.create_task(f'{{event.src_path}} deleted',
-                                        src_path=event.src_path,
-                                        file_event='deleted',
-                                        file_type=ftype)
+                                        {{'src_path': event.src_path,
+                                         'file_event': 'deleted',
+                                         'file_type': ftype}})
 '''
 
 watcher_onmodified = \
@@ -72,9 +72,9 @@ watcher_onmodified = \
         if all(not fnmatch(os.path.basename(event.src_path), x) for x in {fpats}):
             return
         taskflow_connection.create_task(f'{{event.src_path}} modified',
-                                        src_path=event.src_path,
-                                        file_event='modified',
-                                        file_type=ftype)
+                                        {{'src_path': event.src_path,
+                                         'file_event': 'modified',
+                                         'file_type': ftype}})
 '''
 
 watcher_onclosed = \
@@ -87,9 +87,9 @@ watcher_onclosed = \
         if all(not fnmatch(os.path.basename(event.src_path), x) for x in {fpats}):
             return
         taskflow_connection.create_task(f'{{event.src_path}} modified',
-                                        src_path=event.src_path,
-                                        file_event='closed',
-                                        file_type=ftype)
+                                        {{'src_path': event.src_path,
+                                         'file_event': 'closed',
+                                         'file_type': ftype}})
 '''
 
 watcher_existings = \
@@ -103,16 +103,16 @@ watcher_existings = \
             if file.is_dir():
                 if do_dirs:
                     taskflow_connection.create_task(f'{{file}} {event_type}',
-                                                    src_path=str(file),
-                                                    file_event='{event_type}',
-                                                    file_type='dir')
+                                                    {{'src_path': str(file),
+                                                     'file_event': '{event_type}',
+                                                     'file_type': 'dir'}})
                 if recursive:
                     _check_one_dir(file, do_dirs, do_files, recursive)
             elif file.is_file() and do_files:
                 taskflow_connection.create_task(f'{{file}} {event_type}',
-                                                src_path=str(file),
-                                                file_event='{event_type}',
-                                                file_type='file')
+                                                {{'src_path': str(file),
+                                                 'file_event': '{event_type}',
+                                                 'file_type': 'file'}})
 
     _check_one_dir(Path(path_to_watch), {do_dirs}, {do_files}, recursive)
 '''

@@ -16,9 +16,9 @@ class TaskSpawn:
     keep it up-to-date
     and keep it 2-3 compatible!!
     """
-    def __init__(self, name, source_invocation_id, env_args=None, **attribs):
+    def __init__(self, name, source_invocation_id, env_args=None, task_attributes=None):
         self.__name = name
-        self.__attributes = attribs
+        self.__attributes = dict(task_attributes or {})
         self.__env_args = env_args
         self.__forced_node_task_id_pair = None
         self.__from_invocation_id = source_invocation_id
@@ -75,7 +75,7 @@ class TaskSpawn:
         return pickle.dumps(self)
 
 
-def create_task(name, **attributes):
+def create_task(name, attributes):
     invocation_id = int(os.environ['TASKFLOW_RUNTIME_IID'])
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
 

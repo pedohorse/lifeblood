@@ -74,7 +74,7 @@ class HipDriverRenderer(BaseNode):
             f"    kwargs['file'] = node.evalParm('filename')\n" \
             f"if node.parm('sopoutput'):\n" \
             f"    kwargs['file'] = node.evalParm('sopoutput')\n" \
-            f"taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, **kwargs)\n"
+            f"taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = None

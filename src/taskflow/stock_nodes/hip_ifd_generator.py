@@ -56,7 +56,7 @@ class HipIfdGenerator(BaseNode):
         spawnlines = \
             f"    filepath = node.evalParm('soho_diskfile')\n" \
             f"    outimage = node.evalParm('vm_picture')\n" \
-            f"    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, frames=[frame], file=filepath, hipfile='{hippath}', outimage=outimage)\n"
+            f"    taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, {{'frames': [frame], 'file': filepath, 'hipfile': '{hippath}', 'outimage': outimage}})\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''
