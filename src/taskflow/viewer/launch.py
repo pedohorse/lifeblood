@@ -3,7 +3,7 @@ import os
 import sqlite3
 
 from PySide2.QtWidgets import QApplication
-from PySide2.QtCore import QRectF, QFile
+from PySide2.QtCore import QRectF, QFile, Qt
 
 from .taskflow_viewer import TaskflowViewer
 from .db_misc import sql_init_script
@@ -31,6 +31,8 @@ def main(argv):  # TODO: parse cmdline (argv)
 
 def start_viewer(config_path=None):
     qapp = QApplication(sys.argv)
+
+    qapp.setAttribute(Qt.AA_CompressHighFrequencyEvents, False)  # fixes the bug of accumulating wheel events
 
     # set stylesheet
     ssfile = QFile(":/dark.qss")

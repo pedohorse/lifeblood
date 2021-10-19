@@ -811,7 +811,7 @@ class NodeEditor(QGraphicsView):
 
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setCacheMode(QGraphicsView.CacheBackground)
-        self.__view_scale = 1.0
+        self.__view_scale = 0.0
 
         self.__ui_panning_lastpos = None
 
@@ -1314,7 +1314,7 @@ class NodeEditor(QGraphicsView):
             if self.__ui_panning_lastpos is not None:
                 rect = self.sceneRect()
                 rect.setSize(QSize(1, 1))
-                self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * self.__view_scale).toTuple()))
+                self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * (2 ** self.__view_scale)).toTuple()))
                 #self.translate(*(event.screenPos() - self.__ui_panning_lastpos).toTuple())
                 self.__ui_panning_lastpos = event.screenPos()
             else:
@@ -1348,9 +1348,10 @@ class NodeEditor(QGraphicsView):
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
-            self.__view_scale = max(0.1, self.__view_scale - event.angleDelta().y()*0.001)
+            event.accept()
+            self.__view_scale = max(0, self.__view_scale - event.angleDelta().y()*0.001)
 
-            iz = 1.0/self.__view_scale
+            iz = 2**(-self.__view_scale)
             self.setTransform(QTransform.fromScale(iz, iz))
             super(NodeEditor, self).wheelEvent(event)
 
