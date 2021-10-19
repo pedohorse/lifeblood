@@ -354,7 +354,7 @@ class Node(NetworkItemWithUI):
         for task in tasks_to_remove:
             task._Task__node = None
             #task.set_node(None)  # no, currently causes bad recursion
-        self.__tasks = [None if x in tasks_to_remove else x for x in self.__tasks]
+        self.__tasks: List["Task"] = [None if x in tasks_to_remove else x for x in self.__tasks]
         off = 0
         for i, task in enumerate(self.__tasks):
             if task is None:
@@ -976,7 +976,7 @@ class Task(NetworkItemWithUI):
         self.__final_pos = None
         self.__final_layer = None
 
-        self.__visible_layers_count = 3
+        self.__visible_layers_count = 2
         if self.__borderpen is None:
             Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
                                 QPen(QColor(192, 192, 192, 255), self.__line_width)]
@@ -1084,6 +1084,9 @@ class Task(NetworkItemWithUI):
 
     def draw_size(self):
         return self.__size
+
+    def layer_visible(self):
+        return self.__layer < self.__visible_layers_count
 
     def set_layer(self, layer: int):
         assert layer >= 0
@@ -1200,6 +1203,9 @@ class Task(NetworkItemWithUI):
         if fnode is not None:
             fpos = fnode.mapToScene(fpos)
         return fpos
+
+    def is_in_animation(self):
+        return self.__animation_group is not None
 
     @Slot()
     def _clear_animation_group(self):
