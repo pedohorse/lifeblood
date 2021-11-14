@@ -11,7 +11,7 @@ class ProcessingError(RuntimeError):
 
 
 class ProcessingResult:
-    def __init__(self, job: Optional[InvocationJob] = None, spawn: List[TaskSpawn] = None, node_output_name: str = 'main'):
+    def __init__(self, job: Optional[InvocationJob] = None, spawn: List[TaskSpawn] = None, node_output_name: Optional[str] = None):
         self.invocation_job: Optional[InvocationJob] = job
         self.spawn_list: List[TaskSpawn] = spawn
         self.do_kill_task: bool = False
