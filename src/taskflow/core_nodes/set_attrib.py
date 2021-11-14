@@ -37,12 +37,17 @@ class SetAttributes(BaseNode):
                     type_param.add_menu((('int', NodeParameterType.INT.value),
                                          ('bool', NodeParameterType.BOOL.value),
                                          ('float', NodeParameterType.FLOAT.value),
-                                         ('string', NodeParameterType.STRING.value)))
+                                         ('string', NodeParameterType.STRING.value),
+                                         ('integer range', -1)))
 
                     ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
                     ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
                     ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+                    # range
+                    ui.add_parameter('rf1value', 'to', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', -1)
+                    ui.add_parameter('rf2value', 'step', NodeParameterType.INT, 9).add_visibility_condition(type_param, '==', -1)
+                    ui.add_parameter('rf3value', '', NodeParameterType.INT, 1).add_visibility_condition(type_param, '==', -1)
             ui.color_scheme().set_main_color(0.15, 0.24, 0.25)
         # # Example how one would initialize multiblock to have initial nonzero value
         # multiblock = list(ui.items())[-1]
@@ -76,6 +81,8 @@ class SetAttributes(BaseNode):
                 attr_val = context.param_value(f'fvalue_{i}')
             elif attr_type == NodeParameterType.STRING.value:
                 attr_val = context.param_value(f'svalue_{i}')
+            elif attr_type == -1:
+                attr_val = list(range(context.param_value(f'rf1value_{i}'), context.param_value(f'rf2value_{i}') + 1, context.param_value(f'rf3value_{i}')))
             else:
                 raise NotImplementedError('unexpected type')
             res.set_attribute(attr_name, attr_val)
