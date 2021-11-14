@@ -67,7 +67,7 @@ class ParentChildrenWaiterNode(BaseNode):
     def ready_to_process_task(self, task_dict) -> bool:
         context = ProcessingContext(self, task_dict)
         task_id = context.task_field('id')
-        children_count = context.task_field('children_count')
+        children_count = context.task_field('active_children_count')
         if context.task_field('node_input_name') == 'main':
             return task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
 
@@ -84,7 +84,7 @@ class ParentChildrenWaiterNode(BaseNode):
 
     def process_task(self, context) -> ProcessingResult:
         task_id = context.task_field('id')
-        children_count = context.task_field('children_count')
+        children_count = context.task_field('active_children_count')
         recursive = context.param_value('recursive')
 
         with self.__main_lock:
