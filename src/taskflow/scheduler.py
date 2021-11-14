@@ -1295,7 +1295,7 @@ class Scheduler:
                 all_tasks = dict()
                 for group in task_groups:
                     # _dbg = time.perf_counter()
-                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
                                            'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
                                            'task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
                                            'FROM "tasks" '
