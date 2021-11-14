@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from taskflow.scheduler import Scheduler
 
 
-class SliceAwaiting(TypedDict):
-    arrived: Dict[int, dict]  # num in slice -2-> attributes
+class SplitAwaiting(TypedDict):
+    arrived: Dict[int, dict]  # num in split -2-> attributes
     awaiting: Set[int]
     first_to_arrive: Optional[int]
 
@@ -30,19 +30,19 @@ class SplitAwaiterNode(BaseNode):
 
     @classmethod
     def label(cls) -> str:
-        return 'slice gatherer'
+        return 'split gatherer'
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'slice', 'wait', 'synchronization', 'barrier', 'gather', 'core'
+        return 'split', 'wait', 'synchronization', 'barrier', 'gather', 'core'
 
     @classmethod
     def type_name(cls) -> str:
-        return 'slice_waiter'
+        return 'split_waiter'
 
     def __init__(self, name: str):
         super(SplitAwaiterNode, self).__init__(name)
-        self.__cache: Dict[int: SliceAwaiting] = {}
+        self.__cache: Dict[int: SplitAwaiting] = {}
         self.__main_lock = Lock()
         ui = self.get_ui()
         with ui.initializing_interface_lock():
