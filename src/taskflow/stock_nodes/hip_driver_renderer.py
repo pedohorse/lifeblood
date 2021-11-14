@@ -25,6 +25,18 @@ class HipDriverRenderer(BaseNode):
     def type_name(cls) -> str:
         return 'hip_driver_renderer'
 
+    @classmethod
+    def description(cls) -> str:
+        return 'renders given driver node\n' \
+               ':hip path: hip file to open\n' \
+               ':rop node path: path to rop node to render inside hip\n' \
+               ':set these attribs as context: given attribs will be set as global contest in hip. this allows to use them just like in TOPs: with @attribname syntax\n' \
+               '    NOTE: your attribute names must be houdini-compatible for that. Taskflow is way more permissive for attribute names\n' \
+               ':render whole range (needed for alembics):\n' \
+               ':skip if result already exists:\n' \
+               ':override output path:\n' \
+               ':use specific parameter name for output:\n'
+
     def __init__(self, name):
         super(HipDriverRenderer, self).__init__(name)
         ui = self.get_ui()
@@ -34,16 +46,21 @@ class HipDriverRenderer(BaseNode):
             ui.add_parameter('hip path', 'hip path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ignore inputs', 'ignore rop inputs', NodeParameterType.BOOL, True)
+            ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
             ui.add_parameter('whole range', 'render whole range (needed for alembics)', NodeParameterType.BOOL, False)
+            with ui.parameters_on_same_line_block():
+                skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
+                ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).add_visibility_condition(skipparam, '==', True)
             with ui.parameters_on_same_line_block():
                 override = ui.add_parameter('do override output', 'override output path', NodeParameterType.BOOL, False)
                 ui.add_parameter('override output', None, NodeParameterType.STRING, '').add_visibility_condition(override, '==', True)
             with ui.parameters_on_same_line_block():
-                pnoverride = ui.add_parameter('do override parmname', 'use specific parameter name', NodeParameterType.BOOL, False)
-                pnoverride.add_visibility_condition(override, '==', True)
+                pnoverride = ui.add_parameter('do override parmname', 'use specific parameter name for output', NodeParameterType.BOOL, False)
                 ui.add_parameter('override parmname', None, NodeParameterType.STRING, 'sopoutput').add_visibility_condition(pnoverride, '==', True)
 
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '*')
+            ui.add_parameter('attrs to extract', 'detail attributes to extract', NodeParameterType.STRING, '')
+            ui.add_parameter('intrinsics to extract', 'detail intrinsics to extract', NodeParameterType.STRING, '')
 
     def process_task(self, context) -> ProcessingResult:
         """
@@ -62,62 +79,105 @@ class HipDriverRenderer(BaseNode):
         frames = attrs['frames']
         matching_attrnames = match(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
+        attr_to_promote_mask = context.param_value('attrs to extract').strip()
+        intr_to_promote_mask = context.param_value('intrinsics to extract').strip()
+        attr_to_context = match(context.param_value('attrs to context'), attrs.keys())
 
         env = InvocationEnvironment()
 
-        spawnlines = \
-             "kwargs = {{'frames': {frames}}}\n" \
-            f"for attr, val in {repr(attr_to_trans)}:\n" \
-            f"    kwargs[attr] = val\n" \
-            f"kwargs['hipfile'] = {repr(hippath)}\n" \
-            f"if node.parm('filename'):\n" \
-            f"    kwargs['file'] = node.evalParm('filename')\n" \
-            f"if node.parm('sopoutput'):\n" \
-            f"    kwargs['file'] = node.evalParm('sopoutput')\n" \
-            f"taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
+        spawnlines =       "kwargs = {{'frames': {frames}}}\n" \
+                          f"for attr, val in {repr(attr_to_trans)}:\n" \
+                          f"    kwargs[attr] = val\n" \
+                          f"kwargs['hipfile'] = {repr(hippath)}\n" \
+                          f"kwargs['file'] = node.evalParm(output_parm_name)\n"
+        if attr_to_promote_mask != '' or intr_to_promote_mask != '':
+            spawnlines += f"geo = hou.Geometry()\n" \
+                          f"geo.loadFromFile(node.parm(output_parm_name).evalAsString())\n"
+            if attr_to_promote_mask != '':
+                spawnlines += \
+                          f"detail_attrs_names = geo.intrinsicValue('globalattributes')\n" \
+                          f"if not isinstance(detail_attrs_names, (tuple, list)):  # believe it or not - in case of a single attrib - the return value is a string, not a tuple!\n" \
+                          f"    detail_attrs_names = (detail_attrs_names,)\n" \
+                          f"for detail_attr_name in (x for x in detail_attrs_names if hou.patternMatch({repr(attr_to_promote_mask)}, x)):\n" \
+                          f"    kwargs[detail_attr_name] = geo.attribValue(detail_attr_name)\n"
+            if intr_to_promote_mask != '':
+                spawnlines += \
+                          f"for intrinsic_name in geo.intrinsicNames():\n" \
+                          f"    if not hou.patternMatch({repr(intr_to_promote_mask)}, intrinsic_name):\n" \
+                          f"        continue\n" \
+                          f"    kwargs[intrinsic_name] = geo.intrinsicValue(intrinsic_name)\n"
+            spawnlines += f"geo.clear()\n"
+        spawnlines +=     f"taskflow_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = None
 
         script = \
+            f'import os\n' \
             f'import hou\n' \
             f'import taskflow_connection\n' \
             f'print("opening file" + {repr(hippath)})\n' \
             f'hou.hipFile.load("{hippath}")\n' \
             f'node = hou.node("{driverpath}")\n'
+
+        for attrname in attr_to_context:
+            script += f'hou.setContextOption({repr(attrname)}, {repr(attrs[attrname])})\n'
+
+        if context.param_value('do override parmname'):
+            parm_name = context.param_value('override parmname')
+            script += \
+                f'output_parm_name = "{parm_name}"\n'
+        else:  # try to autodetect
+            script += \
+                f'if node.type().name() in ("geometry", "rop_geometry"):\n' \
+                f'    output_parm_name = "sopoutput"\n' \
+                f'elif node.type().name() in ("alembic", "rop_alembic"):\n' \
+                f'    output_parm_name = "filename"\n' \
+                f'elif node.parm("sopoutput"):  # blindly trying common names\n' \
+                f'    output_parm_name = "sopoutput"\n' \
+                f'elif node.parm("filename"):\n' \
+                f'    output_parm_name = "filename"\n' \
+                f'else:\n' \
+                f'    raise RuntimeError("cannot autodetect output parameter for given node type %s " % node.type().name())\n'
+
         if context.param_value('do override output'):
             override_path = context.param_value('override output').strip()
             if override_path != '':
-                if context.param_value('do override parmname'):
-                    parm_name = context.param_value('override parmname')
-                    script += \
-                        f'node.parm("{parm_name}").set("{override_path}")\n'
-                else:  # try to autodetect
-                    script += \
-                        f'if node.type().name() in ("geometry", "rop_geometry"):\n' \
-                        f'    output_parm = "sopoutput"\n' \
-                        f'elif node.type().name() in ("alembic", "rop_alembic"):\n' \
-                        f'    output_parm = "filename"\n' \
-                        f'else:\n' \
-                        f'    raise RuntimeError("cannot autodetect output parameter for given node type %s " % node.type().name())\n' \
-                        f'node.parm(output_parm).set("{override_path}")\n'
+                script += f'node.parm(output_parm_name).set("{override_path}")\n'
 
         if context.param_value('whole range'):
             script += \
-                f'hou.setFrame({frames[0]})\n'\
-                f'node.render(frame_range=({frames[0]}, {frames[-1]}, {frames[min(1, len(frames)-1)] - frames[0] or 1}), ignore_inputs={context.param_value("ignore inputs")})\n'
+                f'hou.setFrame({frames[0]})\n' \
+                f'skipped = False\n'
+            if context.param_value('skip if exists'):
+                script += 'skipped = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
+
+            script += 'if skipped:\n' \
+                      '    print("output file already exists, skipping")\n' \
+                      'else:\n' \
+                      f'    node.render(frame_range=({frames[0]}, {frames[-1]}, {frames[min(1, len(frames)-1)] - frames[0] or 1}), ignore_inputs={context.param_value("ignore inputs")})\n'
             if spawnlines is not None:
-                script += \
-                    spawnlines.format(frames=repr(frames))
+                script +=  f'if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
+                spawnlines = spawnlines.format(frames=repr(frames))
+                script += '\n'.join(f'    {line}' for line in spawnlines.split('\n')) + '\n'
+
         else:
             script += \
                 f'for frame in {repr(frames)}:\n' \
                 f'    hou.setFrame(frame)\n' \
-                f'    print("rendering frame %d" % frame)\n' \
-                f'    node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n'
+                f'    skipped = False\n'
+            if context.param_value('skip if exists'):
+                script += '    skipped = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
+
+            script += f'    if skipped:\n' \
+                      f'        print("output file already exists, skipping frame %d" % frame)\n' \
+                      f'    else:\n' \
+                      f'        print("rendering frame %d" % frame)\n' \
+                      f'        node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n'
             if spawnlines is not None:
+                script += f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
                 spawnlines = spawnlines.format(frames='[frame]')
-                script += '\n'.join(f'    {line}' for line in spawnlines.split('\n')) + '\n'
+                script += '\n'.join(f'        {line}' for line in spawnlines.split('\n')) + '\n'
 
         script += f'print("all done!")\n'
 
