@@ -97,6 +97,16 @@ CREATE INDEX IF NOT EXISTS "task_state_paused_idx" ON "tasks" (
 CREATE INDEX IF NOT EXISTS "invoc_state_idx" ON "invocations" (
 	"state"
 );
+CREATE TRIGGER IF NOT EXISTS children_inserted
+AFTER INSERT ON "tasks" WHEN new.parent_id != NULL
+BEGIN
+UPDATE "tasks" SET "children_count" = "children_count" + 1 WHERE "id" == new.parent_id;
+END;
+CREATE TRIGGER IF NOT EXISTS active_children_inserted
+AFTER INSERT ON "tasks" WHEN new.state != 9 AND new.parent_id != NULL
+BEGIN
+UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
+END;
 CREATE TRIGGER IF NOT EXISTS count_dead_children
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state != {dead_state} AND new.state == {dead_state}
 BEGIN
@@ -115,3 +125,5 @@ END;
 COMMIT;
 PRAGMA journal_mode=wal;
 '''.format(dead_state=enums.TaskState.DEAD.value)
+
+# TODO: add after delete triggers for children count

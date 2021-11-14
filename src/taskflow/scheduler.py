@@ -1467,8 +1467,7 @@ class Scheduler:
                         await con.execute('UPDATE tasks SET environment_resolver_data = (SELECT environment_resolver_data FROM tasks WHERE "id" == ?) WHERE "id" == ?',
                                           (parent_task_id, new_id))
 
-                    # inc children count
-                    await con.execute('UPDATE "tasks" SET children_count = children_count + 1 WHERE "id" == ?', (parent_task_id,))
+                    # inc children count happens in db trigger
                     # inherit groups
                     async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
                         groups = [x['group'] for x in await gcur.fetchall()]
