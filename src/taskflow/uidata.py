@@ -241,7 +241,17 @@ class Parameter(ParameterHierarchyLeaf):
         """
 
         if self.__expression is not None:
-            return evaluate_expression(self.__expression, context)
+            result = evaluate_expression(self.__expression, context)
+            # check type and cast
+            if self.__type == NodeParameterType.INT:
+                result = int(result)
+            elif self.__type == NodeParameterType.FLOAT:
+                result = float(result)
+            elif self.__type == NodeParameterType.STRING and not isinstance(result, str):
+                result = str(result)
+            elif self.__type == NodeParameterType.BOOL:
+                result = bool(result)
+            return result
 
         if self.__type != NodeParameterType.STRING:
             return self.__value
