@@ -3,6 +3,7 @@ import asyncio
 import pickle
 import os
 import pathlib
+import math
 from copy import deepcopy
 from .enums import NodeParameterType
 from .processingcontext import ProcessingContext
@@ -159,7 +160,9 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
     try:
-        return eval(expression, {'os': os, 'pathlib': pathlib}, context.locals() if context is not None else {})
+        return eval(expression,
+                    {'os': os, 'pathlib': pathlib, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
+                    context.locals() if context is not None else {})
     except Exception as e:
         raise ParameterExpressionError(e)
 
