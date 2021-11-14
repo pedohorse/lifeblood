@@ -1,3 +1,4 @@
+from . import enums
 sql_init_script = '''
 BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS "worker_groups" (
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	"parent_id"	INTEGER,
 	"children_count"	INTEGER NOT NULL DEFAULT 0,
+	"active_children_count"	INTEGER NOT NULL DEFAULT 0,
 	"state"	INTEGER NOT NULL,
 	"state_details"	TEXT,
 	"paused"	INTEGER DEFAULT 0,
@@ -18,7 +20,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"work_data"	BLOB,
 	"work_data_invocation_attempt"	INTEGER NOT NULL DEFAULT 0,
 	"name"	TEXT,
-	"attributes"	TEXT NOT NULL DEFAULT '{}',
+	"attributes"	TEXT NOT NULL DEFAULT '{{}}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
 	"_invoc_requirement_clause"	TEXT,
 	"environment_resolver_data"	BLOB,
@@ -95,6 +97,16 @@ CREATE INDEX IF NOT EXISTS "task_state_paused_idx" ON "tasks" (
 CREATE INDEX IF NOT EXISTS "invoc_state_idx" ON "invocations" (
 	"state"
 );
+CREATE TRIGGER IF NOT EXISTS count_dead_children
+AFTER UPDATE OF "state" ON "tasks" WHEN old.state != {dead_state} AND new.state == {dead_state}
+BEGIN
+UPDATE "tasks" SET "active_children_count" = "active_children_count" - 1 WHERE "id" == new.parent_id;
+END;
+CREATE TRIGGER IF NOT EXISTS count_undead_children
+AFTER UPDATE OF "state" ON "tasks" WHEN old.state == {dead_state} AND new.state != {dead_state}
+BEGIN
+UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
+END;
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
 BEGIN
@@ -102,4 +114,4 @@ UPDATE "tasks" SET "state_details" = NULL WHERE "id" == new.id;
 END;
 COMMIT;
 PRAGMA journal_mode=wal;
-'''
+'''.format(dead_state=enums.TaskState.DEAD.value)
