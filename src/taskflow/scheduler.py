@@ -550,8 +550,9 @@ class Scheduler:
                 con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
                 #print(f'up till block: {time.perf_counter() - _blo}')
-                await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
-                                  (process_result.output_name, task_id))
+                if process_result.output_name:
+                    await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
+                                      (process_result.output_name, task_id))
                 #_blo = time.perf_counter()
                 #_bla1 = time.perf_counter()
                 if process_result.do_kill_task:
@@ -587,8 +588,11 @@ class Scheduler:
                                           'WHERE  "split_id" = ?',
                                           (task_row['split_id'],))
                         # teleport original task to us
-                        await con.execute('UPDATE tasks SET "node_id" = ?, "state" = ?, "node_output_name" = ? WHERE "id" = ?',
-                                          (task_row['node_id'], TaskState.DONE.value, process_result.output_name, task_row['split_origin_task_id']))
+                        await con.execute('UPDATE tasks SET "node_id" = ?, "state" = ? WHERE "id" = ?',
+                                          (task_row['node_id'], TaskState.DONE.value, task_row['split_origin_task_id']))
+                        if process_result.output_name:
+                            await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
+                                              (process_result.output_name, task_row['split_origin_task_id']))
                                           # so sealed split task will get the same output_name as the task that is sealing the split
                         # and update it's attributes if provided
                         if len(process_result.split_attributes_to_set) > 0:
