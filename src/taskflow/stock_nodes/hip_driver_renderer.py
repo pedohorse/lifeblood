@@ -50,13 +50,13 @@ class HipDriverRenderer(BaseNode):
             ui.add_parameter('whole range', 'render whole range (needed for alembics)', NodeParameterType.BOOL, False)
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
-                ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).add_visibility_condition(skipparam, '==', True)
+                ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
             with ui.parameters_on_same_line_block():
                 override = ui.add_parameter('do override output', 'override output path', NodeParameterType.BOOL, False)
-                ui.add_parameter('override output', None, NodeParameterType.STRING, '').add_visibility_condition(override, '==', True)
+                ui.add_parameter('override output', None, NodeParameterType.STRING, '').append_visibility_condition(override, '==', True)
             with ui.parameters_on_same_line_block():
                 pnoverride = ui.add_parameter('do override parmname', 'use specific parameter name for output', NodeParameterType.BOOL, False)
-                ui.add_parameter('override parmname', None, NodeParameterType.STRING, 'sopoutput').add_visibility_condition(pnoverride, '==', True)
+                ui.add_parameter('override parmname', None, NodeParameterType.STRING, 'sopoutput').append_visibility_condition(pnoverride, '==', True)
 
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '*')
             ui.add_parameter('attrs to extract', 'detail attributes to extract', NodeParameterType.STRING, '')

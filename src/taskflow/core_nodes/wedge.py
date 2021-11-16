@@ -35,11 +35,11 @@ class Wedge(BaseNode):
 
                     ui.add_parameter('attr', 'attribute', NodeParameterType.STRING, 'attr1')
                     ui.add_parameter('from', 'to', NodeParameterType.FLOAT, 0.0)
-                    ui.add_parameter('to', 'count', NodeParameterType.FLOAT, 9.0).add_visibility_condition(typeparm, '==', 0)
-                    ui.add_parameter('count', None, NodeParameterType.INT, 10).add_visibility_condition(typeparm, '==', 0)
+                    ui.add_parameter('to', 'count', NodeParameterType.FLOAT, 9.0).append_visibility_condition(typeparm, '==', 0)
+                    ui.add_parameter('count', None, NodeParameterType.INT, 10).append_visibility_condition(typeparm, '==', 0)
 
-                    ui.add_parameter('max', 'inc by', NodeParameterType.FLOAT, 9.0).add_visibility_condition(typeparm, '==', 1)
-                    ui.add_parameter('inc', None, NodeParameterType.FLOAT, 1).add_visibility_condition(typeparm, '==', 1)
+                    ui.add_parameter('max', 'inc by', NodeParameterType.FLOAT, 9.0).append_visibility_condition(typeparm, '==', 1)
+                    ui.add_parameter('inc', None, NodeParameterType.FLOAT, 1).append_visibility_condition(typeparm, '==', 1)
 
     def process_task(self, context) -> ProcessingResult:
         wedges_count = context.param_value('wedge count')

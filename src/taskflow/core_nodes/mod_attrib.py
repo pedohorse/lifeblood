@@ -40,14 +40,14 @@ class SetAttributes(BaseNode):
                                          ('string', NodeParameterType.STRING.value),
                                          ('integer range', -1)))
 
-                    ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
-                    ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
-                    ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
-                    ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+                    ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
+                    ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
+                    ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
+                    ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
                     # range
-                    ui.add_parameter('rf1value', 'to', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', -1)
-                    ui.add_parameter('rf2value', 'step', NodeParameterType.INT, 9).append_visibility_condition(type_param, '==', -1)
-                    ui.add_parameter('rf3value', '', NodeParameterType.INT, 1).append_visibility_condition(type_param, '==', -1)
+                    ui.add_parameter('rf1value', 'to', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', -1)
+                    ui.add_parameter('rf2value', 'step', NodeParameterType.INT, 9).add_visibility_condition(type_param, '==', -1)
+                    ui.add_parameter('rf3value', '', NodeParameterType.INT, 1).add_visibility_condition(type_param, '==', -1)
             ui.color_scheme().set_main_color(0.15, 0.24, 0.25)
         # # Example how one would initialize multiblock to have initial nonzero value
         # multiblock = list(ui.items())[-1]

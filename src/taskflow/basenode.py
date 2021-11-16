@@ -300,11 +300,11 @@ class BaseNodeWithTaskRequirements(BaseNode):
 #                                              ('json', -1)
 #                                              ))
 #
-#                         ui.add_parameter('main env resolver arg svalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
-#                         ui.add_parameter('main env resolver arg ivalue', 'val', NodeParameterType.INT, 0).add_visibility_condition(type_param, '==', NodeParameterType.INT.value)
-#                         ui.add_parameter('main env resolver arg fvalue', 'val', NodeParameterType.FLOAT, 0.0).add_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
-#                         ui.add_parameter('main env resolver arg bvalue', 'val', NodeParameterType.BOOL, False).add_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
-#                         ui.add_parameter('main env resolver arg jvalue', 'val', NodeParameterType.STRING, '').add_visibility_condition(type_param, '==', -1)
+#                         ui.add_parameter('main env resolver arg svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
+#                         ui.add_parameter('main env resolver arg ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
+#                         ui.add_parameter('main env resolver arg fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
+#                         ui.add_parameter('main env resolver arg bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+#                         ui.add_parameter('main env resolver arg jvalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', -1)
 #
 #     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
 #         result = super(BaseNodeWithEnvironmentRequirements, self)._process_task_wrapper(task_dict)

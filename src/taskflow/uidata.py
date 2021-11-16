@@ -180,7 +180,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__value = None
         self.__menu_items: Optional[Dict[str, str]] = None
         self.__menu_items_order: List[str] = []
-        self.__vis_when = None
+        self.__vis_when = []
         self.__force_hidden = False
         self.__is_readonly = False  # set it False until the end of constructor
 
@@ -403,7 +403,7 @@ class Parameter(ParameterHierarchyLeaf):
         # TODO: butt we want general references, including from parameter expressions
         # TODO: OOOORR will i need references for expressions at all?
         # TODO: references between node bring SOOOO much pain when serializing them separately
-        if self.__vis_when is not None:
+        if self.__vis_when:
             self.__vis_cache = None
             if self.parent() is not None and isinstance(self.parent(), ParametersLayoutBase):
                 self.parent()._children_appearance_changed([self])
@@ -416,16 +416,16 @@ class Parameter(ParameterHierarchyLeaf):
             return False
         if self.__vis_cache is not None:
             return self.__vis_cache
-        if self.__vis_when is not None:
-            other_param, op, value = self.__vis_when
-            if op == '==' and other_param.value() != value \
-                    or op == '!=' and other_param.value() == value \
-                    or op == '>' and other_param.value() <= value \
-                    or op == '>=' and other_param.value() < value \
-                    or op == '<' and other_param.value() >= value \
-                    or op == '<=' and other_param.value() > value:
-                self.__vis_cache = False
-                return False
+        if self.__vis_when:
+            for other_param, op, value in self.__vis_when:
+                if op == '==' and other_param.value() != value \
+                        or op == '!=' and other_param.value() == value \
+                        or op == '>' and other_param.value() <= value \
+                        or op == '>=' and other_param.value() < value \
+                        or op == '<' and other_param.value() >= value \
+                        or op == '<=' and other_param.value() > value:
+                    self.__vis_cache = False
+                    return False
         self.__vis_cache = True
         return True
 
@@ -442,7 +442,7 @@ class Parameter(ParameterHierarchyLeaf):
         assert other_parameter in self.__params_referencing_me
         self.__params_referencing_me.remove(other_parameter)
 
-    def add_visibility_condition(self, other_param: "Parameter", condition: str, value):
+    def append_visibility_condition(self, other_param: "Parameter", condition: str, value):
         """
         condition currently can only be a simplest
         :param other_param:
@@ -453,11 +453,6 @@ class Parameter(ParameterHierarchyLeaf):
 
         assert condition in ('==', '!=', '>=', '<=', '<', '>')
 
-        if self.__vis_when is not None:
-            self.__vis_when[0]._remove_referencing_me(self)
-            # TODO: will need a proper reference reevaluator for when references will also come from expressions, not implemented for now
-            # TODO: OOOORR will i need references for expressions at all?
-
         otype = other_param.type()
         if otype == NodeParameterType.INT:
             value = int(value)
@@ -467,7 +462,7 @@ class Parameter(ParameterHierarchyLeaf):
             value = float(value)
         elif otype != NodeParameterType.STRING:  # for future
             raise RuntimeError(f'cannot add visibility condition check based on this type of parameters: {otype}')
-        self.__vis_when = (other_param, condition, value)
+        self.__vis_when.append((other_param, condition, value))
         other_param._add_referencing_me(self)
         self.__vis_cache = None
 

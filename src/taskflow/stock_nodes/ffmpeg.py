@@ -39,7 +39,7 @@ class Ffmpeg(BaseNode):
             ui.add_parameter('-vcodec', 'codec', NodeParameterType.STRING, 'libx264')
             ui.add_parameter('outpath', 'movie path', NodeParameterType.STRING, '/tmp/movie.mp4')
             docc = ui.add_parameter('docc', 'color correct', NodeParameterType.BOOL, False)
-            ui.add_parameter('cc gamma', 'gamma', NodeParameterType.FLOAT, 1.0).add_visibility_condition(docc, '==', True)
+            ui.add_parameter('cc gamma', 'gamma', NodeParameterType.FLOAT, 1.0).append_visibility_condition(docc, '==', True)
 
     def process_task(self, context) -> ProcessingResult:
         binpath = context.param_value('ffmpeg bin path')
