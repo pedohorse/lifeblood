@@ -442,13 +442,13 @@ class Parameter(ParameterHierarchyLeaf):
         assert other_parameter in self.__params_referencing_me
         self.__params_referencing_me.remove(other_parameter)
 
-    def append_visibility_condition(self, other_param: "Parameter", condition: str, value):
+    def append_visibility_condition(self, other_param: "Parameter", condition: str, value) -> "Parameter":
         """
         condition currently can only be a simplest
         :param other_param:
         :param condition:
         :param value:
-        :return:
+        :return: self to allow easy chaining
         """
 
         assert condition in ('==', '!=', '>=', '<=', '<', '>')
@@ -467,12 +467,13 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_cache = None
 
         self.parent()._children_definition_changed([self])
+        return self
 
-    def add_menu(self, menu_items_pairs):
+    def add_menu(self, menu_items_pairs) -> "Parameter":
         """
         adds UI menu to parameter param_name
         :param menu_items_pairs: dict of label -> value for parameter menu. type of value MUST match type of parameter param_name. type of label MUST be string
-        :return:
+        :return: self to allow easy chaining
         """
         # sanity check and regroup
         my_type = self.type()
@@ -495,6 +496,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__menu_items = menu_items
         self.__menu_items_order = menu_order
         self.parent()._children_definition_changed([self])
+        return self
 
     def has_menu(self):
         return self.__menu_items is not None
