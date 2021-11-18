@@ -46,6 +46,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self.__to_stop = False
         self.__task_group_filter: Optional[Set[str]] = None
         self.__conn: Optional[socket.socket] = None
+        self.__filter_dead = True
 
     def request_interruption(self):
         self.__to_stop = True  # assume it's atomic, which it should be
@@ -184,6 +185,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error('scheduler connection lost')
             return
         uidata = UiData.deserialize_noasync(uidatabytes)
+        if self.__filter_dead:
+            uidata = UiData(ui_nodes=uidata.nodes(),
+                            ui_connections=uidata.connections(),
+                            ui_tasks={k: v for k, v in uidata.tasks().items() if v['state'] != TaskState.DEAD.value},
+                            ui_workers=uidata.workers(),
+                            all_task_groups=uidata.task_groups())
         self.full_update.emit(uidata)
 
     @Slot(int)
