@@ -105,7 +105,7 @@ class WorkerModel(QAbstractTableModel):
         # update
         for key in old_keys.intersection(new_keys):
             self.__workers[key].update(new_workers[key])
-            self.dataChanged.emit(self.index(self.__inv_order[key], 0), self.index(self.__inv_order[key], self.rowCount() - 1))
+            self.dataChanged.emit(self.index(self.__inv_order[key], 0), self.index(self.__inv_order[key], self.columnCount() - 1))
 
         # insert
         to_insert = new_keys - old_keys
