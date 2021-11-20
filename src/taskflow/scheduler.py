@@ -75,6 +75,7 @@ class Scheduler:
         
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
+        self.__db_cache = {'workers_state': {}}
 
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)
@@ -225,6 +226,11 @@ class Scheduler:
             await con.execute('UPDATE "workers" SET "state" = ?', (WorkerState.UNKNOWN.value,))
             await con.commit()
 
+            # update volatile mem cache:
+            async with con.execute('SELECT "id", last_seen, last_checked, ping_state FROM workers') as worcur:
+                async for row in worcur:
+                    self.__db_cache['workers_state'][row['id']] = {k: row[k] for k in dict(row)}
+
         # start
         await self.__worker_pool.start()
         self.__server = await self.__server_coro
@@ -255,8 +261,8 @@ class Scheduler:
     #
     # helper functions
     #
-    async def set_worker_ping_state(self, wid: int, state: WorkerPingState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
-        await self._set_value('workers', 'ping_state', wid, state.value, con, nocommit)
+    # async def set_worker_ping_state(self, wid: int, state: WorkerPingState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
+    #     await con.execute("UPDATE tmpdb.tmp_workers_states SET ping_state= ? WHERE worker_id = ?", (state.value, wid))
 
     async def set_worker_state(self, wid: int, state: WorkerState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
         await self._set_value('workers', 'state', wid, state.value, con, nocommit)
@@ -281,8 +287,8 @@ class Scheduler:
             raise ValueError(f'worker with given wid={wid} was not found')
         return WorkerState(res[0])
 
-    async def update_worker_lastseen(self, wid: int, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False):
-        await self._set_value('workers', 'last_seen', wid, int(time.time()), con, nocommit)
+    # async def update_worker_lastseen(self, wid: int, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False):
+    #     await con.execute("UPDATE tmpdb.tmp_workers_states SET last_seen= ? WHERE worker_id = ?", (int(time.time()), wid))
 
     async def reset_invocations_for_worker(self, worker_id: int, con: Optional[aiosqlite.Connection] = None):
         async def _inner_(con):
@@ -331,8 +337,10 @@ class Scheduler:
                 return await self.reset_invocations_for_worker(worker_row['id'], con)
 
             self.__pinger_logger.debug('    :: pinger started')
-            await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
-            await self._set_value('workers', 'last_checked', worker_row['id'], int(time.time()), con, nocommit=True)
+            self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.CHECKING.value
+            # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
+            self.__db_cache['workers_state'][worker_row['id']]['last_checked'] = int(time.time())
+            # await con.execute("UPDATE tmpdb.tmp_workers_states SET last_checked = ? WHERE worker_id = ?", (int(time.time()), worker_row['id']))
             await con.commit()
 
             addr = worker_row['last_address']
@@ -341,10 +349,12 @@ class Scheduler:
 
             if not port.isdigit():
                 self.__pinger_logger.debug('    :: malformed address')
-                await asyncio.gather(
-                    self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
-                    self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
-                )
+                self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
+                await self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
+                # await asyncio.gather(
+                #     self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
+                #     self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
+                # )
                 await _check_lastseen_and_drop_invocations()
                 await con.commit()
                 return
@@ -353,19 +363,22 @@ class Scheduler:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
                 self.__pinger_logger.debug('    :: network error')
-                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
+                self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
+                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR)
                 await con.commit()
                 return
             except ConnectionRefusedError as e:
                 self.__pinger_logger.debug('    :: host down %s', str(e))
-                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
+                self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
+                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
                 await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF)
                 await con.commit()
                 return
             except Exception as e:
                 self.__pinger_logger.debug('    :: ping failed %s %s', type(e), e)
-                await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
+                self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
+                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF)
                 await con.commit()
                 return
@@ -396,10 +409,12 @@ class Scheduler:
                 # TODO: think, can there be race condition here so that worker is already doing something else?
                 await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
 
-            await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
-                                 #self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
-                                 self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
-                                 )
+            self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
+            self.__db_cache['workers_state'][worker_row['id']]['last_seen'] = int(time.time())
+            # await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
+            #                      #self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
+            #                      self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
+            #                      )
             await con.commit()
             self.__pinger_logger.debug('    :: %s', ping_code)
 
@@ -471,10 +486,20 @@ class Scheduler:
                 nowtime = time.time()
 
                 self.__pinger_logger.debug('    ::selecting workers...')
-                async with con.execute("SELECT * from workers WHERE ping_state != ?", (WorkerPingState.CHECKING.value,)) as cur:
+                async with con.execute('SELECT '
+                                       '"id", cpu_count, mem_size, gpu_count, gmem_size, last_address, worker_type, hwid, state '
+                                       'FROM workers '
+                                       # 'WHERE tmp_workers_states.ping_state != ?', (WorkerPingState.CHECKING.value,)
+                                       ) as cur:
                     # TODO: don't scan the errored and off ones as often?
 
                     async for row in cur:
+                        row = dict(row)
+                        for cached_field in ('last_seen', 'last_checked', 'ping_state'):
+                            row[cached_field] = self.__db_cache['workers_state'][row['id']][cached_field]
+                        if row['ping_state'] == WorkerPingState.CHECKING.value:
+                            continue
+
                         time_delta = nowtime - (row['last_checked'] or 0)
                         if row['state'] == WorkerState.BUSY.value:
                             tasks.append(asyncio.create_task(self._iter_iter_func(row)))
@@ -510,6 +535,16 @@ class Scheduler:
             self.__logger.debug(f'waiting enough, cancelling {len(pending)} tasks')
             for task in pending:
                 task.cancel()
+        self.__logger.info('pinger syncing temporary tables back...')
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            for wid, cached_row in self.__db_cache['workers_state'].items():
+                await con.execute('UPDATE workers SET '
+                                  'last_seen=?, '
+                                  'last_checked=?, '
+                                  'ping_state=? '
+                                  'WHERE "id"=?',
+                                  (cached_row['last_seen'], cached_row['last_checked'], cached_row['ping_state'], wid))
+            await con.commit()
         self.__logger.info('worker pinger finished')
 
     #
@@ -1021,6 +1056,7 @@ class Scheduler:
                 ping_state = WorkerPingState.OFF.value
                 state = WorkerState.OFF.value
 
+            tstamp = int(time.time())
             if worker_row is not None:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
@@ -1036,18 +1072,38 @@ class Scheduler:
                                    worker_resources.mem_size,
                                    worker_resources.gpu_count,
                                    worker_resources.gmem_size,
-                                   int(time.time()), ping_state, state, worker_type.value, addr))
+                                   tstamp, ping_state, state, worker_type.value, addr))
+                async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
+                    upd_worker_id = (await worcur.fetchone())['id']
+                self.__db_cache['workers_state'][upd_worker_id].update({'last_seen': tstamp,
+                                                                        'last_checked': tstamp,
+                                                                        'ping_state': ping_state,
+                                                                        'worker_id': upd_worker_id})
+                # await con.execute('UPDATE tmpdb.tmp_workers_states SET '
+                #                   'last_seen=?, ping_state=? '
+                #                   'WHERE worker_id=?',
+                #                   (tstamp, ping_state, upd_worker_id))
             else:
-                await con.execute('INSERT INTO "workers" '
-                                  '(hwid, cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state, worker_type) '
-                                  'VALUES '
-                                  '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                  (worker_resources.hwid,
-                                   worker_resources.cpu_count,
-                                   worker_resources.mem_size,
-                                   worker_resources.gpu_count,
-                                   worker_resources.gmem_size,
-                                   addr, int(time.time()), ping_state, state, worker_type.value))
+                async with con.execute('INSERT INTO "workers" '
+                                       '(hwid, cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state, worker_type) '
+                                       'VALUES '
+                                       '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                       (worker_resources.hwid,
+                                        worker_resources.cpu_count,
+                                        worker_resources.mem_size,
+                                        worker_resources.gpu_count,
+                                        worker_resources.gmem_size,
+                                        addr, tstamp, ping_state, state, worker_type.value)) as insworcur:
+                    new_worker_id = insworcur.lastrowid
+                self.__db_cache['workers_state'][new_worker_id] = {'last_seen': tstamp,
+                                                                   'last_checked': tstamp,
+                                                                   'ping_state': ping_state,
+                                                                   'worker_id': new_worker_id}
+                # await con.execute('INSERT INTO tmpdb.tmp_workers_states '
+                #                   '(worker_id, last_seen, ping_state) '
+                #                   'VALUES '
+                #                   '(?, ?, ?)',
+                #                   (new_worker_id, tstamp, ping_state))
             await con.commit()
 
     #
@@ -1322,13 +1378,13 @@ class Scheduler:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
-            async with con.execute('SELECT workers."id", cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations.progress, '
+            async with con.execute('SELECT workers."id", cpu_count, mem_size, gpu_count, gmem_size, last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations.progress, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
                                    'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
                                    'LEFT JOIN worker_groups ON workers."id" == worker_groups.worker_id '
                                    'GROUP BY workers."id"') as cur:
-                all_workers = tuple(dict(x) for x in await cur.fetchall())
+                all_workers = tuple({**dict(x), 'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen']} for x in await cur.fetchall())
             # print(f'workers: {time.perf_counter() - _dbg}')
             data = await create_uidata(all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
