@@ -363,6 +363,8 @@ class Node(NetworkItemWithUI):
                 self.__tasks[i - off] = self.__tasks[i]
                 self.__tasks[i - off].set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
         self.__tasks = self.__tasks[:-off]
+        for x in tasks_to_remove:
+            assert x not in self.__tasks
 
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
@@ -373,6 +375,7 @@ class Node(NetworkItemWithUI):
             self.__tasks[i] = self.__tasks[i + 1]
             self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks = self.__tasks[:-1]
+        assert task_to_remove not in self.__tasks
 
     def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
@@ -1180,6 +1183,7 @@ class Task(NetworkItemWithUI):
         if self.__animation_group is None:
             self.__animation_group = QSequentialAnimationGroup(self.scene())
             self.__animation_group.finished.connect(self._clear_animation_group)
+            self.__animation_group.finished.connect(self.__animation_group.deleteLater)
             self.setParentItem(None)
         self.__final_pos = pos
         self.__final_layer = layer
@@ -1212,6 +1216,7 @@ class Task(NetworkItemWithUI):
         if self.__animation_group is not None:
             ag, self.__animation_group = self.__animation_group, None
             ag.stop()  # just in case some recursion occures
+            ag.deleteLater()
             self.setParentItem(self.__node)
             self.setPos(self.__final_pos)
             self.set_layer(self.__final_layer)
@@ -1317,11 +1322,19 @@ class Task(NetworkItemWithUI):
         imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
 
         # first draw attributes
-        for key, val in self.__ui_attributes.items():
+        if self.__ui_attributes.items():
             imgui.columns(2, 'node_attributes')
-            imgui.text(key)
+            imgui.separator()
+            imgui.text('name')
             imgui.next_column()
-            imgui.text(repr(val))
+            imgui.text('value')
+            imgui.next_column()
+            imgui.separator()
+            for key, val in self.__ui_attributes.items():
+                imgui.text(key)
+                imgui.next_column()
+                imgui.text(repr(val))
+                imgui.next_column()
             imgui.columns(1)
 
         # now draw log
