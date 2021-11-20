@@ -271,7 +271,7 @@ class Worker:
                         env=env
                     )
             except Exception as e:
-                await self.__logger.exception('task creation failed with error: %s' % (repr(e),))
+                self.__logger.exception('task creation failed with error: %s' % (repr(e),))
                 raise
 
             self.__running_task = task
