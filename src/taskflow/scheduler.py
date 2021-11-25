@@ -9,6 +9,7 @@ from enum import Enum
 import asyncio
 import aiosqlite
 import signal
+import threading  # for bugfix
 
 from . import logging
 from . import paths
@@ -33,6 +34,9 @@ from .config import get_config, create_default_user_config_file
 from .misc import atimeit
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
+
+# import tracemalloc
+# tracemalloc.start()
 
 
 class Scheduler:
@@ -420,7 +424,9 @@ class Scheduler:
                 if inv_id is not None:
                     if inv_id not in self.__db_cache['invocations']:
                         self.__db_cache['invocations'][inv_id] = {}
-                    self.__db_cache['invocations'][inv_id].update({'progress': pvalue})
+                    self.__db_cache['invocations'][inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
+                    # Therefore additional cleanup needed later - still better than lock things or check too hard
+
                 # await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
 
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
@@ -759,7 +765,62 @@ class Scheduler:
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self.__stop_event.wait())
         wakeup_task = None
+        gc_counter = 0
+        # tm_counter = 0
         while not self.__stop_event.is_set():
+            gc_counter += 1
+            # tm_counter += 1
+            if gc_counter >= 120:  # TODO: to config this timing
+                gc_counter = 0
+                self.__logger.debug('========')
+                self.__logger.debug('================================================================')
+                with threading._shutdown_locks_lock:
+                    self.__logger.debug(f'loose threads: {len(threading._shutdown_locks)}')
+                    threading._shutdown_locks.difference_update([lock for lock in threading._shutdown_locks if not lock.locked()])
+                    self.__logger.debug(f'loose threads after cleanup: {len(threading._shutdown_locks)}')
+                self.__logger.debug(f'total tasks: {len(asyncio.all_tasks())}')
+
+                def _gszofdr(obj):
+                    sz = sys.getsizeof(obj)
+                    for k, v in obj.items():
+                        sz += sys.getsizeof(k)
+                        sz += sys.getsizeof(v)
+                        if isinstance(v, dict):
+                            sz += _gszofdr(v)
+                    return sz
+
+                # pruning db_cache
+                async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+                    con.row_factory = aiosqlite.Row
+                    async with con.execute('SELECT "id" FROM invocations WHERE state == ?',
+                                           (InvocationState.IN_PROGRESS.value,)) as inv:
+                        filtered_invocs = set(x['id'] for x in await inv.fetchall())
+                for inv in tuple(self.__db_cache['invocations'].keys()):
+                    if inv not in filtered_invocs:  # Note: since task finish/cancel reporting is in the same thread as this - there will not be race conditions for del, as there's no await
+                        del self.__db_cache['invocations'][inv]
+                filtered_invocs.clear()
+                # prune done
+
+                self.__logger.debug(f'size of temp db cache: {_gszofdr(self.__db_cache)}')
+                self.__logger.debug('================================================================')
+                self.__logger.debug('========')
+
+                # self.__logger.debug(f'\n\n {mem_top(verbose_types=[set], limit=16)} \n\n')
+                #  seems that memtop's gc calls cause some random exceptions on db's fetch all
+                #  https://bugs.python.org/issue37788
+                #  https://bugs.python.org/issue15108
+                #  also https://gist.github.com/ulope/db811b6cf853ff267f27e4295bc4739e
+                # import gc
+                # objs = gc.get_objects()
+                # objs = sorted(objs, key=lambda obj: len(gc.get_referents(obj)), reverse=True)
+                # print(repr(gc.get_referrers(objs[0]))[:200])
+                # print('\n')
+                # print(repr(gc.get_referrers(objs[1]))[:200])
+            # if tm_counter >= 10*60*2:
+            #     tm_counter = 0
+            #     snapshot = tracemalloc.take_snapshot()
+            #     top_stats = snapshot.statistics('lineno')
+            #     self.__logger.warning('\n\n[ Top 10 MEM USERS]\n{}\n\n'.format("\n".join(str(stat) for stat in top_stats[:10])))
 
             # first prune awaited tasks
             to_remove = set()
@@ -1347,7 +1408,7 @@ class Scheduler:
     #
     # stuff
     @atimeit(0.001)
-    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None):
+    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
@@ -1381,9 +1442,10 @@ class Scheduler:
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
-                                           'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
-                                           'WHERE task_groups."group" == ? '
-                                           'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value, (group, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
+                                           'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
+                                           'WHERE task_groups."group" == ? {dodead}'
+                                           'GROUP BY tasks."id"'.format(dodead=f'AND tasks.state != {TaskState.DEAD.value} ' if skip_dead else ''),
+                                           (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
                     # print(f'fetch groups: {time.perf_counter() - _dbg}')
                     for task_row in grp_tasks:
