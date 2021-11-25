@@ -1162,6 +1162,7 @@ class Task(NetworkItemWithUI):
             self.__node.remove_task(self)
         if self.__animation_group is not None:
             self.__animation_group.stop()
+            self.__animation_group.deleteLater()
             self.__animation_group = None
         self.__node = node
         self.setParentItem(self.__node)
@@ -1178,13 +1179,16 @@ class Task(NetworkItemWithUI):
         #
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
-        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=self.scene())
         self.set_layer(0)
+        animgroup = self.__animation_group
+        if animgroup is None:
+            animgroup = QSequentialAnimationGroup(self.scene())
+            animgroup.finished.connect(self._clear_animation_group)
+        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=animgroup)
+        self.setParentItem(None)
         if self.__animation_group is None:
-            self.__animation_group = QSequentialAnimationGroup(self.scene())
-            self.__animation_group.finished.connect(self._clear_animation_group)
-            self.__animation_group.finished.connect(self.__animation_group.deleteLater)
-            self.setParentItem(None)
+            self.__animation_group = animgroup
+
         self.__final_pos = pos
         self.__final_layer = layer
         self.__animation_group.addAnimation(new_animation)
@@ -1269,6 +1273,11 @@ class Task(NetworkItemWithUI):
                 #self.__log = None
         elif change == QGraphicsItem.ItemSceneChange:
             if value is None:  # removing item from scene
+                if self.__animation_group is not None:
+                    self.__animation_group.stop()
+                    self.__animation_group.clear()
+                    self.__animation_group.deleteLater()
+                    self.__animation_group = None
                 if self.__node is not None:
                     self.__node.remove_task(self)
         return super(Task, self).itemChange(change, value)  # TODO: maybe move this to scene's remove item?
