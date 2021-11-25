@@ -565,9 +565,13 @@ async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, 
             addr = scheduler_info['worker']
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
-            worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
-            await worker.wait_till_stops()
-            logger.info('worker quited')
+            try:
+                worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+            except Exception:
+                logger.exception('could not start the worker')
+            else:
+                await worker.wait_till_stops()
+                logger.info('worker quited')
             if noloop:
                 break
     else:
