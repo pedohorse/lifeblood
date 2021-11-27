@@ -1457,7 +1457,8 @@ class Scheduler:
                         else:
                             all_tasks[task['id']] = task
             # _dbg = time.perf_counter()
-            async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group";') as cur:
+            #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
+            async with con.execute('SELECT "group", "ctime" FROM task_group_attributes') as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
@@ -1471,6 +1472,7 @@ class Scheduler:
                                      'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen'],
                                      'progress': self.__db_cache['invocations'].get(x['invoc_id'], {}).get('progress', None)
                                      } for x in await cur.fetchall())
+
             # print(f'workers: {time.perf_counter() - _dbg}')
             data = await create_uidata(all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
