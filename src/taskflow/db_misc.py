@@ -90,6 +90,31 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS "invocation_worker_id_state" ON "invocations" (
+	"worker_id",
+	"state"
+);
+CREATE INDEX IF NOT EXISTS "task_groups_groups" ON "task_groups" (
+	"group"
+);
+CREATE INDEX IF NOT EXISTS "invocation_worker_id" ON "invocations" (
+	"worker_id"
+);
+CREATE INDEX IF NOT EXISTS "invocations_task_id" ON "invocations" (
+	"task_id"
+);
+CREATE INDEX IF NOT EXISTS "task_groups_task_id" ON "task_groups" (
+	"task_id"
+);
+CREATE INDEX IF NOT EXISTS "task_node_id" ON "tasks" (
+	"node_id"
+);
+CREATE INDEX IF NOT EXISTS "task_splits_task_id" ON "task_splits" (
+	"task_id"
+);
+CREATE INDEX IF NOT EXISTS "task_state" ON "tasks" (
+	"state"
+);
 CREATE INDEX IF NOT EXISTS "task_state_paused_idx" ON "tasks" (
 	"state",
 	"paused"
@@ -129,6 +154,8 @@ UPDATE "tasks" SET "node_output_name" = NULL WHERE "id" == new.id;
 END;
 COMMIT;
 PRAGMA journal_mode=wal;
+PRAGMA synchronous=NORMAL;
 '''.format(dead_state=enums.TaskState.DEAD.value)
-
+# PRAGMA soft_heap_limit=100000000;
+#PRAGMA synchronous=NORMAL;
 # TODO: add after delete triggers for children count
