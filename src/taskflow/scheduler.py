@@ -32,6 +32,7 @@ from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode
 from .config import get_config, create_default_user_config_file
 from .misc import atimeit
+from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -582,13 +583,15 @@ class Scheduler:
             try:
                 process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
-                async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+                async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
+                                        #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
                     await con.commit()
                 return
             except Exception as e:
-                async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+                async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
+                                        #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value,
                                        json.dumps({'message': traceback.format_exc(),
@@ -602,8 +605,9 @@ class Scheduler:
                 return
 
             # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
-            async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-                con.row_factory = aiosqlite.Row
+            async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
+                                    #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+                #con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
                 #print(f'up till block: {time.perf_counter() - _blo}')
                 if process_result.output_name:
@@ -902,7 +906,7 @@ class Scheduler:
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
                         await con.commit()
                         for coro in awaiters:
-                            tasks_to_wait.add(asyncio.create_task(coro))
+                            tasks_to_wait.add(asyncio.create_task(coro))  # note - dont change to run in executors in threads - there are things here like asyncio locks that RELY ON BEING IN SAME THREAD
                     #
                     # real scheduling should happen here
                     elif task_state == TaskState.READY:
