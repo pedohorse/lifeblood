@@ -1158,6 +1158,8 @@ class Task(NetworkItemWithUI):
     def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
         """
+        need_ui_update = node != self.__node
+
         if self.__node and self.__node != node:
             self.__node.remove_task(self)
         if self.__animation_group is not None:
@@ -1170,7 +1172,8 @@ class Task(NetworkItemWithUI):
             self.setPos(pos)
         if layer is not None:
             self.set_layer(layer)
-        self.refresh_ui()
+        if need_ui_update:
+            self.refresh_ui()
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
         # first try to optimize, if we move on the same node to invisible layer - dont animate
@@ -1196,8 +1199,10 @@ class Task(NetworkItemWithUI):
             self.__animation_group.start()
         if self.__node and self.__node != node:
             self.__node.remove_task(self)
+        need_ui_update = node != self.__node
         self.__node = node
-        self.refresh_ui()
+        if need_ui_update:
+            self.refresh_ui()
 
     def final_location(self) -> (Node, QPointF):
         if self.__animation_group is not None:
