@@ -9,15 +9,9 @@ from taskflow.logging import get_logger
 
 
 class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
-    store_crap = None
 
     async def asyncSetUp(self) -> None:
         get_logger('shared_aiosqlite_connection').setLevel('DEBUG')
-        SharedAsyncSqliteConnectionTest.store_crap = SharedLazyAiosqliteConnection.connection_pool
-        SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()  # why? cuz lock in that connection pool has to be created inside current text loop
-
-    async def asyncTearDown(cls) -> None:
-        SharedLazyAiosqliteConnection.connection_pool = SharedAsyncSqliteConnectionTest.store_crap
 
     async def test_one(self):
         fd, dbpath = tempfile.mkstemp(suffix='.db')
