@@ -73,11 +73,13 @@ class SharedLazyAiosqliteConnection:
     NOTE! To avoid confusion - row_factory of new connection is always set to ROW
     Be VERY mindful of what uses these shared connections!
     """
-    connection_pool = ConnectionPool()
+    connection_pool = None
 
     def __init__(self, conn_pool, db_path: str, cache_name: str, *args, **kwargs):
         if conn_pool is not None:
             raise NotImplementedError()
+        if SharedLazyAiosqliteConnection.connection_pool is None:
+            SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()
         self.__pool = SharedLazyAiosqliteConnection.connection_pool
 
         self.__db_path = db_path
