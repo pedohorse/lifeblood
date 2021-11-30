@@ -350,27 +350,31 @@ class Worker:
             self.__running_awaiter.cancel()
             cancelling_awaiter = self.__running_awaiter
             self.__running_awaiter = None
-            puproc = psutil.Process(self.__running_process.pid)
-            all_proc = puproc.children(recursive=True)
-            all_proc.append(puproc)
-            for proc in all_proc:
-                try:
-                    proc.terminate()
-                except psutil.NoSuchProcess:
-                    pass
-            for i in range(20):  # TODO: make a parameter out of this!
-                if not all(not proc.is_running() for proc in all_proc):
-                    await asyncio.sleep(0.5)
-                else:
-                    break
+            try:
+                puproc = psutil.Process(self.__running_process.pid)
+            except psutil.NoSuchProcess:
+                self.__logger.info(f'cannot find process with pid {self.__running_process.pid}. Assuming it finished. retcode={self.__running_process.returncode}')
             else:
+                all_proc = puproc.children(recursive=True)
+                all_proc.append(puproc)
                 for proc in all_proc:
-                    if not proc.is_running():
-                        continue
                     try:
-                        proc.kill()
+                        proc.terminate()
                     except psutil.NoSuchProcess:
                         pass
+                for i in range(20):  # TODO: make a parameter out of this!
+                    if not all(not proc.is_running() for proc in all_proc):
+                        await asyncio.sleep(0.5)
+                    else:
+                        break
+                else:
+                    for proc in all_proc:
+                        if not proc.is_running():
+                            continue
+                        try:
+                            proc.kill()
+                        except psutil.NoSuchProcess:
+                            pass
 
             await self.__running_process.wait()
 
@@ -409,6 +413,9 @@ class Worker:
         :return:
         """
         async with self.__task_changing_state_lock:
+            if self.__running_process is None:
+                self.__logger.warning('task_finished called, but there is no running task. This can only normally happen if a task_cancel happened the same moment as finish.')
+                return
             self.__logger.info('task finished')
             self.__logger.info(f'reporting done back to {self.__where_to_report}')
             self.__running_task.finish(await self.__running_process.wait())
@@ -454,12 +461,22 @@ class Worker:
         """
 
         async def _reintroduce_ourself():
-            async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                assert self.__my_addr is not None
-                addr = '%s:%d' % self.__my_addr
-                await client.say_bye(addr)
-                await self.cancel_task()
-                await client.say_hello(addr, self.__worker_type, WorkerResources())
+            for attempt in range(5):
+                self.__logger.debug(f'trying to reintroduce myself, attempt: {attempt + 1}')
+                try:
+                    async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                        assert self.__my_addr is not None
+                        addr = '%s:%d' % self.__my_addr
+                        await client.say_bye(addr)
+                        await self.cancel_task()
+                        await client.say_hello(addr, self.__worker_type, WorkerResources())
+                    break
+                except Exception:
+                    self.__logger.exception('failed to reintroduce myself. sleeping a bit and retrying')
+                    await asyncio.sleep(10)
+            else:  # failed to reintroduce. consider that something is wrong with the network, stop
+                self.__logger.error('failed to reintroduce myself. assuming network problems, exiting')
+                self.stop()
 
         exit_wait = asyncio.create_task(self.__scheduler_pinger_stop_event.wait())
         while True:
