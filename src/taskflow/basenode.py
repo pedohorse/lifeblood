@@ -6,7 +6,7 @@ import re
 from copy import copy, deepcopy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
-from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, Parameter
+from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterCannotHaveExpressions, Parameter
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 from .logging import get_logger
@@ -213,6 +213,11 @@ class BaseNode:
                             newparam.set_value(param.unexpanded_value())
                         except ParameterReadonly:
                             newparam._Parameter__value = param.unexpanded_value()
+                        if param.has_expression():
+                            try:
+                                newparam.set_expression(param.expression())
+                            except ParameterCannotHaveExpressions:
+                                pass
                 else:
                     self.__dict__.update(state)
             except AttributeError:

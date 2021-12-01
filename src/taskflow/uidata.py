@@ -385,7 +385,7 @@ class Parameter(ParameterHierarchyLeaf):
         :return:
         """
         if not self.__can_have_expressions:
-            raise RuntimeError('this parameter cannot have expressions')
+            raise ParameterCannotHaveExpressions()
         if expression != self.__expression:
             self.__expression = expression
             if self.parent() is not None:
@@ -557,6 +557,9 @@ class ParameterNameCollisionError(ParameterError):
 class ParameterReadonly(ParameterError):
     pass
 
+
+class ParameterCannotHaveExpressions(ParameterError):
+    pass
 
 class ParametersLayoutBase(ParameterHierarchyItem):
     def __init__(self):
