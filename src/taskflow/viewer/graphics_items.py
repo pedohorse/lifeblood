@@ -766,6 +766,10 @@ class NodeConnection(NetworkItem):
         # return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
         #               QPointF(max(inputpos.x(), outputpos.x()) + hlw, max(inputpos.y(), outputpos.y()) + hlw))
 
+    def shape(self):
+        # this one is mainly needed for proper selection and item picking
+        return self.get_painter_path()
+
     def get_painter_path(self, close_path=False):
         line = QPainterPath()
 
