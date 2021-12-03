@@ -80,6 +80,7 @@ class SharedLazyAiosqliteConnection:
             raise NotImplementedError()
         if SharedLazyAiosqliteConnection.connection_pool is None:
             SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()
+            get_logger('shared_aiosqlite_connection').debug('default connection pool created')
         self.__pool = SharedLazyAiosqliteConnection.connection_pool
 
         self.__db_path = db_path
