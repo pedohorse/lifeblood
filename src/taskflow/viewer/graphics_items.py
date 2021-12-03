@@ -13,7 +13,7 @@ from ..enums import NodeParameterType
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, Signal, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
-from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QKeyEvent
+from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent
 
 import imgui
 
@@ -706,6 +706,7 @@ class NodeConnection(NetworkItem):
         self.__inname = inname
         self.setZValue(-1)
         self.__line_width = 6  # TODO: rename it to match what it represents
+        self.__wire_pick_radius = 15
         self.__pick_radius2 = 100**2
         self.__curv = 150
 
@@ -719,6 +720,9 @@ class NodeConnection(NetworkItem):
         self.__thick_pen = QPen(QColor(144, 144, 144, 128))
         self.__thick_pen.setWidthF(4)
         self.__last_drawn_path: Optional[QPainterPath] = None
+
+        self.__stroker = QPainterPathStroker()
+        self.__stroker.setWidth(2*self.__wire_pick_radius)
 
         nodein.add_connection(self)
         nodeout.add_connection(self)
@@ -760,7 +764,7 @@ class NodeConnection(NetworkItem):
     def boundingRect(self) -> QRectF:
         hlw = self.__line_width
         line = self.get_painter_path()
-        return line.boundingRect().adjusted(-hlw, -hlw, hlw, hlw)
+        return line.boundingRect().adjusted(-hlw - self.__wire_pick_radius, -hlw, hlw + self.__wire_pick_radius, hlw)
         # inputpos = self.__nodeout.get_output_position(self.__outname)
         # outputpos = self.__nodein.get_input_position(self.__inname)
         # return QRectF(QPointF(min(inputpos.x(), outputpos.x()) - hlw, min(inputpos.y(), outputpos.y()) - hlw),
@@ -768,7 +772,7 @@ class NodeConnection(NetworkItem):
 
     def shape(self):
         # this one is mainly needed for proper selection and item picking
-        return self.get_painter_path()
+        return self.__stroker.createStroke(self.get_painter_path())
 
     def get_painter_path(self, close_path=False):
         line = QPainterPath()
@@ -809,8 +813,10 @@ class NodeConnection(NetworkItem):
         if node != self.__nodeout:
             self.__nodeout.remove_connection(self)
             self.__nodeout = node
+            self.__outname = output_name
             self.__nodeout.add_connection(self)
-        self.__outname = output_name
+        else:
+            self.__outname = output_name
 
     def set_input(self, node: Node, input_name: str = 'main'):
         logger.debug(f'reassigning NodeConnection input to {node.get_id()}, {input_name}')
@@ -819,17 +825,18 @@ class NodeConnection(NetworkItem):
         if node != self.__nodein:
             self.__nodein.remove_connection(self)
             self.__nodein = node
+            self.__inname = input_name
             self.__nodein.add_connection(self)
-        self.__inname = input_name
+        else:
+            self.__inname = input_name
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
         event.ignore()
         if event.button() != Qt.LeftButton:
             return
         line = self.get_painter_path(close_path=True)
-        wire_pick_radius = 15
         circle = QPainterPath()
-        circle.addEllipse(event.scenePos(), wire_pick_radius, wire_pick_radius)
+        circle.addEllipse(event.scenePos(), self.__wire_pick_radius, self.__wire_pick_radius)
         if self.__ui_interactor is None and line.intersects(circle):
             logger.debug('---GOT A PEAK AT MY DICK---')
             wgt = event.widget()
