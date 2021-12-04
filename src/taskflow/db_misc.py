@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS "task_parent_id" ON "tasks" (
+	"parent_id"
+);
 CREATE INDEX IF NOT EXISTS "invocation_worker_id_state" ON "invocations" (
 	"worker_id",
 	"state"
@@ -157,5 +160,5 @@ PRAGMA journal_mode=wal;
 PRAGMA synchronous=NORMAL;
 '''.format(dead_state=enums.TaskState.DEAD.value)
 # PRAGMA soft_heap_limit=100000000;
-#PRAGMA synchronous=NORMAL;
+# PRAGMA mmap_size=100000000;
 # TODO: add after delete triggers for children count
