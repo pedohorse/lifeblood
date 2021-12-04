@@ -22,6 +22,9 @@ class ProcessingContext:
                 return self.__stuff[item]
             raise AttributeError(f'task has no field {item}')
 
+        def get(self, item, default):
+            return self.__attributes.get(item, default)
+
     class NodeWrapper:
         def __init__(self, node: "BaseNode", context: "ProcessingContext"):
             self.__parameters: Dict[str, "Parameter"] = {x.name(): x for x in node.get_ui().parameters()}
@@ -53,8 +56,14 @@ class ProcessingContext:
     def task_attribute(self, attrib_name: str):
         return self.__task_attributes[attrib_name]
 
+    def task_has_attribute(self, attrib_name: str):
+        return attrib_name in self.__task_attributes
+
     def task_attributes(self) -> MappingProxyType:
         return MappingProxyType(self.__task_attributes)
 
     def task_field(self, field_name: str, default_value=None):
         return self.__task_dict.get(field_name, default_value)
+
+    def task_has_field(self, field_name: str):
+        return field_name in self.__task_dict
