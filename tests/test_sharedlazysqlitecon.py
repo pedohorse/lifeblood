@@ -95,7 +95,6 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
     async def conuser(self, i, delay, conname, dbpath):
         print(f'{conname}: {i} start')
         await asyncio.sleep(delay)
-        raise RuntimeError()
         async with SharedLazyAiosqliteConnection(None, dbpath, conname, timeout=15) as con:
             print(f'{conname}: {i} connec')
             await asyncio.sleep(delay)
