@@ -64,8 +64,10 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
             cnt = 25
             names = ('alice', 'bob', 'vitalik')
             check_task = asyncio.create_task(_consistency_checker())
-            await asyncio.gather(*[self.conuser(x, rand.uniform(0, 1), name, dbpath) for x in range(cnt) for name in names])
-            _consistency_checker_stop_event.set()
+            try:
+                await asyncio.gather(*[self.conuser(x, rand.uniform(0, 1), name, dbpath) for x in range(cnt) for name in names])
+            finally:
+                _consistency_checker_stop_event.set()
             print('stoppen!')
             await check_task
 
@@ -93,6 +95,7 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
     async def conuser(self, i, delay, conname, dbpath):
         print(f'{conname}: {i} start')
         await asyncio.sleep(delay)
+        raise RuntimeError()
         async with SharedLazyAiosqliteConnection(None, dbpath, conname, timeout=15) as con:
             print(f'{conname}: {i} connec')
             await asyncio.sleep(delay)
