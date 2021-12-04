@@ -2,6 +2,7 @@ import time
 
 from taskflow.basenode import BaseNodeWithTaskRequirements
 from taskflow.invocationjob import InvocationJob, InvocationEnvironment
+from taskflow.processingcontext import ProcessingContext
 from taskflow.nodethings import ProcessingResult
 from taskflow.uidata import NodeParameterType
 
@@ -52,8 +53,8 @@ class Python(BaseNodeWithTaskRequirements):
 
     def process_task(self, context) -> ProcessingResult:
         class _TaskHelper:
-            def __init__(self, attribs: MappingProxyType, readonly: bool):
-                self.__attribs = attribs
+            def __init__(self, context: ProcessingContext, readonly: bool):
+                self.__context = context
                 self.__overrides = {}
                 self.__todel = set()
                 self.__readonly = readonly
@@ -63,7 +64,7 @@ class Python(BaseNodeWithTaskRequirements):
                     raise KeyError(f'key {item} was deleted')
                 if item in self.__overrides:
                     return self.__overrides[item]
-                return self.__attribs[item]
+                return self.__context.task_attribute(item)
 
             def __setitem__(self, key, value):
                 if self.__readonly:
@@ -79,8 +80,13 @@ class Python(BaseNodeWithTaskRequirements):
                     del self.__overrides[key]
                 self.__todel.add(key)
 
+            def __getattr__(self, item):
+                if not self.__context.task_has_field(item):
+                    raise AttributeError(f'task has not field {item}')
+                return self.__context.task_field(item)
+
             def attribute_names(self):
-                return set(self.__attribs.keys()) | set(self.__overrides.keys())
+                return set(self.__context.task_attributes().keys()) | set(self.__overrides.keys())
 
             def _overrides(self):
                 return self.__overrides
@@ -92,7 +98,7 @@ class Python(BaseNodeWithTaskRequirements):
             nonlocal do_schedule
             do_schedule = True
 
-        task_helper = _TaskHelper(context.task_attributes(), readonly=False)
+        task_helper = _TaskHelper(context, readonly=False)
 
         exec_locals = {'task': task_helper, 'schedule': _set_sched}
         do_schedule = False
