@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
 	"_invoc_requirement_clause"	TEXT,
 	"environment_resolver_data"	BLOB,
+	"dead"	INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("parent_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE SET NULL
 );
@@ -90,6 +91,9 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS "task_dead" ON "tasks" (
+	"dead"
+);
 CREATE INDEX IF NOT EXISTS "task_parent_id" ON "tasks" (
 	"parent_id"
 );
@@ -135,15 +139,17 @@ AFTER INSERT ON "tasks" WHEN new.state != {dead_state} AND new.parent_id IS NOT 
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
 END;
-CREATE TRIGGER IF NOT EXISTS count_dead_children
+CREATE TRIGGER IF NOT EXISTS tasks_turning_dead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state != {dead_state} AND new.state == {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" - 1 WHERE "id" == new.parent_id;
+UPDATE "tasks" SET "dead" = 0 WHERE "id" == new."id";
 END;
-CREATE TRIGGER IF NOT EXISTS count_undead_children
+CREATE TRIGGER IF NOT EXISTS tasks_turning_undead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state == {dead_state} AND new.state != {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
+UPDATE "tasks" SET "dead" = 1 WHERE "id" == new."id";
 END;
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state

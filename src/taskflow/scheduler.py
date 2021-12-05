@@ -845,7 +845,10 @@ class Scheduler:
 
                 for task_state in (TaskState.WAITING, TaskState.READY, TaskState.DONE, TaskState.POST_WAITING, TaskState.SPAWNED):
                     _debug_sel = time.perf_counter()
-                    async with con.execute('SELECT tasks.*, nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, '
+                                           'tasks.node_id, tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.attributes, tasks.split_level, '
+                                           'tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, tasks.environment_resolver_data, '
+                                           'nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
                                            'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                            'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
                                            'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
@@ -1448,7 +1451,7 @@ class Scheduler:
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
                                            'WHERE task_groups."group" == ? {dodead}'
-                                           'GROUP BY tasks."id"'.format(dodead=f'AND tasks.state != {TaskState.DEAD.value} ' if skip_dead else ''),
+                                           'GROUP BY tasks."id"'.format(dodead=f'AND tasks.dead == 0 ' if skip_dead else ''),
                                            (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
                     # print(f'fetch groups: {time.perf_counter() - _dbg}')
