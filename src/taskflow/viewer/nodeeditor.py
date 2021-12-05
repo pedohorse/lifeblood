@@ -1239,6 +1239,17 @@ class NodeEditor(QGraphicsView):
         if do_recache:
             self.resetCachedContent()
 
+    def focusInEvent(self, event):
+        # just in case we will drop all imgui extra keys
+        event.accept()
+        if self.__imgui_input_blocked:
+            return
+        if not self.__imgui_init:
+            return
+        io = imgui.get_io()
+        for key in imgui_key_map.values():
+            io.keys_down[key] = False
+
     # def _map_keys(self):
     #     key_map = imgui.get_io().key_map
     #
