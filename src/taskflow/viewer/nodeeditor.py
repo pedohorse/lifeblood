@@ -1249,6 +1249,7 @@ class NodeEditor(QGraphicsView):
         io = imgui.get_io()
         for key in imgui_key_map.values():
             io.keys_down[key] = False
+        io.key_ctrl = False
 
     # def _map_keys(self):
     #     key_map = imgui.get_io().key_map
