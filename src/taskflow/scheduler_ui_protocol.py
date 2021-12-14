@@ -55,10 +55,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 # get full nodegraph state. only brings in where is which item, no other details
                 if command == b'getfullstate':
                     task_groups = []
+                    skip_dead = struct.unpack('>?', await reader.readexactly(1))[0]
                     for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
                         task_groups.append(await read_string())
 
-                    uidata = await self.__scheduler.get_full_ui_state(task_groups)
+                    uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead)
                     uidata_ser = await uidata.serialize(compress=True)
                     writer.write(struct.pack('>Q', len(uidata_ser)))
                     writer.write(uidata_ser)
