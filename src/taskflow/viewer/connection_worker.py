@@ -46,7 +46,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self.__to_stop = False
         self.__task_group_filter: Optional[Set[str]] = None
         self.__conn: Optional[socket.socket] = None
-        self.__filter_dead = True
+        # self.__filter_dead = True
+        self.__skip_dead = False
 
     def request_interruption(self):
         self.__to_stop = True  # assume it's atomic, which it should be
@@ -142,6 +143,13 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
         return recv_exactly(self.__conn, btlen).decode('UTF-8')
 
+    def skip_dead(self) -> bool:
+        return self.__skip_dead
+
+    @Slot(bool)
+    def set_skip_dead(self, do_skip: bool) -> None:
+        self.__skip_dead = do_skip
+
     @Slot()
     def check_scheduler(self):
         if self.interruption_requested():
@@ -158,6 +166,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         try:
             self.__conn.sendall(b'getfullstate\n')
+            self.__conn.sendall(struct.pack('>?', self.__skip_dead))
             if not self.__task_group_filter:
                 self.__conn.sendall(struct.pack('>I', 0))
             else:
@@ -185,12 +194,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error('scheduler connection lost')
             return
         uidata = UiData.deserialize_noasync(uidatabytes)
-        if self.__filter_dead:
-            uidata = UiData(ui_nodes=uidata.nodes(),
-                            ui_connections=uidata.connections(),
-                            ui_tasks={k: v for k, v in uidata.tasks().items() if v['state'] != TaskState.DEAD.value},
-                            ui_workers=uidata.workers(),
-                            all_task_groups=uidata.task_groups())
+        # if self.__filter_dead:
+        #     uidata = UiData(ui_nodes=uidata.nodes(),
+        #                     ui_connections=uidata.connections(),
+        #                     ui_tasks={k: v for k, v in uidata.tasks().items() if v['state'] != TaskState.DEAD.value},
+        #                     ui_workers=uidata.workers(),
+        #                     all_task_groups=uidata.task_groups())
         self.full_update.emit(uidata)
 
     @Slot(int)

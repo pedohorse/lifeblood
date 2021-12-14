@@ -1,12 +1,19 @@
+import os
 from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
-from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread
+from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .worker_list import WorkerListWidget
 
 from typing import Dict
+
+mem_debug = 'TASKFLOW_VIEWER_MEM_DEBUG' in os.environ
+
+if mem_debug:
+    import tracemalloc
+    tracemalloc.start()
 
 
 class GroupsModel(QAbstractItemModel):
@@ -143,6 +150,15 @@ class TaskflowViewer(QMainWindow):
         self.__node_editor = NodeEditor(db_path, self.__ui_connection_worker)
         self.__group_list = GroupsView()
         self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        # main menu
+        mbar: QMenuBar = self.menuBar()
+        main_menu = mbar.addMenu('main')
+        main_menu.addAction('Quit').triggered.connect(self.close)
+        view_menu = mbar.addMenu('view')
+        act: QAction = view_menu.addAction('show dead tasks')
+        act.setCheckable(True)
+        act.setChecked(self.__node_editor.dead_shown())
+        act.toggled.connect(self.__node_editor.set_dead_shown)
 
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
@@ -176,8 +192,20 @@ class TaskflowViewer(QMainWindow):
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
 
+        if mem_debug:
+            self.__tracemalloc_timer = QTimer(self)
+            self.__tracemalloc_timer.setInterval(60000)
+            self.__tracemalloc_timer.timeout.connect(self._tmlc_print)
+            self.__tracemalloc_timer.start()
+
         # start
         self.start()
+
+    if mem_debug:
+        def _tmlc_print(self):
+            snapshot = tracemalloc.take_snapshot()
+            top_stats = snapshot.statistics('lineno')
+            print('\n\n[ Top 10 MEM USERS]\n{}\n\n'.format("\n".join(str(stat) for stat in top_stats[:10])))
 
     def update_groups(self, groups):
         do_select = self.__model_main.rowCount() == 0

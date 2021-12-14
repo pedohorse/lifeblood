@@ -171,6 +171,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_cancel_task_requested = Signal(int)
     _signal_add_task_requested = Signal(NewTask)
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
+    _signal_set_skip_dead = Signal(bool)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -236,7 +237,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_cancel_task_requested.connect(self.__ui_connection_worker.cancel_task)
         self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
-        # self.__ui_connection_thread.full_update.connect(self.full_update)
+        self._signal_set_skip_dead.connect(self.__ui_connection_worker.set_skip_dead)
+
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
         self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
@@ -306,6 +308,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_add_task(self, new_task: NewTask):
         self._signal_add_task_requested.emit(new_task)
+
+    def set_skip_dead(self, do_skip: bool) -> None:
+        self._signal_set_skip_dead.emit(do_skip)
+
+    def skip_dead(self) -> bool:
+        return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -847,6 +855,16 @@ class NodeEditor(QGraphicsView):
         self.update()
 
     #
+    # get/set settings
+    #
+    def dead_shown(self) -> bool:
+        return not self.__scene.skip_dead()
+
+    @Slot(bool)
+    def set_dead_shown(self, show: bool):
+        self.__scene.set_skip_dead(not show)
+
+    #
     # Actions
     #
     @Slot()
@@ -1113,18 +1131,6 @@ class NodeEditor(QGraphicsView):
         # start new frame context
         imgui.new_frame()
 
-        if imgui.begin_main_menu_bar():
-            if imgui.begin_menu("File", True):
-
-                clicked_quit, selected_quit = imgui.menu_item(
-                    "Quit", 'Cmd+Q', False, True
-                )
-
-                if clicked_quit:
-                    self.close()
-
-                imgui.end_menu()
-            imgui.end_main_menu_bar()
 
         imgui.core.show_metrics_window()
 
