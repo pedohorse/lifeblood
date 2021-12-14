@@ -143,13 +143,13 @@ CREATE TRIGGER IF NOT EXISTS tasks_turning_dead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state != {dead_state} AND new.state == {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" - 1 WHERE "id" == new.parent_id;
-UPDATE "tasks" SET "dead" = 0 WHERE "id" == new."id";
+UPDATE "tasks" SET "dead" = 1 WHERE "id" == new."id";
 END;
 CREATE TRIGGER IF NOT EXISTS tasks_turning_undead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state == {dead_state} AND new.state != {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
-UPDATE "tasks" SET "dead" = 1 WHERE "id" == new."id";
+UPDATE "tasks" SET "dead" = 0 WHERE "id" == new."id";
 END;
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
