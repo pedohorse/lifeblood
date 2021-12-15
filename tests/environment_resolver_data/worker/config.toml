@@ -1,0 +1,9 @@
+
+[worker]
+listen_to_broadcast = true
+
+[default_env_wrapper]
+## here you can uncomment lines below to specify your own default environment wrapper and default arguments
+## this will only be used by invocation jobs that have NO environment wrappers specified
+# name = TrivialEnvironmentResolver
+# arguments = [ "project_name", "or", "config_name", "idunno", "maybe rez packages requirements?", [1,4,11] ]

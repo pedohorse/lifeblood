@@ -8,12 +8,12 @@ import subprocess
 import time
 import tracemalloc
 
-from taskflow.logging import get_logger
-from taskflow.worker_pool import WorkerPool, create_worker_pool
-from taskflow.enums import WorkerType, WorkerState
-from taskflow.config import get_config
-from taskflow.nethelpers import get_default_addr
-from taskflow import launch
+from lifeblood.logging import get_logger
+from lifeblood.worker_pool import WorkerPool, create_worker_pool
+from lifeblood.enums import WorkerType, WorkerState
+from lifeblood.config import get_config
+from lifeblood.nethelpers import get_default_addr
+from lifeblood import launch
 
 
 class WorkerPoolTests(IsolatedAsyncioTestCase):
@@ -29,7 +29,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         if testdbpath.exists():
             testdbpath.unlink()
         testdbpath.touch()
-        cls._scheduler_proc = subprocess.Popen(['python', '-m', 'taskflow.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
+        cls._scheduler_proc = subprocess.Popen(['python', '-m', 'lifeblood.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', 7979)

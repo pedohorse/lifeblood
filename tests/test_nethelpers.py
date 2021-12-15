@@ -1,7 +1,7 @@
 import asyncio
 from unittest import IsolatedAsyncioTestCase
-from taskflow import broadcasting
-from taskflow import nethelpers
+from lifeblood import broadcasting
+from lifeblood import nethelpers
 
 
 class InterfaceTests(IsolatedAsyncioTestCase):

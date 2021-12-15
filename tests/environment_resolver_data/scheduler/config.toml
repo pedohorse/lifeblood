@@ -1,0 +1,13 @@
+
+[core]
+## you can uncomment stuff below to specify some static values
+## 
+# server_ip = "192.168.0.2"
+# server_port = 7979
+# ui_ip = "192.168.0.2"
+# ui_port = 7989
+
+[scheduler]
+## you may specify here some db to load
+## ore use --db-path cmd argument to override whatever is in the config
+# db_path = "~/some_special_place/main.db"

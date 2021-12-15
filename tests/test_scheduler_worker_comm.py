@@ -8,16 +8,16 @@ import time
 import sqlite3
 import logging
 
-from taskflow.logging import get_logger
-from taskflow.worker import Worker
-from taskflow.scheduler import Scheduler
-from taskflow.taskspawn import NewTask
-from taskflow.enums import WorkerType, WorkerState
-from taskflow.db_misc import sql_init_script
-from taskflow.logging import set_default_loglevel
-from taskflow.config import get_config
-from taskflow.nethelpers import get_default_addr
-from taskflow import launch
+from lifeblood.logging import get_logger
+from lifeblood.worker import Worker
+from lifeblood.scheduler import Scheduler
+from lifeblood.taskspawn import NewTask
+from lifeblood.enums import WorkerType, WorkerState
+from lifeblood.db_misc import sql_init_script
+from lifeblood.logging import set_default_loglevel
+from lifeblood.config import get_config
+from lifeblood.nethelpers import get_default_addr
+from lifeblood import launch
 
 
 def purge_db():

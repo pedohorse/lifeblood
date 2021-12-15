@@ -4,8 +4,8 @@ import aiosqlite
 import random
 import tempfile
 from unittest import IsolatedAsyncioTestCase
-from taskflow.shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection, ConnectionPool
-from taskflow.logging import get_logger
+from lifeblood.shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection, ConnectionPool
+from lifeblood.logging import get_logger
 
 
 class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):

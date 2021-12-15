@@ -1,6 +1,6 @@
 |master|dev|
 |---|---|
-|[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/taskflow/actions/workflows/python-app.yml)|
+|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
 
 ## Task Flow
 is a task/job management package  
@@ -22,4 +22,4 @@ the purpose of this particular task manager is to be:
 - replacement for TOPs for any non-houdini related tasks
 
 ## UNDER DEVELOPMENT
-[task tracking in trello](https://trello.com/b/sSbc8u6M/taskflow)
+[task tracking in trello](https://trello.com/b/sSbc8u6M/lifeblood)

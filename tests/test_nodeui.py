@@ -1,10 +1,10 @@
 from unittest import TestCase
-from taskflow import basenode
-from taskflow.uidata import NodeParameterType, ParameterNameCollisionError
+from lifeblood import basenode
+from lifeblood.uidata import NodeParameterType, ParameterNameCollisionError
 
 from typing import Iterable
 
-from taskflow.nodethings import ProcessingResult
+from lifeblood.nodethings import ProcessingResult
 
 
 class ParamNode(basenode.BaseNode):
