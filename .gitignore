@@ -8,5 +8,8 @@ venv-doc
 imgui.ini
 build
 dist
+pkg_*/build
+pkg_*/dist
+pkg_*/src
 **/otls/backup
 **/houdini/houdini.project
