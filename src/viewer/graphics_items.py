@@ -4,20 +4,20 @@ from math import sqrt
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
-from ..uidata import UiData, NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
-from ..enums import TaskState, InvocationState
-from .. import logging
+from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
+from lifeblood.enums import TaskState, InvocationState
+from lifeblood import logging
 
-from ..enums import NodeParameterType
+from lifeblood.enums import NodeParameterType
 
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import Qt, Slot, Signal, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
+from PySide2.QtCore import Qt, Slot, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
 from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent
 
 import imgui
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union, TYPE_CHECKING
+from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable
 
 from . import nodeeditor
 

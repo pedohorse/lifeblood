@@ -5,16 +5,16 @@ import json
 import time
 import pickle
 
-from ..uidata import UiData, NodeUi
-from ..invocationjob import InvocationJob
-from ..nethelpers import recv_exactly, address_to_ip_port, get_default_addr
-from .. import logging
-from ..enums import NodeParameterType, TaskState
-from ..broadcasting import await_broadcast
-from ..config import get_config
-from ..uidata import Parameter
-from ..net_classes import NodeTypeMetadata
-from ..taskspawn import NewTask
+from lifeblood.uidata import UiData, NodeUi
+from lifeblood.invocationjob import InvocationJob
+from lifeblood.nethelpers import recv_exactly, address_to_ip_port, get_default_addr
+from lifeblood import logging
+from lifeblood.enums import NodeParameterType, TaskState
+from lifeblood.broadcasting import await_broadcast
+from lifeblood.config import get_config
+from lifeblood.uidata import Parameter
+from lifeblood.net_classes import NodeTypeMetadata
+from lifeblood.taskspawn import NewTask
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread

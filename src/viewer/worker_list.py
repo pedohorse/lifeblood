@@ -1,6 +1,6 @@
 from datetime import datetime
-from ..uidata import UiData
-from ..enums import WorkerType, WorkerState
+from lifeblood.uidata import UiData
+from lifeblood.enums import WorkerType, WorkerState
 from .connection_worker import SchedulerConnectionWorker
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView

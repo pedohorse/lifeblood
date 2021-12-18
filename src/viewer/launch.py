@@ -8,8 +8,8 @@ from PySide2.QtCore import QRectF, QFile, Qt
 from .lifeblood_viewer import LifebloodViewer
 from .db_misc import sql_init_script
 
-from .. import paths
-from ..config import create_default_user_config_file
+from lifeblood import paths
+from lifeblood.config import create_default_user_config_file
 
 from . import breeze_resources
 

@@ -3,16 +3,16 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
-from ..uidata import UiData, NodeUi, Parameter
-from ..enums import TaskState, NodeParameterType
-from ..config import get_config
-from .. import logging
-from .. import paths
-from ..net_classes import NodeTypeMetadata
-from ..taskspawn import NewTask
-from ..invocationjob import InvocationJob
+from lifeblood.uidata import UiData, NodeUi, Parameter
+from lifeblood.enums import TaskState, NodeParameterType
+from lifeblood.config import get_config
+from lifeblood import logging
+from lifeblood import paths
+from lifeblood.net_classes import NodeTypeMetadata
+from lifeblood.taskspawn import NewTask
+from lifeblood.invocationjob import InvocationJob
 
-from ..misc import generate_name
+from lifeblood.misc import generate_name
 
 import PySide2.QtCore
 import PySide2.QtGui
