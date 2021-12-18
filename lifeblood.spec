@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['entry.py'],
-             pathex=['venv/lib/python3.8/site-packages/', '/home/xapkohheh/git/lifeblood'],
+             pathex=['venv/lib/python3.8/site-packages/', '/home/xapkohheh/git/taskflow'],
              binaries=[],
              datas=[],
              hiddenimports=[],
