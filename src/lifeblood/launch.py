@@ -1,6 +1,5 @@
 import sys
 import argparse
-from . import config
 from . import logging
 
 
@@ -35,7 +34,10 @@ def main(argv):
     elif opts.command == 'viewer':
         if opts.loglevel is not None:
             logging.set_default_loglevel(opts.loglevel)
-        from .viewer.launch import main
+        try:
+            from lifeblood_viewer.launch import main
+        except ImportError:
+            logging.get_logger('main').error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
         return main(cmd_argv)
 
 
