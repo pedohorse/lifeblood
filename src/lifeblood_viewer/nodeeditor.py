@@ -977,6 +977,8 @@ class NodeEditor(QGraphicsView):
         menu.addAction('show invocation info').triggered.connect(lambda ckeched=False, x=task.get_id(): self.__scene.request_invocation_job(x))
 
         menu.addSeparator()
+        menu.addAction('change attribute').triggered.connect(lambda checked=False, x=task: self._popup_modify_task_widget(x))
+        menu.addSeparator()
 
         if task.paused():
             menu.addAction('resume').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], False))
@@ -1073,6 +1075,22 @@ class NodeEditor(QGraphicsView):
         wgt.accepted.connect(lambda i=node.get_id(), w=wgt: self._popup_create_task_callback(i, w))
         wgt.finished.connect(wgt.deleteLater)
         wgt.show()
+
+    def _popup_modify_task_widget(self, task: Task):
+        wgt = CreateTaskDialog(self, task)
+        wgt.accepted.connect(lambda i=task.get_id(), w=wgt: self._popup_modify_task_callback(i, w))
+        wgt.finished.connect(wgt.deleteLater)
+        wgt.show()
+
+    def _popup_modify_task_callback(self, task_id, wgt: CreateTaskDialog):
+        print(wgt.get_task_name())
+        print(wgt.get_task_groups())
+        changes, deletes = wgt.get_task_changed_attributes()
+        print(f'changes:')
+        for n, v in changes.items():
+            print(f'changed "{n}" = {v}')
+        for n in deletes:
+            print(f'deleted "{n}"')
 
     @Slot(object, object)
     def _popup_show_invocation_info(self, task_id: int, invjob: InvocationJob):

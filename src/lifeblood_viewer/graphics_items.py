@@ -1,6 +1,7 @@
 import json
 
 from math import sqrt
+from types import MappingProxyType
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
@@ -1089,6 +1090,9 @@ class Task(NetworkItemWithUI):
 
     def groups(self):
         return self.__groups
+
+    def attributes(self):
+        return MappingProxyType(self.__ui_attributes)
 
     def in_group(self, group_name):
         return group_name in self.__groups
