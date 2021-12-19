@@ -690,9 +690,9 @@ class Scheduler:
                         async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                             split_task_dict = await cur.fetchone()
                         assert split_task_dict is not None
-                        split_task_attrs = json.loads(split_task_dict['attributes'])
+                        split_task_attrs = json.loads(split_task_dict['attributes'])  # TODO: run in executor
                         split_task_attrs.update(attr_dict)
-                        await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))
+                        await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
                 #print(f'split: {time.perf_counter()-_bla1}')
 
                 #_precum = time.perf_counter()-_blo
@@ -732,7 +732,7 @@ class Scheduler:
                     await submit_transaction.commit()
 
                 task._set_invocation_id(invocation_id)
-                task._set_task_attributes(json.loads(task_row['attributes']))
+                task._set_task_attributes(json.loads(task_row['attributes']))  # TODO: run in executor
                 self.__logger.debug(f'submitting task to {addr}')
                 try:
                     # this is potentially a long operation - db must NOT be locked during it
@@ -1327,6 +1327,52 @@ class Scheduler:
         self.wake()
 
     #
+    # set task name
+    async def set_task_name(self, task_id: int, new_name: str):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            await con.execute('UPDATE "tasks" SET "name" = ? WHERE "id" = ?', (new_name, task_id))
+            await con.commit()
+
+    #
+    # set task groups
+    async def set_task_groups(self, task_id: int, group_names: Iterable[str]):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
+            async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as cur:
+                all_groups = set(x for x in await cur.fetchall())
+            group_names = set(group_names)
+            groups_to_set = group_names - all_groups
+            groups_to_del = all_groups - group_names
+
+            for group_name in groups_to_set:
+                await con.execute('INSERT INTO task_groups (task_id, "group") VALUES (?, ?)', (task_id, group_name))
+            for group_name in groups_to_del:
+                await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
+            await con.commit()
+
+    #
+    # update task attributes
+    async def update_task_attributes(self, task_id: int, attributes_to_update: dict, attributes_to_delete: set):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
+            async with con.execute('SELECT "attributes" FROM tasks WHERE "task_id" = ?', (task_id,)) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                self.__logger.warning(f'update task attributes for {task_id} failed. task id not found.')
+                await con.commit()
+                return
+            attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, row['attributes'])
+            attributes.update(attributes_to_update)
+            for name in attributes_to_delete:
+                if name in attributes:
+                    del attributes[name]
+            await con.execute('UPDATE tasks SET "attributes" = ? WHERE "task_id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
+                                                                                        task_id))
+            await con.commit()
+
+    #
     # node stuff
     async def set_node_name(self, node_id: int, node_name: str) -> str:
         """
@@ -1610,7 +1656,7 @@ class Scheduler:
                     continue
 
                 async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,
+                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,  # TODO: run dumps in executor
                                         TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
                                         node_id, newtask.node_output_name(),
                                         newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:
