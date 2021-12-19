@@ -129,19 +129,22 @@ class LongOperation:
         self.__progress_callback: Generator = self.__progress_callback_factory(self)
         next(self.__progress_callback)
 
-    def _progress(self, opdata):
+    def _progress(self, opdata) -> bool:
         try:
             self.__progress_callback.send(opdata)
         except StopIteration:
             return True
         return False
 
-    def opid(self):
+    def opid(self) -> int:
         return self.__id
+
+    def new_op_data(self) -> "LongOperationData":
+        return LongOperationData(self, None)
 
 
 class LongOperationData:
-    def __init__(self, op: LongOperation, data: Any):
+    def __init__(self, op: LongOperation, data: Any = None):
         self.op = op
         self.data = data
 
@@ -151,7 +154,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_log_has_been_requested = Signal(int, int, int)
     _signal_log_meta_has_been_requested = Signal(int)
     _signal_node_ui_has_been_requested = Signal(int)
-    _signal_task_ui_attributes_has_been_requested = Signal(int)
+    _signal_task_ui_attributes_has_been_requested = Signal(int, object)
     _signal_task_invocation_job_requested = Signal(int)
     _signal_node_has_parameter_requested = Signal(int, str, object)
     _signal_node_parameter_change_requested = Signal(int, object, object)
@@ -168,6 +171,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
     _signal_set_task_node_requested = Signal(int, int)
+    _signal_set_task_name_requested = Signal(int, str)
+    _signal_set_task_groups_requested = Signal(int, set)
     _signal_cancel_task_requested = Signal(int)
     _signal_add_task_requested = Signal(NewTask)
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
@@ -234,6 +239,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
+        #self._signal_set_task_name_requested
+        #self._signal_set_task_groups_requested
         self._signal_cancel_task_requested.connect(self.__ui_connection_worker.cancel_task)
         self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
@@ -246,8 +253,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_log_meta(self, task_id: int):
         self._signal_log_meta_has_been_requested.emit(task_id)
 
-    def request_attributes(self, task_id: int):
-        self._signal_task_ui_attributes_has_been_requested.emit(task_id)
+    def request_attributes(self, task_id: int, operation_data: Optional["LongOperationData"] = None):
+        self._signal_task_ui_attributes_has_been_requested.emit(task_id, operation_data)
 
     def request_invocation_job(self, task_id: int):
         self._signal_task_invocation_job_requested.emit(task_id)
@@ -462,41 +469,45 @@ class QGraphicsImguiScene(QGraphicsScene):
             return
         node.update_nodeui(nodeui)
 
-    @Slot(object, object)
-    def _task_attribs_fetched(self, task_id: int, attribs: dict):
+    @Slot(object, object, object)
+    def _task_attribs_fetched(self, task_id: int, attribs: dict, data: Optional["LongOperationData"] = None):
         task = self.get_task(task_id)
         if task is None:
             logger.warning('attribs fetched, but task not found!')
             return
         task.update_attributes(attribs)
+        if data is not None:
+            data.data = attribs
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)
 
     @Slot(object, object)
     def _task_invocation_job_fetched(self, task_id: int, invjob: InvocationJob):
         self.task_invocation_job_fetched.emit(task_id, invjob)
 
     @Slot(int, str, bool, object)
-    def _node_has_parameter(self, node_id, param_name, exists, data):
+    def _node_has_parameter(self, node_id, param_name, exists, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param_name, exists)
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object, object)
-    def _node_parameter_changed(self, node_id, param, newval, data):
+    def _node_parameter_changed(self, node_id, param, newval, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param.name(), newval)
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object)
-    def _node_parameter_expression_changed(self, node_id, param, data):
+    def _node_parameter_expression_changed(self, node_id, param, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param.name())
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
     @Slot(int, str, str, object, object)
-    def _node_created(self, node_id, node_type, node_name, pos, data: "LongOperationData"):
+    def _node_created(self, node_id, node_type, node_name, pos, data: Optional["LongOperationData"] = None):
         node = Node(node_id, node_type, node_name)
         node.setPos(pos)
         self.addItem(node)
@@ -626,7 +637,10 @@ class QGraphicsImguiScene(QGraphicsScene):
             for meth in dir(self):  # disconnect all signals from worker slots
                 if not meth.startswith('_signal_'):
                     continue
-                getattr(self, meth).disconnect()
+                try:
+                    getattr(self, meth).disconnect()
+                except RuntimeError as e:
+                    logger.warning(f'error disconnecting signal {meth}: {e}')
 
             # disconnect from worker's signals too
             self.__ui_connection_worker.disconnect(self)
@@ -977,7 +991,7 @@ class NodeEditor(QGraphicsView):
         menu.addAction('show invocation info').triggered.connect(lambda ckeched=False, x=task.get_id(): self.__scene.request_invocation_job(x))
 
         menu.addSeparator()
-        menu.addAction('change attribute').triggered.connect(lambda checked=False, x=task: self._popup_modify_task_widget(x))
+        menu.addAction('change attribute').triggered.connect(lambda checked=False, x=task: self._update_attribs_and_popup_modify_task_widget(x))
         menu.addSeparator()
 
         if task.paused():
@@ -1076,7 +1090,17 @@ class NodeEditor(QGraphicsView):
         wgt.finished.connect(wgt.deleteLater)
         wgt.show()
 
+    def _update_attribs_and_popup_modify_task_widget(self, task: Task):
+        def operation(longop: LongOperation):
+            self.__scene.request_attributes(task.get_id(), longop.new_op_data())
+            attribs = yield  # we don't need to use them tho
+            self._popup_modify_task_widget(task)
+
+        self.__scene.add_long_operation(operation)
+
     def _popup_modify_task_widget(self, task: Task):
+        if task.scene() is not self.__scene:  # if task was removed from scene while we were waiting for this function to be called
+            return  # then do nothing
         wgt = CreateTaskDialog(self, task)
         wgt.accepted.connect(lambda i=task.get_id(), w=wgt: self._popup_modify_task_callback(i, w))
         wgt.finished.connect(wgt.deleteLater)
