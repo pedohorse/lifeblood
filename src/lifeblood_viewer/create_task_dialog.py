@@ -40,11 +40,11 @@ class CreateTaskDialog(QDialog):
 
         self.__main_layout = QVBoxLayout(self)
 
-        self.__name_edit = QLineEdit()
+        self.__name_edit = LineEditWithDefaults()
         self.__name_edit.setPlaceholderText('task name')
         self.__main_layout.addWidget(self.__name_edit)
 
-        self.__groups_edit = QLineEdit()
+        self.__groups_edit = LineEditWithDefaults()
         self.__groups_edit.setPlaceholderText('space separated task group list')
         self.__main_layout.addWidget(self.__groups_edit)
 
@@ -60,7 +60,7 @@ class CreateTaskDialog(QDialog):
 
         accept_layout = QHBoxLayout()
         accept_layout.addStretch()
-        self.__ok_btn = QPushButton('Create')
+        self.__ok_btn = QPushButton('Accept')
         self.__cancel_btn = QPushButton('Cancel')
         accept_layout.addWidget(self.__ok_btn)
         accept_layout.addWidget(self.__cancel_btn)
@@ -76,7 +76,9 @@ class CreateTaskDialog(QDialog):
         self.__initial_attrib_names = set()
         if task is not None:
             self.__name_edit.setText(task.name())
+            self.__name_edit.set_current_text_as_default()
             self.__groups_edit.setText(shlex.join(task.groups()))
+            self.__groups_edit.set_current_text_as_default()
             attrs = task.attributes()
             self.__attrcount_spinbox.setValue(len(attrs))
             for i, (name, val) in enumerate(attrs.items()):
