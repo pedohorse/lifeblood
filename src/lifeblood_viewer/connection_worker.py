@@ -30,7 +30,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
-    task_attribs_fetched = Signal(int, dict)
+    task_attribs_fetched = Signal(int, dict, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
     node_has_parameter = Signal(int, str, bool, object)
@@ -220,8 +220,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         else:
             self.log_fetched.emit(task_id, logmeta)
 
-    @Slot(int)
-    def get_task_attribs(self, task_id: int):
+    @Slot(int, object)
+    def get_task_attribs(self, task_id: int, data=None):
         if not self.ensure_connected():
             return
         assert self.__conn is not None
@@ -236,7 +236,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.task_attribs_fetched.emit(task_id, attribs)
+            self.task_attribs_fetched.emit(task_id, attribs, data)
 
     @Slot(int)
     def get_task_invocation_job(self, task_id: int):
@@ -586,6 +586,55 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>QIQ', numtasks, state.value, task_ids[0]))
             if numtasks > 1:
                 self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks - 1), *task_ids[1:]))
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def set_task_name(self, task_id: int, name: str):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tsetname\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+            self._send_string(name)
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def set_task_groups(self, task_id: int, groups: set):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tsetgroups\n')
+            self.__conn.sendall(struct.pack('>QQ', task_id, len(groups)))
+            for group in groups:
+                self._send_string(group)
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def update_task_attributes(self, task_id: int, attribs_to_set: dict, attribs_to_delete: set):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'tupdateattribs\n')
+            data_bytes = pickle.dumps(attribs_to_set)
+            self.__conn.sendall(struct.pack('>QQQ', task_id, len(data_bytes), len(attribs_to_delete)))
+            self.__conn.sendall(data_bytes)
+            for attr in attribs_to_delete:
+                self._send_string(attr)
             assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
