@@ -1,5 +1,6 @@
 import struct
 import pickle
+import json
 import asyncio
 from . import logging
 from .uidata import NodeUi
@@ -40,7 +41,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 raise NotImplementedError(f'protocol version unsupported {proto}')
 
             wait_stop_task = asyncio.create_task(self.__scheduler._stop_event_wait())
-            while True:
+            while True:  # TODO: there is SOO many commands now - that it's better to refactor them into a dict instead of infinite list of IFs
                 readline_task = asyncio.create_task(reader.readline())
                 done, pending = await asyncio.wait((readline_task, wait_stop_task), return_when=asyncio.FIRST_COMPLETED)
                 if wait_stop_task in done:
@@ -228,6 +229,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
                     await self.__scheduler.remove_node_connection(connection_id)
                     writer.write(b'\1')
+                #
+                # task mod
                 elif command == b'tpauselst':  # pause tasks
                     task_ids = [-1]
                     numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
@@ -254,6 +257,26 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     if numtasks > 1:
                         task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
                     await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
+                    writer.write(b'\1')
+                elif command == b'tsetname':  # change task name
+                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    new_name = await read_string()
+                    await self.__scheduler.set_task_name(task_id, new_name)
+                    writer.write(b'\1')
+                elif command == b'tsetgroups':  # set task groups
+                    task_id, strcount = struct.unpack('>QQ', await reader.readexactly(16))
+                    task_groups = set()
+                    for _ in range(strcount):
+                        task_groups.add(await read_string())
+                    await self.__scheduler.set_task_groups(task_id, task_groups)
+                    writer.write(b'\1')
+                elif command == b'tupdateattribs':  # UPDATE task attribs, not set and override completely
+                    task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
+                    attribs_to_update = asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
+                    attribs_to_delete = set()
+                    for _ in range(strcount):
+                        attribs_to_delete.add(await read_string())
+                    await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
                     writer.write(b'\1')
                 # create new task
                 elif command == b'addtask':
