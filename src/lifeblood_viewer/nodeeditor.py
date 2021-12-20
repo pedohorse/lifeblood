@@ -173,6 +173,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
     _signal_set_task_groups_requested = Signal(int, set)
+    _signal_update_task_attributes_requested = Signal(int, dict, set)
     _signal_cancel_task_requested = Signal(int)
     _signal_add_task_requested = Signal(NewTask)
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
@@ -239,8 +240,9 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
-        #self._signal_set_task_name_requested
-        #self._signal_set_task_groups_requested
+        self._signal_set_task_name_requested.connect(self.__ui_connection_worker.set_task_name)
+        self._signal_set_task_groups_requested.connect(self.__ui_connection_worker.set_task_groups)
+        self._signal_update_task_attributes_requested.connect(self.__ui_connection_worker.update_task_attributes)
         self._signal_cancel_task_requested.connect(self.__ui_connection_worker.cancel_task)
         self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
@@ -315,6 +317,15 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_add_task(self, new_task: NewTask):
         self._signal_add_task_requested.emit(new_task)
+
+    def request_rename_task(self, task_id: int, new_name: str):
+        self._signal_set_task_name_requested.emit(task_id, new_name)
+
+    def request_set_task_groups(self, task_id: int, new_groups: Set[str]):
+        self._signal_set_task_groups_requested.emit(task_id, new_groups)
+
+    def request_update_task_attributes(self, task_id: int, attribs_to_update: dict, attribs_to_delete: Set[str]):
+        self._signal_update_task_attributes_requested.emit(task_id, attribs_to_update, attribs_to_delete)
 
     def set_skip_dead(self, do_skip: bool) -> None:
         self._signal_set_skip_dead.emit(do_skip)
@@ -435,6 +446,8 @@ class QGraphicsImguiScene(QGraphicsScene):
                     new_task.setPos(origin_task.scenePos())
                 self.addItem(new_task)
             task = existing_task_ids[id]
+            task.set_name(newdata['name'])
+            task.set_groups(set(newdata['groups']))
             #print(f'setting {task.get_id()} to {newdata["node_id"]}')
             existing_node_ids[newdata['node_id']].add_task(task)
             task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
@@ -1077,9 +1090,6 @@ class NodeEditor(QGraphicsView):
         wgt.setFocus()
 
     def _popup_create_task_callback(self, node_id: int, wgt: CreateTaskDialog):
-        print(wgt.get_task_name())
-        print(wgt.get_task_groups())
-        print(wgt.get_task_attributes())
         new_task = NewTask(wgt.get_task_name(), node_id, task_attributes=wgt.get_task_attributes())
         new_task.add_extra_group_names(wgt.get_task_groups())
         self.__scene.request_add_task(new_task)
@@ -1107,14 +1117,14 @@ class NodeEditor(QGraphicsView):
         wgt.show()
 
     def _popup_modify_task_callback(self, task_id, wgt: CreateTaskDialog):
-        print(wgt.get_task_name())
-        print(wgt.get_task_groups())
-        changes, deletes = wgt.get_task_changed_attributes()
-        print(f'changes:')
-        for n, v in changes.items():
-            print(f'changed "{n}" = {v}')
-        for n in deletes:
-            print(f'deleted "{n}"')
+        name, groups, changes, deletes = wgt.get_task_changes()
+        if len(changes) > 0 or len(deletes) > 0:
+            self.__scene.request_update_task_attributes(task_id, changes, deletes)
+        if name is not None:
+            self.__scene.request_rename_task(task_id, name)
+        if groups is not None:
+            self.__scene.request_set_task_groups(task_id, set(groups))
+        self.__scene.request_attributes(task_id)  # request updated task from scheduler
 
     @Slot(object, object)
     def _popup_show_invocation_info(self, task_id: int, invjob: InvocationJob):
