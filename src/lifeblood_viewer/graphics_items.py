@@ -1079,6 +1079,12 @@ class Task(NetworkItemWithUI):
     def name(self):
         return self.__name
 
+    def set_name(self, name: str):
+        if name == self.__name:
+            return
+        self.__name = name
+        self.refresh_ui()
+
     def state(self):
         return self.__state
 
@@ -1090,6 +1096,12 @@ class Task(NetworkItemWithUI):
 
     def groups(self):
         return self.__groups
+
+    def set_groups(self, groups: Set[str]):
+        if self.__groups == groups:
+            return
+        self.__groups = groups
+        self.refresh_ui()
 
     def attributes(self):
         return MappingProxyType(self.__ui_attributes)
