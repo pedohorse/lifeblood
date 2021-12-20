@@ -272,7 +272,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     writer.write(b'\1')
                 elif command == b'tupdateattribs':  # UPDATE task attribs, not set and override completely
                     task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
-                    attribs_to_update = asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
+                    attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
                     attribs_to_delete = set()
                     for _ in range(strcount):
                         attribs_to_delete.add(await read_string())
