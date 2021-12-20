@@ -1340,13 +1340,15 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as cur:
-                all_groups = set(x for x in await cur.fetchall())
+                all_groups = set(x['group'] for x in await cur.fetchall())
             group_names = set(group_names)
             groups_to_set = group_names - all_groups
             groups_to_del = all_groups - group_names
+            print(task_id, groups_to_set, groups_to_del, all_groups, group_names)
 
             for group_name in groups_to_set:
                 await con.execute('INSERT INTO task_groups (task_id, "group") VALUES (?, ?)', (task_id, group_name))
+                await con.execute('INSERT OR ABORT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, int(datetime.utcnow().timestamp())))
             for group_name in groups_to_del:
                 await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
             await con.commit()
@@ -1357,7 +1359,7 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
-            async with con.execute('SELECT "attributes" FROM tasks WHERE "task_id" = ?', (task_id,)) as cur:
+            async with con.execute('SELECT "attributes" FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 row = await cur.fetchone()
             if row is None:
                 self.__logger.warning(f'update task attributes for {task_id} failed. task id not found.')
@@ -1368,7 +1370,7 @@ class Scheduler:
             for name in attributes_to_delete:
                 if name in attributes:
                     del attributes[name]
-            await con.execute('UPDATE tasks SET "attributes" = ? WHERE "task_id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
+            await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
                                                                                         task_id))
             await con.commit()
 
