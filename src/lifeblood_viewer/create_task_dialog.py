@@ -4,7 +4,7 @@ import shlex
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QSpinBox, QPushButton
 from PySide2.QtCore import Slot, QSize
 
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, List, Set
 if TYPE_CHECKING:
     from .graphics_items import Task
 
@@ -139,6 +139,21 @@ class CreateTaskDialog(QDialog):
             attrs[name] = val
 
         return attrs
+
+    def get_task_changes(self) -> Tuple[Optional[str], Optional[List[str]], dict, set]:
+        """
+        returns all changes made to the defaults
+        calling this makes most sence if you specified non standard default state of the widget
+        otherwise - everything is technically a change...
+        :return: Tuple of:
+                 * name if changed or None
+                 * list of groups if changed or None
+                 * dict of modified attributes
+                 * set of deleted attrib names
+        """
+        return (None if self.__name_edit.is_at_default() else self.__name_edit.text(),
+                None if self.__groups_edit.is_at_default() else shlex.split(self.__groups_edit.text()),
+                *self.get_task_changed_attributes())
 
     def get_task_changed_attributes(self) -> Tuple[dict, set]:
         """
