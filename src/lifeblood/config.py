@@ -169,11 +169,11 @@ class Config:
         clevel = self.__stuff
         for name in names:
             last = name == names[-1]
-            if name not in clevel:
-                if not last:
-                    clevel[name] = {}
-                else:
-                    clevel[name] = value
+            if name not in clevel and not last:
+                clevel[name] = {}
+            if last:
+                clevel[name] = value
+                break
             clevel = clevel[name]
         self.write_config_noasync()
 
