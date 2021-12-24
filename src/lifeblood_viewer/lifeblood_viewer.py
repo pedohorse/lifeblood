@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
+from lifeblood.config import get_config
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .worker_list import WorkerListWidget
@@ -157,8 +158,10 @@ class LifebloodViewer(QMainWindow):
         view_menu = mbar.addMenu('view')
         act: QAction = view_menu.addAction('show dead tasks')
         act.setCheckable(True)
-        act.setChecked(self.__node_editor.dead_shown())
-        act.toggled.connect(self.__node_editor.set_dead_shown)
+        show_dead = get_config('viewer').get_option_noasync('viewer.nodeeditor.display_dead_tasks', self.__node_editor.dead_shown())
+        self.set_dead_shown(show_dead)
+        act.setChecked(show_dead)
+        act.toggled.connect(self.set_dead_shown)
 
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
@@ -206,6 +209,11 @@ class LifebloodViewer(QMainWindow):
             snapshot = tracemalloc.take_snapshot()
             top_stats = snapshot.statistics('lineno')
             print('\n\n[ Top 10 MEM USERS]\n{}\n\n'.format("\n".join(str(stat) for stat in top_stats[:10])))
+
+    def set_dead_shown(self, show):
+        print(f'setting conf to {show}')
+        get_config('viewer').set_option_noasync('viewer.nodeeditor.display_dead_tasks', show)
+        self.__node_editor.set_dead_shown(show)
 
     def update_groups(self, groups):
         do_select = self.__model_main.rowCount() == 0
