@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 	"node_id"	INTEGER NOT NULL,
 	"state"	INTEGER NOT NULL,
 	"return_code"	INTEGER,
+	"log_external"	INTEGER NOT NULL DEFAULT 0,
 	"stdout"	TEXT,
 	"stderr"	TEXT,
 	"progress"	REAL,
