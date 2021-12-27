@@ -1,5 +1,6 @@
 import sys
 import os
+import pathlib
 import traceback
 import time
 from datetime import datetime
@@ -8,6 +9,7 @@ import itertools
 from enum import Enum
 import asyncio
 import aiosqlite
+import aiofiles
 import signal
 import threading  # for bugfix
 
@@ -80,6 +82,10 @@ class Scheduler:
         
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
+
+        self.__use_external_log = False
+        self.__external_log_location: Optional[pathlib.Path] = None
+
         self.__db_cache = {'workers_state': {},
                            'invocations': {}}
 
@@ -1073,8 +1079,14 @@ class Scheduler:
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
-            await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
-                              (stdout, stderr, task.invocation_id()))
+            tasks_to_wait = []
+            if not self.__use_external_log:
+                await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
+                                  (stdout, stderr, task.invocation_id()))
+            else:
+                await con.execute('UPDATE invocations SET "log_external" = 1 WHERE "id" = ?',
+                                  (task.invocation_id(),))
+                tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
 
             if task.invocation_id() in self.__db_cache['invocations']:
                 del self.__db_cache['invocations'][task.invocation_id()]
@@ -1095,7 +1107,18 @@ class Scheduler:
                                   (TaskState.POST_WAITING.value, invocation['task_id']))
 
             await con.commit()
+            if len(tasks_to_wait) > 0:
+                await asyncio.wait(tasks_to_wait)
         self.wake()
+
+    async def _save_external_logs(self, invocation_id, stdout, stderr):
+        logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
+        if not logbasedir.exists():
+            logbasedir.mkdir(exist_ok=True)
+        async with aiofiles.open(logbasedir / 'stdout.log', 'w') as fstdout, \
+                aiofiles.open(logbasedir / 'stderr.log', 'w') as fstderr:
+            await asyncio.gather(fstdout.write(stdout),
+                                 fstderr.write(stderr))
 
     #
     # worker reports canceled task
@@ -1122,11 +1145,19 @@ class Scheduler:
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
-            await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
-                              (stdout, stderr, task.invocation_id()))
+            tasks_to_wait = []
+            if not self.__use_external_log:
+                await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
+                                  (stdout, stderr, task.invocation_id()))
+            else:
+                await con.execute('UPDATE invocations SET "log_external" = 1, "stdout" = null, "stderr" = null WHERE "id" = ?',
+                                  (task.invocation_id(),))
+                tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.WAITING.value, invocation['task_id']))
             await con.commit()
+            if len(tasks_to_wait) > 0:
+                await asyncio.wait(tasks_to_wait)
         self.wake()
 
     #
@@ -1748,7 +1779,7 @@ class Scheduler:
                     all_entries = await cur.fetchall()  # should be exactly 1 or 0
                 for entry in all_entries:
                     entry = dict(entry)
-                    if entry['state'] == InvocationState.IN_PROGRESS.value or entry['stdout'] is None or entry['stderr'] is None:
+                    if entry['state'] == InvocationState.IN_PROGRESS.value:
                         async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry['worker_id'],)) as worcur:
                             workrow = await worcur.fetchone()
                         if workrow is None:
@@ -1757,14 +1788,34 @@ class Scheduler:
                             try:
                                 async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
                                     stdout, stderr = await client.get_log(invocation_id)
-                                await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',
-                                                  (stdout, stderr, invocation_id))
-                                await con.commit()
+                                if not self.__use_external_log:
+                                    await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',
+                                                      (stdout, stderr, invocation_id))
+                                    await con.commit()
+                                # TODO: maybe add else case? save partial log to file?
                             except ConnectionError:
                                 self.__logger.warning('could not connect to worker to get freshest logs')
                             else:
                                 entry['stdout'] = stdout
                                 entry['stderr'] = stderr
+
+                    elif entry['state'] == InvocationState.FINISHED.value and entry['log_external'] == 1:
+                        logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
+                        stdout_path = logbasedir / 'stdout.log'
+                        stderr_path = logbasedir / 'stderr.log'
+                        try:
+                            if stdout_path.exists():
+                                async with aiofiles.open(stdout_path, 'r') as fstdout:
+                                    entry['stdout'] = await fstdout.read()
+                        except IOError:
+                            self.__logger.exception(f'could not read external stdout log for {invocation_id}')
+                        try:
+                            if stderr_path.exists():
+                                async with aiofiles.open(stderr_path, 'r') as fstderr:
+                                    entry['stderr'] = await fstderr.read()
+                        except IOError:
+                            self.__logger.exception(f'could not read external stdout log for {invocation_id}')
+
                     logs[entry['id']] = entry
         return {node_id: logs}
 
@@ -1785,6 +1836,11 @@ default_config = '''
 ## you may specify here some db to load
 ## ore use --db-path cmd argument to override whatever is in the config
 # db_path = "~/some_special_place/main.db"
+
+[scheduler.database]
+## uncomment line below to store task logs outside of the database
+# store_logs_externally = true
+# store_logs_externally_location = /path/to/dir/where/to/store/logs
 '''
 
 
