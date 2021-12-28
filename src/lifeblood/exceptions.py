@@ -1,3 +1,11 @@
 
+class ConfigurationError(RuntimeError):
+    pass
+
+
+class SchedulerConfigurationError(ConfigurationError):
+    pass
+
+
 class NodeNotReadyToProcess(Exception):
     pass
