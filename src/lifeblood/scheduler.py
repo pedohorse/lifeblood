@@ -83,8 +83,18 @@ class Scheduler:
         loop = asyncio.get_event_loop()
         self.db_path = db_file_path
 
-        self.__use_external_log = False
-        self.__external_log_location: Optional[pathlib.Path] = None
+        self.__use_external_log = config.get_option_noasync('scheduler.database.store_logs_externally', False)
+        self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('scheduler.database.store_logs_externally_location', None)
+        if self.__use_external_log and not self.__external_log_location:
+            raise SchedulerConfigurationError('if store_logs_externally is set - store_logs_externally_location must be set too')
+        if self.__use_external_log:
+            external_log_path = pathlib.Path(self.__use_external_log)
+            if external_log_path.exists() and external_log_path.is_file():
+                external_log_path.unlink()
+            if not external_log_path.exists():
+                external_log_path.mkdir()
+            if not os.access(self.__external_log_location, os.X_OK | os.W_OK):
+                raise RuntimeError('cannot write to external log location provided')
 
         self.__db_cache = {'workers_state': {},
                            'invocations': {}}
@@ -1839,6 +1849,12 @@ default_config = '''
 
 [scheduler.database]
 ## uncomment line below to store task logs outside of the database
+##  it works in a way that all NEW logs will be saved according to settings below
+##  existing logs will be kept where they are
+##  external logs will ALWAYS be looked for in location specified by store_logs_externally_location
+##  so if you have ANY logs saved externally - you must keep store_logs_externally_location defined in the config, 
+##    or those logs will be inaccessible
+##  but you can safely move logs and change location in config accordingly, but be sure scheduler is not accessing them at that time
 # store_logs_externally = true
 # store_logs_externally_location = /path/to/dir/where/to/store/logs
 '''
