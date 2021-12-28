@@ -1123,12 +1123,15 @@ class Scheduler:
 
     async def _save_external_logs(self, invocation_id, stdout, stderr):
         logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
-        if not logbasedir.exists():
-            logbasedir.mkdir(exist_ok=True)
-        async with aiofiles.open(logbasedir / 'stdout.log', 'w') as fstdout, \
-                aiofiles.open(logbasedir / 'stderr.log', 'w') as fstderr:
-            await asyncio.gather(fstdout.write(stdout),
-                                 fstderr.write(stderr))
+        try:
+            if not logbasedir.exists():
+                logbasedir.mkdir(exist_ok=True)
+            async with aiofiles.open(logbasedir / 'stdout.log', 'w') as fstdout, \
+                    aiofiles.open(logbasedir / 'stderr.log', 'w') as fstderr:
+                await asyncio.gather(fstdout.write(stdout),
+                                     fstderr.write(stderr))
+        except OSError:
+            self.__logger.exception('error happened saving external logs! Ignoring this error')
 
     #
     # worker reports canceled task
