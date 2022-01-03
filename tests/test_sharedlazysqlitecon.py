@@ -12,6 +12,9 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         get_logger('shared_aiosqlite_connection').setLevel('DEBUG')
+        if SharedLazyAiosqliteConnection.connection_pool is not None:
+            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection.connection_pool is not None. how? was it initialized in another test? Noning it now.')
+        SharedLazyAiosqliteConnection.connection_pool = None
 
     async def test_one(self):
         fd, dbpath = tempfile.mkstemp(suffix='.db')
