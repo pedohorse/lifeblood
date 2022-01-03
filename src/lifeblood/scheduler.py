@@ -856,6 +856,7 @@ class Scheduler:
             # now proceed with processing
             _debug_con = time.perf_counter()
             total_processed = 0
+            total_state_changes = 0  # note that total_state_changes may be greater than total_processed, as total_processed refers to existing tasks only, but total_state_changes counts new splits as well
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
 
@@ -893,12 +894,14 @@ class Scheduler:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.ERROR.value, task_row['id']))
+                                total_state_changes += 1
                             else:
                                 if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
                                     continue
 
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.GENERATING.value, task_row['id']))
+                                total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
@@ -914,12 +917,14 @@ class Scheduler:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.ERROR.value, task_row['id']))
+                                total_state_changes += 1
                             else:
                                 if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                     continue
 
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.POST_GENERATING.value, task_row['id']))
+                                total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
@@ -944,6 +949,7 @@ class Scheduler:
                                                                'limit_threshold': self.__invocation_attempts,
                                                                'limit_value': task_row['work_data_invocation_attempt']}),
                                                    task_row['id']))
+                                total_state_changes += 1
                                 self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
                                 continue
                             #
@@ -961,6 +967,7 @@ class Scheduler:
                                                                'exception_str': str(e),
                                                                'exception_type': str(type(e))}),
                                                    task_row['id']))
+                                total_state_changes += 1
                                 self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
                                 continue
                             if worker is None:  # nothing available
@@ -969,6 +976,7 @@ class Scheduler:
 
                             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                                 (TaskState.INVOKING.value, task_row['id']))
+                            total_state_changes += 1
                             await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                                 (WorkerState.INVOKING.value, worker['id']))
 
@@ -995,12 +1003,15 @@ class Scheduler:
                                     await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ? '
                                                       'WHERE "id" = ?',
                                                       (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
+                                    total_state_changes += 1
                                 else:
                                     for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
                                         await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
                                                           'WHERE "id" = ?',
                                                           (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
                                                            splited_task_id))
+                                        total_state_changes += 1
+                                    total_state_changes += 1  # this is for original (for split) task changing state to SPLITTED
 
                             else:
                                 # the problem is that there are tasks that done, but have no wires to go anywhere
@@ -1019,9 +1030,9 @@ class Scheduler:
                     if len(tasks_to_wait) == 0:
                         async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
                             total = await cur.fetchone()
-                            if total is None or total['total'] == 0:
-                                self.__logger.info('no useful tasks seem to be available')
-                                self.__sleep()
+                        if total is None or total['total'] == 0:
+                            self.__logger.info('no useful tasks seem to be available')
+                            self.__sleep()
                 else:
                     self.wake()
 
@@ -1036,7 +1047,9 @@ class Scheduler:
                     sleeping_tasks = (stop_task, wakeup_task)
                 else:
                     sleeping_tasks = (stop_task,)
-            wdone, _ = await asyncio.wait(sleeping_tasks, timeout=self.__processing_interval * self.__processing_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+
+            wdone, _ = await asyncio.wait(sleeping_tasks, timeout=0 if total_state_changes > 0 else self.__processing_interval * self.__processing_interval_mult,
+                                          return_when=asyncio.FIRST_COMPLETED)
             if wakeup_task is not None and wakeup_task in wdone:
                 wakeup_task = None
             if stop_task in wdone:
