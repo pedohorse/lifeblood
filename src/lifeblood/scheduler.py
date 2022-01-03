@@ -105,6 +105,7 @@ class Scheduler:
         ui_port = config.get_option_noasync('core.ui_port', 7989)
         self.__stop_event = asyncio.Event()
         self.__wakeup_event = asyncio.Event()
+        self.__task_processor_kick_event = asyncio.Event()
         self.__wakeup_event.set()
         self.__server = None
         self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
@@ -135,12 +136,31 @@ class Scheduler:
         return SchedulerUiProtocol(self)
 
     def wake(self):
+        """
+        scheduler may go into DORMANT mode when he things there's nothing to do
+        in that case wake() call exits DORMANT mode immediately
+        if wake is not called on some change- eventually scheduler will check it's shit and will decide to exit DORMANT mode on it's own, it will just waste some time first
+        if currently not in DORMANT mode - nothing will happen
+
+        :return:
+        """
         if self.__mode == SchedulerMode.DORMANT:
             self.__logger.info('exiting DORMANT mode. mode is STANDARD now')
             self.__mode = SchedulerMode.STANDARD
             self.__processing_interval_mult = 1
             self.__ping_interval_mult = 1
             self.__wakeup_event.set()
+
+    def kick_task_processor(self):
+        """
+        kick that lazy ass to stop it's waitings and immediately perform another processing iteration
+        this is not connected to wake, __sleep and DORMANT mode,
+        this is just one-time kick
+        good to perform when task was changed somewhere async, outside of task_processor
+
+        :return:
+        """
+        self.__task_processor_kick_event.set()
 
     def __sleep(self):
         if self.__mode == SchedulerMode.STANDARD:
@@ -785,6 +805,7 @@ class Scheduler:
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self.__stop_event.wait())
         wakeup_task = None
+        kick_wait_task = asyncio.create_task(self.__task_processor_kick_event.wait())
         gc_counter = 0
         # tm_counter = 0
         while not self.__stop_event.is_set():
@@ -1040,20 +1061,24 @@ class Scheduler:
 
             # and wait for a bit
             if wakeup_task is not None:
-                sleeping_tasks = (stop_task, wakeup_task)
+                sleeping_tasks = (stop_task, kick_wait_task, wakeup_task)
             else:
                 if self.__mode == SchedulerMode.DORMANT:
                     wakeup_task = asyncio.create_task(self.__wakeup_event.wait())
-                    sleeping_tasks = (stop_task, wakeup_task)
+                    sleeping_tasks = (stop_task, kick_wait_task, wakeup_task)
                 else:
-                    sleeping_tasks = (stop_task,)
+                    sleeping_tasks = (stop_task, kick_wait_task)
 
             wdone, _ = await asyncio.wait(sleeping_tasks, timeout=0 if total_state_changes > 0 else self.__processing_interval * self.__processing_interval_mult,
                                           return_when=asyncio.FIRST_COMPLETED)
             if wakeup_task is not None and wakeup_task in wdone:
                 wakeup_task = None
+            if kick_wait_task in wdone:
+                self.__task_processor_kick_event.clear()
+                kick_wait_task = asyncio.create_task(self.__task_processor_kick_event.wait())
             if stop_task in wdone:
                 break
+
 
         #
         # Out of while - means we are stopping. time to save all the nodes
@@ -1133,6 +1158,7 @@ class Scheduler:
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
         self.wake()
+        self.kick_task_processor()
 
     async def _save_external_logs(self, invocation_id, stdout, stderr):
         logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
@@ -1185,6 +1211,7 @@ class Scheduler:
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
         self.wake()
+        self.kick_task_processor()
 
     #
     # add new worker to db
@@ -1250,6 +1277,7 @@ class Scheduler:
                 #                   '(?, ?, ?)',
                 #                   (new_worker_id, tstamp, ping_state))
             await con.commit()
+        self.kick_task_processor()
 
     #
     # worker reports it being stopped
@@ -1327,6 +1355,7 @@ class Scheduler:
             self.__logger.error('could not remove node connection because of database integrity check')
         else:
             self.wake()
+            self.kick_task_processor()
 
     #
     # force change task state
@@ -1364,6 +1393,7 @@ class Scheduler:
                 await con.commit()
         #print('boop')
         self.wake()
+        self.kick_task_processor()
 
     #
     # change task's paused state
@@ -1374,6 +1404,7 @@ class Scheduler:
                                   (int(paused), task_ids_or_group))
                 await con.commit()
             self.wake()
+            self.kick_task_processor()
             return
         if isinstance(task_ids_or_group, int):
             task_ids_or_group = [task_ids_or_group]
@@ -1382,6 +1413,7 @@ class Scheduler:
             await con.executemany(query, ((x,) for x in task_ids_or_group))
             await con.commit()
         self.wake()
+        self.kick_task_processor()
 
     #
     # set task name
@@ -1756,6 +1788,7 @@ class Scheduler:
                 await _inner_shit()
                 await con.commit()
         self.wake()
+        self.kick_task_processor()
         return SpawnStatus.SUCCEEDED
 
     #
