@@ -1,6 +1,6 @@
 import asyncio
 import aiosqlite
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Callable
 from .logging import get_logger
 from dataclasses import dataclass
 
@@ -13,6 +13,7 @@ class ConnectionPoolEntry:
     __total_usages: int = 1
     closer_task: Optional[asyncio.Task] = None
     need_to_commit: bool = False
+    __close_callbacks: Optional[List[Callable]] = None
     do_close: bool = False
 
     @property
@@ -34,6 +35,25 @@ class ConnectionPoolEntry:
     def total_usages(self) -> int:
         return self.__total_usages
 
+    def add_close_callback(self, callback: Callable) -> None:
+        if self.__close_callbacks is None:
+            self.__close_callbacks = []
+        self.__close_callbacks.append(callback)
+
+    def add_close_callback_if_not_in(self, callback: Callable) -> None:
+        if callback in self.__close_callbacks:
+            return
+        self.add_close_callback(callback)
+
+    def _invoke_close_callbacks(self):
+        if self.__close_callbacks is None:
+            return
+        try:
+            for cb in self.__close_callbacks:
+                cb()
+        except Exception:
+            get_logger('ConnectionPoolEntry').exception('problem running close connection callbacks. callback chain aborted.')
+
 
 class ConnectionPool:
     def __init__(self):
@@ -46,7 +66,7 @@ class ConnectionPool:
         async with self.pool_lock:
             entry = self.connection_cache[key]
             if entry.count > 0:
-                entry.do_close = 1
+                entry.do_close = True
             else:  # only == 0 possible
                 await self._closer_inner(key)
 
@@ -60,6 +80,7 @@ class ConnectionPool:
             await entry.con.close()
             del self.connection_cache[key]
             get_logger('shared_aiosqlite_connection').debug(f'closing shared connection used by total {entry.total_usages}, max {entry.count_max} at the same time. left cached conns: {len(self.connection_cache)}')
+            entry._invoke_close_callbacks()
 
 
 class SharedLazyAiosqliteConnection:
@@ -78,7 +99,7 @@ class SharedLazyAiosqliteConnection:
     def __init__(self, conn_pool, db_path: str, cache_name: str, *args, **kwargs):
         if conn_pool is not None:
             raise NotImplementedError()
-        if SharedLazyAiosqliteConnection.connection_pool is None:
+        if conn_pool is None and SharedLazyAiosqliteConnection.connection_pool is None:
             SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()
             get_logger('shared_aiosqlite_connection').debug('default connection pool created')
         self.__pool = SharedLazyAiosqliteConnection.connection_pool
@@ -90,6 +111,15 @@ class SharedLazyAiosqliteConnection:
         self.__con: Optional[aiosqlite.Connection] = None
 
     async def __aenter__(self):
+        # TODO: CBB: currently constant stream of overlapping transactions can keep one connection open forever
+        #  luckily currently we cannot have that cuz this lazy conn is only used by _awaiter, and it's transactions are
+        #  additionally serialized by a lock.
+        #  btw with lazy transactions like this we can remove that lock (the idea for it was that sqlite's locking is faaar slower than explicit threading lock, but if it's all one same transaction - no need in locking at all)
+        #  and gain probably a lot of performance
+        #  so
+        #  the problem can be fixed if all instances remember entry at __init__ or __aenter__ and not use it in __aexit__ or anywhere else after
+        #  then that closer task can delete connection_cache entry, keeping it internaly till everyone exits
+        #  then new transaction with same key will not see existing cache and create a new entry.
         async with self.__pool.pool_lock:
             if self.__cache_key in self.__pool.connection_cache:
                 self.__con = self.__pool.connection_cache[self.__cache_key].con
@@ -115,8 +145,18 @@ class SharedLazyAiosqliteConnection:
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
 
-    async def commit(self):
-        self.__pool.connection_cache[self.__cache_key].need_to_commit = True
+    async def commit(self, callback=None):
+        """
+        optional callback argument for convenience.
+        will be treated as unique callback, so same element will be added only once
+
+        :param callback: callback to be launched right after db connection close
+        :return:
+        """
+        entry = self.__pool.connection_cache[self.__cache_key]
+        entry.need_to_commit = True
+        if callback is not None:
+            entry.add_close_callback_if_not_in(callback)
 
     def __getattr__(self, item):
         return getattr(self.__con, item)
