@@ -623,7 +623,7 @@ class Scheduler:
                                         #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
-                    await con.commit()
+                    await con.commit(self.kick_task_processor)
                 return
             except Exception as e:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
@@ -636,7 +636,7 @@ class Scheduler:
                                                    'exception_str': str(e),
                                                    'exception_type': str(type(e))})
                                        , task_id))
-                    await con.commit()
+                    await con.commit(self.kick_task_processor)
                     self.__logger.exception('error happened %s %s', type(e), e)
                 return
 
@@ -732,7 +732,7 @@ class Scheduler:
                 #print(f'split: {time.perf_counter()-_bla1}')
 
                 #_precum = time.perf_counter()-_blo
-                await con.commit()
+                await con.commit(self.kick_task_processor)
                 #print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
