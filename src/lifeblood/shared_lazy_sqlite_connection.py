@@ -41,7 +41,7 @@ class ConnectionPoolEntry:
         self.__close_callbacks.append(callback)
 
     def add_close_callback_if_not_in(self, callback: Callable) -> None:
-        if callback in self.__close_callbacks:
+        if self.__close_callbacks is not None and callback in self.__close_callbacks:
             return
         self.add_close_callback(callback)
 
@@ -53,13 +53,15 @@ class ConnectionPoolEntry:
                 cb()
         except Exception:
             get_logger('ConnectionPoolEntry').exception('problem running close connection callbacks. callback chain aborted.')
+        finally:
+            self.__close_callbacks = None  # why? dunno
 
 
 class ConnectionPool:
     def __init__(self):
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
         self.pool_lock = asyncio.Lock()
-        self.keep_open_period = 0.25
+        self.keep_open_period = 0.125
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
