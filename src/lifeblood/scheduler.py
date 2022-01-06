@@ -1049,7 +1049,8 @@ class Scheduler:
                 if total_processed == 0:
                     # check maybe it's time to sleep
                     if len(tasks_to_wait) == 0:
-                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
+                        # instead of NOT IN  here using explicit IN cuz this way db index works # async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
+                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({})'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
                             total = await cur.fetchone()
                         if total is None or total['total'] == 0:
                             self.__logger.info('no useful tasks seem to be available')
