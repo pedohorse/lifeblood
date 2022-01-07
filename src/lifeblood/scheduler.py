@@ -409,21 +409,21 @@ class Scheduler:
                 async with WorkerTaskClient(ip, int(port), timeout=15) as client:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
-                self.__pinger_logger.debug('    :: network error')
+                self.__pinger_logger.warning(f'    :: network error {ip}:{port}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):
                     await con.commit()
                 return
             except ConnectionRefusedError as e:
-                self.__pinger_logger.debug('    :: host down %s', str(e))
+                self.__pinger_logger.warning(f'    :: host down {ip}:{port} {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
                 return
             except Exception as e:
-                self.__pinger_logger.debug('    :: ping failed %s %s', type(e), e)
+                self.__pinger_logger.warning(f'    :: ping failed {ip}:{port} {type(e)}, {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
@@ -892,6 +892,7 @@ class Scheduler:
                                            'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
                                            'WHERE (state = ?) '
                                            'AND paused = 0 '
+                                           'AND dead = 0 '
                                            'ORDER BY RANDOM()',
                                            (task_state.value,)) as cur:
                         all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
@@ -1050,7 +1051,7 @@ class Scheduler:
                     # check maybe it's time to sleep
                     if len(tasks_to_wait) == 0:
                         # instead of NOT IN  here using explicit IN cuz this way db index works # async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
-                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({})'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
+                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({}) AND dead = 0'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
                             total = await cur.fetchone()
                         if total is None or total['total'] == 0:
                             self.__logger.info('no useful tasks seem to be available')
@@ -1588,8 +1589,8 @@ class Scheduler:
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
-                                           'WHERE task_groups."group" == ? {dodead}'
-                                           'GROUP BY tasks."id"'.format(dodead=f'AND tasks.dead == 0 ' if skip_dead else ''),
+                                           'WHERE task_groups."group" == ? AND tasks.dead {dodead} '
+                                           'GROUP BY tasks."id"'.format(dodead=f'== 0' if skip_dead else 'IN (0,1)'),
                                            (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
                         grp_tasks = await cur.fetchall()
                     # print(f'fetch groups: {time.perf_counter() - _dbg}')

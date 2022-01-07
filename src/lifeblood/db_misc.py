@@ -123,9 +123,10 @@ CREATE INDEX IF NOT EXISTS "task_splits_task_id" ON "task_splits" (
 CREATE INDEX IF NOT EXISTS "task_state" ON "tasks" (
 	"state"
 );
-CREATE INDEX IF NOT EXISTS "task_state_paused_idx" ON "tasks" (
+CREATE INDEX IF NOT EXISTS "task_state_paused_dead_idx" ON "tasks" (
 	"state",
-	"paused"
+	"paused",
+	"dead"
 );
 CREATE INDEX IF NOT EXISTS "invoc_state_idx" ON "invocations" (
 	"state"
@@ -144,13 +145,13 @@ CREATE TRIGGER IF NOT EXISTS tasks_turning_dead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state != {dead_state} AND new.state == {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" - 1 WHERE "id" == new.parent_id;
-UPDATE "tasks" SET "dead" = 1 WHERE "id" == new."id";
+UPDATE "tasks" SET "dead" = "dead" | 1 WHERE "id" == new."id";
 END;
 CREATE TRIGGER IF NOT EXISTS tasks_turning_undead
 AFTER UPDATE OF "state" ON "tasks" WHEN old.state == {dead_state} AND new.state != {dead_state}
 BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
-UPDATE "tasks" SET "dead" = 0 WHERE "id" == new."id";
+UPDATE "tasks" SET "dead" = "dead" & ~1 WHERE "id" == new."id";
 END;
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
