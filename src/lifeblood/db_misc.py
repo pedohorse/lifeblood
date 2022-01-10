@@ -90,7 +90,13 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL,
+	"status"	INTEGER NOT NULL DEFAULT 0,
+	"creator"	TEXT,
 	PRIMARY KEY("group")
+);
+CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" (
+	"status",
+	"creator"
 );
 CREATE INDEX IF NOT EXISTS "task_dead" ON "tasks" (
 	"dead"
@@ -127,6 +133,11 @@ CREATE INDEX IF NOT EXISTS "task_state_paused_dead_idx" ON "tasks" (
 	"state",
 	"paused",
 	"dead"
+);
+CREATE INDEX IF NOT EXISTS "task_dead_paused_state_idx" ON "tasks" (
+	"dead",
+	"paused",
+	"state"
 );
 CREATE INDEX IF NOT EXISTS "invoc_state_idx" ON "invocations" (
 	"state"
