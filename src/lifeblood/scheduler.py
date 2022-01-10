@@ -69,10 +69,13 @@ class Scheduler:
         config = get_config('scheduler')
 
         self.__ping_interval = 1
-        self.__ping_interval_mult = 1
-        self.__processing_interval = 0.5
-        self.__processing_interval_mult = 1
+        self.__dormant_mode_ping_interval_multiplier = 15
+        self.__processing_interval = 5  # we don't need interval too small as now things may kick processor out of sleep as needed
+        self.__dormant_mode_processing_interval_multiplier = 5
         self.__db_lock_timeout = 30
+
+        self.__ping_interval_mult = 1
+        self.__processing_interval_mult = 1
         self.__invocation_attempts = config.get_option_noasync('invocation.default_attempts', 3)  # TODO: config should be directly used when needed to allow dynamically reconfigure running scheduler
 
         self.__mode = SchedulerMode.STANDARD
@@ -166,8 +169,8 @@ class Scheduler:
         if self.__mode == SchedulerMode.STANDARD:
             self.__logger.info('entering DORMANT mode')
             self.__mode = SchedulerMode.DORMANT
-            self.__processing_interval_mult = 50
-            self.__ping_interval_mult = 10
+            self.__processing_interval_mult = self.__dormant_mode_processing_interval_multiplier
+            self.__ping_interval_mult = self.__dormant_mode_ping_interval_multiplier
             self.__wakeup_event.clear()
 
     def mode(self) -> SchedulerMode:
@@ -409,21 +412,21 @@ class Scheduler:
                 async with WorkerTaskClient(ip, int(port), timeout=15) as client:
                     ping_code, pvalue = await client.ping()
             except asyncio.exceptions.TimeoutError:
-                self.__pinger_logger.warning(f'    :: network error {ip}:{port}')
+                self.__pinger_logger.info(f'    :: network timeout {ip}:{port}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):
                     await con.commit()
                 return
             except ConnectionRefusedError as e:
-                self.__pinger_logger.warning(f'    :: host down {ip}:{port} {e}')
+                self.__pinger_logger.info(f'    :: host down {ip}:{port} {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
                 return
             except Exception as e:
-                self.__pinger_logger.warning(f'    :: ping failed {ip}:{port} {type(e)}, {e}')
+                self.__pinger_logger.info(f'    :: ping failed {ip}:{port} {type(e)}, {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
@@ -533,57 +536,56 @@ class Scheduler:
         :return: NEVER !!
         """
 
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:  # TODO: is it good to keep con always open?
-            con.row_factory = aiosqlite.Row
+        tasks = []
+        stop_task = asyncio.create_task(self.__stop_event.wait())
+        wakeup_task = None
+        while not self.__stop_event.is_set():
+            nowtime = time.time()
 
-            tasks = []
-            stop_task = asyncio.create_task(self.__stop_event.wait())
-            wakeup_task = None
-            while not self.__stop_event.is_set():
-                nowtime = time.time()
-
-                self.__pinger_logger.debug('    ::selecting workers...')
+            self.__pinger_logger.debug('    ::selecting workers...')
+            async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+                con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT '
                                        '"id", cpu_count, mem_size, gpu_count, gmem_size, last_address, worker_type, hwid, state '
                                        'FROM workers '
                                        # 'WHERE tmp_workers_states.ping_state != ?', (WorkerPingState.CHECKING.value,)
                                        ) as cur:
-                    # TODO: don't scan the errored and off ones as often?
+                    all_rows = await cur.fetchall()
+            for row in all_rows:
+                row = dict(row)
+                for cached_field in ('last_seen', 'last_checked', 'ping_state'):
+                    row[cached_field] = self.__db_cache['workers_state'][row['id']][cached_field]
+                if row['ping_state'] == WorkerPingState.CHECKING.value:  # TODO: this check could happen in the very beginning of this loop... too sleepy now to blindly move it
+                    continue
 
-                    async for row in cur:
-                        row = dict(row)
-                        for cached_field in ('last_seen', 'last_checked', 'ping_state'):
-                            row[cached_field] = self.__db_cache['workers_state'][row['id']][cached_field]
-                        if row['ping_state'] == WorkerPingState.CHECKING.value:  # TODO: this check could happen in the very beginning of this loop... too sleepy now to blindly move it
-                            continue
+                time_delta = nowtime - (row['last_checked'] or 0)
+                if row['state'] == WorkerState.BUSY.value:
+                    tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval * self.__ping_interval_mult:
+                    tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                else:  # worker state is error or off
+                    if time_delta > 15 * self.__ping_interval * self.__ping_interval_mult:
+                        tasks.append(asyncio.create_task(self._iter_iter_func(row)))
 
-                        time_delta = nowtime - (row['last_checked'] or 0)
-                        if row['state'] == WorkerState.BUSY.value:
-                            tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                        elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval * self.__ping_interval_mult:
-                            tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                        else:  # worker state is error or off
-                            if time_delta > 15 * self.__ping_interval * self.__ping_interval_mult:
-                                tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+            # now clean the list
+            tasks = [x for x in tasks if not x.done()]
+            self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
-                # now clean the list
-                tasks = [x for x in tasks if not x.done()]
-                self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
-
-                # now wait
-                if wakeup_task is not None:
+            # now wait
+            if wakeup_task is not None:
+                sleeping_tasks = (stop_task, wakeup_task)
+            else:
+                if self.__mode == SchedulerMode.DORMANT:
+                    wakeup_task = asyncio.create_task(self.__wakeup_event.wait())
                     sleeping_tasks = (stop_task, wakeup_task)
                 else:
-                    if self.__mode == SchedulerMode.DORMANT:
-                        wakeup_task = asyncio.create_task(self.__wakeup_event.wait())
-                        sleeping_tasks = (stop_task, wakeup_task)
-                    else:
-                        sleeping_tasks = (stop_task,)
-                done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
-                if wakeup_task is not None and wakeup_task in done:
-                    wakeup_task = None
-                if stop_task in done:
-                    break
+                    sleeping_tasks = (stop_task,)
+
+            done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
+            if wakeup_task is not None and wakeup_task in done:
+                wakeup_task = None
+            if stop_task in done:
+                break
 
         # FINALIZING PINGER
         self.__logger.info('finishing worker pinger...')
