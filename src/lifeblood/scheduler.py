@@ -31,7 +31,7 @@ from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
-from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode
+from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode, TaskGroupArchivedState
 from .config import get_config, create_default_user_config_file
 from .misc import atimeit
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
@@ -73,6 +73,11 @@ class Scheduler:
         self.__processing_interval = 5  # we don't need interval too small as now things may kick processor out of sleep as needed
         self.__dormant_mode_processing_interval_multiplier = 5
         self.__db_lock_timeout = 30
+
+        # this lock will prevent tasks from being reported cancelled and done at the same exact time should that ever happen
+        # this lock is overkill already, but we can make it even more overkill by using set of locks for each invoc id
+        # which would be completely useless now cuz sqlite locks DB as a whole, not even a single table, especially not just parts of table
+        self.__invocation_reporting_lock = asyncio.Lock()
 
         self.__ping_interval_mult = 1
         self.__processing_interval_mult = 1
@@ -1111,9 +1116,10 @@ class Scheduler:
     #
     # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
-        self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+        async with self.__invocation_reporting_lock, \
+                   aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
+            self.__logger.debug('task finished reported %s code %s', repr(task), task.exit_code())
             # sanity check
             async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
                 invoc = await cur.fetchone()
@@ -1179,9 +1185,10 @@ class Scheduler:
     #
     # worker reports canceled task
     async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
-        self.__logger.debug('task cancelled reported %s', repr(task))
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+        async with self.__invocation_reporting_lock,\
+                   aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
+            self.__logger.debug('task cancelled reported %s', repr(task))
             # sanity check
             async with con.execute('SELECT "state" FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as cur:
                 invoc = await cur.fetchone()
@@ -1420,6 +1427,68 @@ class Scheduler:
         self.kick_task_processor()
 
     #
+    # change task group archived state
+    async def set_task_group_archived(self, task_group_name: str, state: TaskGroupArchivedState = TaskGroupArchivedState.ARCHIVED) -> None:
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('UPDATE task_group_attributes SET state=? WHERE "group"==?', (state.value, task_group_name))  # this triggers all task deadness | 2, so potentially it can be long, beware
+            await con.commit()
+            if state == TaskGroupArchivedState.NOT_ARCHIVED:
+                self.kick_task_processor()  # unarchived, so kick task processor, just in case
+                return
+            # otherwise - it's archived
+            # now all tasks belonging to that group should be set to dead|2
+            # we need to make sure to cancel all running invocations for those tasks
+            # at this point tasks are archived and won't be processed,
+            # so we only expect concurrent changes due to already running _submitters and _awaiters,
+            # like INVOKING->IN_PROGRESS
+            async with con.execute('SELECT "id" FROM invocations '
+                                   'INNER JOIN task_groups ON task_groups.task_id == invocations.task_id '
+                                   'WHERE task_groups."group" == ? AND invocations.state == ?',
+                                   (task_group_name, InvocationState.INVOKING.value)) as cur:
+                invoking_invoc_ids = set(x['id'] for x in await cur.fetchall())
+            async with con.execute('SELECT "id" FROM invocations '
+                                   'INNER JOIN task_groups ON task_groups.task_id == invocations.task_id '
+                                   'WHERE task_groups."group" == ? AND invocations.state == ?',
+                                   (task_group_name, InvocationState.IN_PROGRESS.value)) as cur:
+                active_invoc_ids = tuple(x['id'] for x in await cur.fetchall())
+                # i sure use a lot of fetchall where it's much more natural to iterate cursor
+                # that is because of a fear of db locking i got BEFORE switching to WAL, when iterating connection was randomly crashing other connections not taking timeout into account at all.
+
+        # note at this point we might have some invoking_invocs_id, but at this point some of them
+        # might already have been set to in-progress and even got into active_invoc_ids list
+
+        # first - cancel all in-progress invocations
+        for inv_id in active_invoc_ids:
+            await self.cancel_invocation(inv_id)
+
+        # now since we dont have the ability to safely cancel running _submitter task - we will just wait till
+        # invoking invocations change state
+        # sure it's a bit bruteforce
+        # but a working solution for now
+        if len(invoking_invoc_ids) == 0:
+            return
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            while len(invoking_invoc_ids) > 0:
+                # TODO: this forever while doesn't seem right
+                #  in average case it should basically never happen at all
+                #  only in case of really bad buggy network connections an invocation can get stuck on INVOKING
+                #  but there are natural timeouts in _submitter that will switch it from INVOKING eventually
+                #  the only question is - do we want to just stay in this function until it's resolved? UI's client is single thread, so it will get stuck waiting
+                con.row_factory = aiosqlite.Row
+                async with con.execute('SELECT "id",state FROM invocations WHERE state!={} AND "id" IN ({})'.format(
+                                            InvocationState.IN_PROGRESS.value,
+                                            ','.join(str(x) for x in invoking_invoc_ids))) as cur:
+                    changed_state_ones = await cur.fetchall()
+
+                for oid, ostate in ((x['id'], x['state']) for x in changed_state_ones):
+                    if ostate == InvocationState.IN_PROGRESS.value:
+                        await self.cancel_invocation(oid)
+                    assert oid in invoking_invoc_ids
+                    invoking_invoc_ids.remove(oid)
+                await asyncio.sleep(0.5)
+
+    #
     # set task name
     async def set_task_name(self, task_id: int, new_name: str):
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -1555,8 +1624,8 @@ class Scheduler:
 
     #
     # stuff
-    @atimeit(0.001)
-    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
+    @atimeit(0.005)
+    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, group_state=0):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
@@ -1606,7 +1675,7 @@ class Scheduler:
                             all_tasks[task['id']] = task
             # _dbg = time.perf_counter()
             #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
-            async with con.execute('SELECT "group", "ctime" FROM task_group_attributes') as cur:
+            async with con.execute('SELECT "group", "ctime" FROM task_group_attributes WHERE state = ?', (group_state,)) as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
