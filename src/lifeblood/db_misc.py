@@ -164,6 +164,22 @@ BEGIN
 UPDATE "tasks" SET "active_children_count" = "active_children_count" + 1 WHERE "id" == new.parent_id;
 UPDATE "tasks" SET "dead" = "dead" & ~1 WHERE "id" == new."id";
 END;
+CREATE TRIGGER IF NOT EXISTS task_group_turning_unarchived
+AFTER UPDATE OF "state" ON "task_group_attributes" WHEN old.state == 1 AND new.state != 1
+BEGIN
+UPDATE "tasks" SET "dead" = "dead" & ~2 WHERE "id" IN (
+	SELECT "task_id" FROM task_groups
+	WHERE "group" == new."group"
+);
+END;
+CREATE TRIGGER IF NOT EXISTS task_group_turning_archived
+AFTER UPDATE OF "state" ON "task_group_attributes" WHEN old.state != 1 AND new.state == 1
+BEGIN
+UPDATE "tasks" SET "dead" = "dead" | 2 WHERE "id" IN (
+	SELECT "task_id" FROM task_groups
+	WHERE "group" == new."group"
+);
+END;
 CREATE TRIGGER IF NOT EXISTS flush_task_state
 BEFORE UPDATE OF "state" ON "tasks" WHEN old.state <> new.state
 BEGIN
