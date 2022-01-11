@@ -4,7 +4,7 @@ import json
 import asyncio
 from . import logging
 from .uidata import NodeUi
-from .enums import NodeParameterType, TaskState, SpawnStatus
+from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from . import pluginloader
 from .net_classes import NodeTypeMetadata
 from .taskspawn import NewTask
@@ -60,7 +60,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
                         task_groups.append(await read_string())
 
-                    uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead)
+                    uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead)
                     uidata_ser = await uidata.serialize(compress=True)
                     writer.write(struct.pack('>Q', len(uidata_ser)))
                     writer.write(uidata_ser)
@@ -242,6 +242,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     paused = struct.unpack('>?', await reader.readexactly(1))[0]
                     task_group = await read_string()
                     await self.__scheduler.set_task_paused(task_group, bool(paused))
+                    writer.write(b'\1')
+                elif command == b'tarchivegrp':  # archive or unarchive a task group
+                    group_name = await read_string()
+                    state = TaskGroupArchivedState(struct.unpack('>I', await reader.readexactly(4))[0])
+                    await self.__scheduler.set_task_group_archived(group_name, state)
                     writer.write(b'\1')
                 elif command == b'tcancel':  # cancel task invocation
                     task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
