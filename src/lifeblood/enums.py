@@ -45,6 +45,11 @@ class TaskState(Enum):
     SPLITTED = 10  # task has been splitted, and will remain idle until splits are gathered
 
 
+class TaskGroupArchivedState(Enum):
+    NOT_ARCHIVED = 0
+    ARCHIVED = 1
+
+
 class WorkerType(Enum):
     STANDARD = 0
     SCHEDULER_HELPER = 1
