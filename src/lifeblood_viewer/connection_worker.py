@@ -9,7 +9,7 @@ from lifeblood.uidata import UiData, NodeUi
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.nethelpers import recv_exactly, address_to_ip_port, get_default_addr
 from lifeblood import logging
-from lifeblood.enums import NodeParameterType, TaskState
+from lifeblood.enums import NodeParameterType, TaskState, TaskGroupArchivedState
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
 from lifeblood.uidata import Parameter
@@ -553,6 +553,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>Q?Q', numtasks, paused, task_ids_or_group[0]))
                 if numtasks > 1:
                     self.__conn.sendall(struct.pack('>' + 'Q' * (numtasks-1), *task_ids_or_group[1:]))
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def set_task_group_archived_state(self, task_group_name: str, state: TaskGroupArchivedState):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        try:
+            self.__conn.sendall(b'tarchivegrp\n')
+            self._send_string(task_group_name)
+            self.__conn.sendall(struct.pack('>I', state.value))
             assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
