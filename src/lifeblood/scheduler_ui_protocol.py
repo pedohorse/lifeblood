@@ -24,6 +24,308 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         super(SchedulerUiProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        #
+        #
+        # commands
+        async def comm_get_full_state():  # if command == b'getfullstate':
+            task_groups = []
+            skip_dead = struct.unpack('>?', await reader.readexactly(1))[0]
+            for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
+                task_groups.append(await read_string())
+
+            uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead)
+            uidata_ser = await uidata.serialize(compress=True)
+            writer.write(struct.pack('>Q', len(uidata_ser)))
+            writer.write(uidata_ser)
+
+        async def comm_get_log_meta():  # elif command in (b'getlogmeta', b'getlog', b'getalllog'):
+            # if command == b'getlogmeta':
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            all_logs = await self.__scheduler.get_log_metadata(task_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
+            writer.write(struct.pack('>I', len(data)))
+            writer.write(data)
+
+        async def comm_get_log():
+            # elif command == b'getlog':
+            task_id, node_id, invocation_id = struct.unpack('>QQQ', await reader.readexactly(24))
+            all_logs = await self.__scheduler.get_logs(task_id, node_id, invocation_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
+            writer.write(struct.pack('>I', len(data)))
+            writer.write(data)
+
+        async def comm_get_log_all():
+            # elif command == b'getalllog':
+            # TODO: instead of getting all invocation logs first get invocation list
+            # TODO: then bring in logs only for required invocation
+            task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
+            all_logs = await self.__scheduler.get_logs(task_id, node_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
+            writer.write(struct.pack('>I', len(data)))
+            writer.write(data)
+
+        # brings in interface data for one particular node
+        async def comm_get_node_interface():  # elif command == b'getnodeinterface':
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_ui()
+            data: bytes = await nodeui.serialize_async()
+            writer.write(struct.pack('>I', len(data)))
+            writer.write(data)
+
+        async def comm_get_task_attribs():  # elif command == b'gettaskattribs':
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            attribs = await self.__scheduler.get_task_attributes(task_id)
+            data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
+            writer.write(struct.pack('>Q', len(data)))
+            writer.write(data)
+
+        async def comm_get_task_invocation():  # elif command == b'gettaskinvoc':
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            data = await self.__scheduler.get_task_invocation_serialized(task_id)
+            if data is None:
+                writer.write(struct.pack('>Q', 0))
+            else:
+                writer.write(struct.pack('>Q', len(data)))
+                writer.write(data)
+
+        # node related commands
+        async def comm_list_node_types():  # elif command == b'listnodetypes':
+            typemetas = []
+            for type_name, module in pluginloader.plugins.items():
+                cls = module.node_class()
+                typemetas.append(NodeTypeMetadata(cls))
+            writer.write(struct.pack('>Q', len(typemetas)))
+            for typemeta in typemetas:
+                data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, typemeta)
+                writer.write(struct.pack('>Q', len(data)))
+                writer.write(data)
+
+        async def comm_remove_node():  # elif command == b'removenode':
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.remove_node(node_id)
+            writer.write(b'\1')
+
+        async def comm_add_node():  # elif command == b'addnode':
+            node_type = await read_string()
+            node_name = await read_string()
+            node_id = await self.__scheduler.add_node(node_type, node_name)
+            writer.write(struct.pack('>Q', node_id))
+
+        async def comm_wipe_node():  # elif command == b'wipenode':
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.wipe_node_state(node_id)
+            writer.write(b'\1')
+
+        async def comm_node_has_param():  # elif command == b'nodehasparam':
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            param_name = await read_string()
+            try:
+                node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+            except Exception:
+                self.__logger.warning(f'FAILED get node {node_id}')
+                writer.write(b'\0')
+            else:
+                if node.param(param_name) is None:
+                    writer.write(b'\0')
+                else:
+                    writer.write(b'\1')
+
+        async def comm_set_node_param():  # elif command == b'setnodeparam':
+            node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
+            param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
+            if param_type == NodeParameterType.FLOAT.value:
+                param_value = struct.unpack('>d', await reader.readexactly(8))[0]
+            elif param_type == NodeParameterType.INT.value:
+                param_value = struct.unpack('>q', await reader.readexactly(8))[0]
+            elif param_type == NodeParameterType.BOOL.value:
+                param_value = struct.unpack('>?', await reader.readexactly(1))[0]
+            elif param_type == NodeParameterType.STRING.value:
+                param_value = await read_string()
+            else:
+                raise NotImplementedError()
+            try:
+                node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                node.set_param_value(param_name, param_value)
+            except Exception:
+                err_val_prev = str(param_value)
+                if len(err_val_prev) > 23:
+                    err_val_prev = err_val_prev[:20] + '...'
+                self.__logger.warning(f'FAILED request to set node {node_id} parameter {param_name}({NodeParameterType(param_type).name}) to {err_val_prev}')
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
+                #
+                # send back actual result
+                value = node.param(param_name).unexpanded_value()
+                if param_type == NodeParameterType.FLOAT.value:
+                    writer.write(struct.pack('>d', value))
+                elif param_type == NodeParameterType.INT.value:
+                    writer.write(struct.pack('>q', value))
+                elif param_type == NodeParameterType.BOOL.value:
+                    writer.write(struct.pack('>?', value))
+                elif param_type == NodeParameterType.STRING.value:
+                    await write_string(value)
+                else:
+                    raise NotImplementedError()
+
+        async def comm_set_node_param_expression():  # elif command == b'setnodeparamexpression':
+            node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
+            param_name = await read_string()
+            node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+            if set_or_unset:
+                expression = await read_string()
+                node.param(param_name).set_expression(expression)
+            else:
+                node.param(param_name).remove_expression()
+            writer.write(b'\1')
+
+        async def comm_rename_node():  # if command == b'renamenode':
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            node_name = await read_string()
+            name = await self.__scheduler.set_node_name(node_id, node_name)
+            await write_string(name)
+
+        async def comm_duplicate_nodes():  # elif command == b'duplicatenodes':
+            cnt = struct.unpack('>Q', await reader.readexactly(8))[0]
+            node_ids = [struct.unpack('>Q', await reader.readexactly(8))[0] for _ in range(cnt)]
+            try:
+                res = await self.__scheduler.duplicate_nodes(node_ids)
+            except Exception as e:
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
+                writer.write(struct.pack('>Q', len(res)))
+                for old_id, new_id in res.items():
+                    writer.write(struct.pack('>QQ', old_id, new_id))
+
+        # node connection related commands
+        async def comm_change_connection():  # elif command == b'changeconnection':
+            connection_id, change_out, change_in, new_id_out, new_id_in = struct.unpack('>Q??QQ', await reader.readexactly(26))
+            in_name, out_name = None, None
+            if change_out:
+                out_name = await read_string()
+            else:
+                new_id_out = None
+            if change_in:
+                in_name = await read_string()
+            else:
+                new_id_in = None
+            await self.__scheduler.change_node_connection(connection_id, new_id_out, out_name, new_id_in, in_name)
+            writer.write(b'\1')
+
+        async def comm_add_connection():  # elif command == b'addconnection':
+            id_out, id_in = struct.unpack('>QQ', await reader.readexactly(16))
+            out_name = await read_string()
+            in_name = await read_string()
+            connection_id = await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
+            writer.write(struct.pack('>Q', connection_id))
+
+        async def comm_remove_connection():  # elif command == b'removeconnection':
+            connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.remove_node_connection(connection_id)
+            writer.write(b'\1')
+
+        # task mod
+        async def comm_pause_tasks():  # elif command == b'tpauselst':  # pause tasks
+            task_ids = [-1]
+            numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
+            if numtasks > 1:
+                task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
+            await self.__scheduler.set_task_paused(task_ids, bool(paused))
+            writer.write(b'\1')
+
+        async def comm_pause_task_group():  # elif command == b'tpausegrp':  # pause task group
+            paused = struct.unpack('>?', await reader.readexactly(1))[0]
+            task_group = await read_string()
+            await self.__scheduler.set_task_paused(task_group, bool(paused))
+            writer.write(b'\1')
+
+        async def comm_archive_task_group():  # elif command == b'tarchivegrp':  # archive or unarchive a task group
+            group_name = await read_string()
+            state = TaskGroupArchivedState(struct.unpack('>I', await reader.readexactly(4))[0])
+            await self.__scheduler.set_task_group_archived(group_name, state)
+            writer.write(b'\1')
+
+        async def comm_task_cancel():  # elif command == b'tcancel':  # cancel task invocation
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.cancel_invocation_for_task(task_id)
+            writer.write(b'\1')
+
+        async def comm_task_set_node():  # elif command == b'tsetnode':  # set task node
+            task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
+            await self.__scheduler.force_set_node_task(task_id, node_id)
+            writer.write(b'\1')
+
+        async def comm_task_change_state():  # elif command == b'tcstate':  # change task state
+            task_ids = [-1]
+            numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
+            if numtasks > 1:
+                task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
+            await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
+            writer.write(b'\1')
+
+        async def comm_task_set_name():  # elif command == b'tsetname':  # change task name
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            new_name = await read_string()
+            await self.__scheduler.set_task_name(task_id, new_name)
+            writer.write(b'\1')
+
+        async def comm_task_set_groups():  # elif command == b'tsetgroups':  # set task groups
+            task_id, strcount = struct.unpack('>QQ', await reader.readexactly(16))
+            task_groups = set()
+            for _ in range(strcount):
+                task_groups.add(await read_string())
+            await self.__scheduler.set_task_groups(task_id, task_groups)
+            writer.write(b'\1')
+
+        async def comm_task_update_attribs():  # elif command == b'tupdateattribs':  # UPDATE task attribs, not set and override completely
+            task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
+            attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
+            attribs_to_delete = set()
+            for _ in range(strcount):
+                attribs_to_delete.add(await read_string())
+            await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
+            writer.write(b'\1')
+
+        # create new task
+        async def comm_add_task():  # elif command == b'addtask':
+            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+            newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
+            ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
+            writer.write(struct.pack('>I', ret.value))
+        #
+        #
+        commands = {b'getfullstate': comm_get_full_state,
+                    b'getlogmeta': comm_get_log_meta,
+                    b'getlog': comm_get_log,
+                    b'getalllog': comm_get_log_all,
+                    b'getnodeinterface': comm_get_node_interface,
+                    b'gettaskattribs': comm_get_task_attribs,
+                    b'gettaskinvoc': comm_get_task_invocation,
+                    b'listnodetypes': comm_list_node_types,
+                    b'removenode': comm_remove_node,
+                    b'addnode': comm_add_node,
+                    b'wipenode': comm_wipe_node,
+                    b'nodehasparam': comm_node_has_param,
+                    b'setnodeparam': comm_set_node_param,
+                    b'setnodeparamexpression': comm_set_node_param_expression,
+                    b'renamenode': comm_rename_node,
+                    b'duplicatenodes': comm_duplicate_nodes,
+                    b'changeconnection': comm_change_connection,
+                    b'addconnection': comm_add_connection,
+                    b'removeconnection': comm_remove_connection,
+                    b'tpauselst': comm_pause_tasks,
+                    b'tpausegrp': comm_pause_task_group,
+                    b'tarchivegrp': comm_archive_task_group,
+                    b'tcancel': comm_task_set_node,
+                    b'tcstate': comm_task_change_state,
+                    b'tsetname': comm_task_set_name,
+                    b'tsetgroups': comm_task_set_groups,
+                    b'tupdateattribs': comm_task_update_attribs,
+                    b'addtask': comm_add_task}
+        #
+        # connection callback
+        #
         self.__logger.debug('UI connected')
 
         async def read_string() -> str:
@@ -54,241 +356,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     command = command[:-1]
                 self.__logger.debug(f'got command {command}')
                 # get full nodegraph state. only brings in where is which item, no other details
-                if command == b'getfullstate':
-                    task_groups = []
-                    skip_dead = struct.unpack('>?', await reader.readexactly(1))[0]
-                    for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
-                        task_groups.append(await read_string())
 
-                    uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead)
-                    uidata_ser = await uidata.serialize(compress=True)
-                    writer.write(struct.pack('>Q', len(uidata_ser)))
-                    writer.write(uidata_ser)
-                elif command in (b'getlogmeta', b'getlog', b'getalllog'):
-                    if command == b'getlogmeta':
-                        task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                        all_logs = await self.__scheduler.get_log_metadata(task_id)
-                    elif command == b'getlog':
-                        task_id, node_id, invocation_id = struct.unpack('>QQQ', await reader.readexactly(24))
-                        all_logs = await self.__scheduler.get_logs(task_id, node_id, invocation_id)
-                    elif command == b'getalllog':
-                        # TODO: instead of getting all invocation logs first get invocation list
-                        # TODO: then bring in logs only for required invocation
-                        task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
-                        all_logs = await self.__scheduler.get_logs(task_id, node_id)
-                    else:
-                        raise RuntimeError('this error is impossible!')
-                    data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
-                    writer.write(struct.pack('>I', len(data)))
-                    writer.write(data)
-                # brings in interface data for one particular node
-                elif command == b'getnodeinterface':
-                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_ui()
-                    data: bytes = await nodeui.serialize_async()
-                    writer.write(struct.pack('>I', len(data)))
-                    writer.write(data)
-                elif command == b'gettaskattribs':
-                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    attribs = await self.__scheduler.get_task_attributes(task_id)
-                    data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
-                    writer.write(struct.pack('>Q', len(data)))
-                    writer.write(data)
-                elif command == b'gettaskinvoc':
-                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    data = await self.__scheduler.get_task_invocation_serialized(task_id)
-                    if data is None:
-                        writer.write(struct.pack('>Q', 0))
-                    else:
-                        writer.write(struct.pack('>Q', len(data)))
-                        writer.write(data)
-                #
-                # node related commands
-                elif command == b'listnodetypes':
-                    typemetas = []
-                    for type_name, module in pluginloader.plugins.items():
-                        cls = module.node_class()
-                        typemetas.append(NodeTypeMetadata(cls))
-                    writer.write(struct.pack('>Q', len(typemetas)))
-                    for typemeta in typemetas:
-                        data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, typemeta)
-                        writer.write(struct.pack('>Q', len(data)))
-                        writer.write(data)
-                elif command == b'removenode':
-                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    await self.__scheduler.remove_node(node_id)
-                    writer.write(b'\1')
-                elif command == b'addnode':
-                    node_type = await read_string()
-                    node_name = await read_string()
-                    node_id = await self.__scheduler.add_node(node_type, node_name)
-                    writer.write(struct.pack('>Q', node_id))
-                elif command == b'wipenode':
-                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    await self.__scheduler.wipe_node_state(node_id)
-                    writer.write(b'\1')
-                elif command == b'nodehasparam':
-                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    param_name = await read_string()
-                    try:
-                        node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                    except Exception:
-                        self.__logger.warning(f'FAILED get node {node_id}')
-                        writer.write(b'\0')
-                    else:
-                        if node.param(param_name) is None:
-                            writer.write(b'\0')
-                        else:
-                            writer.write(b'\1')
-                elif command == b'setnodeparam':
-                    node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
-                    param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
-                    if param_type == NodeParameterType.FLOAT.value:
-                        param_value = struct.unpack('>d', await reader.readexactly(8))[0]
-                    elif param_type == NodeParameterType.INT.value:
-                        param_value = struct.unpack('>q', await reader.readexactly(8))[0]
-                    elif param_type == NodeParameterType.BOOL.value:
-                        param_value = struct.unpack('>?', await reader.readexactly(1))[0]
-                    elif param_type == NodeParameterType.STRING.value:
-                        param_value = await read_string()
-                    else:
-                        raise NotImplementedError()
-                    try:
-                        node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                        node.set_param_value(param_name, param_value)
-                    except Exception:
-                        err_val_prev = str(param_value)
-                        if len(err_val_prev) > 23:
-                            err_val_prev = err_val_prev[:20] + '...'
-                        self.__logger.warning(f'FAILED request to set node {node_id} parameter {param_name}({NodeParameterType(param_type).name}) to {err_val_prev}')
-                        writer.write(b'\0')
-                    else:
-                        writer.write(b'\1')
-                        #
-                        # send back actual result
-                        value = node.param(param_name).unexpanded_value()
-                        if param_type == NodeParameterType.FLOAT.value:
-                            writer.write(struct.pack('>d', value))
-                        elif param_type == NodeParameterType.INT.value:
-                            writer.write(struct.pack('>q', value))
-                        elif param_type == NodeParameterType.BOOL.value:
-                            writer.write(struct.pack('>?', value))
-                        elif param_type == NodeParameterType.STRING.value:
-                            await write_string(value)
-                        else:
-                            raise NotImplementedError()
-                elif command == b'setnodeparamexpression':
-                    node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
-                    param_name = await read_string()
-                    node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                    if set_or_unset:
-                        expression = await read_string()
-                        node.param(param_name).set_expression(expression)
-                    else:
-                        node.param(param_name).remove_expression()
-                    writer.write(b'\1')
-                elif command == b'renamenode':
-                    node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    node_name = await read_string()
-                    name = await self.__scheduler.set_node_name(node_id, node_name)
-                    await write_string(name)
-                elif command == b'duplicatenodes':
-                    cnt = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    node_ids = [struct.unpack('>Q', await reader.readexactly(8))[0] for _ in range(cnt)]
-                    try:
-                        res = await self.__scheduler.duplicate_nodes(node_ids)
-                    except Exception as e:
-                        writer.write(b'\0')
-                    else:
-                        writer.write(b'\1')
-                        writer.write(struct.pack('>Q', len(res)))
-                        for old_id, new_id in res.items():
-                            writer.write(struct.pack('>QQ', old_id, new_id))
-                #
-                # node connection related commands
-                elif command == b'changeconnection':
-                    connection_id, change_out, change_in, new_id_out, new_id_in = struct.unpack('>Q??QQ', await reader.readexactly(26))
-                    in_name, out_name = None, None
-                    if change_out:
-                        out_name = await read_string()
-                    else:
-                        new_id_out = None
-                    if change_in:
-                        in_name = await read_string()
-                    else:
-                        new_id_in = None
-                    await self.__scheduler.change_node_connection(connection_id, new_id_out, out_name, new_id_in, in_name)
-                    writer.write(b'\1')
-                elif command == b'addconnection':
-                    id_out, id_in = struct.unpack('>QQ', await reader.readexactly(16))
-                    out_name = await read_string()
-                    in_name = await read_string()
-                    connection_id = await self.__scheduler.add_node_connection(id_out, out_name, id_in, in_name)
-                    writer.write(struct.pack('>Q', connection_id))
-                elif command == b'removeconnection':
-                    connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    await self.__scheduler.remove_node_connection(connection_id)
-                    writer.write(b'\1')
-                #
-                # task mod
-                elif command == b'tpauselst':  # pause tasks
-                    task_ids = [-1]
-                    numtasks, paused, task_ids[0] = struct.unpack('>Q?Q', await reader.readexactly(17))  # there will be at least 1 task, cannot be zero
-                    if numtasks > 1:
-                        task_ids += struct.unpack('>' + 'Q'*(numtasks-1), await reader.readexactly(8*(numtasks-1)))
-                    await self.__scheduler.set_task_paused(task_ids, bool(paused))
-                    writer.write(b'\1')
-                elif command == b'tpausegrp':  # pause task group
-                    paused = struct.unpack('>?', await reader.readexactly(1))[0]
-                    task_group = await read_string()
-                    await self.__scheduler.set_task_paused(task_group, bool(paused))
-                    writer.write(b'\1')
-                elif command == b'tarchivegrp':  # archive or unarchive a task group
-                    group_name = await read_string()
-                    state = TaskGroupArchivedState(struct.unpack('>I', await reader.readexactly(4))[0])
-                    await self.__scheduler.set_task_group_archived(group_name, state)
-                    writer.write(b'\1')
-                elif command == b'tcancel':  # cancel task invocation
-                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    await self.__scheduler.cancel_invocation_for_task(task_id)
-                    writer.write(b'\1')
-                elif command == b'tsetnode':  # set task node
-                    task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
-                    await self.__scheduler.force_set_node_task(task_id, node_id)
-                    writer.write(b'\1')
-                elif command == b'tcstate':  # change task state
-                    task_ids = [-1]
-                    numtasks, state, task_ids[0] = struct.unpack('>QIQ', await reader.readexactly(20))  # there will be at least 1 task, cannot be zero
-                    if numtasks > 1:
-                        task_ids += struct.unpack('>' + 'Q' * (numtasks - 1), await reader.readexactly(8 * (numtasks - 1)))
-                    await self.__scheduler.force_change_task_state(task_ids, TaskState(state))
-                    writer.write(b'\1')
-                elif command == b'tsetname':  # change task name
-                    task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    new_name = await read_string()
-                    await self.__scheduler.set_task_name(task_id, new_name)
-                    writer.write(b'\1')
-                elif command == b'tsetgroups':  # set task groups
-                    task_id, strcount = struct.unpack('>QQ', await reader.readexactly(16))
-                    task_groups = set()
-                    for _ in range(strcount):
-                        task_groups.add(await read_string())
-                    await self.__scheduler.set_task_groups(task_id, task_groups)
-                    writer.write(b'\1')
-                elif command == b'tupdateattribs':  # UPDATE task attribs, not set and override completely
-                    task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
-                    attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
-                    attribs_to_delete = set()
-                    for _ in range(strcount):
-                        attribs_to_delete.add(await read_string())
-                    await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
-                    writer.write(b'\1')
-                # create new task
-                elif command == b'addtask':
-                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
-                    ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
-                    writer.write(struct.pack('>I', ret.value))
+                if command in commands:
+                    await commands[command]()
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
