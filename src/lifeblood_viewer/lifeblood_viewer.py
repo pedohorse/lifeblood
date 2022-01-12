@@ -4,6 +4,7 @@ from PySide2.QtWidgets import *
 from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
+from lifeblood.enums import TaskGroupArchivedState
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .worker_list import WorkerListWidget
@@ -74,6 +75,7 @@ class GroupsModel(QAbstractItemModel):
 class GroupsView(QTreeView):
     selection_changed = Signal(set)
     group_pause_state_change_requested = Signal(str, bool)
+    task_group_archived_state_change_requested = Signal(str, TaskGroupArchivedState)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -99,6 +101,8 @@ class GroupsView(QTreeView):
         menu = QMenu(parent=self)
         menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
+        menu.addSeparator()
+        menu.addAction('delete').triggered.connect(lambda: self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
     def setModel(self, model):
@@ -194,6 +198,7 @@ class LifebloodViewer(QMainWindow):
         scene.task_groups_updated.connect(self.update_groups)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
+        self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
 
         if mem_debug:
             self.__tracemalloc_timer = QTimer(self)
