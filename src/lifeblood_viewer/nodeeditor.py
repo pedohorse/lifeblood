@@ -4,7 +4,7 @@ from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from lifeblood.uidata import UiData, NodeUi, Parameter
-from lifeblood.enums import TaskState, NodeParameterType
+from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
 from lifeblood import paths
@@ -170,6 +170,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
+    _signal_set_task_group_state_requested = Signal(str, TaskGroupArchivedState)
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
     _signal_set_task_groups_requested = Signal(int, set)
@@ -238,6 +239,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
+        self._signal_set_task_group_state_requested.connect(self.__ui_connection_worker.set_task_group_archived_state)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_set_task_name_requested.connect(self.__ui_connection_worker.set_task_name)
@@ -308,6 +310,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
         self._signal_set_tasks_paused.emit(task_ids_or_group, paused)
+
+    def set_task_group_archived_state(self, group_name: str, state: TaskGroupArchivedState):
+        self._signal_set_task_group_state_requested.emit(group_name, state)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
