@@ -49,7 +49,14 @@ class GroupsModel(QAbstractItemModel):
     def columnCount(self, parent: QModelIndex = None) -> int:
         return 2
 
+    def is_archived(self, index) -> bool:
+        return self.__items[self.__items_order[index.row()]].get('state', 0) > 0
+
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if role == Qt.ForegroundRole:
+            archived = self.is_archived(index)
+            if archived:
+                return QColor.fromRgbF(0.5, 0.5, 0.5)
         if role != Qt.DisplayRole and role != self.SortRole:
             return
         if index.column() == 0:
@@ -94,7 +101,7 @@ class GroupsView(QTreeView):
         self.selection_changed.emit(set(index.data() for index in self.selectedIndexes() if index.column() == 0))
 
     def contextMenuEvent(self, event):
-        model: GroupsModel = self.model()
+        model: QSortFilterProxyModel = self.model()
         if model is None:
             return
         index: QModelIndex = self.indexAt(event.pos())
@@ -107,7 +114,10 @@ class GroupsView(QTreeView):
         menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
         menu.addSeparator()
-        menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
+        if model.sourceModel().is_archived(index):
+            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.NOT_ARCHIVED))
+        else:
+            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
     def setModel(self, model):
@@ -172,9 +182,11 @@ class LifebloodViewer(QMainWindow):
         act.setChecked(show_dead)
         act.toggled.connect(self.set_dead_shown)
 
-        view_menu.addSeparator()
-        act: QAction = view_menu.addAction('open archived groups list')
-        act.triggered.connect(self.open_archived_groups_list)
+        act: QAction = view_menu.addAction('show archived groups')
+        act.setCheckable(True)
+        self.__node_editor.set_archived_groups_shown(False)
+        act.setChecked(False)
+        act.toggled.connect(self.__node_editor.set_archived_groups_shown)
 
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
