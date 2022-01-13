@@ -29,11 +29,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         # commands
         async def comm_get_full_state():  # if command == b'getfullstate':
             task_groups = []
-            skip_dead = struct.unpack('>?', await reader.readexactly(1))[0]
+            skip_dead, skip_archived_groups = struct.unpack('>??', await reader.readexactly(2))
             for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
                 task_groups.append(await read_string())
 
-            uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead)
+            uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead, skip_archived_groups=skip_archived_groups)
             uidata_ser = await uidata.serialize(compress=True)
             writer.write(struct.pack('>Q', len(uidata_ser)))
             writer.write(uidata_ser)
@@ -317,7 +317,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'tpauselst': comm_pause_tasks,
                     b'tpausegrp': comm_pause_task_group,
                     b'tarchivegrp': comm_archive_task_group,
-                    b'tcancel': comm_task_set_node,
+                    b'tcancel': comm_task_cancel,
+                    b'tsetnode': comm_task_set_node,
                     b'tcstate': comm_task_change_state,
                     b'tsetname': comm_task_set_name,
                     b'tsetgroups': comm_task_set_groups,
