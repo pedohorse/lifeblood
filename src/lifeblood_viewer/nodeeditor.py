@@ -179,6 +179,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_add_task_requested = Signal(NewTask)
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
     _signal_set_skip_dead = Signal(bool)
+    _signal_set_skip_archived_groups = Signal(bool)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     task_groups_updated = Signal(set)
@@ -249,6 +250,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_add_task_requested.connect(self.__ui_connection_worker.add_task)
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
         self._signal_set_skip_dead.connect(self.__ui_connection_worker.set_skip_dead)
+        self._signal_set_skip_archived_groups.connect(self.__ui_connection_worker.set_skip_archived_groups)
 
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -335,8 +337,14 @@ class QGraphicsImguiScene(QGraphicsScene):
     def set_skip_dead(self, do_skip: bool) -> None:
         self._signal_set_skip_dead.emit(do_skip)
 
+    def set_skip_archived_groups(self, do_skip: bool) -> None:
+        self._signal_set_skip_archived_groups.emit(do_skip)
+
     def skip_dead(self) -> bool:
         return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
+
+    def skip_archived_groups(self) -> bool:
+        return self.__ui_connection_worker.skip_archived_groups()  # should be fine and thread-safe in eyes of python
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -895,6 +903,13 @@ class NodeEditor(QGraphicsView):
     @Slot(bool)
     def set_dead_shown(self, show: bool):
         self.__scene.set_skip_dead(not show)
+
+    def archived_groups_shown(self) -> bool:
+        return not self.__scene.skip_archived_groups()
+
+    @Slot(bool)
+    def set_archived_groups_shown(self, show: bool):
+        self.__scene.set_skip_archived_groups(not show)
 
     #
     # Actions
