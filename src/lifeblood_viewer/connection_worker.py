@@ -48,6 +48,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self.__conn: Optional[socket.socket] = None
         # self.__filter_dead = True
         self.__skip_dead = False
+        self.__skip_archived_groups = True
 
     def request_interruption(self):
         self.__to_stop = True  # assume it's atomic, which it should be
@@ -146,9 +147,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def skip_dead(self) -> bool:
         return self.__skip_dead
 
+    def skip_archived_groups(self) -> bool:
+        return self.__skip_archived_groups
+
     @Slot(bool)
     def set_skip_dead(self, do_skip: bool) -> None:
         self.__skip_dead = do_skip
+
+    @Slot(bool)
+    def set_skip_archived_groups(self, do_skip: bool) -> None:
+        self.__skip_archived_groups = do_skip
 
     @Slot()
     def check_scheduler(self):
@@ -166,7 +174,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         try:
             self.__conn.sendall(b'getfullstate\n')
-            self.__conn.sendall(struct.pack('>?', self.__skip_dead))
+            self.__conn.sendall(struct.pack('>??', self.__skip_dead, self.__skip_archived_groups))
             if not self.__task_group_filter:
                 self.__conn.sendall(struct.pack('>I', 0))
             else:
