@@ -18,6 +18,11 @@ if mem_debug:
     tracemalloc.start()
 
 
+def confirm_operation_gui(parent: QWidget, opname):
+    res = QMessageBox.warning(parent, 'confirm action', f'confirm {opname}', QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
+    return res == QMessageBox.Ok
+
+
 class GroupsModel(QAbstractItemModel):
     SortRole = Qt.UserRole + 0
 
@@ -102,7 +107,7 @@ class GroupsView(QTreeView):
         menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
         menu.addSeparator()
-        menu.addAction('delete').triggered.connect(lambda: self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
+        menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
     def setModel(self, model):
@@ -166,6 +171,10 @@ class LifebloodViewer(QMainWindow):
         self.set_dead_shown(show_dead)
         act.setChecked(show_dead)
         act.toggled.connect(self.set_dead_shown)
+
+        view_menu.addSeparator()
+        act: QAction = view_menu.addAction('open archived groups list')
+        act.triggered.connect(self.open_archived_groups_list)
 
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
