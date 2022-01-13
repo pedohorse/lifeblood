@@ -1625,7 +1625,7 @@ class Scheduler:
     #
     # stuff
     @atimeit(0.005)
-    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, group_state=0):
+    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True):
         self.__logger.debug('full update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
@@ -1675,7 +1675,7 @@ class Scheduler:
                             all_tasks[task['id']] = task
             # _dbg = time.perf_counter()
             #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
-            async with con.execute('SELECT "group", "ctime" FROM task_group_attributes WHERE state = ?', (group_state,)) as cur:
+            async with con.execute('SELECT "group", "ctime", "state" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
