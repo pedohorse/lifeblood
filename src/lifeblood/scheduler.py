@@ -476,6 +476,8 @@ class Scheduler:
 
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
             self.__db_cache['workers_state'][worker_row['id']]['last_seen'] = int(time.time())
+            if worker_row['state'] == WorkerState.ERROR.value:  # so we thought worker had an network error, but now it's all fine
+                await self.set_worker_state(worker_row['id'], workerstate)
             # await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
             #                      #self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
             #                      self.update_worker_lastseen(worker_row['id'], con, nocommit=True)

@@ -543,8 +543,9 @@ class Worker:
                 # currently the only way it can be error is because of shitty network
                 # ideally here we would check ourselves
                 # but there's nothing to check right now
-                self.__logger.warning('scheduler replied it thinks i\'m ERROR, but i\'m doing fine. probably something is wrong with the network. reintroducing myself')
-                await _reintroduce_ourself()
+                self.__logger.warning('scheduler replied it thinks i\'m ERROR, but i\'m doing fine. probably something is wrong with the network. waiting for scheduler to resolve the problem')
+                # no we don't reintroduce - error state on scheduler side just means he won't give us tasks for now
+                # and since error is most probably due to network - it will either resolve itself, or there is no point reintroducing if connection cannot be established anyway
             elif result is not None:
                 self.__ping_missed = 0
 
