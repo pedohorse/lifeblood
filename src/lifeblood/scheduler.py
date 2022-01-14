@@ -420,7 +420,7 @@ class Scheduler:
                 self.__pinger_logger.info(f'    :: network timeout {ip}:{port}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
-                if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):
+                if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):  # TODO: maybe give it a couple of tries before declaring a failure?
                     await con.commit()
                 return
             except ConnectionRefusedError as e:
