@@ -96,22 +96,42 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         config = get_config('viewer')
         if config.get_option_noasync('viewer.listen_to_broadcast', True):
-            logger.info('waiting for scheduler broadcast...')
-            tasks = asyncio.run(asyncio.wait((
-                await_broadcast('lifeblood_scheduler'),
-                _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
+            sche_addr, sche_port = None, None
+            # check last known address first
+            lastaddr = config.get_option_noasync('viewer.last_scheduler_address', None)
+            if lastaddr is not None:
+                sche_addr, sche_port = lastaddr.split(':')
+                sche_port = int(sche_port)
+            if sche_addr is not None:
+                logger.info(f'trying to connect to the last known scheduler\'s address {sche_addr}:{sche_port}')
+                tmp_sock = None
+                try:
+                    tmp_sock = socket.create_connection((sche_addr, sche_port), timeout=5)
+                    tmp_sock.sendall(b'\0\0\0\0')
+                except ConnectionError:
+                    logger.info('last known address didn\'t work')
+                    sche_addr, sche_port = None, None
+                finally:
+                    if tmp_sock is not None:
+                        tmp_sock.close()
 
-            logger.debug(tasks)
-            message = list(tasks[0])[0].result()
+            if sche_addr is None:
+                logger.info('waiting for scheduler broadcast...')
+                tasks = asyncio.run(asyncio.wait((
+                    await_broadcast('lifeblood_scheduler'),
+                    _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
 
-            logger.debug(message)
-            if message is None:
-                return False
-            logger.debug('received broadcast: %s', message)
-            schedata = json.loads(message)
+                logger.debug(tasks)
+                message = list(tasks[0])[0].result()
 
-            sche_addr, sche_port = address_to_ip_port(schedata['ui'])  #schedata['ui'].split(':')
-            #sche_port = int(sche_port)
+                logger.debug(message)
+                if message is None:
+                    return False
+                logger.debug('received broadcast: %s', message)
+                schedata = json.loads(message)
+
+                sche_addr, sche_port = address_to_ip_port(schedata['ui'])  #schedata['ui'].split(':')
+                #sche_port = int(sche_port)
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
             sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
@@ -133,6 +153,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         assert self.__conn is not None
         self.__conn.sendall(b'\0\0\0\0')
+        config.set_option_noasync('viewer.last_scheduler_address', f'{sche_addr}:{sche_port}')
         return True
 
     def _send_string(self, text: str):
