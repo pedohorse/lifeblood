@@ -17,8 +17,8 @@ from lifeblood.misc import generate_name
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence
+from PySide2.QtCore import QObject, Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
+from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
@@ -847,9 +847,34 @@ class QGraphicsImguiScene(QGraphicsScene):
     #         node.setPos(QPointF(*pos))
 
 
-class NodeEditor(QGraphicsView):
+class Shortcutable:
+    def __init__(self, config_name):
+        assert isinstance(self, QObject)
+        self.__shortcuts: Dict[str, QShortcut] = {}
+        config = get_config(config_name)
+        defaults = self.default_shortcuts()
+        for action, meth in self.shortcutable_methods().items():
+            shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
+            if shortcut is None:
+                continue
+            self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self)
+            self.__shortcuts[action].activated.connect(meth)
+
+    def shortcuts(self):
+        return MappingProxyType(self.__shortcuts)
+
+    def shortcutable_methods(self) -> Dict[str, Callable]:
+        return {}
+
+    def default_shortcuts(self) -> Dict[str, str]:
+        return {}
+
+
+class NodeEditor(QGraphicsView, Shortcutable):
     def __init__(self, db_path: str = None, worker=None, parent=None):
         super(NodeEditor, self).__init__(parent=parent)
+        # PySide's QWidget does not call super, so we call explicitly
+        Shortcutable.__init__(self, 'viewer')
 
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
@@ -873,8 +898,8 @@ class NodeEditor(QGraphicsView):
         #self.__update_timer.start()
         self.__editor_clipboard = Clipboard()
 
-        self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
-        self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
+        #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
+        #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
 
         self.__create_menu_popup_toopen = False
         self.__node_type_input = ''
@@ -893,6 +918,18 @@ class NodeEditor(QGraphicsView):
         self.__imgui_init = False
         self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
         self.update()
+
+    def shortcutable_methods(self):
+        return {'nodeeditor.layout_graph': self.layout_selected_nodes,
+                'nodeeditor.copy': self.copy_selected_nodes,
+                'nodeeditor.paste': self.paste_copied_nodes,
+                'nodeeditor.focus_selected': self.focuse_on_selected}
+
+    def default_shortcuts(self) -> Dict[str, str]:
+        return {'nodeeditor.layout_graph': 'Ctrl+l',
+                'nodeeditor.copy': 'Ctrl+c',
+                'nodeeditor.paste': 'Ctrl+v',
+                'nodeeditor.focus_selected': 'f'}
 
     #
     # get/set settings
@@ -986,7 +1023,9 @@ class NodeEditor(QGraphicsView):
         self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, NodeSnippetData(clipnodes, clipconns, avgpos.toTuple()))
 
     @Slot(QPointF)
-    def paste_copied_nodes(self, pos: QPointF):
+    def paste_copied_nodes(self, pos: Optional[QPointF] = None):
+        if pos is None:
+            pos = self.mapToScene(self.mapFromGlobal(QCursor.pos()))
         clipdata = self.__editor_clipboard.contents(self.__editor_clipboard.ClipboardContentsType.NODES)
         if clipdata is None:
             return
@@ -1010,6 +1049,26 @@ class NodeEditor(QGraphicsView):
         print(node_ids, pos, avg_old_pos)
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
 
+    @Slot()
+    def focuse_on_selected(self):
+        if self.__ui_panning_lastpos:  # if we are panning right now
+            return
+        numitems = len(self.__scene.selectedItems())
+        if numitems == 0:
+            center = self.__scene.itemsBoundingRect().center()
+        else:
+            center = QPointF()
+            for item in self.__scene.selectedItems():
+                center += item.mapToScene(item.boundingRect().center())
+            center /= numitems
+
+        rect = self.sceneRect()
+        rect.setSize(QSize(1, 1))
+        rect.moveCenter(center)
+        self.setSceneRect(rect)
+        #self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * (2 ** self.__view_scale)).toTuple()))
+    #
+    #
     def show_task_menu(self, task):
         menu = QMenu(self)
         menu.addAction(f'task {task.get_id()}').setEnabled(False)
@@ -1062,7 +1121,7 @@ class NodeEditor(QGraphicsView):
         menu.addSeparator()
 
         if len(self.__scene.selectedItems()) > 0:
-            menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
+            menu.addAction(f'layout selected nodes ({self.shortcuts()["nodeeditor.layout_graph"].key().toString()})').triggered.connect(self.layout_selected_nodes)
             menu.addSeparator()
 
         menu.addAction('create new task').triggered.connect(lambda checked=False, x=node: self._popup_create_task(x))
@@ -1085,7 +1144,7 @@ class NodeEditor(QGraphicsView):
 
     def show_general_menu(self, pos):
         menu = QMenu(self)
-        menu.addAction(f'layout selected nodes ({self.__shortcut_layout.key().toString()})').triggered.connect(self.layout_selected_nodes)
+        menu.addAction(f'layout selected nodes ({self.shortcuts()["nodeeditor.layout_graph"].key().toString()})').triggered.connect(self.layout_selected_nodes)
         menu.addAction('duplicate selected nodes here').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.duplicate_selected_nodes(p))
         menu.addSeparator()
         menu.addAction('copy selected').triggered.connect(self.copy_selected_nodes)
