@@ -676,9 +676,18 @@ class Scheduler:
 
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
-                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ? '
+                        job_priority = process_result.invocation_job.priority()
+                        async with con.execute('SELECT MAX(task_group_attributes.priority) AS priority FROM task_group_attributes '
+                                               'INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group" '
+                                               'WHERE task_groups.task_id==? AND task_group_attributes.state==?', (task_id, TaskGroupArchivedState.NOT_ARCHIVED.value)) as cur:
+                            group_priority = await cur.fetchone()
+                            if group_priority is None:
+                                group_priority = 50.0  # "or" should only work in case there were no unarchived groups at all for the task
+                            else:
+                                group_priority = group_priority[0]
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, priority = ? '
                                           'WHERE "id" = ?',
-                                          (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql,
+                                          (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql, group_priority + job_priority,
                                            task_id))
                 #print(f'kill/invoc: {time.perf_counter() - _bla1}')
                 #_bla1 = time.perf_counter()
@@ -902,7 +911,7 @@ class Scheduler:
                                            'WHERE (state = ?) '
                                            'AND paused = 0 '
                                            'AND dead = 0 '
-                                           'ORDER BY RANDOM()',
+                                           'ORDER BY RANDOM()' + (', tasks.priority DESC' if task_state == TaskState.READY else ''),
                                            (task_state.value,)) as cur:
                         all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
                         # if too much tasks here - consider adding LIMIT to execute and work on portions only
