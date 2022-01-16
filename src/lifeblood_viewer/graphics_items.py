@@ -423,6 +423,7 @@ class Node(NetworkItemWithUI):
             param_name = item.name()
             param_label = item.label() or ''
             parent_layout = item.parent()
+            idstr = f'_{self.get_id()}'
             assert isinstance(parent_layout, ParametersLayoutBase)
             imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2 / 3)
             changed = False
@@ -430,7 +431,7 @@ class Node(NetworkItemWithUI):
             try:
                 if item.has_expression():
                     with imgui.colored(imgui.COLOR_FRAME_BACKGROUND, 0.1, 0.4, 0.1):
-                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.expression(), 256)
+                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), 256)
                     if expr_changed:
                         item.set_expression(newval)
                 elif item.has_menu():
@@ -446,7 +447,7 @@ class Node(NetworkItemWithUI):
                         imgui.text(menu_items_inv[item.value()])
                         return
                     else:
-                        changed, val = imgui.combo('##'.join((param_label, param_name)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
+                        changed, val = imgui.combo('##'.join((param_label, param_name, idstr)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
                         if changed:
                             item.set_value(menu_items[menu_order[val]])
                 else:
@@ -455,30 +456,30 @@ class Node(NetworkItemWithUI):
                         return
                     param_type = item.type()
                     if param_type == NodeParameterType.BOOL:
-                        changed, newval = imgui.checkbox('##'.join((param_label, param_name)), item.value())
+                        changed, newval = imgui.checkbox('##'.join((param_label, param_name, idstr)), item.value())
                     elif param_type == NodeParameterType.INT:
-                        #changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), 0, 10)
+                        #changed, newval = imgui.slider_int('##'.join((param_label, param_name, idstr)), item.value(), 0, 10)
                         slider_limits = item.display_value_limits()
                         if slider_limits[0] is not None:
-                            changed, newval = imgui.slider_int('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                            changed, newval = imgui.slider_int('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_int('##'.join((param_label, param_name)), item.value())
+                            changed, newval = imgui.input_int('##'.join((param_label, param_name, idstr)), item.value())
                         if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
                             imgui.selectable('toggle expression')
                             imgui.end_popup()
                     elif param_type == NodeParameterType.FLOAT:
-                        #changed, newval = imgui.slider_float('##'.join((param_label, param_name)), item.value(), 0, 10)
+                        #changed, newval = imgui.slider_float('##'.join((param_label, param_name, idstr)), item.value(), 0, 10)
                         slider_limits = item.display_value_limits()
-                        if slider_limits[0] is not None:
-                            changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value(), *slider_limits)
+                        if slider_limits[0] is not None and slider_limits[1] is not None:
+                            changed, newval = imgui.slider_float('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_float('##'.join((param_label, param_name)), item.value())
+                            changed, newval = imgui.input_float('##'.join((param_label, param_name, idstr)), item.value())
                     elif param_type == NodeParameterType.STRING:
                         if item.is_text_multiline():
                             # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
                             imgui.begin_group()
                             ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
-                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
                             imgui.end_group()
                             if ed_butt_pressed:
                                 hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
@@ -489,14 +490,14 @@ class Node(NetworkItemWithUI):
                                 wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
                                 wgt.show()
                         else:
-                            changed, newval = imgui.input_text('##'.join((param_label, param_name)), item.unexpanded_value(), 256)
+                            changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256)
                     else:
                         raise NotImplementedError()
                     if changed:
                         item.set_value(newval)
 
                 # item context menu popup
-                popupid = '##'.join((param_label, param_name))  # just to make sure no names will collide with full param imgui lables
+                popupid = '##'.join((param_label, param_name, idstr))  # just to make sure no names will collide with full param imgui lables
                 if imgui.begin_popup_context_item(f'Item Context Menu##{popupid}', 2):
                     if item.can_have_expressions() and not item.has_expression():
                         if imgui.selectable(f'enable expression##{popupid}')[0]:
