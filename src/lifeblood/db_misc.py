@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"name"	TEXT,
 	"attributes"	TEXT NOT NULL DEFAULT '{{}}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
+	"priority"	REAL NOT NULL DEFAULT 50,
 	"_invoc_requirement_clause"	TEXT,
 	"environment_resolver_data"	BLOB,
 	"dead"	INTEGER NOT NULL DEFAULT 0,
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"ctime"	INTEGER NOT NULL,
 	"status"	INTEGER NOT NULL DEFAULT 0,
 	"creator"	TEXT,
+	"priority"	REAL NOT NULL DEFAULT 50,
 	PRIMARY KEY("group")
 );
 CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" (
