@@ -1,5 +1,5 @@
 from copy import copy
-from lifeblood.basenode import BaseNode
+from lifeblood.basenode import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
@@ -12,7 +12,7 @@ def node_class():
     return HipDriverRenderer
 
 
-class HipDriverRenderer(BaseNode):
+class HipDriverRenderer(BaseNodeWithTaskRequirements):
     @classmethod
     def label(cls) -> str:
         return 'hip driver renderer'
