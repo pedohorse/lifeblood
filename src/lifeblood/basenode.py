@@ -257,7 +257,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             with ui.collapsable_group_block('main worker requirements', 'worker requirements'):
-                ui.add_parameter('priority', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
+                ui.add_parameter('priority adjustment', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
                 ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
                 ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
                 ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
@@ -273,6 +273,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
             result.invocation_job.set_requirements(reqs)
+            result.invocation_job.set_priority(context.param_value('priority adjustment'))
         return result
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
@@ -286,6 +287,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
             result.invocation_job.set_requirements(reqs)
+            result.invocation_job.set_priority(context.param_value('priority adjustment'))
         return result
 
 
