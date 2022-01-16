@@ -911,7 +911,7 @@ class Scheduler:
                                            'WHERE (state = ?) '
                                            'AND paused = 0 '
                                            'AND dead = 0 '
-                                           'ORDER BY RANDOM()' + (', tasks.priority DESC' if task_state == TaskState.READY else ''),
+                                           'ORDER BY {} RANDOM()'.format('tasks.priority DESC, ' if task_state == TaskState.READY else ''),
                                            (task_state.value,)) as cur:
                         all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
                         # if too much tasks here - consider adding LIMIT to execute and work on portions only
