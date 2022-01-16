@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"group"	TEXT NOT NULL UNIQUE,
 	"ctime"	INTEGER NOT NULL,
-	"status"	INTEGER NOT NULL DEFAULT 0,
+	"state"	INTEGER NOT NULL DEFAULT 0,
 	"creator"	TEXT,
 	"priority"	REAL NOT NULL DEFAULT 50,
 	PRIMARY KEY("group")
