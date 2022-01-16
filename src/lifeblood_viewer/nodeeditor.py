@@ -18,7 +18,7 @@ import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import QObject, Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor
+from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
@@ -857,7 +857,7 @@ class Shortcutable:
             shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
             if shortcut is None:
                 continue
-            self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self)
+            self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
             self.__shortcuts[action].activated.connect(meth)
 
     def shortcuts(self):
@@ -868,6 +868,14 @@ class Shortcutable:
 
     def default_shortcuts(self) -> Dict[str, str]:
         return {}
+
+    def disable_shortcuts(self):
+        for shortcut in self.__shortcuts.values():
+            shortcut.setEnabled(False)
+
+    def enable_shortcuts(self):
+        for shortcut in self.__shortcuts.values():
+            shortcut.setEnabled(True)
 
 
 class NodeEditor(QGraphicsView, Shortcutable):
@@ -1330,7 +1338,6 @@ class NodeEditor(QGraphicsView, Shortcutable):
             elif self.__menu_popup_arrow_down:
                 self.__menu_popup_arrow_down = False
 
-
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
                 self.__node_type_input = ''
@@ -1529,6 +1536,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
         self.stop()
         super(NodeEditor, self).closeEvent(event)
+
+    def event(self, event):
+        if event.type() == QEvent.ShortcutOverride:
+            if imgui.get_io().want_capture_keyboard:
+                event.accept()
+                return True
+        return super(NodeEditor, self).event(event)
 
     def start(self):
         self.__scene.start()
