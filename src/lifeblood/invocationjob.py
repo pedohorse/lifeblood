@@ -168,6 +168,7 @@ class InvocationJob:
         self.__err_progress_regex = None
 
         self.__requirements = requirements or InvocationRequirements()
+        self.__priority = 0.0
         self.__envres_args = None # environment_wrapper_arguments
 
         self.__exitcode = None
@@ -182,6 +183,12 @@ class InvocationJob:
 
     def set_requirements(self, requirements: InvocationRequirements):
         self.__requirements = requirements
+
+    def priority(self):
+        return self.__priority
+
+    def set_priority(self, priority: float):
+        self.__priority = priority
 
     def environment_resolver_arguments(self):
         return self.__envres_args
