@@ -33,6 +33,9 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
+            with ui.parameters_on_same_line_block():
+                skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
+                ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
             ui.add_parameter('ifd force inline', 'force inline ifd', NodeParameterType.BOOL, True)
 
     def process_task(self, context) -> ProcessingResult:
@@ -54,14 +57,15 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         env = InvocationEnvironment()
 
         spawnlines = \
-            f"    filepath = node.evalParm('soho_diskfile')\n" \
-            f"    outimage = node.evalParm('vm_picture')\n" \
-            f"    lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, {{'frames': [frame], 'file': filepath, 'hipfile': '{hippath}', 'outimage': outimage}})\n"
+            f"        filepath = node.evalParm('soho_diskfile')\n" \
+            f"        outimage = node.evalParm('vm_picture')\n" \
+            f"        lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, {{'frames': [frame], 'file': filepath, 'hipfile': '{hippath}', 'outimage': outimage}})\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''
 
         script = \
+            f'import os\n' \
             f'import hou\n' \
             f'import lifeblood_connection\n' \
             f'print("opening file" + {repr(hippath)})\n' \
@@ -69,22 +73,36 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             f'node = hou.node("{driverpath}")\n' \
             f'if node.parm("soho_outputmode").evalAsInt() != 1:\n' \
             f'    node.parm("soho_outputmode").set(1)\n'
-        ifdpath = context.param_value('ifd file path').strip()
-        if ifdpath != '':
+        rawifdpath = context.param_value('ifd file path').strip()
+        ifdpath = repr(rawifdpath)
+        if rawifdpath != '':
             script += \
-                f'node.parm("soho_diskfile").set("{ifdpath}")\n'
+                f'node.parm("soho_diskfile").set({ifdpath})\n'
         if context.param_value('ifd force inline'):
             script += \
                 f'node.parm("vm_inlinestorage").set(1)\n'
         script += \
             f'for frame in {repr(frames)}:\n' \
             f'    hou.setFrame(frame)\n' \
-            f'    print("rendering frame %d" % frame)\n' \
-            f'    node.render(frame_range=(frame, frame))\n' \
-            f'{spawnlines}' \
+            f'    skipped = False\n'
+        if context.param_value('skip if exists'):
+            script += \
+                f'    skipped = os.path.exists(node.parm("soho_diskfile").evalAsString())\n'
+        script += \
+            f'    if skipped:\n' \
+            f'        print("output file already exists, skipping frame %d" % frame)\n' \
+            f'    else:\n' \
+            f'        print("rendering frame %d" % frame)\n' \
+            f'        node.render(frame_range=(frame, frame))\n'
+        if spawnlines is not None:
+            script += \
+                f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n' \
+                f'{spawnlines}'
+        script += \
             f'print("all done!")\n'
 
-        inv = InvocationJob(['hython', '-c', script], env=env)
+        inv = InvocationJob(['hython', ':/work_to_do.py'], env=env)
+        inv.set_extra_file('work_to_do.py', script)
         res = ProcessingResult(job=inv)
         return res
 
