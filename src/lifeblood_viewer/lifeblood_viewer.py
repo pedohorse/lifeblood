@@ -5,6 +5,7 @@ from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
+from lifeblood import paths
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .worker_list import WorkerListWidget
@@ -151,8 +152,10 @@ class GroupsView(QTreeView):
 
 
 class LifebloodViewer(QMainWindow):
-    def __init__(self, db_path: str, parent=None):
+    def __init__(self, db_path: str = None, parent=None):
         super(LifebloodViewer, self).__init__(parent)
+        if db_path is None:
+            db_path = paths.config_path('node_viewer.db', 'viewer')
 
         # worker thread
         self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
