@@ -1851,12 +1851,17 @@ class Scheduler:
                         await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                               zip(itertools.repeat(new_id, len(groups)), groups))
                 else:  # parent_task_id is None
+                    # in this case we create a default group for the task.
+                    # task should not be left without groups at all - otherwise it will be impossible to find in UI
                     new_group = '{name}#{id:d}'.format(name=newtask.name(), id=new_id)
                     await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                       (new_id, new_group))
                     await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
                                       (new_group, int(datetime.utcnow().timestamp())))
-
+                    if newtask.default_priority() is not None:
+                        await con.execute('UPDATE task_group_attributes SET "priority" = ? WHERE "group" = ?',
+                                          (newtask.default_priority(), new_group))
+                    #
                 if newtask.extra_group_names():
                     groups = newtask.extra_group_names()
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',

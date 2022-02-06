@@ -8,6 +8,10 @@ import pickle
 import threading
 import socket
 import struct
+try:
+    from typing import Optional
+except ImportError:
+    pass
 
 
 class TaskSpawn:
@@ -25,6 +29,7 @@ class TaskSpawn:
         self.__output = 'spawned'
         self._create_as_spawned = True
         self.__extra_groups = []
+        self.__default_priority = None
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -47,11 +52,27 @@ class TaskSpawn:
     def name(self):
         return self.__name
 
+    def default_priority(self):  # type: () -> Optional[float]
+        """
+        This priority will be used only in case this task requires a default group creation
+        If this task has nonempty list of groups to be assigned to - this default priority is
+
+        :return: default priority
+        """
+        return self.__default_priority
+
     def add_extra_group_name(self, group_name):
         self.__extra_groups.append(group_name)
 
     def extra_group_names(self):
         return self.__extra_groups
+
+    def set_default_priority(self, priority):  # type: (float) -> None
+        """
+        This priority will be used only in case this task requires a default group creation
+        If this task has nonempty list of groups to be assigned to - this default priority is
+        """
+        self.__default_priority = priority
 
     def set_name(self, name):
         self.__name = name
