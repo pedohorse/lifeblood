@@ -69,7 +69,8 @@ class ParentChildrenWaiterNode(BaseNode):
         task_id = context.task_field('id')
         children_count = context.task_field('active_children_count')
         if context.task_field('node_input_name') == 'main':
-            return task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
+            return children_count == 0 or \
+                   task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
 
         ready: bool = True
         parent_id = context.task_field('parent_id')
