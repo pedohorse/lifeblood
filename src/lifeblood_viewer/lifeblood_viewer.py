@@ -39,6 +39,8 @@ class GroupsModel(QAbstractItemModel):
             return 'name'
         elif section == 1:
             return 'creation time'
+        elif section == 2:
+            return 'prio'
 
     def rowCount(self, parent: QModelIndex = None) -> int:
         if parent is None:
@@ -48,7 +50,7 @@ class GroupsModel(QAbstractItemModel):
         return 0
 
     def columnCount(self, parent: QModelIndex = None) -> int:
-        return 2
+        return 3
 
     def is_archived(self, index) -> bool:
         return self.__items[self.__items_order[index.row()]].get('state', 0) > 0
@@ -62,11 +64,13 @@ class GroupsModel(QAbstractItemModel):
             return
         if index.column() == 0:
             return self.__items_order[index.row()]
-        elif index.column() == 1:
+        elif index.column() == 1:  # creation time
             if role == Qt.DisplayRole:
                 return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].get('ctime', 0) or 0).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
                 return self.__items[self.__items_order[index.row()]].get('ctime', -1)
+        elif index.column() == 2:  # priority
+            return self.__items[self.__items_order[index.row()]].get('priority', None)
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
         if parent is None:
