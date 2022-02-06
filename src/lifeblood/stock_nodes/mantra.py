@@ -31,6 +31,7 @@ class Mantra(BaseNodeWithTaskRequirements):
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_parameter('ifd path', 'ifd file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('image path', 'output image file path', NodeParameterType.STRING, "`task['outimage']`")
+            ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
 
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()
@@ -39,7 +40,21 @@ class Mantra(BaseNodeWithTaskRequirements):
 
         env = InvocationEnvironment()
 
-        invoc = InvocationJob(['mantra', '-V', '2a', context.param_value('ifd path'), context.param_value('image path')], env=env)
+        if context.param_value('skip if exists'):
+            script = 'import os\n' \
+                     'if not os.path.exists({imgpath}):\n' \
+                     '    import sys\n' \
+                     '    from subprocess import Popen\n' \
+                     "    sys.exit(Popen(['mantra', '-V', '2a', {ifdpath}, {imgpath}]).wait())\n" \
+                     "else:\n" \
+                     "    print('image file already exists, skipping work')\n" \
+                    .format(imgpath=repr(context.param_value('image path')),
+                            ifdpath=repr(context.param_value('ifd path')))
+
+            invoc = InvocationJob(['python', ':/mantracall.py'])
+            invoc.set_extra_file('mantracall.py', script)
+        else:
+            invoc = InvocationJob(['mantra', '-V', '2a', context.param_value('ifd path'), context.param_value('image path')], env=env)
         res = ProcessingResult(invoc)
         return res
 
