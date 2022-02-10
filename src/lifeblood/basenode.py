@@ -11,6 +11,7 @@ from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .enums import NodeParameterType
+from .plugin_info import PluginInfo
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -169,6 +170,16 @@ class BaseNode:
     # # some helpers
     # def _get_task_attributes(self, task_row):
     #     return json.loads(task_row.get('attributes', '{}'))
+
+    #
+    # Plugin info
+    #
+    def my_plugin(self) -> Optional[PluginInfo]:
+        from . import pluginloader
+        type_name = self.type_name()
+        if type_name not in pluginloader.plugins:
+            return None
+        return pluginloader.plugins[type_name]._plugin_info
 
     #
     # Serialize and back

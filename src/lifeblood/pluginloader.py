@@ -4,7 +4,7 @@ import re
 import hashlib
 import importlib.util
 
-from . import logging
+from . import logging, plugin_info
 
 from typing import List, Tuple
 
@@ -15,7 +15,14 @@ __plugin_file_hashes = {}
 logger = logging.get_logger('plugin_loader')
 
 
-def _install_node(filepath, plugin_category):
+def _install_node(filepath, plugin_category, parent_package=None):
+    """
+
+    :param filepath:
+    :param plugin_category:
+    :param parent_package: path to the base of the package, if this plugin is part of one, else - None
+    :return:
+    """
     filename = os.path.basename(filepath)
     filebasename, fileext = os.path.splitext(filename)
 
@@ -24,6 +31,7 @@ def _install_node(filepath, plugin_category):
     try:
         mod = importlib.util.module_from_spec(mod_spec)
         mod_spec.loader.exec_module(mod)
+        mod._plugin_info = plugin_info.PluginInfo(filepath, parent_package)
     except:
         logger.exception(f'failed to load plugin "{filebasename}". skipping.')
     for requred_attr in ('node_class',):
@@ -76,8 +84,7 @@ def _install_package(package_path, plugin_category):
             filebasename, fileext = os.path.splitext(filename)
             if fileext != '.py':
                 continue
-            _install_node(os.path.join(nodes_path, filename), plugin_category)
-
+            _install_node(os.path.join(nodes_path, filename), plugin_category, package_path)
 
 
 def init():
