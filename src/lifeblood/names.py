@@ -1,5 +1,6 @@
 import re
 
+from lifeblood.logging import get_logger
 from typing import Iterable
 
 
@@ -11,6 +12,7 @@ def match(match_expr: str, items: Iterable[str]):
     :param items:
     :return:
     """
+    get_logger('scheduler').warning('this function is deprecated')
     res = []
 
     parts = []
