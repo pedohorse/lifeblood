@@ -255,7 +255,7 @@ class Worker:
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = report_to
             for aname, aval in task.attributes().items():
                 env['LBATTR_%s' % aname] = str(aval)
-            env['LBATTRS_JSON'] = json.dumps(dict(task.attributes())).encode('UTF-8')
+            env['LBATTRS_JSON'] = json.dumps(dict(task.attributes()))
             if self.__extra_files_base_dir is not None:
                 env['LB_EF_ROOT'] = self.__extra_files_base_dir
             if not os.path.exists(logbasedir):
@@ -268,7 +268,9 @@ class Worker:
                         *args,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        env=env
+                        env=env,
+                        restore_signals=True,
+                        start_new_session=True
                     )
             except Exception as e:
                 self.__logger.exception('task creation failed with error: %s' % (repr(e),))
@@ -353,7 +355,7 @@ class Worker:
             try:
                 puproc = psutil.Process(self.__running_process.pid)
             except psutil.NoSuchProcess:
-                self.__logger.info(f'cannot find process with pid {self.__running_process.pid}. Assuming it finished. retcode={self.__running_process.returncode}')
+                self.__logger.warning(f'cannot find process with pid {self.__running_process.pid}. Assuming it finished. retcode={self.__running_process.returncode}')
             else:
                 all_proc = puproc.children(recursive=True)
                 all_proc.append(puproc)
@@ -375,6 +377,11 @@ class Worker:
                             proc.kill()
                         except psutil.NoSuchProcess:
                             pass
+            if hasattr(os, 'killpg'):  # only on POSIX
+                try:
+                    os.killpg(self.__running_process.pid, 9)
+                except OSError:
+                    pass
 
             await self.__running_process.wait()
 
