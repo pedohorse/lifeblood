@@ -53,6 +53,9 @@ class BaseNode:
     def set_name(self, name: str):
         self.__name = name
 
+    def id(self):
+        return self.__parent_nid
+
     # # MAYBE UNCOMMENT THESE WHEN ALL NODES ARE REFACTORED TO USE CONTEXT?
     # def param_value(self, param_name, context: Optional[ProcessingContext] = None) -> Any:
     #     """
