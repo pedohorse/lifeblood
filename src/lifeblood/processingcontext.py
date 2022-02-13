@@ -1,5 +1,8 @@
 import json
 from types import MappingProxyType
+import re
+
+from .config import get_config
 
 from typing import TYPE_CHECKING, Dict
 
@@ -39,19 +42,32 @@ class ProcessingContext:
                 return self.__attrs[item]
             raise AttributeError(f'node has no field {item}')
 
+    class ConfigWrapper:
+        def __init__(self, node_type_id):
+            self.__config = get_config('nodes')
+            self.__nodetypeid = node_type_id
+
+        def get(self, key, default=None):
+            return self.__config.get_option_noasync(f'{self.__nodetypeid}.{key}', default)
+
+        def __getitem__(self, item):
+            return self.get(item)
+
     def __init__(self, node: "BaseNode", task_dict: dict):
         task_dict = dict(task_dict)
         self.__task_attributes = json.loads(task_dict.get('attributes', '{}'))
         self.__task_dict = task_dict
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
         self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
+        sanitized_name = re.sub(r'\W', lambda m: f'x{ord(m.group(0))}', node.type_name())
+        self.__conf_wrapper = ProcessingContext.ConfigWrapper(sanitized_name)
         self.__node = node
 
     def param_value(self, param_name: str):
         return self.__node.get_ui().parameter(param_name).value(self)
 
     def locals(self):
-        return {'task': self.__task_wrapper, 'node': self.__node_wrapper}
+        return {'task': self.__task_wrapper, 'node': self.__node_wrapper, 'config': self.__conf_wrapper}
 
     def task_attribute(self, attrib_name: str):
         return self.__task_attributes[attrib_name]
@@ -67,3 +83,6 @@ class ProcessingContext:
 
     def task_has_field(self, field_name: str):
         return field_name in self.__task_dict
+
+    def task_id(self):
+        return self.__task_dict.get('id')
