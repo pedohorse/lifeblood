@@ -6,7 +6,9 @@ import pickle
 from types import MappingProxyType
 from .enums import WorkerType
 
-from typing import Optional, Iterable, Union, Dict, List
+from typing import Optional, Iterable, Union, Dict, List, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .environment_resolver import EnvironmentResolverArguments
 
 
 class InvocationNotFinished(RuntimeError):
