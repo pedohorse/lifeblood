@@ -36,8 +36,11 @@ def main(argv):
             logging.set_default_loglevel(opts.loglevel)
         try:
             from lifeblood_viewer.launch import main
-        except ImportError:
-            logging.get_logger('main').error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
+        except ImportError as e:
+            logger = logging.get_logger('main')
+            logger.error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
+            logger.exception(e)
+            return
         return main(cmd_argv)
 
 
