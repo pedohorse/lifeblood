@@ -12,7 +12,7 @@ from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 
-from lifeblood.misc import generate_name
+from lifeblood.text import generate_name
 
 import PySide2.QtCore
 import PySide2.QtGui
