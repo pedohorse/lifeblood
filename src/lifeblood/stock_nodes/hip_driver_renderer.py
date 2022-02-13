@@ -3,7 +3,7 @@ from lifeblood.basenode import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
-from lifeblood.names import match
+from lifeblood.text import filter_by_pattern
 
 from typing import Iterable
 
@@ -77,11 +77,11 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         hippath = context.param_value('hip path')
         driverpath = context.param_value('driver path')
         frames = attrs['frames']
-        matching_attrnames = match(context.param_value('attrs'), attrs.keys())
+        matching_attrnames = filter_by_pattern(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
         attr_to_promote_mask = context.param_value('attrs to extract').strip()
         intr_to_promote_mask = context.param_value('intrinsics to extract').strip()
-        attr_to_context = match(context.param_value('attrs to context'), attrs.keys())
+        attr_to_context = filter_by_pattern(context.param_value('attrs to context'), attrs.keys())
 
         env = InvocationEnvironment()
 
