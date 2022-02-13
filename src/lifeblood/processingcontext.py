@@ -67,6 +67,20 @@ class ProcessingContext:
         return self.__node.get_ui().parameter(param_name).value(self)
 
     def locals(self):
+        """
+        locals to be available during expression evaluation
+        node - represents current node
+            node['paramname'] returns the value of parameter paramname
+            node.name returns node name
+            node.label returns node's label
+        task - represents task, for which expression is being evaluated
+            task['attrname'] returns the value of attrname attribute of current task
+            task.fieldname returns task database field called fieldname
+        config - general config for this particular node type
+            config['entryname'] of config.get('entryname', defaultval) returns entryname from config, or defaultval if entryname does not exist
+
+        :return:
+        """
         return {'task': self.__task_wrapper, 'node': self.__node_wrapper, 'config': self.__conf_wrapper}
 
     def task_attribute(self, attrib_name: str):
