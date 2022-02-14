@@ -11,6 +11,7 @@ from lifeblood import paths
 from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
+from lifeblood.snippets import NodeSnippetData
 
 from lifeblood.text import generate_name
 
@@ -70,39 +71,22 @@ class Clipboard:
         return self.__contents.get(ctype, (None, None))
 
 
-class NodeSnippetData:
+class UiNodeSnippetData(NodeSnippetData):
     """
     class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
     """
-    @dataclass
-    class ParamData:
-        name: str
-        type: NodeParameterType
-        uvalue: Any
-        expr: Optional[str]
-
-    @dataclass
-    class NodeData:
-        tmpid: int
-        type: str
-        name: str
-        parameters: Dict[str, "NodeSnippetData.ParamData"]
-        pos: Tuple[float, float]
-
-    @dataclass
-    class ConnData:
-        tmpout: int
-        out_name: str
-        tmpin: int
-        in_name: str
-
     @classmethod
     def from_nodes(cls, nodes: Iterable[Node]):
-        raise NotImplementedError()
+        raise NotImplementedError()  # TODO: implement
 
-    def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], pos: Tuple[float, float]):
-        self.nodes_data = list(nodes_data)
-        self.connections_data = list(connections_data)
+    @classmethod
+    def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData, pos: Tuple[float, float]) -> "UiNodeSnippetData":
+        data = UiNodeSnippetData([], [], pos)
+        data.__dict__.update(node_snippet_data.__dict__)
+        return data
+
+    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData], pos: Tuple[float, float]):
+        super(UiNodeSnippetData, self).__init__(nodes_data, connections_data)
         self.pos = pos
 
 
