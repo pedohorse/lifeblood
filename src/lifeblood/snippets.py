@@ -22,7 +22,8 @@ class NodeSnippetData:
             elif isinstance(obj, NodeSnippetData):
                 return {'nodes': obj.nodes_data,
                         'connections': obj.connections_data,
-                        '__NodeSnippetData__': '==3*E=='
+                        '__NodeSnippetData__': '==3*E==',
+                        '__format_version__': [1, 0, 0]
                         }
             elif isinstance(obj, NodeParameterType):
                 return {'value': obj.value,
@@ -38,6 +39,8 @@ class NodeSnippetData:
                     data.pos = tuple(data.pos)
                 return data
             elif obj.get('__NodeSnippetData__', None) == '==3*E==':
+                if obj['__format_version__'] >= [2]:
+                    raise NotImplementedError(f'snippet format {obj["__format_version__"]} is not supported')
                 return NodeSnippetData(obj['nodes'], obj['connections'])
             elif obj.get('__NodeParameterType__', None) == '==3*E==':
                 return NodeParameterType(obj['value'])
