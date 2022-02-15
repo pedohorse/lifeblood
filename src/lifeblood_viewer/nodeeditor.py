@@ -76,8 +76,54 @@ class UiNodeSnippetData(NodeSnippetData):
     class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
     """
     @classmethod
-    def from_nodes(cls, nodes: Iterable[Node]):
-        raise NotImplementedError()  # TODO: implement
+    def from_viewer_nodes(cls, nodes: Iterable[Node]):
+        clipnodes = []
+        clipconns = []
+        old_to_tmp: Dict[int, int] = {}
+        all_clip_nodes = set()
+        avgpos = QPointF()
+        tmpid = 0
+        for node in nodes:
+            if not isinstance(node, Node):
+                continue
+            all_clip_nodes.add(node)
+            params: Dict[str, "UiNodeSnippetData.ParamData"] = {}
+            old_to_tmp[node.get_id()] = tmpid
+            nodedata = UiNodeSnippetData.NodeData(tmpid,
+                                                  node.node_type(),
+                                                  node.node_name(),
+                                                  params,
+                                                  node.pos().toTuple())
+
+            tmpid += 1
+            avgpos += node.pos()
+
+            nodeui = node.get_nodeui()
+            if nodeui is not None:
+                for param in nodeui.parameters():
+                    param_data = UiNodeSnippetData.ParamData(param.name(),
+                                                             param.type(),
+                                                             param.unexpanded_value(),
+                                                             param.expression())
+                    params[param.name()] = param_data
+
+            clipnodes.append(nodedata)
+
+        if len(all_clip_nodes) == 0:
+            return
+        avgpos /= len(all_clip_nodes)
+
+        # now connections
+        for node in all_clip_nodes:
+            for out_name in node.output_names():
+                for conn in node.output_connections(out_name):
+                    other_node, other_name = conn.input()
+                    if other_node not in all_clip_nodes:
+                        continue
+                    clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
+                                                                old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
+
+        return UiNodeSnippetData(clipnodes, clipconns, avgpos.toTuple())
 
     @classmethod
     def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData, pos: Tuple[float, float]) -> "UiNodeSnippetData":
@@ -959,60 +1005,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         :return:
         """
-        clipnodes = []
-        clipconns = []
-        old_to_tmp: Dict[int, int] = {}
-        all_clip_nodes = set()
-        avgpos = QPointF()
-        tmpid = 0
-        for node in self.__scene.selectedItems():
-            if not isinstance(node, Node):
-                continue
-            all_clip_nodes.add(node)
-            params: Dict[str, "UiNodeSnippetData.ParamData"] = {}
-            old_to_tmp[node.get_id()] = tmpid
-            nodedata = UiNodeSnippetData.NodeData(tmpid,
-                                                node.node_type(),
-                                                node.node_name(),
-                                                params,
-                                                node.pos().toTuple())
-            # nodedata = {'tmpid': tmpid,
-            #             'type': node.node_type(),
-            #             'name': node.node_name(),
-            #             'parameters': params,
-            #             'pos': node.pos()}
-            tmpid += 1
-            avgpos += node.pos()
-
-            nodeui = node.get_nodeui()
-            if nodeui is not None:
-                for param in nodeui.parameters():
-                    param_data = UiNodeSnippetData.ParamData(param.name(),
-                                                           param.type(),
-                                                           param.unexpanded_value(),
-                                                           param.expression())
-                    params[param.name()] = param_data
-                    # param_data['uvalue'] = param.unexpanded_value()
-                    # param_data['type'] = param.type()
-                    # param_data['expr'] = param.expression()
-
-            clipnodes.append(nodedata)
-
-        if len(all_clip_nodes) == 0:
-            return
-        avgpos /= len(all_clip_nodes)
-
-        # now connections
-        for node in all_clip_nodes:
-            for out_name in node.output_names():
-                for conn in node.output_connections(out_name):
-                    other_node, other_name = conn.input()
-                    if other_node not in all_clip_nodes:
-                        continue
-                    clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
-                                                              old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
-
-        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, UiNodeSnippetData(clipnodes, clipconns, avgpos.toTuple()))
+        snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
+        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, snippet)
 
     @Slot(QPointF)
     def paste_copied_nodes(self, pos: Optional[QPointF] = None):
