@@ -569,8 +569,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_dict = {}
         self.__node_dict = {}
 
-    @Slot(NodeSnippetData, QPointF)
-    def paste_copied_nodes(self, snippet: NodeSnippetData, pos: QPointF):
+    @Slot(UiNodeSnippetData, QPointF)
+    def paste_copied_nodes(self, snippet: UiNodeSnippetData, pos: QPointF):
         def pasteop(longop):
 
             tmp_to_new: Dict[int, int] = {}
@@ -584,7 +584,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 # now setting parameters.
                 cyclestart = None
                 done_smth_this_cycle = False
-                parm_pairs: List[Tuple[str, NodeSnippetData.ParamData]] = list(nodedata.parameters.items())
+                parm_pairs: List[Tuple[str, UiNodeSnippetData.ParamData]] = list(nodedata.parameters.items())
                 for param_name, param_data in parm_pairs:
                     self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
                     _, _, has_param = yield
@@ -969,9 +969,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if not isinstance(node, Node):
                 continue
             all_clip_nodes.add(node)
-            params: Dict[str, "NodeSnippetData.ParamData"] = {}
+            params: Dict[str, "UiNodeSnippetData.ParamData"] = {}
             old_to_tmp[node.get_id()] = tmpid
-            nodedata = NodeSnippetData.NodeData(tmpid,
+            nodedata = UiNodeSnippetData.NodeData(tmpid,
                                                 node.node_type(),
                                                 node.node_name(),
                                                 params,
@@ -987,7 +987,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             nodeui = node.get_nodeui()
             if nodeui is not None:
                 for param in nodeui.parameters():
-                    param_data = NodeSnippetData.ParamData(param.name(),
+                    param_data = UiNodeSnippetData.ParamData(param.name(),
                                                            param.type(),
                                                            param.unexpanded_value(),
                                                            param.expression())
@@ -1009,10 +1009,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     other_node, other_name = conn.input()
                     if other_node not in all_clip_nodes:
                         continue
-                    clipconns.append(NodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
+                    clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
                                                               old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
 
-        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, NodeSnippetData(clipnodes, clipconns, avgpos.toTuple()))
+        self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, UiNodeSnippetData(clipnodes, clipconns, avgpos.toTuple()))
 
     @Slot(QPointF)
     def paste_copied_nodes(self, pos: Optional[QPointF] = None):
