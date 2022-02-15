@@ -81,7 +81,6 @@ class UiNodeSnippetData(NodeSnippetData):
         clipconns = []
         old_to_tmp: Dict[int, int] = {}
         all_clip_nodes = set()
-        avgpos = QPointF()
         tmpid = 0
         for node in nodes:
             if not isinstance(node, Node):
@@ -96,7 +95,6 @@ class UiNodeSnippetData(NodeSnippetData):
                                                   node.pos().toTuple())
 
             tmpid += 1
-            avgpos += node.pos()
 
             nodeui = node.get_nodeui()
             if nodeui is not None:
@@ -111,7 +109,6 @@ class UiNodeSnippetData(NodeSnippetData):
 
         if len(all_clip_nodes) == 0:
             return
-        avgpos /= len(all_clip_nodes)
 
         # now connections
         for node in all_clip_nodes:
@@ -123,17 +120,16 @@ class UiNodeSnippetData(NodeSnippetData):
                     clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
                                                                 old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
 
-        return UiNodeSnippetData(clipnodes, clipconns, avgpos.toTuple())
+        return UiNodeSnippetData(clipnodes, clipconns)
 
     @classmethod
-    def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData, pos: Tuple[float, float]) -> "UiNodeSnippetData":
-        data = UiNodeSnippetData([], [], pos)
+    def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData) -> "UiNodeSnippetData":
+        data = UiNodeSnippetData([], [])
         data.__dict__.update(node_snippet_data.__dict__)
         return data
 
-    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData], pos: Tuple[float, float]):
+    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData]):
         super(UiNodeSnippetData, self).__init__(nodes_data, connections_data)
-        self.pos = pos
 
 
 class LongOperation:

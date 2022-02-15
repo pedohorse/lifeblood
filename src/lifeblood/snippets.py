@@ -68,9 +68,37 @@ class NodeSnippetData:
         tmpin: int
         in_name: str
 
+    @property
+    def nodes_data(self):
+        return self.__nodes_data
+
+    @nodes_data.setter
+    def nodes_data(self, nodes_data):
+        self.__nodes_data = nodes_data
+        self.__avgpos = None
+
+    @property
+    def connections_data(self):
+        return self.__connections_data
+
+    @connections_data.setter
+    def connections_data(self, connections_data):
+        self.__connections_data = connections_data
+
+    @property
+    def pos(self):
+        if self.__avgpos is None:
+            avgpos = [0., 0.]
+            for nodedata in self.__nodes_data:
+                avgpos[0] += nodedata.pos[0]
+                avgpos[1] += nodedata.pos[1]
+            self.__avgpos = [x / len(self.__nodes_data) for x in avgpos]
+        return self.__avgpos
+
     def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData]):
-        self.nodes_data = list(nodes_data)
-        self.connections_data = list(connections_data)
+        self.__nodes_data = list(nodes_data)
+        self.__connections_data = list(connections_data)
+        self.__avgpos = None
 
     def __eq__(self, other: "NodeSnippetData"):
         return self.nodes_data == other.nodes_data and self.connections_data == other.connections_data
