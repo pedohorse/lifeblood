@@ -76,7 +76,7 @@ class UiNodeSnippetData(NodeSnippetData):
     class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
     """
     @classmethod
-    def from_viewer_nodes(cls, nodes: Iterable[Node]):
+    def from_viewer_nodes(cls, nodes: Iterable[Node], preset_label: Optional[str] = None):
         clipnodes = []
         clipconns = []
         old_to_tmp: Dict[int, int] = {}
@@ -120,7 +120,7 @@ class UiNodeSnippetData(NodeSnippetData):
                     clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
                                                                 old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
 
-        return UiNodeSnippetData(clipnodes, clipconns)
+        return UiNodeSnippetData(clipnodes, clipconns, preset_label)
 
     @classmethod
     def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData) -> "UiNodeSnippetData":
@@ -128,8 +128,8 @@ class UiNodeSnippetData(NodeSnippetData):
         data.__dict__.update(node_snippet_data.__dict__)
         return data
 
-    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData]):
-        super(UiNodeSnippetData, self).__init__(nodes_data, connections_data)
+    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData], preset_label: Optional[str] = None):
+        super(UiNodeSnippetData, self).__init__(nodes_data, connections_data, preset_label)
 
 
 class LongOperation:
@@ -941,6 +941,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__menu_popup_selection_name = ''
         self.__menu_popup_arrow_down = False
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
+        self.__viewer_presets: Dict[str, NodeSnippetData] = {}  # viewer side presets
+        self.__scheduler_presets: Dict[str, Optional[NodeSnippetData]] = {}  # scheduler side presets
 
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
@@ -951,6 +953,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         self.__imgui_init = False
         self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
+        self.rescan_presets()
         self.update()
 
     def shortcutable_methods(self):
@@ -965,6 +968,21 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.paste': 'Ctrl+v',
                 'nodeeditor.focus_selected': 'f'}
 
+    def rescan_presets(self):
+        preset_base_paths = [paths.config_path('presets', 'viewer')]
+        self.__viewer_presets = {}
+        for preset_base_path in preset_base_paths:
+            if not preset_base_path.exists():
+                logger.debug(f'skipped non-existing preset scan path: {preset_base_path}')
+                continue
+            for preset_path in preset_base_path.iterdir():
+                with open(preset_path, 'rb') as f:
+                    snippet = NodeSnippetData.deserialize(f.read())
+                if not snippet.label:  # skip presets with bad label
+                    logger.debug(f'skipped preset: {preset_path}')
+                    continue
+                self.__viewer_presets[snippet.label] = NodeSnippetData
+                logger.info(f'loaded preset: {snippet.label}')
     #
     # get/set settings
     #
@@ -1003,6 +1021,33 @@ class NodeEditor(QGraphicsView, Shortcutable):
         """
         snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
         self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, snippet)
+
+    @Slot()
+    def preset_from_selected_nodes(self, preset_label: Optional[str] = None, file_path: Optional[str] = None):
+        """
+        saves selected nodes as a preset
+
+        :param file_path: where to save. if None - file dialog will be displayed
+        :param preset_label: label for the preset. if None - dialog will be displayed
+
+        :return:
+        """
+        if preset_label is None:
+            preset_label, good = QInputDialog.getText(self, 'pick a label for this preset', 'label:', QLineEdit.Normal)
+            if not good:
+                return
+
+        snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)], preset_label)
+
+        user_presets_path = paths.config_path('presets', 'viewer')
+        if file_path is None:
+            if not user_presets_path.exists():
+                user_presets_path.mkdir(exist_ok=True)
+            file_path, _ = QFileDialog.getSaveFileName(self, 'save preset', str(user_presets_path), 'node presets (*.lbp)')
+        if not file_path:
+            return
+        with open(file_path, 'wb') as f:
+            f.write(snippet.serialize(ascii=True))
 
     @Slot(QPointF)
     def paste_copied_nodes(self, pos: Optional[QPointF] = None):
@@ -1131,6 +1176,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addSeparator()
         menu.addAction('copy selected').triggered.connect(self.copy_selected_nodes)
         menu.addAction('paste').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.paste_copied_nodes(p))
+        menu.addSeparator()
+        menu.addAction('save preset').triggered.connect(self.preset_from_selected_nodes)
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
