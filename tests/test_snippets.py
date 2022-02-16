@@ -41,7 +41,13 @@ class SerializationTest(TestCase):
                                                       rng.randint(0, nodes_count - 1),
                                                       ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(1, 32))),
                                                       ))
-        return NodeSnippetData(nodes, conns)
+        label = None
+        if rng.random() > 0.1:
+            label = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(1, 32)))
+        tags = None
+        if rng.random() > 0.1:
+            tags = [''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(1, 32))) for _ in range(rng.randint(0, 13))]
+        return NodeSnippetData(nodes, conns, label, tags)
 
     def test_simple(self):
         x = NodeSnippetData([NodeSnippetData.NodeData(0, 'foo', 'bar',

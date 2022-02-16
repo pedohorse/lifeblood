@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .enums import NodeParameterType
 
-from typing import Any, Optional, Tuple, Dict, Iterable
+from typing import Any, Optional, Tuple, Dict, Set, Iterable
 
 
 class NodeSnippetData:
@@ -22,6 +22,8 @@ class NodeSnippetData:
             elif isinstance(obj, NodeSnippetData):
                 return {'nodes': obj.nodes_data,
                         'connections': obj.connections_data,
+                        'label': obj.label,
+                        'tags': list(obj.tags) if obj.tags is not None else None,
                         '__NodeSnippetData__': '==3*E==',
                         '__format_version__': [1, 0, 0]
                         }
@@ -41,7 +43,7 @@ class NodeSnippetData:
             elif obj.get('__NodeSnippetData__', None) == '==3*E==':
                 if obj['__format_version__'] >= [2]:
                     raise NotImplementedError(f'snippet format {obj["__format_version__"]} is not supported')
-                return NodeSnippetData(obj['nodes'], obj['connections'])
+                return NodeSnippetData(obj['nodes'], obj['connections'], obj['label'], obj['tags'])
             elif obj.get('__NodeParameterType__', None) == '==3*E==':
                 return NodeParameterType(obj['value'])
             return obj
@@ -89,22 +91,34 @@ class NodeSnippetData:
         self.__connections_data = connections_data
 
     @property
-    def pos(self):
+    def pos(self) -> Tuple[float, float]:
         if self.__avgpos is None:
             avgpos = [0., 0.]
             for nodedata in self.__nodes_data:
                 avgpos[0] += nodedata.pos[0]
                 avgpos[1] += nodedata.pos[1]
-            self.__avgpos = [x / len(self.__nodes_data) for x in avgpos]
+            self.__avgpos = (avgpos[0] / len(self.__nodes_data), avgpos[1] / len(self.__nodes_data))
         return self.__avgpos
 
-    def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData]):
+    @property
+    def label(self) -> Optional[str]:
+        return self.__label
+
+    @property
+    def tags(self) -> Optional[Set[str]]:
+        return self.__tags
+
+    def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], label: Optional[str] = None, tags: Optional[Iterable[str]] = None):
         self.__nodes_data = list(nodes_data)
         self.__connections_data = list(connections_data)
+        self.__label: Optional[str] = label
+        self.__tags: Optional[Set[str]] = set(tags) if tags is not None else None
         self.__avgpos = None
 
     def __eq__(self, other: "NodeSnippetData"):
-        return self.nodes_data == other.nodes_data and self.connections_data == other.connections_data
+        return self.nodes_data == other.nodes_data and self.connections_data == other.connections_data and \
+               self.__tags == other.__tags and \
+               self.__label == other.__label
 
     def __repr__(self):
         nodesrepr = '\n'.join(repr(x) for x in self.nodes_data)
