@@ -244,7 +244,6 @@ class LifebloodViewer(QMainWindow):
             print('\n\n[ Top 10 MEM USERS]\n{}\n\n'.format("\n".join(str(stat) for stat in top_stats[:10])))
 
     def set_dead_shown(self, show):
-        print(f'setting conf to {show}')
         get_config('viewer').set_option_noasync('viewer.nodeeditor.display_dead_tasks', show)
         self.__node_editor.set_dead_shown(show)
 
