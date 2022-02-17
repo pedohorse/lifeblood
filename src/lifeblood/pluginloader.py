@@ -4,12 +4,14 @@ import re
 import hashlib
 import importlib.util
 
+from .snippets import NodeSnippetData
 from . import logging, plugin_info
 
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 plugins = {}
+presets: Dict[str, Dict[str, NodeSnippetData]] = {}
 __plugin_file_hashes = {}
 
 logger = logging.get_logger('plugin_loader')
@@ -65,6 +67,7 @@ def _install_package(package_path, plugin_category):
     :param plugin_category:
     :return:
     """
+    package_name = os.path.basename(package_path)
     # install extra python modules
     python_base_path = os.path.join(package_path, 'python')
     if os.path.exists(python_base_path):
@@ -85,6 +88,20 @@ def _install_package(package_path, plugin_category):
             if fileext != '.py':
                 continue
             _install_node(os.path.join(nodes_path, filename), plugin_category, package_path)
+
+    # install presets
+    presets_path = os.path.join(package_path, 'presets')
+    if os.path.exists(presets_path):
+        for filename in os.listdir(presets_path):
+            filebasename, fileext = os.path.splitext(filename)
+            if fileext != '.lbp':
+                continue
+            with open(os.path.join(presets_path, filename), 'rb') as f:
+                snippet = NodeSnippetData.deserialize(f.read())
+
+            if package_name not in presets:
+                presets[package_name] = {}
+            presets[package_name][snippet.label] = snippet
 
 
 def init():
