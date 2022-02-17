@@ -1,4 +1,6 @@
+from pathlib import Path
 import sqlite3
+from itertools import chain, repeat
 from dataclasses import dataclass
 from types import MappingProxyType
 from enum import Enum
@@ -31,7 +33,7 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 import grandalf.graphs
 import grandalf.layouts
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
+from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
 
 logger = logging.get_logger('viewer')
 
@@ -611,8 +613,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_dict = {}
         self.__node_dict = {}
 
-    @Slot(UiNodeSnippetData, QPointF)
-    def paste_copied_nodes(self, snippet: UiNodeSnippetData, pos: QPointF):
+    @Slot(NodeSnippetData, QPointF)
+    def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF):
         def pasteop(longop):
 
             tmp_to_new: Dict[int, int] = {}
@@ -622,6 +624,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
                 tmp_to_new[nodedata.tmpid] = node_id
+                self.get_node(node_id).setSelected(True)
 
                 # now setting parameters.
                 cyclestart = None
@@ -653,6 +656,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 self.request_node_connection_add(tmp_to_new[conndata.tmpout], conndata.out_name,
                                                  tmp_to_new[conndata.tmpin], conndata.in_name)
 
+        self.clearSelection()
         self.add_long_operation(pasteop)
 
     @Slot(LongOperationData)
@@ -944,6 +948,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__viewer_presets: Dict[str, NodeSnippetData] = {}  # viewer side presets
         self.__scheduler_presets: Dict[str, Optional[NodeSnippetData]] = {}  # scheduler side presets
 
+        self.__preset_scan_paths: List[Path] = [paths.config_path('presets', 'viewer')]
+
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
 
@@ -969,9 +975,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.focus_selected': 'f'}
 
     def rescan_presets(self):
-        preset_base_paths = [paths.config_path('presets', 'viewer')]
         self.__viewer_presets = {}
-        for preset_base_path in preset_base_paths:
+        for preset_base_path in self.__preset_scan_paths:
             if not preset_base_path.exists():
                 logger.debug(f'skipped non-existing preset scan path: {preset_base_path}')
                 continue
@@ -981,8 +986,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 if not snippet.label:  # skip presets with bad label
                     logger.debug(f'skipped preset: {preset_path}')
                     continue
-                self.__viewer_presets[snippet.label] = NodeSnippetData
+                self.__viewer_presets[snippet.label] = snippet
                 logger.info(f'loaded preset: {snippet.label}')
+
     #
     # get/set settings
     #
@@ -1026,6 +1032,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def preset_from_selected_nodes(self, preset_label: Optional[str] = None, file_path: Optional[str] = None):
         """
         saves selected nodes as a preset
+        if path where preset is saved is one of preset scan paths - the preset will be loaded
 
         :param file_path: where to save. if None - file dialog will be displayed
         :param preset_label: label for the preset. if None - dialog will be displayed
@@ -1048,6 +1055,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
             return
         with open(file_path, 'wb') as f:
             f.write(snippet.serialize(ascii=True))
+        if Path(file_path).parent in self.__preset_scan_paths:
+            self.__viewer_presets[preset_label] = snippet
 
     @Slot(QPointF)
     def paste_copied_nodes(self, pos: Optional[QPointF] = None):
@@ -1056,7 +1065,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         clipdata = self.__editor_clipboard.contents(self.__editor_clipboard.ClipboardContentsType.NODES)
         if clipdata is None:
             return
-        self.__scene.paste_copied_nodes(clipdata[1], pos)
+        self.__scene.nodes_from_snippet(clipdata[1], pos)
 
     @Slot(QPointF)
     def duplicate_selected_nodes(self, pos: QPointF):
@@ -1312,7 +1321,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             imgui.open_popup('create node')
             self.__node_type_input = ''
             self.__menu_popup_selection_id = 0
-            self.__menu_popup_selection_name = ''
+            self.__menu_popup_selection_name = ()
             self.__menu_popup_arrow_down = False
 
         if imgui.begin_popup('create node'):
@@ -1323,16 +1332,19 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if changed:
                 self.__menu_popup_selection_id = 0
             item_number = 0
-            for type_name, type_meta in self.__node_types.items():
+            for entity_type, (type_name, type_meta) in chain(zip(repeat('node'), self.__node_types.items()), zip(repeat('vpreset'), self.__viewer_presets.items())):
                 inparts = [x.strip() for x in self.__node_type_input.split(' ')]
                 if all(x in type_name
                        or any(t.startswith(x) for t in type_meta.tags)
                        or x in type_meta.label for x in inparts):  # TODO: this can be cached
                     selected = self.__menu_popup_selection_id == item_number
-                    _, selected = imgui.selectable(f'{type_meta.label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
+                    label = type_meta.label
+                    if entity_type != 'node':
+                        label += f' ({entity_type})'
+                    _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
                         self.__menu_popup_selection_id = item_number
-                        self.__menu_popup_selection_name = type_name
+                        self.__menu_popup_selection_name = (type_name, entity_type)
                     item_number += 1
 
             imguio: imgui.core._IO = imgui.get_io()
@@ -1355,7 +1367,11 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 # else:
                 #     self.__node_type_input = ''
                 if self.__menu_popup_selection_name:
-                    self.__scene.request_create_node(self.__menu_popup_selection_name, f'{self.__menu_popup_selection_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    entity_name, entity_type = self.__menu_popup_selection_name
+                    if entity_type == 'node':
+                        self.__scene.request_create_node(entity_name, f'{entity_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    elif entity_type == 'vpreset':
+                        self.__scene.nodes_from_snippet(self.__viewer_presets[entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
             elif self.__menu_popup_arrow_down:
                 self.__menu_popup_arrow_down = False
 
