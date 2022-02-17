@@ -1,5 +1,6 @@
 import asyncio
 import json
+import pickle
 import dataclasses
 from dataclasses import dataclass
 
@@ -129,15 +130,19 @@ class NodeSnippetData:
         """
         serialize into bytes, ascii-friendly or not
         """
-
-        return json.dumps(self, cls=NodeSnippetData.Serializer, indent=4).encode('UTF-8')
+        if ascii:
+            return json.dumps(self, cls=NodeSnippetData.Serializer, indent=4).encode('UTF-8')
+        return b'\0' + pickle.dumps(self)
 
     async def serialize_async(self) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
 
     @classmethod
     def deserialize(cls, data: bytes) -> "NodeSnippetData":
-        return json.loads(data.decode('UTF-8'), cls=NodeSnippetData.Deserializer)
+        if data[0] == 0:
+            return pickle.loads(data[1:])
+        else:
+            return json.loads(data.decode('UTF-8'), cls=NodeSnippetData.Deserializer)
 
     @classmethod
     async def deserialize_async(cls, data: bytes) -> "NodeSnippetData":
