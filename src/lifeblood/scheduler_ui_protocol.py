@@ -100,6 +100,24 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(struct.pack('>Q', len(data)))
                 writer.write(data)
 
+        async def comm_list_presets():
+            preset_metadata = {pack: [pres for pres in packdata] for pack, packdata in pluginloader.presets.items()}
+            data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, preset_metadata)
+            writer.write(struct.pack('>Q', len(data)))
+            writer.write(data)
+
+        async def comm_get_node_preset():
+            package_name = await read_string()
+            preset_name = await read_string()
+            if package_name not in pluginloader.presets or preset_name not in pluginloader.presets[package_name]:
+                self.__logger.warning(f'requested preset {package_name}::{preset_name} is not found')
+                writer.write(struct.pack('>?', False))
+                return
+            writer.write(struct.pack('>?', True))
+            data = pluginloader.presets[package_name][preset_name].serialize(ascii=False)
+            writer.write(struct.pack('>Q', len(data)))
+            writer.write(data)
+
         async def comm_remove_node():  # elif command == b'removenode':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             await self.__scheduler.remove_node(node_id)
@@ -303,6 +321,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'gettaskattribs': comm_get_task_attribs,
                     b'gettaskinvoc': comm_get_task_invocation,
                     b'listnodetypes': comm_list_node_types,
+                    b'listnodepresets': comm_list_presets,
+                    b'getnodepreset': comm_get_node_preset,
                     b'removenode': comm_remove_node,
                     b'addnode': comm_add_node,
                     b'wipenode': comm_wipe_node,
