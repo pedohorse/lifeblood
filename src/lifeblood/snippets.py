@@ -23,7 +23,7 @@ class NodeSnippetData:
                 return {'nodes': obj.nodes_data,
                         'connections': obj.connections_data,
                         'label': obj.label,
-                        'tags': list(obj.tags) if obj.tags is not None else None,
+                        'tags': list(obj.tags),
                         '__NodeSnippetData__': '==3*E==',
                         '__format_version__': [1, 0, 0]
                         }
@@ -105,14 +105,14 @@ class NodeSnippetData:
         return self.__label
 
     @property
-    def tags(self) -> Optional[Set[str]]:
+    def tags(self) -> Set[str]:
         return self.__tags
 
     def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], label: Optional[str] = None, tags: Optional[Iterable[str]] = None):
         self.__nodes_data = list(nodes_data)
         self.__connections_data = list(connections_data)
         self.__label: Optional[str] = label
-        self.__tags: Optional[Set[str]] = set(tags) if tags is not None else None
+        self.__tags: Set[str] = set(tags) if tags is not None else set()
         self.__avgpos = None
 
     def __eq__(self, other: "NodeSnippetData"):
