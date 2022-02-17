@@ -67,4 +67,5 @@ class SerializationTest(TestCase):
             y = self.create_random_data(i)
 
             self.assertEqual(x, y)
-            self.assertEqual(NodeSnippetData.deserialize(x.serialize()), x)
+            ascii = Random(i*1.234).random() > 0.5
+            self.assertEqual(NodeSnippetData.deserialize(x.serialize(ascii)), x)
