@@ -8,6 +8,7 @@ from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedS
 from . import pluginloader
 from .net_classes import NodeTypeMetadata
 from .taskspawn import NewTask
+from .snippets import NodeSnippetDataPlaceholder
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -101,7 +102,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(data)
 
         async def comm_list_presets():
-            preset_metadata = {pack: [pres for pres in packdata] for pack, packdata in pluginloader.presets.items()}
+            preset_metadata = {pack: {pres: NodeSnippetDataPlaceholder.from_nodesnippetdata(snip) for pres, snip in packdata.items()} for pack, packdata in pluginloader.presets.items()}
             data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, preset_metadata)
             writer.write(struct.pack('>Q', len(data)))
             writer.write(data)
