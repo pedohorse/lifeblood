@@ -147,3 +147,24 @@ class NodeSnippetData:
     @classmethod
     async def deserialize_async(cls, data: bytes) -> "NodeSnippetData":
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
+
+
+class NodeSnippetDataPlaceholder:
+    """
+    this is an empty metadata-only class to transfer over the net
+    """
+    def __init__(self, label: Optional[str] = None, tags: Optional[Iterable[str]] = None):
+        self.__label = label
+        self.__tags = set(tags) if tags is not None else set()
+
+    @property
+    def label(self) -> Optional[str]:
+        return self.__label
+
+    @property
+    def tags(self) -> Set[str]:
+        return self.__tags
+
+    @classmethod
+    def from_nodesnippetdata(cls, source: NodeSnippetData):
+        return NodeSnippetDataPlaceholder(source.label, source.tags)
