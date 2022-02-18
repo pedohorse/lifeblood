@@ -13,7 +13,7 @@ from lifeblood import paths
 from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
-from lifeblood.snippets import NodeSnippetData
+from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 
 from lifeblood.text import generate_name
 
@@ -188,7 +188,9 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_parameter_change_requested = Signal(int, object, object)
     _signal_node_parameter_expression_change_requested = Signal(int, object, object)
     _signal_nodetypes_update_requested = Signal()
+    _signal_nodepresets_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
+    _signal_nodepreset_requested = Signal(str, str, object)
     _signal_create_node_requested = Signal(str, str, QPointF, object)
     _signal_remove_node_requested = Signal(int)
     _signal_wipe_node_requested = Signal(int)
@@ -210,6 +212,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_skip_archived_groups = Signal(bool)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
+    nodepresets_updated = Signal(dict)
+    nodepreset_received = Signal(str, str, NodeSnippetData)
     task_groups_updated = Signal(set)
     task_invocation_job_fetched = Signal(int, InvocationJob)
 
@@ -222,6 +226,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__node_dict: Dict[int, Node] = {}
         self.__db_path = db_path
         self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
+        self.__cached_nodepresets: Dict[str, Dict[str, Union[NodeSnippetData, NodeSnippetDataPlaceholder]]] = {}
         self.__all_task_groups = set()
         self.__task_group_filter = None
 
@@ -244,6 +249,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.task_attribs_fetched.connect(self._task_attribs_fetched)
         self.__ui_connection_worker.task_invocation_job_fetched.connect(self._task_invocation_job_fetched)
         self.__ui_connection_worker.nodetypes_fetched.connect(self._nodetypes_fetched)
+        self.__ui_connection_worker.nodepresets_fetched.connect(self._nodepresets_fetched)
+        self.__ui_connection_worker.nodepreset_fetched.connect(self._nodepreset_fetched)
         self.__ui_connection_worker.node_has_parameter.connect(self._node_has_parameter)
         self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
         self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
@@ -258,6 +265,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
+        self._signal_nodepresets_update_requested.connect(self.__ui_connection_worker.get_nodepresets)
+        self._signal_nodepreset_requested.connect(self.__ui_connection_worker.get_nodepreset)
         self._signal_set_node_name_requested.connect(self.__ui_connection_worker.set_node_name)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
         self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
@@ -307,6 +316,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
+
+    def request_node_presets_update(self):
+        self._signal_nodepresets_update_requested.emit()
+
+    def request_node_preset(self, packagename: str, presetname: str, operation_data: Optional["LongOperationData"] = None):
+        self._signal_nodepreset_requested.emit(packagename, presetname, operation_data)
 
     def request_set_node_name(self, node_id: int, name: str):
         self._signal_set_node_name_requested.emit(node_id, name)
@@ -584,6 +599,33 @@ class QGraphicsImguiScene(QGraphicsScene):
     def _nodetypes_fetched(self, nodetypes):
         self.__cached_nodetypes = nodetypes
         self.nodetypes_updated.emit(nodetypes)
+
+    @Slot(object)
+    def _nodepresets_fetched(self, nodepresets: Dict[str, Dict[str, Union[NodeSnippetData, NodeSnippetDataPlaceholder]]]):
+        # here we receive just the list of names, no contents, so we dont just update dicts
+        for package, presets in nodepresets.items():
+            self.__cached_nodepresets.setdefault(package, {})
+            for preset_name, preset_meta in presets.items():
+                if preset_name not in self.__cached_nodepresets[package]:
+                    self.__cached_nodepresets[package][preset_name] = preset_meta
+            presets_set = set(presets)
+            keys_to_del = []
+            for key in self.__cached_nodepresets[package]:
+                if key not in presets_set:
+                    keys_to_del.append(key)
+            for key in keys_to_del:
+                del self.__cached_nodepresets[package][key]
+
+        self.nodepresets_updated.emit(self.__cached_nodepresets)
+        # {(pack, label): snippet for pack, packpres in self.__cached_nodepresets.items() for label, snippet in packpres.items()}
+
+    @Slot(object, object)
+    def _nodepreset_fetched(self, package: str, preset: str, snippet: NodeSnippetData, data: Optional["LongOperationData"] = None):
+        self.nodepreset_received.emit(package, preset, snippet)
+        if data is not None:
+            data.data = (package, preset, snippet)
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)
 
     def addItem(self, item):
         logger.debug('adding item %s', item)
@@ -946,11 +988,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__menu_popup_arrow_down = False
         self.__node_types: Dict[str, NodeTypeMetadata] = {}
         self.__viewer_presets: Dict[str, NodeSnippetData] = {}  # viewer side presets
-        self.__scheduler_presets: Dict[str, Optional[NodeSnippetData]] = {}  # scheduler side presets
+        self.__scheduler_presets: Dict[str, Dict[str, Union[NodeSnippetData, NodeSnippetDataPlaceholder]]] = {}  # scheduler side presets
 
         self.__preset_scan_paths: List[Path] = [paths.config_path('presets', 'viewer')]
 
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
+        self.__scene.nodepresets_updated.connect(self._nodepresets_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
 
         self.__scene.request_node_types_update()
@@ -1066,6 +1109,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if clipdata is None:
             return
         self.__scene.nodes_from_snippet(clipdata[1], pos)
+
+    @Slot(str, str, QPointF)
+    def get_snippet_from_scheduler_and_create_nodes(self, package: str, preset_name: str, pos: QPointF):
+        def todoop(longop):
+            self.__scene.request_node_preset(package, preset_name, longop.new_op_data())
+            _, _, snippet = yield
+            self.__scheduler_presets.setdefault(package, {})[preset_name] = snippet
+
+            self.__scene.nodes_from_snippet(snippet, pos)
+
+        self.__scene.add_long_operation(todoop)
 
     @Slot(QPointF)
     def duplicate_selected_nodes(self, pos: QPointF):
@@ -1273,6 +1327,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def _nodetypes_updated(self, nodetypes):
         self.__node_types = nodetypes
 
+    @Slot()
+    def _nodepresets_updated(self, nodepresets):
+        self.__scheduler_presets = nodepresets  # TODO: we keep a LIVE copy of scene's cached presets here. that might be a problem later
+
     def _set_clipboard(self, text: str):
         QApplication.clipboard().setText(text)
 
@@ -1332,19 +1390,23 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if changed:
                 self.__menu_popup_selection_id = 0
             item_number = 0
-            for entity_type, (type_name, type_meta) in chain(zip(repeat('node'), self.__node_types.items()), zip(repeat('vpreset'), self.__viewer_presets.items())):
+            for (entity_type, package), (type_name, type_meta) in chain(zip(repeat(('node', None)), self.__node_types.items()),
+                                                                        zip(repeat(('vpreset', None)), self.__viewer_presets.items()),
+                                                                        *(zip(repeat(('spreset', pkg)), pkgdata.items()) for pkg, pkgdata in self.__scheduler_presets.items())):
+
                 inparts = [x.strip() for x in self.__node_type_input.split(' ')]
+                label = type_meta.label
+                tags = type_meta.tags
                 if all(x in type_name
-                       or any(t.startswith(x) for t in type_meta.tags)
-                       or x in type_meta.label for x in inparts):  # TODO: this can be cached
+                       or any(t.startswith(x) for t in tags)
+                       or x in label for x in inparts):  # TODO: this can be cached
                     selected = self.__menu_popup_selection_id == item_number
-                    label = type_meta.label
                     if entity_type != 'node':
                         label += f' ({entity_type})'
                     _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
                         self.__menu_popup_selection_id = item_number
-                        self.__menu_popup_selection_name = (type_name, entity_type)
+                        self.__menu_popup_selection_name = (package, type_name, entity_type)
                     item_number += 1
 
             imguio: imgui.core._IO = imgui.get_io()
@@ -1367,11 +1429,16 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 # else:
                 #     self.__node_type_input = ''
                 if self.__menu_popup_selection_name:
-                    entity_name, entity_type = self.__menu_popup_selection_name
+                    package, entity_name, entity_type = self.__menu_popup_selection_name
                     if entity_type == 'node':
                         self.__scene.request_create_node(entity_name, f'{entity_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
                     elif entity_type == 'vpreset':
                         self.__scene.nodes_from_snippet(self.__viewer_presets[entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
+                    elif entity_type == 'spreset':
+                        if isinstance(self.__scheduler_presets[package][entity_name], NodeSnippetDataPlaceholder):
+                            self.get_snippet_from_scheduler_and_create_nodes(package, entity_name, pos=self.mapToScene(self.mapFromGlobal(QCursor.pos())))
+                        else:  # if already fetched
+                            self.__scene.nodes_from_snippet(self.__scheduler_presets[package][entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
             elif self.__menu_popup_arrow_down:
                 self.__menu_popup_arrow_down = False
 
@@ -1560,6 +1627,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
                 self.__create_menu_popup_toopen = True
                 self.__scene.request_node_types_update()
+                self.__scene.request_node_presets_update()
                 PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)
             super(NodeEditor, self).keyPressEvent(event)
 
