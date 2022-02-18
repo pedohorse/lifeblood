@@ -15,6 +15,7 @@ from lifeblood.config import get_config
 from lifeblood.uidata import Parameter
 from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
+from lifeblood.snippets import NodeSnippetData
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
@@ -33,6 +34,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     task_attribs_fetched = Signal(int, dict, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
+    nodepresets_fetched = Signal(dict)
+    nodepreset_fetched = Signal(str, str, NodeSnippetData, object)
     node_has_parameter = Signal(int, str, bool, object)
     node_parameter_changed = Signal(int, Parameter, object, object)
     node_parameter_expression_changed = Signal(int, Parameter, object)
@@ -416,6 +419,44 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
         else:
             self.nodetypes_fetched.emit(nodetypes)
+
+    @Slot()
+    def get_nodepresets(self):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'listnodepresets\n')
+            btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            presets: Dict[str, List[str]] = pickle.loads(recv_exactly(self.__conn, btlen))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+        else:
+            self.nodepresets_fetched.emit(presets)
+
+    @Slot(str, str)
+    def get_nodepreset(self, package: str, preset: str, data=None):  # TODO: rename these two functions (this and up)
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'getnodepreset\n')
+            self._send_string(package)
+            self._send_string(preset)
+            good = struct.unpack('>?', recv_exactly(self.__conn, 1))[0]
+            if not good:
+                logger.error(f'requested node preset not found {package}::{preset}')
+                return
+            btlen = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            snippet: NodeSnippetData = NodeSnippetData.deserialize(recv_exactly(self.__conn, btlen))
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+        else:
+            self.nodepreset_fetched.emit(package, preset, snippet, data)
 
     @Slot()
     def create_node(self, node_type, node_name, pos, data=None):
