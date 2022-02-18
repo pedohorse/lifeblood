@@ -124,7 +124,8 @@ def init():
                     continue
                 _install_node(filepath, plugin_category)
 
-    logger.info('loaded plugins:\n' + '\n\t'.join(plugins.keys()))
+    logger.info('loaded node types:\n\t' + '\n\t'.join(plugins.keys()))
+    logger.info('loaded node presets:\n\t' + '\n\t'.join(f'{pkg}::{label}' for pkg, pkgdata in presets.items() for label in pkgdata.keys()))
 
 
 def plugin_hash(plugin_name) -> str:
