@@ -1358,6 +1358,7 @@ class Task(NetworkItemWithUI):
     # interface
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Task {self.get_id()} {self.__name}')
+        imgui.text(f'state: {self.state().name}')
         imgui.text(f'groups: {", ".join(self.__groups)}')
         imgui.text(f'parent id: {self.__raw_data.get("parent_id", None)}')
         imgui.text(f'children count: {self.__raw_data.get("children_count", None)}')
