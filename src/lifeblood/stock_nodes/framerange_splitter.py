@@ -27,7 +27,7 @@ class FramerangeSplitter(BaseNode):
     def __init__(self, name):
         super(FramerangeSplitter, self).__init__(name)
         with self.get_ui().initializing_interface_lock():
-            self.get_ui().add_parameter('chunk size', None, NodeParameterType.INT, 10)
+            self.get_ui().add_parameter('chunk size', 'chunk size in frames', NodeParameterType.INT, 10)
 
     def process_task(self, context):
         attrs = context.task_attributes()
