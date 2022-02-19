@@ -3,6 +3,7 @@ from lifeblood.basenode import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
+from lifeblood.text import filter_by_pattern
 
 from typing import Iterable
 
@@ -30,13 +31,14 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         with ui.initializing_interface_lock():
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
-            ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['file']`")
+            ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['hipfile']`")
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
                 ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
             ui.add_parameter('ifd force inline', 'force inline ifd', NodeParameterType.BOOL, True)
+            ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '')
 
     def process_task(self, context) -> ProcessingResult:
         """
@@ -53,13 +55,18 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         hippath = context.param_value('hip path')
         driverpath = context.param_value('driver path')
         frames = attrs['frames']
+        matching_attrnames = filter_by_pattern(context.param_value('attrs'), attrs.keys())
+        attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
 
         env = InvocationEnvironment()
 
         spawnlines = \
             f"        filepath = node.evalParm('soho_diskfile')\n" \
             f"        outimage = node.evalParm('vm_picture')\n" \
-            f"        lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, {{'frames': [frame], 'file': filepath, 'hipfile': '{hippath}', 'outimage': outimage}})\n"
+            f"        attrs = {{'frames': [frame], 'file': filepath, 'hipfile': {repr(hippath)}, 'outimage': outimage}}\n" \
+            f"        for attr, val in {repr(attr_to_trans)}:\n" \
+            f"            attrs[attr] = val\n" \
+            f"        lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, attrs)\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''
@@ -69,15 +76,14 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             f'import hou\n' \
             f'import lifeblood_connection\n' \
             f'print("opening file" + {repr(hippath)})\n' \
-            f'hou.hipFile.load("{hippath}")\n' \
-            f'node = hou.node("{driverpath}")\n' \
+            f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
+            f'node = hou.node({repr(driverpath)})\n' \
             f'if node.parm("soho_outputmode").evalAsInt() != 1:\n' \
             f'    node.parm("soho_outputmode").set(1)\n'
-        rawifdpath = context.param_value('ifd file path').strip()
-        ifdpath = repr(rawifdpath)
-        if rawifdpath != '':
+        ifdpath = context.param_value('ifd file path').strip()
+        if ifdpath != '':
             script += \
-                f'node.parm("soho_diskfile").set({ifdpath})\n'
+                f'node.parm("soho_diskfile").set({repr(ifdpath)})\n'
         if context.param_value('ifd force inline'):
             script += \
                 f'node.parm("vm_inlinestorage").set(1)\n'
