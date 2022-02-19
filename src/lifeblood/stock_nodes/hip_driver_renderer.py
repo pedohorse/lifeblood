@@ -43,7 +43,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         with ui.initializing_interface_lock():
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
-            ui.add_parameter('hip path', 'hip path', NodeParameterType.STRING, "`task['file']`")
+            ui.add_parameter('hip path', 'hip path', NodeParameterType.STRING, "`task['hipfile']`")
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ignore inputs', 'ignore rop inputs', NodeParameterType.BOOL, True)
             ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
@@ -117,8 +117,8 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             f'import hou\n' \
             f'import lifeblood_connection\n' \
             f'print("opening file" + {repr(hippath)})\n' \
-            f'hou.hipFile.load("{hippath}")\n' \
-            f'node = hou.node("{driverpath}")\n'
+            f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
+            f'node = hou.node({repr(driverpath)})\n'
 
         for attrname in attr_to_context:
             script += f'hou.setContextOption({repr(attrname)}, {repr(attrs[attrname])})\n'
@@ -126,7 +126,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         if context.param_value('do override parmname'):
             parm_name = context.param_value('override parmname')
             script += \
-                f'output_parm_name = "{parm_name}"\n'
+                f'output_parm_name = {repr(parm_name)}\n'
         else:  # try to autodetect
             script += \
                 f'if node.type().name() in ("geometry", "rop_geometry"):\n' \
@@ -143,7 +143,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         if context.param_value('do override output'):
             override_path = context.param_value('override output').strip()
             if override_path != '':
-                script += f'node.parm(output_parm_name).set("{override_path}")\n'
+                script += f'node.parm(output_parm_name).set({repr(override_path)})\n'
 
         if context.param_value('whole range'):
             script += \
