@@ -6,6 +6,7 @@ from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
+from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
 
@@ -92,7 +93,19 @@ class Node(NetworkItemWithUI):
     base_height = 100
     base_width = 150
     # cache node type-2-inputs/outputs names, not to ask a million times for every node
+    # actually this can be dynamic, and this cache is not used anyway, so TODO: get rid of it?
     _node_inputs_outputs_cached: Dict[str, Tuple[List[str], List[str]]] = {}
+
+    class PseudoNode(BaseNode):
+        def __init__(self, my_node: "Node"):
+            super(Node.PseudoNode, self).__init__('_noname_')
+            self.__my_node = my_node
+
+        def _ui_changed(self, definition_changed=False):
+            print('!!!!!!!!!!!!')
+            if definition_changed:
+                print('QQQQQQQQQQQQQQQ')
+                self.__my_node.reanalyze_nodeui()
 
     def __init__(self, id: int, type: str, name: str):
         super(Node, self).__init__(id)
@@ -162,9 +175,13 @@ class Node(NetworkItemWithUI):
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
         self.__nodeui_menucache = {}
-        Node._node_inputs_outputs_cached[self.__node_type] = (list(nodeui.inputs_names()), list(nodeui.outputs_names()))
+        self.__nodeui.attach_to_node(Node.PseudoNode(self))
+        self.reanalyze_nodeui()
+
+    def reanalyze_nodeui(self):
+        Node._node_inputs_outputs_cached[self.__node_type] = (list(self.__nodeui.inputs_names()), list(self.__nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
-        self.__header_brush = QBrush(QColor(*(x * 255 for x in nodeui.color_scheme().main_color()), 192))
+        self.__header_brush = QBrush(QColor(*(x * 255 for x in self.__nodeui.color_scheme().main_color()), 192))
         self.update()  # cuz input count affects visualization in the graph
         self.update_ui()
 
@@ -712,6 +729,8 @@ class NodeConnection(NetworkItem):
         self.__pick_radius2 = 100**2
         self.__curv = 150
 
+        self.__temporary_invalid = False
+
         self.__ui_interactor: Optional[NodeConnectionCreatePreview] = None
         self.__ui_widget: Optional[nodeeditor.NodeEditor] = None
         self.__ui_last_pos = QPointF()
@@ -764,6 +783,10 @@ class NodeConnection(NetworkItem):
         return sqrt(sqlen)
 
     def boundingRect(self) -> QRectF:
+        if self.__outname not in self.__nodeout.output_names() or self.__inname not in self.__nodein.input_names():
+            self.__temporary_invalid = True
+            return QRectF()
+        self.__temporary_invalid = False
         hlw = self.__line_width
         line = self.get_painter_path()
         return line.boundingRect().adjusted(-hlw - self.__wire_pick_radius, -hlw, hlw + self.__wire_pick_radius, hlw)
@@ -790,6 +813,8 @@ class NodeConnection(NetworkItem):
         return line
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        if self.__temporary_invalid:
+            return
         if self.__ui_interactor is not None:  # if interactor exists - it does all the drawing
             return
         line = self.get_painter_path()
