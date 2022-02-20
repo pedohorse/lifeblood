@@ -10,7 +10,7 @@ from .processingcontext import ProcessingContext
 from .node_visualization_classes import NodeColorScheme
 import re
 
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type
+from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type, Callable
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -572,12 +572,14 @@ class ParametersLayoutBase(ParameterHierarchyItem):
         class _iiLock:
             def __init__(self, lockable):
                 self.__nui = lockable
+                self.__prev_state = False
 
             def __enter__(self):
+                self.__prev_state = self.__nui._ParametersLayoutBase__block_ui_callbacks
                 self.__nui._ParametersLayoutBase__block_ui_callbacks = True
 
             def __exit__(self, exc_type, exc_val, exc_tb):
-                self.__nui._ParametersLayoutBase__block_ui_callbacks = False
+                self.__nui._ParametersLayoutBase__block_ui_callbacks = self.__prev_state
 
         return _iiLock(self)
 
@@ -829,6 +831,7 @@ class MultiGroupLayout(OrderedParametersLayout):
                 break
         else:
             super(MultiGroupLayout, self)._children_value_changed(children)
+            return
         if self.__count_param.value() < 0:
             self.__count_param.set_value(0)
             super(MultiGroupLayout, self)._children_value_changed(children)
@@ -859,6 +862,51 @@ class MultiGroupLayout(OrderedParametersLayout):
         super(MultiGroupLayout, self)._child_about_to_be_removed(child)
 
 
+class _SpecialOutputCountChangingLayout(VerticalParametersLayout):
+    def __init__(self, nodeui: "NodeUi", parameter_name, parameter_label):
+        super(_SpecialOutputCountChangingLayout, self).__init__()
+        self.__my_nodeui = nodeui
+        newparam = Parameter(parameter_name, parameter_label, NodeParameterType.INT, 2, can_have_expression=False)
+        newparam.set_value_limits(2)
+        with self.initializing_interface_lock():
+            self.add_parameter(newparam)
+
+    def add_layout(self, new_layout: "ParametersLayoutBase"):
+        """
+        this function is unavailable cuz of the nature of this layout
+        """
+        raise RuntimeError('NO')
+
+    def add_parameter(self, new_parameter: Parameter):
+        """
+        this function is unavailable cuz of the nature of this layout
+        """
+        if len(list(self.parameters())) > 0:
+            raise RuntimeError('NO')
+        super(_SpecialOutputCountChangingLayout, self).add_parameter(new_parameter)
+
+    def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
+        # we expect this special layout to have only one single specific child
+        child = None
+        for child in children:
+            break
+        if child is None:
+            return
+        assert isinstance(child, Parameter)
+        new_num_outputs = child.value()
+        num_outputs = len(self.__my_nodeui.outputs_names())
+        if num_outputs == new_num_outputs:
+            return
+
+        if num_outputs < new_num_outputs:
+            for i in range(num_outputs, new_num_outputs):
+                self.__my_nodeui._add_output_unsafe(f'output{i}')
+        else:  # num_outputs > new_num_outputs
+            for _ in range(new_num_outputs, num_outputs):
+                self.__my_nodeui._remove_last_output_unsafe()
+        self.__my_nodeui._outputs_definition_changed()
+
+
 class NodeUi(ParameterHierarchyItem):
     def __init__(self, attached_node: "BaseNode"):
         super(NodeUi, self).__init__()
@@ -870,6 +918,8 @@ class NodeUi(ParameterHierarchyItem):
         self.__outputs_names = ('main',)
 
         self.__groups_stack = []
+
+        self.__have_output_parameter_set: bool = False
 
         # default colorscheme
         self.__color_scheme = NodeColorScheme()
@@ -928,10 +978,40 @@ class NodeUi(ParameterHierarchyItem):
         use it in with statement
         :return:
         """
+        return self.parameter_layout_block(OneLineParametersLayout)
 
+    def parameter_layout_block(self, parameter_layout_producer: Callable[[], ParametersLayoutBase]):
+        """
+        arbitrary simple parameter override block
+        use it in with statement
+        :return:
+        """
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        return NodeUi._slwrapper(self, OneLineParametersLayout)
+        return NodeUi._slwrapper(self, parameter_layout_producer)
+
+    def add_parameter_to_control_output_count(self, parameter_name: str, parameter_label: str):
+        """
+        a very special function for a very special case when you want the number of outputs to be controlled
+        by a parameter
+
+        from now on output names will be: 'main', 'output1', 'output2', ...
+
+        :return:
+        """
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if self.__have_output_parameter_set:
+            raise RuntimeError('there can only be one parameter to control output count')
+        self.__have_output_parameter_set = True
+        self.__outputs_names = ('main', 'output1')
+
+        with self.parameter_layout_block(lambda: _SpecialOutputCountChangingLayout(self, parameter_name, parameter_label)):
+            # no need to do anything, with block will add that layout to stack, and parameter is created in that layout's constructor
+            layout = self.current_layout()
+            # this layout should always have exactly one parameter
+            assert len(list(layout.parameters())) == 1, f'oh no, {len(list(layout.parameters()))}'
+        return layout.parameter(parameter_name)
 
     def multigroup_parameter_block(self, name: str):
         """
@@ -964,6 +1044,21 @@ class NodeUi(ParameterHierarchyItem):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self, name)
+
+    def current_layout(self):
+        """
+        get current layout to which add_parameter would add parameter
+        this can be main nodeUI's layout, but can be something else, if we are in some with block,
+        like for ex: collapsable_group_block or parameters_on_same_line_block
+
+        :return:
+        """
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        layout = self.__parameter_layout
+        if len(self.__groups_stack) != 0:
+            layout = self.__groups_stack[-1]
+        return layout
 
     def collapsable_group_block(self, group_name: str, group_label: str = ''):
         """
@@ -1002,24 +1097,44 @@ class NodeUi(ParameterHierarchyItem):
         if input_name not in self.__inputs_names:
             self.__inputs_names += (input_name,)
 
+    def _add_output_unsafe(self, output_name):
+        if output_name not in self.__outputs_names:
+            self.__outputs_names += (output_name,)
+
     def add_output(self, output_name):
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
-        if output_name not in self.__outputs_names:
-            self.__outputs_names += (output_name,)
+        if self.__have_output_parameter_set:
+            raise RuntimeError('cannot add outputs when output count is controlled by a parameter')
+        return self._add_output_unsafe(output_name)
+
+    def _remove_last_output_unsafe(self):
+        if len(self.__outputs_names) < 2:
+            return
+        self.__outputs_names = self.__outputs_names[:-1]
+
+    def remove_last_output(self):
+        if not self.__block_ui_callbacks:
+            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+        if self.__have_output_parameter_set:
+            raise RuntimeError('cannot add outputs when output count is controlled by a parameter')
+        return self._remove_last_output_unsafe()
 
     def add_output_for_spawned_tasks(self):
         return self.add_output('spawned')
 
     def _children_definition_changed(self, children: Iterable["ParameterHierarchyItem"]):
-        self.__ui_callback()
+        self.__ui_callback(definition_changed=True)
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
-        self.__ui_callback()
+        self.__ui_callback(definition_changed=False)
 
-    def __ui_callback(self):
+    def _outputs_definition_changed(self):  #TODO: not entirely sure how safe this is right now
+        self.__ui_callback(definition_changed=True)
+
+    def __ui_callback(self, definition_changed=False):
         if self.__attached_node is not None and not self.__block_ui_callbacks:
-            self.__attached_node._ui_changed()
+            self.__attached_node._ui_changed(definition_changed)
 
     def inputs_names(self) -> Tuple[str]:
         return self.__inputs_names
@@ -1041,6 +1156,8 @@ class NodeUi(ParameterHierarchyItem):
         crap = cls.__new__(cls)
         newdict = self.__dict__.copy()
         newdict['_NodeUi__attached_node'] = None
+        assert id(self) not in memo
+        memo[id(self)] = crap  # to avoid recursion, though manual tells us to treat memo as opaque object
         for k, v in newdict.items():
             crap.__dict__[k] = deepcopy(v, memo)
         return crap
