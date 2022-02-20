@@ -2,7 +2,7 @@ from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.enums import NodeParameterType
-from lifeblood.uidata import NodeUi, MultiGroupLayout, Parameter
+from lifeblood.uidata import NodeUi, Parameter, VerticalParametersLayout, ParameterHierarchyItem, ParametersLayoutBase
 from lifeblood.node_visualization_classes import NodeColorScheme
 
 from typing import Iterable
@@ -29,8 +29,8 @@ class SwitchTasks(BaseNode):
         super(SwitchTasks, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.add_parameter_to_control_output_count('outputs count', 'number of outputs')
             ui.add_parameter('output', 'select output', NodeParameterType.INT, 0, can_have_expressions=True)
-            ui.add_output('output1')
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         switch = context.param_value('output')
