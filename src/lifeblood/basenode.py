@@ -109,7 +109,7 @@ class BaseNode:
         conns = fut.result(60)
         return len(conns) > 0
 
-    def _ui_changed(self):
+    def _ui_changed(self, definition_changed=False):
         """
         this methods gets called by self and NodeUi when a parameter changes to trigger node's database update
         :return:
