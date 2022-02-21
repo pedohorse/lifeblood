@@ -44,7 +44,7 @@ from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
 
 class Scheduler:
-    def __init__(self, db_file_path, *, do_broadcasting=True, helpers_minimal_idle_to_ensure=1):
+    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1):
         self.__logger = logging.get_logger('scheduler')
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         self.__logger.info('loading core plugins')
@@ -130,6 +130,8 @@ class Scheduler:
         self.__ui_server = None
         self.__ui_server_coro = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
+        if do_broadcasting is None:
+            do_broadcasting = config.get_option_noasync('core.broadcast', True)
         if do_broadcasting:
             broadcast_info = json.dumps({'worker': self.__server_address, 'ui': self.__ui_address})
             self.__broadcasting_server = None
