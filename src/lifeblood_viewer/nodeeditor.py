@@ -661,7 +661,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
             tmp_to_new: Dict[int, int] = {}
             for nodedata in snippet.nodes_data:
-                self.request_create_node(nodedata.type, f'{nodedata.name} copy', QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
+                self.request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
                 # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
@@ -1069,6 +1069,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         :return:
         """
         snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
+        for node in snippet.nodes_data:
+            node.name += ' copy'
         self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, snippet)
 
     @Slot()
