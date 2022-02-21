@@ -4,7 +4,7 @@
 Viewer API Reference
 ====================
 
-.. automodule:: taskflow.viewer
+.. automodule:: lifeblood_viewer
     :members:
     :undoc-members:
 

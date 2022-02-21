@@ -4,6 +4,6 @@
 Wroker API Reference
 ====================
 
-.. automodule:: taskflow.worker
+.. automodule:: lifeblood.worker
     :members:
     :undoc-members:

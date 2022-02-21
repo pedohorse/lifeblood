@@ -4,7 +4,7 @@
 Scheduler API Reference
 =======================
 
-.. automodule:: taskflow.scheduler
+.. automodule:: lifeblood.scheduler
     :members:
     :undoc-members:
 
