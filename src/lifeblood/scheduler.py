@@ -5,6 +5,7 @@ import traceback
 import time
 from datetime import datetime
 import json
+import sqlite3
 import itertools
 from enum import Enum
 import asyncio
@@ -89,10 +90,18 @@ class Scheduler:
         self.__started_event = asyncio.Event()
         
         loop = asyncio.get_event_loop()
+
+        if db_file_path is None:
+            config = get_config('scheduler')
+            db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
+        db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+        # ensure database is initialized
+        with sqlite3.connect(db_file_path) as con:
+            con.executescript(sql_init_script)
         self.db_path = db_file_path
 
-        self.__use_external_log = config.get_option_noasync('scheduler.database.store_logs_externally', False)
-        self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('scheduler.database.store_logs_externally_location', None)
+        self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
+        self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
         if self.__use_external_log and not self.__external_log_location:
             raise SchedulerConfigurationError('if store_logs_externally is set - store_logs_externally_location must be set too')
         if self.__use_external_log:
@@ -2002,14 +2011,6 @@ default_config = '''
 async def main_async(db_path=None):
     def graceful_closer():
         scheduler.stop()
-
-    if db_path is None:
-        config = get_config('scheduler')
-        db_path = await config.get_option('scheduler.db_path', str(paths.default_main_database_location()))
-    db_path = os.path.realpath(os.path.expanduser(db_path))
-    # ensure database is initialized
-    async with aiosqlite.connect(db_path) as con:
-        await con.executescript(sql_init_script)
 
     scheduler = Scheduler(db_path)
     asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
