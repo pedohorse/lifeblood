@@ -2,7 +2,7 @@
 |---|---|
 |[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
 
-## Task Flow
+## Lifeblood
 is a task/job management package  
 in terms of CG industry it's a mini render farm manager
 
