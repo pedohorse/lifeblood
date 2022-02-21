@@ -1390,9 +1390,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if changed:
                 self.__menu_popup_selection_id = 0
             item_number = 0
-            for (entity_type, package), (type_name, type_meta) in chain(zip(repeat(('node', None)), self.__node_types.items()),
-                                                                        zip(repeat(('vpreset', None)), self.__viewer_presets.items()),
-                                                                        *(zip(repeat(('spreset', pkg)), pkgdata.items()) for pkg, pkgdata in self.__scheduler_presets.items())):
+            for (entity_type, entity_type_label, package), (type_name, type_meta) in chain(zip(repeat(('node', None, None)), self.__node_types.items()),
+                                                                        zip(repeat(('vpreset', 'preset', None)), self.__viewer_presets.items()),
+                                                                        *(zip(repeat(('spreset', 'preset', pkg)), pkgdata.items()) for pkg, pkgdata in self.__scheduler_presets.items())):
 
                 inparts = [x.strip() for x in self.__node_type_input.split(' ')]
                 label = type_meta.label
@@ -1401,8 +1401,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
                        or any(t.startswith(x) for t in tags)
                        or x in label for x in inparts):  # TODO: this can be cached
                     selected = self.__menu_popup_selection_id == item_number
-                    if entity_type != 'node':
-                        label += f' ({entity_type})'
+                    if entity_type_label is not None:
+                        label += f' ({entity_type_label})'
                     _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
                         self.__menu_popup_selection_id = item_number
