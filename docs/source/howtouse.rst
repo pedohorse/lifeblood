@@ -2,6 +2,10 @@
 How to use Lifeblood
 ====================
 
+.. contents::
+    :depth: 2
+    :local:
+
 Main components
 ===============
 
@@ -27,6 +31,14 @@ move tasks around, or otherwise change things in scheduler.
 
 -----
 
+The components arranged into 2 packages:
+
+* lifeblood: scheduler and worker
+* lifeblood_viewer: viewer (requires lifeblood)
+
+As you see, viewer is separated from main package to avoid GUI dependencies for scheduler and worker,
+and to make lifeblood package lighter.
+
 Configuration
 ^^^^^^^^^^^^^
 Configuration for lifeblood components is done with config files. Config files are located by default in your user folder:
@@ -48,6 +60,16 @@ Database location
 Probably the most important part of the configuration is where your scheduler's database is stored.
 Lifeblood uses `sqlite <https://www.sqlite.org/>`_ as it's database engine.
 
+By default, the database file location is set to be next to scheduler's config file.
+
+However it may be overriden by config entry ``core.database.path``, or command line argument ``--db-path``.
+It is quite reasonable to have multiple databases to test different things around.
+However the main idea of Lifeblood, scheduler is to set up your pipeline logic in one single database.
+
+    NOTE: it is better to create the database on an **SSD** drive if possible,
+    as it will be much faster, especially on huge databases.
+    Though database on HDD is quite fine for low task load.
+
 -----
 
 All of the components above may run on the same machine, or on different machines within the same local network (for now)
@@ -60,7 +82,12 @@ running on the same local network - this eases the small setups as all you need 
 will find each other automatically.
 You can change that behaviour in scheduler's config. in ``core`` section ``broadcast = false`` would disable the broadcast,
 with ``server_ip``, ``server_port`` you can override ip and port to use for worker connections, and with ``ui_ip``, ``ui_port``
-you can override ip and port to use for viewer connections
+you can override ip and port to use for viewer connections.
+
+    Note: **IF BROADCASTING IS OFF** it is quite possible to run multiple schedulers on the same network (though you should not have a need to do it),
+    or even on the same machine (but they MUST use different databases).
+    But if broadcasting if enabled - multiple schedulers on the same local network will start to conflict with each other.
+    Again: you should NOT have a need to run multiple schedulers.
 
 so example config might look like this:
 
@@ -73,4 +100,37 @@ so example config might look like this:
     ui_ip = "192.168.0.2"
     ui_port = 7989
 
+Requirements
+============
+python3.6 or higher is required
+
+OS support
+----------
+There is nothing strictly os-specific, except signal handling and process managing by the worker.
+
+Currently it was **only tested in linux**.
+
+MacOS, being posix, should theoretically work without problems too.
+Windows requires some os-specific modifications and testing.
+
+Installation
+============
+
+* lifeblood package (scheduler and worker) can be installed from pip: ``pip install lifeblood``, or ``python3 -m pip install lifeblood``
+* lifeblood viewer (viewer, will also install lifeblood package) can be installed from pip: ``pip install lifeblood_viewer`` or ``python3 -m pip install lifeblood``
+
+Usage
+=====
+
+If scheduler is installed as pip package - a ``lifeblood`` command will be added to PATH.
+The component may be launched just by supplying it as argument to lifeblood, like
+
+* ``lifeblood scheduler``
+* ``lifeblood worker``
+* ``lifeblood viewer`` (if lifeblood_viewer package is also installed)
+
+here you would also supply component-specific command line arguments, for example
+
+* ``lifeblood --loglevel DEBUG worker``
+* ``lifeblood --loglevel DEBUG scheduler --verbosity-pinger INFO --db-path path/to/database.db``
 
