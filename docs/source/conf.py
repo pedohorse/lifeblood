@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../../src'))
 # -- Project information -----------------------------------------------------
 
 project = 'Lifeblood'
-copyright = '10132 BC - 2021 AD, XAPKOHHEH'
+copyright = '10132 BC - 2029 AD, XAPKOHHEH'
 author = 'XAPKOHHEH'
 version = '1.0.0'
 release = version
