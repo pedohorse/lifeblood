@@ -1569,7 +1569,8 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             await con.execute('UPDATE "nodes" SET node_object = NULL WHERE "id" = ?', (node_id,))
             if node_id in self.__node_objects:
-                del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. but a proper __node_object lock should be in place instead
+                # TODO: this below may be not safe (at least not proven to be safe yet, but maybe). check
+                del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. TODO: but a proper __node_object lock should be in place instead
             await con.commit()
         self.wake()
 
