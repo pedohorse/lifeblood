@@ -1,10 +1,11 @@
-Welcome to Taskflow's documentation!
+Welcome to Lifeblood documentation!
 ====================================
 
 .. toctree::
     :maxdepth: 2
     :caption: Contents:
 
+    howtouse
     api
 
 
