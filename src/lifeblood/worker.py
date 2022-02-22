@@ -1,3 +1,4 @@
+import sys
 import os
 import errno
 import shutil
@@ -11,6 +12,7 @@ import psutil
 import datetime
 import tempfile
 import signal
+from enum import Enum
 from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .net_classes import WorkerResources
@@ -30,15 +32,33 @@ import inspect
 from typing import Optional, Dict, Tuple
 
 
-async def create_worker(scheduler_ip: str, scheduler_port: int, *, worker_type: WorkerType = WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
-    worker = Worker(scheduler_ip, scheduler_port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+is_posix = not sys.platform.startswith('win')
+
+
+class ProcessPriorityAdjustment(Enum):
+    NO_CHANGE = 0
+    LOWER = 1
+
+
+async def create_worker(scheduler_ip: str, scheduler_port: int, *,
+                        child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
+                        worker_type: WorkerType = WorkerType.STANDARD,
+                        singleshot: bool = False,
+                        worker_id: Optional[int] = None,
+                        pool_address: Optional[Tuple[str, int]] = None):
+    worker = Worker(scheduler_ip, scheduler_port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
 
     await worker.start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_port: int, worker_type: WorkerType = WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address: Optional[Tuple[str, int]] = None):
+    def __init__(self, scheduler_addr: str, scheduler_port: int, *,
+                 child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
+                 worker_type: WorkerType = WorkerType.STANDARD,
+                 singleshot: bool = False,
+                 worker_id: Optional[int] = None,
+                 pool_address: Optional[Tuple[str, int]] = None):
         """
 
         :param scheduler_addr:
@@ -93,6 +113,15 @@ class Worker:
 
         self.__worker_type: WorkerType = worker_type
         self.__singleshot: bool = singleshot or worker_type == WorkerType.SCHEDULER_HELPER
+
+        self.__child_priority_adjustment = child_priority_adjustment
+        # this below is a placeholder solution. the easiest way to implement priority lowering without testing on different platrofms
+        if self.__child_priority_adjustment == ProcessPriorityAdjustment.LOWER:
+            if sys.platform.startswith('win'):
+                assert hasattr(psutil, 'BELOW_NORMAL_PRIORITY_CLASS')
+                psutil.Process().nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            else:
+                psutil.Process().nice(10)
 
         # deploy a copy of runtime module somewhere in temp
         rtmodule_code = inspect.getsource(lifeblood_connection)
@@ -263,6 +292,7 @@ class Worker:
             try:
                 #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
+                # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process: asyncio.subprocess.Process = \
                     await asyncio.create_subprocess_exec(
                         *args,
@@ -557,7 +587,9 @@ class Worker:
                 self.__ping_missed = 0
 
 
-async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, worker_id: Optional[int] = None, pool_address=None, noloop=False):
+async def main_async(worker_type=WorkerType.STANDARD,
+                     child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
+                     singleshot: bool = False, worker_id: Optional[int] = None, pool_address=None, noloop=False):
     """
     listen to scheduler broadcast in a loop.
     if received - create the worker and work
@@ -597,7 +629,7 @@ async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, 
             ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
             port = int(sport)
             try:
-                worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = await create_worker(ip, port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             except Exception:
                 logger.exception('could not start the worker')
             else:
@@ -612,7 +644,7 @@ async def main_async(worker_type=WorkerType.STANDARD, singleshot: bool = False, 
             port = await config.get_option('worker.scheduler_port', 7979)
             logger.debug(f'using {ip}:{port}')
             try:
-                worker = await create_worker(ip, port, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = await create_worker(ip, port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
@@ -654,6 +686,7 @@ def main(argv):
     parser.add_argument('--type', choices=('STANDARD', 'SCHEDULER_HELPER'), default='STANDARD')
     parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
+    parser.add_argument('--priority', choices=tuple(x.name for x in ProcessPriorityAdjustment), default=ProcessPriorityAdjustment.NO_CHANGE.name, help='adjust child process priority')
     args = parser.parse_args(argv)
     if args.type == 'STANDARD':
         wtype = WorkerType.STANDARD
@@ -661,6 +694,9 @@ def main(argv):
         wtype = WorkerType.SCHEDULER_HELPER
     else:
         raise NotImplementedError(f'worker type {args.type} is not yet implemented')
+
+    priority_adjustment = [x for x in ProcessPriorityAdjustment if x.name == args.priority][0]  # there MUST be exactly 1 match
+
     global_logger = logging.get_logger('worker')
 
     # check and create default config if none
@@ -679,7 +715,7 @@ def main(argv):
         config.set_override('worker.scheduler_ip', saddr[0])
         config.set_override('worker.scheduler_port', saddr[1])
     try:
-        asyncio.run(main_async(wtype, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
+        asyncio.run(main_async(wtype, child_priority_adjustment=priority_adjustment, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
