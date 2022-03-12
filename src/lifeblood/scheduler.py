@@ -797,6 +797,7 @@ class Scheduler:
                     await submit_transaction.commit()
 
                 task._set_invocation_id(invocation_id)
+                task._set_task_id(task_row['id'])
                 task._set_task_attributes(json.loads(task_row['attributes']))  # TODO: run in executor
                 self.__logger.debug(f'submitting task to {addr}')
                 try:
