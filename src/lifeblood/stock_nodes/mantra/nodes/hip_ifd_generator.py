@@ -32,6 +32,10 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip file path', NodeParameterType.STRING, "`task['hipfile']`")
+            with ui.parameters_on_same_line_block():
+                mask_hip = ui.add_parameter('mask as different hip', 'mask as different hip file', NodeParameterType.BOOL, False)
+                ui.add_parameter('mask hip path', '', NodeParameterType.STRING, "`task.get('hipfile_orig', task['hipfile'])`")\
+                    .append_visibility_condition(mask_hip, '==', True)
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
             with ui.parameters_on_same_line_block():
@@ -74,7 +78,20 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         script = \
             f'import os\n' \
             f'import hou\n' \
-            f'import lifeblood_connection\n' \
+            f'import lifeblood_connection\n'
+
+        if context.param_value('mask as different hip'):
+            mask_path = context.param_value('mask hip path')
+            script += 'def __fix_hip_env__(event_type=None):\n' \
+                      '    if event_type == hou.hipFileEventType.BeforeSave:\n' \
+                      '        hou.hipFile.setName(os.devnull)\n' \
+                      '        return\n' \
+                      '    if event_type not in (hou.hipFileEventType.AfterSave, hou.hipFileEventType.AfterLoad) and event_type is not None:\n' \
+                      '        return\n' \
+                     f'    hou.hipFile.setName({repr(mask_path)})\n' \
+                      'hou.hipFile.addEventCallback(__fix_hip_env__)\n'
+
+        script += \
             f'print("opening file" + {repr(hippath)})\n' \
             f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
             f'node = hou.node({repr(driverpath)})\n' \
