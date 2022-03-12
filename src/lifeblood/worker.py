@@ -281,6 +281,7 @@ class Worker:
 
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
+            env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = report_to
             for aname, aval in task.attributes().items():
                 env['LBATTR_%s' % aname] = str(aval)
