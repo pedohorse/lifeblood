@@ -316,8 +316,8 @@ class Worker:
 
     # callback awaiter
     async def _awaiter(self):
-        async with aiofiles.open(self.get_log_filepath('output', self.__running_task.invocation_id()), 'ab') as stdout:
-            async with aiofiles.open(self.get_log_filepath('error', self.__running_task.invocation_id()), 'ab') as stderr:
+        async with aiofiles.open(self.get_log_filepath('output', self.__running_task.invocation_id()), 'wb') as stdout:
+            async with aiofiles.open(self.get_log_filepath('error', self.__running_task.invocation_id()), 'wb') as stderr:
 
                 async def _flush():
                     await asyncio.sleep(1)  # ensure to flush every 1 second
