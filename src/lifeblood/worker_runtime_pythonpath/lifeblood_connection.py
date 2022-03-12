@@ -96,7 +96,7 @@ class TaskSpawn:
         return pickle.dumps(self)
 
 
-def create_task(name, attributes):
+def create_task(name, attributes, blocking=False):
     invocation_id = int(os.environ['LIFEBLOOD_RUNTIME_IID'])
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
 
@@ -113,5 +113,30 @@ def create_task(name, attributes):
         res = sock.recv(4)  # 4 should be small enough to ensure receiving in one call
         # ignore result?
 
-    thread = threading.Thread(target=_send)
-    thread.start()  # and not care
+    if blocking:
+        _send()
+    else:
+        thread = threading.Thread(target=_send)
+        thread.start()  # and not care
+
+
+def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
+    def _send():
+        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+        addr, sport = addrport.rsplit(':', 1)
+        port = int(sport)
+        sock = socket.create_connection((addr, port), timeout=30)
+        sock.sendall(b'\0\0\0\0')
+        sock.sendall(b'tupdateattribs\n')
+        updata = pickle.dumps(attribs)
+        sock.sendall(struct.pack('>QQQ', task_id, len(updata), 0))
+        sock.sendall(updata)
+        sock.recv(1)  # recv confirmation
+
+    task_id = int(os.environ['LIFEBLOOD_RUNTIME_TID'])
+
+    if blocking:
+        _send()
+    else:
+        thread = threading.Thread(target=_send)
+        thread.start()  # and not care
