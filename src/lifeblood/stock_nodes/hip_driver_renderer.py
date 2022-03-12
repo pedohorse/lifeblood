@@ -44,6 +44,10 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_output_for_spawned_tasks()
             ui.add_parameter('hip path', 'hip path', NodeParameterType.STRING, "`task['hipfile']`")
+            with ui.parameters_on_same_line_block():
+                mask_hip = ui.add_parameter('mask as different hip', 'mask as different hip file', NodeParameterType.BOOL, False)
+                ui.add_parameter('mask hip path', '', NodeParameterType.STRING, "`task.get('hipfile_orig', task['hipfile'])`")\
+                    .append_visibility_condition(mask_hip, '==', True)
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('ignore inputs', 'ignore rop inputs', NodeParameterType.BOOL, True)
             ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
@@ -119,6 +123,17 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             f'print("opening file" + {repr(hippath)})\n' \
             f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
             f'node = hou.node({repr(driverpath)})\n'
+
+        if context.param_value('mask as different hip'):
+            mask_path = context.param_value('mask hip path')
+            script += 'def __fix_hip_env__(event_type=None):\n' \
+                      '    if event_type == hou.hipFileEventType.BeforeSave:\n' \
+                      '        hou.hipFile.setName(os.devnull)\n' \
+                      '        return\n' \
+                      '    if event_type not in (hou.hipFileEventType.AfterSave, hou.hipFileEventType.AfterLoad) and event_type is not None:\n' \
+                      '        return\n' \
+                     f'    hou.hipFile.setName({repr(mask_path)})\n' \
+                      'hou.hipFile.addEventCallback(__fix_hip_env__)\n'
 
         for attrname in attr_to_context:
             script += f'hou.setContextOption({repr(attrname)}, {repr(attrs[attrname])})\n'
