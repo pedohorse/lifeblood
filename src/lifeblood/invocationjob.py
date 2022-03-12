@@ -165,6 +165,7 @@ class InvocationJob:
         self.__args = [str(arg) for arg in args]
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
+        self.__task_id = None
         # TODO: add here also all kind of resource requirements information
         self.__out_progress_regex = re.compile(rb'ALF_PROGRESS\s+(\d+)%')
         self.__err_progress_regex = None
@@ -260,6 +261,9 @@ class InvocationJob:
     def invocation_id(self) -> int:
         return self.__invocation_id
 
+    def task_id(self) -> int:
+        return self.__task_id
+
     def finish(self, exitcode: int):
         self.__exitcode = exitcode
 
@@ -286,6 +290,9 @@ class InvocationJob:
     # methods for scheduler
     def _set_invocation_id(self, invocation_id):
         self.__invocation_id = invocation_id
+
+    def _set_task_id(self, task_id):
+        self.__task_id = task_id
 
     def _set_task_attributes(self, attr_dict):
         self.__attrs = deepcopy(attr_dict)
