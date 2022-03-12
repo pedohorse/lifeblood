@@ -2,6 +2,7 @@ import struct
 import asyncio
 import aiofiles
 from enum import Enum
+import pickle
 
 from . import logging
 from . import invocationjob
@@ -79,6 +80,8 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     await self.__scheduler.worker_stopped(addr)
                     writer.write(b'\1')
                 #
+                # commands used mostly by lifeblood_connection
+                #
                 # spawn a child task for task being processed
                 elif command == b'spawn':
                     tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -92,6 +95,15 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     ids = await self.__scheduler.node_name_to_id(nodename)
                     self.__logger.debug(f'sending {ids}')
                     writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
+                elif command == b'tupdateattribs':  # note - this one is the same as in scheduler_ui_protocol... TODO: should they maybe be unified?
+                    task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
+                    attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
+                    self.__logger.warning(attribs_to_update)
+                    attribs_to_delete = set()
+                    for _ in range(strcount):
+                        attribs_to_delete.add(await read_string())
+                    await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
+                    writer.write(b'\1')
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
