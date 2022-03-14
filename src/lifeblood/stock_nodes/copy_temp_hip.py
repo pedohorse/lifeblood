@@ -1,5 +1,5 @@
 from lifeblood.basenode import BaseNodeWithTaskRequirements
-from lifeblood.enums import NodeParameterType
+from lifeblood.enums import NodeParameterType, WorkerType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
@@ -46,6 +46,8 @@ class CopyHipFile(BaseNodeWithTaskRequirements):
                 mask_hip = ui.add_parameter('save orig', 'save original hip path', NodeParameterType.BOOL, False)
                 ui.add_parameter('mask hip path attribute', 'attribute name', NodeParameterType.STRING, "hipfile_orig")\
                     .append_visibility_condition(mask_hip, '==', True)
+
+                ui.parameter('worker type').set_value(WorkerType.SCHEDULER_HELPER.value)
 
     def process_task(self, context) -> ProcessingResult:
         src_path = context.param_value('hip path')
