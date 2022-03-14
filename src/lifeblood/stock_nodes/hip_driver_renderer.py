@@ -66,6 +66,9 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ui.add_parameter('attrs to extract', 'detail attributes to extract', NodeParameterType.STRING, '')
             ui.add_parameter('intrinsics to extract', 'detail intrinsics to extract', NodeParameterType.STRING, '')
 
+            ui.parameter('worker type').set_hidden(True)
+            ui.parameter('worker type').set_locked(True)
+
     def process_task(self, context) -> ProcessingResult:
         """
         this node expects to find the following attributes:

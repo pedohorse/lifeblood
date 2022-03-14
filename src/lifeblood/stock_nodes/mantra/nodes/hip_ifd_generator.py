@@ -44,6 +44,9 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             ui.add_parameter('ifd force inline', 'force inline ifd', NodeParameterType.BOOL, True)
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '')
 
+            ui.parameter('worker type').set_hidden(True)
+            ui.parameter('worker type').set_locked(True)
+
     def process_task(self, context) -> ProcessingResult:
         """
         this node expects to find the following attributes:
