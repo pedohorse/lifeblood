@@ -183,6 +183,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__vis_when = []
         self.__force_hidden = False
         self.__is_readonly = False  # set it False until the end of constructor
+        self.__locked = False  # same as readonly, but is settable by user
 
         self.__expression = None
         self.__can_have_expressions = can_have_expression
@@ -341,9 +342,17 @@ class Parameter(ParameterHierarchyLeaf):
     def is_readonly(self):
         return self.__is_readonly
 
+    def is_locked(self):
+        return self.__locked
+
+    def set_locked(self, locked: bool):
+        self.__locked = locked
+
     def set_value(self, value: Any):
         if self.__is_readonly:
             raise ParameterReadonly()
+        if self.__locked:
+            raise ParameterLocked()
         if self.__type == NodeParameterType.FLOAT:
             param_value = float(value)
             if self.__hard_borders[0] is not None:
@@ -384,6 +393,10 @@ class Parameter(ParameterHierarchyLeaf):
         :param expression: either expression code or None means removing expression
         :return:
         """
+        if self.__is_readonly:
+            raise ParameterReadonly()
+        if self.__locked:
+            raise ParameterLocked()
         if not self.__can_have_expressions:
             raise ParameterCannotHaveExpressions()
         if expression != self.__expression:
@@ -555,6 +568,10 @@ class ParameterNameCollisionError(ParameterError):
 
 
 class ParameterReadonly(ParameterError):
+    pass
+
+
+class ParameterLocked(ParameterError):
     pass
 
 
@@ -1080,7 +1097,7 @@ class NodeUi(ParameterHierarchyItem):
         with layout.initializing_interface_lock():
             layout.add_layout(new_layout)
 
-    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = True, readonly: bool = False):
+    def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = True, readonly: bool = False) -> Parameter:
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
