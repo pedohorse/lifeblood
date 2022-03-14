@@ -6,11 +6,11 @@ import re
 from copy import copy, deepcopy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
-from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterCannotHaveExpressions, Parameter
+from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterLocked, ParameterCannotHaveExpressions, Parameter
 from .pluginloader import create_node, plugin_hash
 from .processingcontext import ProcessingContext
 from .logging import get_logger
-from .enums import NodeParameterType
+from .enums import NodeParameterType, WorkerType
 from .plugin_info import PluginInfo
 
 from typing import TYPE_CHECKING, Iterable
@@ -227,6 +227,10 @@ class BaseNode:
                             newparam.set_value(param.unexpanded_value())
                         except ParameterReadonly:
                             newparam._Parameter__value = param.unexpanded_value()
+                        except ParameterLocked:
+                            newparam.set_locked(False)
+                            newparam.set_value(param.unexpanded_value())
+                            newparam.set_locked(True)
                         if param.has_expression():
                             try:
                                 newparam.set_expression(param.expression())
@@ -275,9 +279,11 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
                 ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
                 ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
-    
-    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
+                ui.add_parameter('worker type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
+                    .add_menu((('standard', WorkerType.STANDARD.value),
+                               ('scheduler helper', WorkerType.SCHEDULER_HELPER.value)))
+
+    def __apply_requirements(self, task_dict: dict, result: ProcessingResult):
         if result.invocation_job is not None:
             context = ProcessingContext(self, task_dict)
             raw_groups = context.param_value('worker groups').strip()
@@ -286,23 +292,18 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 reqs.add_groups(re.split(r'[ ,]+', raw_groups))
             reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
+            reqs.set_worker_type(WorkerType(context.param_value('worker type')))
             result.invocation_job.set_requirements(reqs)
             result.invocation_job.set_priority(context.param_value('priority adjustment'))
         return result
 
+    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
+        return self.__apply_requirements(task_dict, result)
+
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
         result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict)
-        if result.invocation_job is not None:
-            context = ProcessingContext(self, task_dict)
-            raw_groups = context.param_value('worker groups').strip()
-            reqs = result.invocation_job.requirements()
-            if raw_groups != '':
-                reqs.add_groups(re.split(r'[ ,]+', raw_groups))
-            reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
-            reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
-            result.invocation_job.set_requirements(reqs)
-            result.invocation_job.set_priority(context.param_value('priority adjustment'))
-        return result
+        return self.__apply_requirements(task_dict, result)
 
 
 # class BaseNodeWithEnvironmentRequirements(BaseNode):
