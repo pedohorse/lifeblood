@@ -23,7 +23,7 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, source_invocation_id: Optional[int], env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None):
+    def __init__(self, name: str, source_invocation_id: Optional[int] = None, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None):
         """
 
         :param name:
