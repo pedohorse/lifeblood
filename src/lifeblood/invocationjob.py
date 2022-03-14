@@ -126,6 +126,9 @@ class InvocationRequirements:
     def set_min_memory_bytes(self, min_memory_bytes):
         self.__min_memory_bytes = min_memory_bytes
 
+    def set_worker_type(self, worker_type: WorkerType):
+        self.__worker_type = worker_type
+
     def final_where_clause(self):
         conds = [f'("worker_type" = {self.__worker_type.value})']
         if self.__min_cpu_count is not None:
