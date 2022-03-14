@@ -2,11 +2,12 @@ import os
 import fnmatch
 import inspect
 from lifeblood.taskspawn import TaskSpawn
-from lifeblood.basenode import BaseNode
+from lifeblood.basenode import BaseNodeWithTaskRequirements
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.uidata import NodeParameterType
+from lifeblood.enums import WorkerType
 
 from typing import Iterable
 
@@ -40,7 +41,7 @@ def _scan_one_level(basepath, levels):
     return files
 
 
-class FilePattern(BaseNode):
+class FilePattern(BaseNodeWithTaskRequirements):
     def __init__(self, name):
         super(FilePattern, self).__init__(name)
         ui = self.get_ui()
@@ -48,6 +49,7 @@ class FilePattern(BaseNode):
             ui.color_scheme().set_main_color(0.24, 0.25, 0.48)
             ui.add_parameter('on workers', 'submit to workers', NodeParameterType.BOOL, False)
             ui.add_parameter('pattern', 'file pattern', NodeParameterType.STRING, '')
+            ui.parameter('worker type').set_value(WorkerType.SCHEDULER_HELPER.value)
 
     @classmethod
     def label(cls) -> str:
@@ -60,6 +62,16 @@ class FilePattern(BaseNode):
     @classmethod
     def type_name(cls) -> str:
         return 'filepattern'
+
+    @classmethod
+    def description(cls) -> str:
+        return 'scans file system according to given pattern, like /some/path/dir_*_smth/imagefile.*.exr\n' \
+               'if "on worker" is checked - worker will perform the scan,  \n' \
+               'otherwise scan will be done by scheduler.\n' \
+               '\n' \
+               'if you scan thousands of files it\'s more optimal to do work "on worker"  \n' \
+               'as it will produce new items asynchronously,  \n' \
+               'while when not "on worker" - scan happens synchronously\n'
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         pattern = context.param_value('pattern')
