@@ -260,10 +260,12 @@ class Parameter(ParameterHierarchyLeaf):
         # for string parameters we expand expressions in ``, kinda like bash
         return self.__re_expand_pattern.sub(lambda m: str(evaluate_expression(m.group(1), context)), self.__value)
 
-    def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float], Union[int, float]) -> None
+    def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float], Union[int, float]) -> Parameter
         """
         set a visual slider's minimum and maximum
         this does nothing to the parameter itself, and it's up to parameter renderer to interpret this data
+
+        :return: self to be chained
         """
         if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
             raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
@@ -279,11 +281,14 @@ class Parameter(ParameterHierarchyLeaf):
             value_max = float(value_max)
 
         self.__display_borders = (value_min, value_max)
+        return self
 
-    def set_value_limits(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, None, Type[DontChange]], Union[int, float, None, Type[DontChange]]) -> None
+    def set_value_limits(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float, None, Type[DontChange]], Union[int, float, None, Type[DontChange]]) -> Parameter
         """
         set minimum and maximum values that parameter will enforce
         None means no limit (unset limit)
+
+        :return: self to be chained
         """
         if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
             raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
@@ -305,12 +310,14 @@ class Parameter(ParameterHierarchyLeaf):
         assert value_max != self.DontChange
 
         self.__hard_borders = (value_min, value_max)
+        return self
 
     def set_text_multiline(self, syntax_hint=None):
         if self.__type != NodeParameterType.STRING:
             raise RuntimeError('multiline can be only set for string parameters')
         self.__string_multiline = True
         self.__string_multiline_syntax_hint = syntax_hint
+        return self
 
     def is_text_multiline(self):
         return self.__string_multiline
