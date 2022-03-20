@@ -1,13 +1,22 @@
 import re
 from enum import Enum
 from PySide2.QtWidgets import *
-from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor, QTextFormat
+from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor, QTextFormat, QTextDocument
 from PySide2.QtCore import Slot, Signal, Qt, QSize, QEvent
 
-from typing import List, Tuple, Pattern
+from typing import List, Tuple, Pattern, Union, Callable
 
 
-class PythonSyntaxHighlighter(QSyntaxHighlighter):
+class StringParameterEditorSyntaxHighlighter(QSyntaxHighlighter):
+    def name(self) -> str:
+        """
+        displayed name of this syntax highlighter
+        :return:
+        """
+        return 'no name'
+
+
+class PythonSyntaxHighlighter(StringParameterEditorSyntaxHighlighter):
     def __init__(self, doc):
         super(PythonSyntaxHighlighter, self).__init__(doc)
 
@@ -38,6 +47,38 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             for m in rule.finditer(text):
                 grp = len(m.groups())
                 self.setFormat(m.start(grp), m.end(grp)-m.start(grp), format)
+
+    def name(self) -> str:
+        return 'Python'
+
+
+class LogSyntaxHighlighter(StringParameterEditorSyntaxHighlighter):
+    def __init__(self, doc):
+        super(LogSyntaxHighlighter, self).__init__(doc)
+
+        sys_format = QTextCharFormat()
+        sys_format.setForeground(QColor('#52e385'))
+
+        out_format = QTextCharFormat()
+        out_format.setForeground(QColor('#FFFFFF'))
+
+        err_format = QTextCharFormat()
+        err_format.setForeground(QColor('#ff3b3b'))
+        err_format.setFontWeight(QFont.Bold)
+
+        self.__highlights: List[Tuple[Pattern[str], QTextCharFormat]] = []
+        self.__highlights.append((re.compile(r'\[SYS\].*$'), sys_format))
+        self.__highlights.append((re.compile(r'\[OUT\].*$'), out_format))
+        self.__highlights.append((re.compile(r'\[ERR\].*$'), err_format))
+
+    def highlightBlock(self, text: str) -> None:
+        for rule, format in self.__highlights:
+            for m in rule.finditer(text):
+                grp = len(m.groups())
+                self.setFormat(m.start(grp), m.end(grp)-m.start(grp), format)
+
+    def name(self) -> str:
+        return 'Log'
 
 
 class QTextEditButTabsAreSpaces(QPlainTextEdit):
@@ -124,8 +165,9 @@ class StringParameterEditor(QWidget):
     class SyntaxHighlight(Enum):
         NO_HIGHLIGHT = 0
         PYTHON = 1
+        LOG = 2
 
-    def __init__(self, syntax_highlight: SyntaxHighlight = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
+    def __init__(self, syntax_highlight: Union[SyntaxHighlight, Callable[[QTextDocument], StringParameterEditorSyntaxHighlighter]] = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
         super(StringParameterEditor, self).__init__(parent, Qt.Dialog)
         self.__main_layout = QVBoxLayout(self)
         self.__textarea = QTextEditButTabsAreSpaces()
@@ -153,9 +195,18 @@ class StringParameterEditor(QWidget):
         self.__main_layout.addWidget(self.__status_bar)
         self.__main_layout.addLayout(self.__bottom_layout)
 
-        if syntax_highlight == StringParameterEditor.SyntaxHighlight.PYTHON:
-            self.__syntax_highlighter = PythonSyntaxHighlighter(self.__textarea.document())
-            self.__status_bar.insertPermanentWidget(0, QLabel('syntax: Python'))
+        self.__syntax_highlighter = None
+        if isinstance(syntax_highlight, StringParameterEditor.SyntaxHighlight):
+            if syntax_highlight == StringParameterEditor.SyntaxHighlight.PYTHON:
+                self.__syntax_highlighter = PythonSyntaxHighlighter(self.__textarea.document())
+            elif syntax_highlight == StringParameterEditor.SyntaxHighlight.LOG:
+                self.__syntax_highlighter = LogSyntaxHighlighter(self.__textarea.document())
+        else:
+            assert callable(syntax_highlight)
+            self.__syntax_highlighter = syntax_highlight(self.__textarea.document())
+
+        if self.__syntax_highlighter is not None:
+            self.__status_bar.insertPermanentWidget(0, QLabel(f'syntax: {self.__syntax_highlighter.name()}'))
 
         # connec
         self.__cancel_button.clicked.connect(self.close)
@@ -181,6 +232,14 @@ class StringParameterEditor(QWidget):
 
     def set_text(self, text: str):
         self.__textarea.setPlainText(text)
+
+    def set_title(self, title: str):
+        self.setWindowTitle(title)
+
+    def set_readonly(self, readonly: bool):
+        self.__textarea.setReadOnly(readonly)
+        self.__ok_button.setVisible(not readonly)
+        self.__apply_button.setVisible(not readonly)
 
 
 def _test():
