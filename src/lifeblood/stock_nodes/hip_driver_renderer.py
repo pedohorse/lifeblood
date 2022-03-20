@@ -122,10 +122,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         script = \
             f'import os\n' \
             f'import hou\n' \
-            f'import lifeblood_connection\n' \
-            f'print("opening file" + {repr(hippath)})\n' \
-            f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
-            f'node = hou.node({repr(driverpath)})\n'
+            f'import lifeblood_connection\n'
 
         if context.param_value('mask as different hip'):
             mask_path = context.param_value('mask hip path')
@@ -137,6 +134,11 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                       '        return\n' \
                      f'    hou.hipFile.setName({repr(mask_path)})\n' \
                       'hou.hipFile.addEventCallback(__fix_hip_env__)\n'
+
+        script += \
+            f'print("opening file" + {repr(hippath)})\n' \
+            f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
+            f'node = hou.node({repr(driverpath)})\n'
 
         for attrname in attr_to_context:
             script += f'hou.setContextOption({repr(attrname)}, {repr(attrs[attrname])})\n'
