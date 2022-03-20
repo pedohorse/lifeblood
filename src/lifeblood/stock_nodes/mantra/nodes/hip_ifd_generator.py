@@ -37,6 +37,7 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
                 ui.add_parameter('mask hip path', '', NodeParameterType.STRING, "`task.get('hipfile_orig', task['hipfile'])`")\
                     .append_visibility_condition(mask_hip, '==', True)
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
+            ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
             ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
@@ -64,6 +65,7 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         frames = attrs['frames']
         matching_attrnames = filter_by_pattern(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
+        attr_to_context = filter_by_pattern(context.param_value('attrs to context'), attrs.keys())
 
         env = InvocationEnvironment()
 
@@ -97,7 +99,12 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         script += \
             f'print("opening file" + {repr(hippath)})\n' \
             f'hou.hipFile.load({repr(hippath)}, ignore_load_warnings=True)\n' \
-            f'node = hou.node({repr(driverpath)})\n' \
+            f'node = hou.node({repr(driverpath)})\n'
+
+        for attrname in attr_to_context:
+            script += f'hou.setContextOption({repr(attrname)}, {repr(attrs[attrname])})\n'
+
+        script += \
             f'if node.parm("soho_outputmode").evalAsInt() != 1:\n' \
             f'    node.parm("soho_outputmode").set(1)\n'
         ifdpath = context.param_value('ifd file path').strip()
