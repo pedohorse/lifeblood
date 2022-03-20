@@ -1423,7 +1423,16 @@ class Task(NetworkItemWithUI):
                 if invoc is None:
                     imgui.text('...fetching...')
                 else:
-                    imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
+                    if 'stdout' in invoc and invoc['stdout']:
+                        if imgui.button(f'open in viewer##{invoc_id}'):
+                            hl = StringParameterEditor.SyntaxHighlight.LOG
+                            wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
+                            wgt.set_text(invoc.get('stdout', 'error'))
+                            wgt.set_readonly(True)
+                            wgt.set_title(f'Log: task {self.get_id()}, invocation {invoc_id}')
+                            wgt.show()
+
+                        imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
                     if invoc['state'] == InvocationState.IN_PROGRESS.value:
                         if imgui.button('update'):
                             logger.debug('clicked')
