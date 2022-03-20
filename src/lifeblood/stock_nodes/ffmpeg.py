@@ -32,6 +32,7 @@ class Ffmpeg(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.color_scheme().set_main_color(0.125, 0.33, 0.05)
+            ui.add_parameter('sequence', 'sequence attribute name', NodeParameterType.STRING, 'sequence')
             ui.add_parameter('ffmpeg bin path', 'ffmpeg binary', NodeParameterType.STRING, 'ffmpeg')
             ui.add_parameter('fps', 'fps', NodeParameterType.INT, 24)
             ui.add_parameter('icrf', 'quality %', NodeParameterType.INT, 75).set_slider_visualization(1, 100)
@@ -44,9 +45,10 @@ class Ffmpeg(BaseNode):
     def process_task(self, context) -> ProcessingResult:
         binpath = context.param_value('ffmpeg bin path')
         attributes = context.task_attributes()
-        if 'sequence' not in attributes:
-            raise ProcessingError('required attribute "sequence" not found')
-        sequence = attributes['sequence']
+        sequence_attrib_name = context.param_value('sequence')
+        if sequence_attrib_name not in attributes:
+            raise ProcessingError(f'required attribute "{sequence_attrib_name}" not found')
+        sequence = attributes[sequence_attrib_name]
 
         assert isinstance(sequence, list), 'sequence attribute is supposed to be list of frames, or list of sequences'
 
