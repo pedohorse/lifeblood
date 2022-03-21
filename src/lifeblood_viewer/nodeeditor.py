@@ -258,7 +258,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
 
         self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
-        self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_log_metadata)
+        self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_invocation_metadata)
         self._signal_node_ui_has_been_requested.connect(self.__ui_connection_worker.get_nodeui)
         self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self._signal_node_has_parameter_requested.connect(self.__ui_connection_worker.send_node_has_parameter)
