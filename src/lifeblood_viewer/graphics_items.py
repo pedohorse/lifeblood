@@ -1420,6 +1420,7 @@ class Task(NetworkItemWithUI):
             for invoc_id, invoc in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
                 invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
+                                                            (f', worker {invoc["worker_id"]}' if invoc.get('worker_id') is not None else '') +
                                                             (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else ''))
                 if not invoc_expanded:
                     continue
