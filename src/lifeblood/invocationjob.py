@@ -178,6 +178,7 @@ class InvocationJob:
         self.__envres_args = None # environment_wrapper_arguments
 
         self.__exitcode = None
+        self.__running_time = None
         self.__good_exitcodes = set(good_exitcodes or [0])
         self.__retry_exitcodes = set(retry_exitcodes or [])
 
@@ -267,14 +268,22 @@ class InvocationJob:
     def task_id(self) -> int:
         return self.__task_id
 
-    def finish(self, exitcode: int):
+    def finish(self, exitcode: int, running_time: float):
         self.__exitcode = exitcode
+        self.__running_time = running_time
 
     def is_finished(self):
         return self.__exitcode is not None
 
     def exit_code(self):
         return self.__exitcode
+
+    def running_time(self) -> Optional[float]:
+        """
+        return time of the invocation run time,
+        or None if invocation was not finished
+        """
+        return self.__running_time
 
     def finished_with_error(self):
         if self.__exitcode is None:
