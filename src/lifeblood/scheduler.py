@@ -1152,8 +1152,8 @@ class Scheduler:
                 if invoc['state'] != InvocationState.IN_PROGRESS.value:
                     self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
                     return
-            await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ? WHERE "id" = ?',
-                              (InvocationState.FINISHED.value, task.exit_code(), task.invocation_id()))
+            await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ?, "runtime" = ? WHERE "id" = ?',
+                              (InvocationState.FINISHED.value, task.exit_code(), task.running_time(), task.invocation_id()))
             async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
                 invocation = await incur.fetchone()
             assert invocation is not None
@@ -1221,8 +1221,8 @@ class Scheduler:
                 if invoc['state'] != InvocationState.IN_PROGRESS.value:
                     self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
                     return
-            await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
-                              (InvocationState.FINISHED.value, task.invocation_id()))
+            await con.execute('UPDATE invocations SET "state" = ?, "runtime" = ? WHERE "id" = ?',
+                              (InvocationState.FINISHED.value, task.running_time(), task.invocation_id()))
             async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
                 invocation = await incur.fetchone()
             assert invocation is not None
@@ -1905,7 +1905,7 @@ class Scheduler:
                 return list(x[0] for x in await cur.fetchall())
 
     #
-    async def get_log_metadata(self, task_id: int):
+    async def get_invocation_metadata(self, task_id: int):
         """
         get task's log metadata - meaning which nodes it ran on and how
         :param task_id:
@@ -1915,13 +1915,13 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f'fetching log metadata for {task_id}')
-            async with con.execute('SELECT "id", node_id from "invocations" WHERE "task_id" = ?',
+            async with con.execute('SELECT "id", node_id, runtime from "invocations" WHERE "task_id" = ?',
                                    (task_id, )) as cur:
                 async for entry in cur:
                     node_id = entry['node_id']
                     if node_id not in logs:
                         logs[node_id] = {}
-                    logs[node_id][entry['id']] = None
+                    logs[node_id][entry['id']] = {'runtime': entry['runtime'], '__incompletemeta__': True}
             return logs
 
     async def get_logs(self, task_id: int, node_id: int, invocation_id: Optional[int] = None):
