@@ -1915,13 +1915,15 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f'fetching log metadata for {task_id}')
-            async with con.execute('SELECT "id", node_id, runtime from "invocations" WHERE "task_id" = ?',
+            async with con.execute('SELECT "id", node_id, runtime, worker_id from "invocations" WHERE "task_id" = ?',
                                    (task_id, )) as cur:
                 async for entry in cur:
                     node_id = entry['node_id']
                     if node_id not in logs:
                         logs[node_id] = {}
-                    logs[node_id][entry['id']] = {'runtime': entry['runtime'], '__incompletemeta__': True}
+                    logs[node_id][entry['id']] = {'runtime': entry['runtime'],
+                                                  'worker_id': entry['worker_id'],
+                                                  '__incompletemeta__': True}
             return logs
 
     async def get_logs(self, task_id: int, node_id: int, invocation_id: Optional[int] = None):
