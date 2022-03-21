@@ -62,7 +62,7 @@ class Ffmpeg(BaseNode):
         super(Ffmpeg, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.color_scheme().set_main_color(0.125, 0.33, 0.05)
+            ui.color_scheme().set_main_color(0.129, 0.239, 0.569)
             mode_param = ui.add_parameter('mode', 'mode', NodeParameterType.STRING, 'montage').add_menu((('montage', 'montage'), ('convert', 'convert')))
 
             ui.add_parameter('sequence', 'sequence attribute name', NodeParameterType.STRING, 'sequence')
