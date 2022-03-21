@@ -2,6 +2,7 @@ import json
 
 from math import sqrt
 from types import MappingProxyType
+from datetime import timedelta
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
@@ -1197,8 +1198,12 @@ class Task(NetworkItemWithUI):
                 self.__log[node_id] = invocs
                 continue
             for inv_id, logs in invocs.items():
-                if logs is None and inv_id in self.__log[node_id]:
-                    continue
+                if inv_id in self.__log[node_id]:
+                    if logs is None:
+                        continue
+                    if logs.get('__incompletemeta__', False):
+                        self.__log[node_id][inv_id].update(logs)
+                        continue
                 self.__log[node_id][inv_id] = logs
 
         self.update_ui()
@@ -1308,7 +1313,7 @@ class Task(NetworkItemWithUI):
             for invoc_id, invoc_dict in invocs.items():
                 if invoc_dict is None:
                     continue
-                if invoc_dict['state'] != InvocationState.FINISHED.value and invoc_id in self.__requested_invocs_while_selected:
+                if invoc_dict.get('state', None) != InvocationState.FINISHED.value and invoc_id in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.remove(invoc_id)
 
         # # if task is in progress - we find that invocation of it that is not finished and null it to force update
@@ -1414,13 +1419,14 @@ class Task(NetworkItemWithUI):
                 continue
             for invoc_id, invoc in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
-                invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}')
+                invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
+                                                            (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else ''))
                 if not invoc_expanded:
                     continue
                 if invoc_id not in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.add(invoc_id)
                     self.scene().request_log(self.get_id(), node_id, invoc_id)
-                if invoc is None:
+                if invoc is None or 'stdout' not in invoc:
                     imgui.text('...fetching...')
                 else:
                     if 'stdout' in invoc and invoc['stdout']:
