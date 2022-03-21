@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 	"stdout"	TEXT,
 	"stderr"	TEXT,
 	"progress"	REAL,
+	"runtime"	REAL,
 	FOREIGN KEY("worker_id") REFERENCES "workers"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT
