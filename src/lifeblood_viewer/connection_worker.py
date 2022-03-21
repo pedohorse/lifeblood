@@ -235,22 +235,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self.full_update.emit(uidata)
 
     @Slot(int)
-    def get_log_metadata(self, task_id: int):
+    def get_invocation_metadata(self, task_id: int):
         if not self.ensure_connected():
             return
 
         assert self.__conn is not None
         try:
-            self.__conn.sendall(b'getlogmeta\n')
+            self.__conn.sendall(b'getinvocmeta\n')
             self.__conn.sendall(struct.pack('>Q', task_id))
             rcvsize = struct.unpack('>I', recv_exactly(self.__conn, 4))[0]
-            logmeta = pickle.loads(recv_exactly(self.__conn, rcvsize))
+            invocmeta = pickle.loads(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.log_fetched.emit(task_id, logmeta)
+            self.log_fetched.emit(task_id, invocmeta)
 
     @Slot(int, object)
     def get_task_attribs(self, task_id: int, data=None):
