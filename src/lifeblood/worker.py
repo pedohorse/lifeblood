@@ -10,6 +10,7 @@ import aiofiles
 import json
 import psutil
 import datetime
+import time
 import tempfile
 import signal
 from enum import Enum
@@ -89,6 +90,7 @@ class Worker:
 
         self.__status = {}
         self.__running_process: Optional[asyncio.subprocess.Process] = None
+        self.__running_process_start_time: float = 0
         self.__running_task: Optional[InvocationJob] = None
         self.__running_task_progress: Optional[float] = None
         self.__running_awaiter = None
@@ -294,6 +296,7 @@ class Worker:
                 #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
+                self.__running_process_start_time = time.time()
                 self.__running_process: asyncio.subprocess.Process = \
                     await asyncio.create_subprocess_exec(
                         *args,
@@ -456,7 +459,8 @@ class Worker:
                 return
             self.__logger.info('task finished')
             self.__logger.info(f'reporting done back to {self.__where_to_report}')
-            self.__running_task.finish(await self.__running_process.wait())
+            process_exit_code = await self.__running_process.wait()
+            self.__running_task.finish(process_exit_code, time.time() - self.__running_process_start_time)
             try:
                 ip, port = self.__where_to_report.split(':', 1)
                 async with SchedulerTaskClient(ip, int(port)) as client:
