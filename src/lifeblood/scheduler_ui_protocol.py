@@ -39,11 +39,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(struct.pack('>Q', len(uidata_ser)))
             writer.write(uidata_ser)
 
-        async def comm_get_log_meta():  # elif command in (b'getlogmeta', b'getlog', b'getalllog'):
-            # if command == b'getlogmeta':
+        async def comm_get_invoc_meta():  # elif command in (b'getinvocmeta', b'getlog', b'getalllog'):
+            # if command == b'getinvocmeta':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            all_logs = await self.__scheduler.get_log_metadata(task_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
+            all_meta = await self.__scheduler.get_invocation_metadata(task_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_meta)
             writer.write(struct.pack('>I', len(data)))
             writer.write(data)
 
@@ -315,7 +315,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         #
         #
         commands = {b'getfullstate': comm_get_full_state,
-                    b'getlogmeta': comm_get_log_meta,
+                    b'getinvocmeta': comm_get_invoc_meta,
                     b'getlog': comm_get_log,
                     b'getalllog': comm_get_log_all,
                     b'getnodeinterface': comm_get_node_interface,
