@@ -3,6 +3,7 @@ import sys
 import re
 import hashlib
 import importlib.util
+import platform
 
 from .snippets import NodeSnippetData
 from . import logging, plugin_info
@@ -68,6 +69,16 @@ def _install_package(package_path, plugin_category):
     :return:
     """
     package_name = os.path.basename(package_path)
+    # add extra bin paths
+    extra_bins = []
+    for subbin in (f'{platform.system().lower()}-{platform.machine().lower()}', 'any'):
+        bin_base_path = os.path.join(package_path, 'bin', subbin)
+        if not os.path.exists(bin_base_path):
+            continue
+        extra_bins.append(bin_base_path)
+    if extra_bins:
+        os.environ['PATH'] = os.pathsep.join(extra_bins) + os.environ['PATH']
+
     # install extra python modules
     python_base_path = os.path.join(package_path, 'python')
     if os.path.exists(python_base_path):
@@ -78,7 +89,9 @@ def _install_package(package_path, plugin_category):
                                        and (len(x) < 3 or x[2] == sysver.micro)]
         pyvers = sorted(pyvers, key=lambda x: len(x), reverse=True)
         for pyver in pyvers:
-            sys.path.append(os.path.join(python_base_path, '.'.join(str(x) for x in pyver)))
+            extra_python = os.path.join(python_base_path, '.'.join(str(x) for x in pyver))
+            sys.path.append(extra_python)
+            os.environ['PYTHONPATH'] = os.pathsep.join((extra_python, os.environ['PYTHONPATH']))
 
     # install nodes
     nodes_path = os.path.join(package_path, 'nodes')
