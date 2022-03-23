@@ -54,12 +54,17 @@ def _install_package(package_path, plugin_category):
     """
     package structure:
         [package_name:dir]
+        |_bin
+        | |_any                 <- this is always added to PATH
+        | |_system-arch1        <- these are added to PATH only if system+arch match
+        | |_system-arch2        <-/
         |_python
         | |_X           <- these are added to PYTHONPATH based on X.Y
         | |_X.Y         <-/
         |_nodes
         | |_node1.py    <- these are loaded as usual node plugins
         | |_node2.py    <-/
+        |_data          <- just a convenient place to store shit, can be accessed with data from plugin
         |_whatever_file1.lol
         |_whatever_dir1
           |_whatever_file2.lol
