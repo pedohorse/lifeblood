@@ -12,6 +12,11 @@ class PluginInfo:
         self.__file_path = Path(file_path)
 
         self.__parent_package = Path(parent_package) if parent_package is not None else None
+        self.__parent_package_data = None
+        if self.__parent_package is not None:
+            self.__parent_package_data = self.__parent_package / 'data'
+            if not self.__parent_package_data.exists():
+                self.__parent_package_data = None
 
         self.__package_name = None
 
@@ -22,8 +27,11 @@ class PluginInfo:
             self.__package_name = self.__parent_package.name
         return self.__package_name
 
-    def package_root(self) -> Path:
+    def package_root(self) -> Optional[Path]:
         return self.__parent_package
+
+    def package_data(self) -> Optional[Path]:
+        return self.__parent_package_data
 
     def node_definition_file_path(self) -> Path:
         return self.__file_path
