@@ -35,6 +35,8 @@ class MatrixNotifier(BaseNode):
             ui.add_parameter('room', 'room', NodeParameterType.STRING, '`config["room"]`')
             ui.add_parameter('retries', 'retries', NodeParameterType.INT, 0).set_value_limits(value_min=0)
             ui.add_parameter('fail on error', 'fail task on notification sending error', NodeParameterType.BOOL, True)
+            with ui.collapsable_group_block('custom server block', 'custom server'):
+                ui.add_parameter('server', 'matrix server', NodeParameterType.STRING, 'https://matrix.org')
             ui.add_parameter('message', 'message', NodeParameterType.STRING, '').set_text_multiline()
 
     @classmethod
@@ -62,10 +64,12 @@ class MatrixNotifier(BaseNode):
             if i > 0:
                 time.sleep(2 ** (i - 1))
             print(f'attempt {i+1}...')
-            if subprocess.Popen([sys.executable, self.my_plugin().package_data() / 'matrixclient.pyz',
-                                 context.param_value('token'),
-                                 context.param_value('room'),
-                                 context.param_value('message')]).wait() != 0:
+            proc = subprocess.Popen([sys.executable, self.my_plugin().package_data() / 'matrixclient.pyz',
+                                     context.param_value('server'),
+                                     context.param_value('token'),
+                                     context.param_value('room')], stdin=subprocess.PIPE)
+            proc.communicate(context.param_value('message').encode('UTF-8'))
+            if proc.wait() != 0:
                 print(f'attempt {i+1} failed, sleeping for {2**i}')
                 continue
             print('reporting to matrix done')

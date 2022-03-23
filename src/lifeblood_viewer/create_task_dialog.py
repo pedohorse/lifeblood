@@ -84,7 +84,7 @@ class CreateTaskDialog(QDialog):
             for i, (name, val) in enumerate(attrs.items()):
                 attr_layout = self.__attrs_layout.itemAt(i).layout()
                 attr_layout.itemAt(0).widget().setText(name)
-                attr_layout.itemAt(1).widget().setText(json.dumps(val))
+                attr_layout.itemAt(1).widget().setText(val if isinstance(val, str) else json.dumps(val))
                 attr_layout.itemAt(0).widget().set_current_text_as_default()
                 attr_layout.itemAt(1).widget().set_current_text_as_default()
                 self.__initial_attrib_names.add(name)
