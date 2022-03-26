@@ -44,7 +44,7 @@ class ProcessingContext:
 
     class ConfigWrapper:
         def __init__(self, node_type_id):
-            self.__config = get_config('nodes')
+            self.__config = get_config('scheduler.nodes')
             self.__nodetypeid = node_type_id
 
         def get(self, key, default=None):
