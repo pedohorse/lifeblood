@@ -4,15 +4,21 @@ import re
 import hashlib
 import importlib.util
 import platform
+import toml
 
 from .snippets import NodeSnippetData
-from . import logging, plugin_info
+from . import logging, plugin_info, paths
 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 
 
 plugins = {}
 presets: Dict[str, Dict[str, NodeSnippetData]] = {}
+# map of node type -2->
+#   preset_name -2->
+#     dict of parameter name -2-> value
+nodes_settings: Dict[str, Dict[str, Dict[str, Any]]] = {}
+default_settings_config: Dict[str, str] = {}
 __plugin_file_hashes = {}
 
 logger = logging.get_logger('plugin_loader')
@@ -65,6 +71,13 @@ def _install_package(package_path, plugin_category):
         | |_node1.py    <- these are loaded as usual node plugins
         | |_node2.py    <-/
         |_data          <- just a convenient place to store shit, can be accessed with data from plugin
+        |_settings      <- for future saved nodes settings. not implemented yet
+        | |_node_type_name1
+        | | |_settings1.lbs
+        | | |_settings2.lbs
+        | |_node_type_name2
+        | | |_settings1.lbs
+        | | |_settings2.lbs
         |_whatever_file1.lol
         |_whatever_dir1
           |_whatever_file2.lol
@@ -114,12 +127,32 @@ def _install_package(package_path, plugin_category):
             filebasename, fileext = os.path.splitext(filename)
             if fileext != '.lbp':
                 continue
-            with open(os.path.join(presets_path, filename), 'rb') as f:
-                snippet = NodeSnippetData.deserialize(f.read())
+            try:
+                with open(os.path.join(presets_path, filename), 'rb') as f:
+                    snippet = NodeSnippetData.deserialize(f.read())
+            except Exception as e:
+                logger.error(f'failed to load snippet {filebasename}, error: {str(e)}')
 
             if package_name not in presets:
                 presets[package_name] = {}
             presets[package_name][snippet.label] = snippet
+
+    # install node settings
+    settings_path = os.path.join(package_path, 'settings')
+    if os.path.exists(settings_path):
+        for nodetype_name in os.listdir(settings_path):
+            if nodetype_name not in nodes_settings:
+                nodes_settings[nodetype_name] = {}
+            nodetype_path = os.path.join(settings_path, nodetype_name)
+            for preset_filename in os.listdir(nodetype_path):
+                preset_name, fileext = os.path.splitext(preset_filename)
+                if fileext != '.lbs':
+                    continue
+                try:
+                    with open(os.path.join(nodetype_path, preset_filename), 'r') as f:
+                        nodes_settings[nodetype_name][preset_name] = toml.load(f)
+                except Exception as e:
+                    logger.error(f'failed to load settings {nodetype_name}/{preset_name}, error: {str(e)}')
 
 
 def init():
@@ -129,8 +162,12 @@ def init():
     plugin_paths: List[Tuple[str, str]] = []  # list of tuples of path to dir, plugin category
     core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
     stock_plugins_path = os.path.join(os.path.dirname(__file__), 'stock_nodes')
+    user_plugins_path = paths.config_path('', 'user_plugins')
     plugin_paths.append((core_plugins_path, 'core'))
     plugin_paths.append((stock_plugins_path, 'stock'))
+    if user_plugins_path.exists():
+        plugin_paths.append((str(user_plugins_path), 'user'))
+
     for plugin_path, plugin_category in plugin_paths:
         for filename in os.listdir(plugin_path):
             filepath = os.path.join(plugin_path, filename)
@@ -145,22 +182,39 @@ def init():
     logger.info('loaded node types:\n\t' + '\n\t'.join(plugins.keys()))
     logger.info('loaded node presets:\n\t' + '\n\t'.join(f'{pkg}::{label}' for pkg, pkgdata in presets.items() for label in pkgdata.keys()))
 
+    # load default settings
+    default_settings_config_path = paths.config_path('defaults.toml', 'scheduler.nodes')
+    global default_settings_config
+    if default_settings_config_path.exists():
+        with open(default_settings_config_path) as f:
+            default_settings_config = toml.load(f)
+
+        bad_defaults = []
+        for node_type, settings_name in default_settings_config.items():
+            if settings_name not in nodes_settings.get(node_type, {}):
+                logger.warning(f'"{settings_name}" is set as default for "{node_type}", but no such settings is loaded')
+                bad_defaults.append(node_type)
+                continue
+
 
 def plugin_hash(plugin_name) -> str:
     return __plugin_file_hashes[plugin_name]
 
 
-def create_node(plugin_name: str, name, scheduler_parent, node_id):
+def create_node(type_name: str, name, scheduler_parent, node_id):
     """
     this function is a global node creation point.
     it has to be available somewhere global, so plugins loaded from dynamically created modules have an entry point for pickle
     """
-    if plugin_name not in plugins:
-        if plugin_name == 'basenode':  # debug case! base class should never be created directly!
+    if type_name not in plugins:
+        if type_name == 'basenode':  # debug case! base class should never be created directly!
             logger.warning('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
             from .basenode import BaseNode
             node = BaseNode(name)
         raise RuntimeError('unknown plugin')
-    node = plugins[plugin_name].node_class()(name)
+    node = plugins[type_name].node_class()(name)
     node._set_parent(scheduler_parent, node_id)
+    # now set defaults
+    if type_name in default_settings_config:
+        node.apply_settings(default_settings_config[type_name])  # TODO: fix, UI doesn't get properly updated parameter on copy-paste
     return node
