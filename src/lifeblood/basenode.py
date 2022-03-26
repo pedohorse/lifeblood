@@ -7,7 +7,7 @@ from copy import copy, deepcopy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterLocked, ParameterCannotHaveExpressions, Parameter
-from .pluginloader import create_node, plugin_hash
+from .pluginloader import create_node, plugin_hash, nodes_settings
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .enums import NodeParameterType, WorkerType
@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from .scheduler import Scheduler
+    from logging import Logger
 
 
 class BaseNode:
@@ -41,11 +42,19 @@ class BaseNode:
         self.__parent_nid: int = None
         self._parameters: NodeUi = NodeUi(self)
         self.__name = name
+        try:
+            mytype = self.type_name()
+        except NotImplementedError:
+            mytype = None
+        self.__logger = get_logger(f'BaseNode.{mytype}' if mytype is not None else 'BaseNode')
         # subclass is expected to add parameters at this point
 
     def _set_parent(self, parent_scheduler, node_id):
         self.__parent = parent_scheduler
         self.__parent_nid = node_id
+
+    def logger(self) -> "Logger":
+        return self.__logger
 
     def name(self):
         return self.__name
@@ -166,9 +175,26 @@ class BaseNode:
         return ProcessingResult()
 
     def copy_ui_to(self, to_node: "BaseNode"):
-        newui = deepcopy(self._parameters)
+        newui = deepcopy(self._parameters)  # nodeUI redefines deepcopy to detach new copy from node
         to_node._parameters = newui
         newui.attach_to_node(to_node)
+
+    def apply_settings(self, settings_name: str) -> None:
+        mytype = self.type_name()
+        if mytype not in nodes_settings:
+            raise RuntimeError(f'no settings found for "{mytype}"')
+        if settings_name not in nodes_settings[mytype]:
+            raise RuntimeError(f'requested settings "{settings_name}" not found for type "{mytype}"')
+        settings = nodes_settings[mytype][settings_name]
+        for param_name, value in settings.items():
+            try:
+                self.param(param_name).set_value(value)
+            except ParameterNotFound:
+                self.logger().warning(f'applying settings "{settings_name}": skipping unrecognized parameter "{param_name}"')
+                continue
+            except ValueError as e:
+                self.logger().warning(f'applying settings "{settings_name}": skipping parameter "{param_name}": bad value type: {str(e)}')
+                continue
 
     # # some helpers
     # def _get_task_attributes(self, task_row):
