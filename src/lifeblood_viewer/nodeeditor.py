@@ -660,13 +660,14 @@ class QGraphicsImguiScene(QGraphicsScene):
         def pasteop(longop):
 
             tmp_to_new: Dict[int, int] = {}
+            nodes_to_select = []  # select delayed to ensure it happens after all changes to parameters
             for nodedata in snippet.nodes_data:
                 self.request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
                 # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
                 tmp_to_new[nodedata.tmpid] = node_id
-                self.get_node(node_id).setSelected(True)
+                nodes_to_select.append(node_id)
 
                 # now setting parameters.
                 cyclestart = None
@@ -693,6 +694,8 @@ class QGraphicsImguiScene(QGraphicsScene):
                     if proxy_parm.has_expression():
                         self.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
                         yield
+            for node_id in nodes_to_select:
+                self.get_node(node_id).setSelected(True)
 
             for conndata in snippet.connections_data:
                 self.request_node_connection_add(tmp_to_new[conndata.tmpout], conndata.out_name,
