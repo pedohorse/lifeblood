@@ -19,6 +19,8 @@ def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> P
     base = Path('~')
     if subname is None:
         subname = 'common'
+    if '.' in subname:
+        subname = Path(*subname.split('.'))
     if sys.platform.startswith('linux'):
         return base/basename/subname/config_name
     if sys.platform.startswith('win'):
