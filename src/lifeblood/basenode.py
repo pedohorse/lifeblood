@@ -104,8 +104,16 @@ class BaseNode:
         :param input_name:
         :return:
         """
+        try:
+            thread_loop = asyncio.get_running_loop()
+        except RuntimeError:  # no loop
+            thread_loop = None
         fut = asyncio.run_coroutine_threadsafe(self.__parent.get_node_input_connections(self.__parent_nid, input_name), self.__parent.get_event_loop())
-        conns = fut.result(60)
+        if thread_loop is self.__parent.get_event_loop():  # we are in scheduler's main loop
+            self.__logger.error('this method cannot be called from the main scheduler thread')
+            raise RuntimeError('this method cannot be called from the main scheduler thread')
+        else:
+            conns = fut.result(60)
         return len(conns) > 0
 
     def is_output_connected(self, output_name: str):
@@ -114,8 +122,16 @@ class BaseNode:
         :param output_name:
         :return:
         """
+        try:
+            thread_loop = asyncio.get_running_loop()
+        except RuntimeError:  # no loop
+            thread_loop = None
         fut = asyncio.run_coroutine_threadsafe(self.__parent.get_node_output_connections(self.__parent_nid, output_name), self.__parent.get_event_loop())
-        conns = fut.result(60)
+        if thread_loop is self.__parent.get_event_loop():  # we are in scheduler's main loop
+            self.__logger.error('this method cannot be called from the main scheduler thread')
+            raise RuntimeError('this method cannot be called from the main scheduler thread')
+        else:
+            conns = fut.result(60)
         return len(conns) > 0
 
     def _ui_changed(self, definition_changed=False):
@@ -124,7 +140,17 @@ class BaseNode:
         :return:
         """
         if self.__parent is not None:
-            asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
+            # it is important to create task in main scheduler's event loop
+            try:
+                thread_loop = asyncio.get_running_loop()
+            except RuntimeError:  # no loop
+                thread_loop = None
+            fut = asyncio.run_coroutine_threadsafe(self.__parent.node_reports_changes_needs_saving(self.__parent_nid), self.__parent.get_event_loop())
+            if thread_loop is self.__parent.get_event_loop():  # we are in scheduler's main loop
+                self.__logger.warning('this method probably should not be called from the main scheduler thread')
+            else:  # we are not in main thread
+                fut.result(60)  # ensure callback is completed before continuing. not sure how much it's needed, but it feels safer
+            # and this is a nono: asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     # def _state_changed(self):
     #     """
@@ -134,6 +160,7 @@ class BaseNode:
     #     if self.__parent is not None:
     #         # TODO: note that this may happen at any point in processing,
     #         #  so IF node subclass has internal state - it has to deal with ensuring state is consistent at time or writing
+    #         #  this may also apply to _ui_changed above, but nodes really SHOULD NOT change their own parameters during processing
     #         asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     def ready_to_process_task(self, task_dict) -> bool:
@@ -186,15 +213,16 @@ class BaseNode:
         if settings_name not in nodes_settings[mytype]:
             raise RuntimeError(f'requested settings "{settings_name}" not found for type "{mytype}"')
         settings = nodes_settings[mytype][settings_name]
-        for param_name, value in settings.items():
-            try:
-                self.param(param_name).set_value(value)
-            except ParameterNotFound:
-                self.logger().warning(f'applying settings "{settings_name}": skipping unrecognized parameter "{param_name}"')
-                continue
-            except ValueError as e:
-                self.logger().warning(f'applying settings "{settings_name}": skipping parameter "{param_name}": bad value type: {str(e)}')
-                continue
+        with self.get_ui().postpone_ui_callbacks():
+            for param_name, value in settings.items():
+                try:
+                    self.param(param_name).set_value(value)
+                except ParameterNotFound:
+                    self.logger().warning(f'applying settings "{settings_name}": skipping unrecognized parameter "{param_name}"')
+                    continue
+                except ValueError as e:
+                    self.logger().warning(f'applying settings "{settings_name}": skipping parameter "{param_name}": bad value type: {str(e)}')
+                    continue
 
     # # some helpers
     # def _get_task_attributes(self, task_row):
