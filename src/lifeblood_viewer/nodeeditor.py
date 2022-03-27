@@ -187,6 +187,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_has_parameter_requested = Signal(int, str, object)
     _signal_node_parameter_change_requested = Signal(int, object, object)
     _signal_node_parameter_expression_change_requested = Signal(int, object, object)
+    _signal_node_apply_settings_requested = Signal(int, str, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_nodepresets_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
@@ -254,6 +255,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.node_has_parameter.connect(self._node_has_parameter)
         self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
         self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
+        self.__ui_connection_worker.node_settings_applied.connect(self._node_settings_applied)
         self.__ui_connection_worker.node_created.connect(self._node_created)
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
 
@@ -264,6 +266,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_has_parameter_requested.connect(self.__ui_connection_worker.send_node_has_parameter)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
+        self._signal_node_apply_settings_requested.connect(self.__ui_connection_worker.apply_node_settings)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         self._signal_nodepresets_update_requested.connect(self.__ui_connection_worker.get_nodepresets)
         self._signal_nodepreset_requested.connect(self.__ui_connection_worker.get_nodepreset)
@@ -313,6 +316,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameter_expression_change_requested.emit(node_id, param, operation_data)
+
+    def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_apply_settings_requested.emit(node_id, settings_name, operation_data)
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
@@ -572,6 +578,16 @@ class QGraphicsImguiScene(QGraphicsScene):
     def _node_parameter_expression_changed(self, node_id, param, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param.name())
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)\
+
+    @Slot(int, object, object)
+    def _node_settings_applied(self, node_id, settings_name, data: Optional["LongOperationData"] = None):
+        node = self.get_node(node_id)
+        if node is not None:
+            self.request_node_ui(node_id)
+        if data is not None:
+            data.data = (node_id, settings_name)  # TODO: add return status here?
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
@@ -1210,6 +1226,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addAction(f'node {node.node_name()}').setEnabled(False)
         menu.addSeparator()
         menu.addAction('rename').triggered.connect(lambda checked=False, x=node: self._popup_node_rename_widget(x))
+        menu.addSeparator()
+        settings_names = self.__scene.node_types()[node.node_type()].settings_names
+        settings_menu = menu.addMenu('apply settings >')
+        settings_menu.setEnabled(len(settings_names) > 0)
+        for name in settings_names:
+            settings_menu.addAction(name).triggered.connect(lambda checked=False, x=node, sett=name: x.apply_settings(sett))
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
