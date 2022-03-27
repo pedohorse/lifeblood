@@ -39,6 +39,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_has_parameter = Signal(int, str, bool, object)
     node_parameter_changed = Signal(int, Parameter, object, object)
     node_parameter_expression_changed = Signal(int, Parameter, object)
+    node_settings_applied = Signal(int, str, object)
     node_created = Signal(int, str, str, QPointF, object)
     nodes_copied = Signal(dict, QPointF)
 
@@ -394,6 +395,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self._send_string(expression)
             assert recv_exactly(self.__conn, 1) == b'\1'
             self.node_parameter_expression_changed.emit(node_id, param, data)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def apply_node_settings(self, node_id: int, settings_name: str, data):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'applynodesettings\n')
+            self.__conn.sendall(struct.pack('>Q', node_id))
+            self._send_string(settings_name)
+            recv_exactly(self.__conn, 1)  # receiving and ignoring result
+            self.node_settings_applied.emit(node_id, settings_name, data)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
