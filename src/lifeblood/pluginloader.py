@@ -213,8 +213,8 @@ def create_node(type_name: str, name, scheduler_parent, node_id):
             node = BaseNode(name)
         raise RuntimeError('unknown plugin')
     node = plugins[type_name].node_class()(name)
-    node._set_parent(scheduler_parent, node_id)
-    # now set defaults
+    # now set defaults, before parent is set to prevent ui callbacks to parent
     if type_name in default_settings_config:
-        node.apply_settings(default_settings_config[type_name])  # TODO: fix, UI doesn't get properly updated parameter on copy-paste
+        node.apply_settings(default_settings_config[type_name])
+    node._set_parent(scheduler_parent, node_id)
     return node
