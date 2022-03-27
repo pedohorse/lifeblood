@@ -164,7 +164,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 raise NotImplementedError()
             try:
                 node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                node.set_param_value(param_name, param_value)
+                await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
             except Exception:
                 err_val_prev = str(param_value)
                 if len(err_val_prev) > 23:
@@ -197,6 +197,17 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             else:
                 node.param(param_name).remove_expression()
             writer.write(b'\1')
+
+        async def comm_apply_node_settings():
+            node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            settings_name = await read_string()
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, (await self.__scheduler.get_node_object_by_id(node_id)).apply_settings, settings_name)
+            except Exception:
+                self.__logger.exception(f'FAILED to apply node settings for node {node_id}, settings name "{settings_name}"')
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
 
         async def comm_rename_node():  # if command == b'renamenode':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -330,6 +341,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'nodehasparam': comm_node_has_param,
                     b'setnodeparam': comm_set_node_param,
                     b'setnodeparamexpression': comm_set_node_param_expression,
+                    b'applynodesettings': comm_apply_node_settings,
                     b'renamenode': comm_rename_node,
                     b'duplicatenodes': comm_duplicate_nodes,
                     b'changeconnection': comm_change_connection,
