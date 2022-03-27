@@ -938,6 +938,8 @@ class NodeUi(ParameterHierarchyItem):
         self.__parameter_layout.set_parent(self)
         self.__attached_node: Optional[BaseNode] = attached_node
         self.__block_ui_callbacks = False
+        self.__postpone_ui_callbacks = False
+        self.__postponed_callbacks = None
         self.__inputs_names = ('main',)
         self.__outputs_names = ('main',)
 
@@ -980,6 +982,34 @@ class NodeUi(ParameterHierarchyItem):
                 self.__nui._NodeUi__block_ui_callbacks = False
 
         return _iiLock(self)
+
+    def postpone_ui_callbacks(self):
+        """
+        use this in with-statement
+        for mass change of parameters it may be more efficient to perform changes in batches
+        """
+        class _iiPostpone:
+            def __init__(self, nodeui):
+                self.__nui = nodeui
+                self.__val = None
+
+            def __enter__(self):
+                if not self.__nui._NodeUi__postpone_ui_callbacks:
+                    assert self.__nui._NodeUi__postponed_callbacks is None
+                    self.__val = self.__nui._NodeUi__postpone_ui_callbacks
+                    self.__nui._NodeUi__postpone_ui_callbacks = True
+                # otherwise: already blocked - we are in nested block, ignore
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if self.__val is None:
+                    return
+                assert not self.__val  # nested block should do nothing
+                self.__nui._NodeUi__postpone_ui_callbacks = self.__val
+                if self.__nui._NodeUi__postponed_callbacks is not None:
+                    self.__nui._NodeUi__ui_callback(self.__nui._NodeUi__postponed_callbacks)
+                    self.__nui._NodeUi__postponed_callbacks = None
+
+        return _iiPostpone(self)
 
     class _slwrapper:
         def __init__(self, ui: "NodeUi", layout_creator, layout_creator_kwargs=None):
@@ -1157,6 +1187,11 @@ class NodeUi(ParameterHierarchyItem):
         self.__ui_callback(definition_changed=True)
 
     def __ui_callback(self, definition_changed=False):
+        if self.__postpone_ui_callbacks:
+            # so we save definition_changed to __postponed_callbacks
+            self.__postponed_callbacks = self.__postponed_callbacks or definition_changed
+            return
+
         if self.__attached_node is not None and not self.__block_ui_callbacks:
             self.__attached_node._ui_changed(definition_changed)
 
