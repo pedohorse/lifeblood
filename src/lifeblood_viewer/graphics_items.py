@@ -165,6 +165,10 @@ class Node(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
+    def apply_settings(self, settings_name: str):
+        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene.request_apply_node_settings(self.get_id(), settings_name)
+
     def pause_all_tasks(self):
         scene: nodeeditor.QGraphicsImguiScene = self.scene()
         scene.set_tasks_paused([x.get_id() for x in self.__tasks], True)
