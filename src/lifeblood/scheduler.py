@@ -1637,6 +1637,9 @@ class Scheduler:
         :return:
         """
         # TODO: introduce __node_objects lock? or otherwise secure access
+        #  why? this happens on ui_update, which can happen cuz of request from viewer.
+        #  while node processing happens in a different thread, so this CAN happen at the same time with this
+        #  AND THIS IS BAD! (potentially) if a node has changing internal state - this can save some inconsistent snapshot of node state!
         node_object = self.__node_objects[node_id]
         if node_object is None:
             self.__logger.error('node_object is None while')
