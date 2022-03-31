@@ -5,11 +5,12 @@ import hashlib
 import importlib.util
 import platform
 import toml
+from pathlib import Path
 
 from .snippets import NodeSnippetData
 from . import logging, plugin_info, paths
 
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Union
 
 
 plugins = {}
@@ -20,6 +21,11 @@ presets: Dict[str, Dict[str, NodeSnippetData]] = {}
 nodes_settings: Dict[str, Dict[str, Dict[str, Any]]] = {}
 default_settings_config: Dict[str, str] = {}
 __plugin_file_hashes = {}
+
+# package is identified by it's path, but it's handy to address them by short names
+# short name is generated from dir name. packages can have same dir names, but then
+# only first one will get into this locations dict
+__package_locations: Dict[str, Path] = {}
 
 logger = logging.get_logger('plugin_loader')
 
@@ -87,6 +93,9 @@ def _install_package(package_path, plugin_category):
     :return:
     """
     package_name = os.path.basename(package_path)
+    global __package_locations
+    if package_name not in __package_locations:  # read logic of this up
+        __package_locations[package_name] = Path(package_path)
     # add extra bin paths
     extra_bins = []
     for subbin in (f'{platform.system().lower()}-{platform.machine().lower()}', 'any'):
@@ -199,6 +208,37 @@ def init():
 
 def plugin_hash(plugin_name) -> str:
     return __plugin_file_hashes[plugin_name]
+
+
+def add_settings_to_existing_package(package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
+
+    if isinstance(package_name_or_path, str) and package_name_or_path in __package_locations:
+        package_name_or_path = __package_locations[package_name_or_path]
+    else:
+        package_name_or_path = Path(package_name_or_path)
+    if package_name_or_path not in __package_locations.values():
+        raise RuntimeError('no package with that name or pathfound')
+
+    # at this point package_name_or_path is path
+    assert(package_name_or_path.exists())
+    base_path = package_name_or_path / 'settings' / node_type_name
+    if not base_path.exists():
+        base_path.mkdir(exist_ok=True)
+    with open(base_path / (settings_name + '.lbs'), 'w') as f:
+        toml.dumps(settings)
+
+    # add to settings
+    nodes_settings.setdefault(node_type_name, {})[settings_name] = settings
+
+
+def set_settings_as_default(node_type_name: str, settings_name: str):
+    if node_type_name not in nodes_settings:
+        raise RuntimeError(f'node type "{nodes_settings}" is unknown')
+    if settings_name not in nodes_settings[node_type_name]:
+        raise RuntimeError(f'node type "{nodes_settings}" doesn\'t have settings "{settings_name}"')
+    default_settings_config[node_type_name] = settings_name
+    with open(paths.config_path('defaults.toml', 'scheduler.nodes'), 'w') as f:
+        toml.dumps(default_settings_config)
 
 
 def create_node(type_name: str, name, scheduler_parent, node_id):
