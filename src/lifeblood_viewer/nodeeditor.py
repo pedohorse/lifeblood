@@ -1232,6 +1232,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         settings_menu.setEnabled(len(settings_names) > 0)
         for name in settings_names:
             settings_menu.addAction(name).triggered.connect(lambda checked=False, x=node, sett=name: x.apply_settings(sett))
+        menu.addAction('save settings')  # TODO: implement
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
