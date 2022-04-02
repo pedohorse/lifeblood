@@ -109,7 +109,7 @@ class Scheduler:
             if external_log_path.exists() and external_log_path.is_file():
                 external_log_path.unlink()
             if not external_log_path.exists():
-                external_log_path.mkdir()
+                external_log_path.mkdir(parents=True)
             if not os.access(self.__external_log_location, os.X_OK | os.W_OK):
                 raise RuntimeError('cannot write to external log location provided')
 

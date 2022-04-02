@@ -174,7 +174,7 @@ def init():
     custom_plugins_path = paths.config_path('', 'custom_plugins')
     plugin_paths.append((core_plugins_path, 'core'))
     plugin_paths.append((stock_plugins_path, 'stock'))
-    (custom_plugins_path/'custom_default').mkdir(exist_ok=True)
+    (custom_plugins_path/'custom_default').mkdir(parents=True, exist_ok=True)
 
     plugin_paths.append((str(custom_plugins_path), 'user'))
 
@@ -225,7 +225,7 @@ def add_settings_to_existing_package(package_name_or_path: Union[str, Path], nod
     assert(package_name_or_path.exists())
     base_path = package_name_or_path / 'settings' / node_type_name
     if not base_path.exists():
-        base_path.mkdir(exist_ok=True)
+        base_path.mkdir(parents=True, exist_ok=True)
     with open(base_path / (settings_name + '.lbs'), 'w') as f:
         toml.dump(settings, f)
 

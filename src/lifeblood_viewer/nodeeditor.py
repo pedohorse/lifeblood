@@ -1149,7 +1149,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         user_presets_path = paths.config_path('presets', 'viewer')
         if file_path is None:
             if not user_presets_path.exists():
-                user_presets_path.mkdir(exist_ok=True)
+                user_presets_path.mkdir(parents=True, exist_ok=True)
             file_path, _ = QFileDialog.getSaveFileName(self, 'save preset', str(user_presets_path), 'node presets (*.lbp)')
         if not file_path:
             return
