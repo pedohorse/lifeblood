@@ -103,9 +103,7 @@ class Node(NetworkItemWithUI):
             self.__my_node = my_node
 
         def _ui_changed(self, definition_changed=False):
-            print('!!!!!!!!!!!!')
             if definition_changed:
-                print('QQQQQQQQQQQQQQQ')
                 self.__my_node.reanalyze_nodeui()
 
     def __init__(self, id: int, type: str, name: str):

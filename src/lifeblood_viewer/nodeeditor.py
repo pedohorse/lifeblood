@@ -1426,7 +1426,6 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     @Slot()
     def _nodetypes_updated(self, nodetypes):
-        print('QQ!!!!!!!!!!!!!!!!!!!!', nodetypes)
         self.__node_types = nodetypes
 
     @Slot()
