@@ -25,6 +25,7 @@ from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeyS
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
+from .save_node_settings_dialog import SaveNodeSettingsDialog
 from .connection_worker import SchedulerConnectionWorker
 
 import imgui
@@ -188,6 +189,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_parameter_change_requested = Signal(int, object, object)
     _signal_node_parameter_expression_change_requested = Signal(int, object, object)
     _signal_node_apply_settings_requested = Signal(int, str, object)
+    _signal_node_save_custom_settings_requested = Signal(str, str, object, object)
+    _signal_node_set_settings_default_requested = Signal(str, object, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_nodepresets_update_requested = Signal()
     _signal_set_node_name_requested = Signal(int, str)
@@ -256,6 +259,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
         self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
         self.__ui_connection_worker.node_settings_applied.connect(self._node_settings_applied)
+        self.__ui_connection_worker.node_custom_settings_saved.connect(self._node_custom_settings_saved)
+        self.__ui_connection_worker.node_default_settings_set.connect(self._node_default_settings_set)
         self.__ui_connection_worker.node_created.connect(self._node_created)
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
 
@@ -267,6 +272,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
         self._signal_node_apply_settings_requested.connect(self.__ui_connection_worker.apply_node_settings)
+        self._signal_node_save_custom_settings_requested.connect(self.__ui_connection_worker.node_save_custom_settings)
+        self._signal_node_set_settings_default_requested.connect(self.__ui_connection_worker.node_set_settings_default)
         self._signal_nodetypes_update_requested.connect(self.__ui_connection_worker.get_nodetypes)
         self._signal_nodepresets_update_requested.connect(self.__ui_connection_worker.get_nodepresets)
         self._signal_nodepreset_requested.connect(self.__ui_connection_worker.get_nodepreset)
@@ -319,6 +326,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_apply_settings_requested.emit(node_id, settings_name, operation_data)
+
+    def request_save_custom_settings(self, node_type_name: str, settings_name: str, settings: dict, operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_save_custom_settings_requested.emit(node_type_name, settings_name, settings, operation_data)
+
+    def request_set_settings_default(self, node_type_name: str, settings_name: Optional[str], operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_set_settings_default_requested.emit(node_type_name, settings_name, operation_data)
 
     def request_node_types_update(self):
         self._signal_nodetypes_update_requested.emit()
@@ -591,6 +604,20 @@ class QGraphicsImguiScene(QGraphicsScene):
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
+    @Slot(str, str, object)
+    def _node_custom_settings_saved(self, type_name: str, settings_name: str, data: Optional["LongOperationData"] = None):
+        if data is not None:
+            data.data = (type_name, settings_name)  # TODO: add return status here?
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)
+
+    @Slot(str, str, object)
+    def _node_default_settings_set(self, type_name: str, settings_name: Optional[str], data: Optional["LongOperationData"] = None):
+        if data is not None:
+            data.data = (type_name, settings_name)  # TODO: add return status here?
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)
+
     @Slot(int, str, str, object, object)
     def _node_created(self, node_id, node_type, node_name, pos, data: Optional["LongOperationData"] = None):
         node = Node(node_id, node_type, node_name)
@@ -719,6 +746,15 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         self.clearSelection()
         self.add_long_operation(pasteop)
+
+    @Slot(str, str, dict)
+    def save_nodetype_settings(self, node_type_name: str, settings_name: str, settings: Dict[str, Any]):
+        def savesettingsop(longop):
+            self.request_save_custom_settings(node_type_name, settings_name, settings, longop.new_op_data())
+            yield  # wait for operation to complete
+            self.request_node_types_update()
+
+        self.add_long_operation(savesettingsop)
 
     @Slot(LongOperationData)
     def process_operation(self, op: LongOperationData):
@@ -1232,7 +1268,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
         settings_menu.setEnabled(len(settings_names) > 0)
         for name in settings_names:
             settings_menu.addAction(name).triggered.connect(lambda checked=False, x=node, sett=name: x.apply_settings(sett))
-        menu.addAction('save settings')  # TODO: implement
+        settings_actions_menu = menu.addMenu('modify settings >')
+        settings_actions_menu.addAction('save settings').triggered.connect(lambda checked=False, x=node: self._popup_save_settings_dialog(x))
+        settings_defaults_menu = settings_actions_menu.addMenu('set defaults')
+        for name in (None, *settings_names):
+            settings_defaults_menu.addAction(name or '<unset>').triggered.connect(lambda checked=False, x=node, sett=name: self._popup_set_settings_default(node, sett))
+
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
@@ -1325,6 +1366,38 @@ class NodeEditor(QGraphicsView, Shortcutable):
             self.__scene.request_set_task_groups(task_id, set(groups))
         self.__scene.request_attributes(task_id)  # request updated task from scheduler
 
+    def _popup_save_settings_dialog(self, node: Node):
+        names = [x.name() for x in node.get_nodeui().parameters()]
+        wgt = SaveNodeSettingsDialog(names, self)
+        wgt.accepted.connect(lambda nid=node.get_id(), w=wgt: self._popup_save_settings_dialog_accepted_callback(nid, w))
+        wgt.finished.connect(wgt.deleteLater)
+        wgt.show()
+
+    @Slot()
+    def _popup_save_settings_dialog_accepted_callback(self, node_id: int, wgt: SaveNodeSettingsDialog):
+        assert isinstance(wgt, SaveNodeSettingsDialog)
+        parameter_names = wgt.selected_names()
+        settings_name = wgt.settings_name()
+        assert settings_name
+        node = self.__scene.get_node(node_id)
+        ui = node.get_nodeui()
+
+        settings = {}
+        for pname in parameter_names:
+            param = ui.parameter(pname)
+            if param.is_readonly():
+                continue
+            if param.has_expression():
+                settings[pname] = {'value': param.unexpanded_value(),
+                                   'expression': param.expression()}
+            else:
+                settings[pname] = param.unexpanded_value()
+        self.__scene.save_nodetype_settings(node.node_type(), settings_name, settings)
+
+    def _popup_set_settings_default(self, node, settings_name: Optional[str]):
+        node_type = node.node_type()
+        self.__scene.request_set_settings_default(node_type, settings_name)
+
     @Slot(object, object)
     def _popup_show_invocation_info(self, task_id: int, invjob: InvocationJob):
         popup = QDialog(parent=self)
@@ -1353,6 +1426,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     @Slot()
     def _nodetypes_updated(self, nodetypes):
+        print('QQ!!!!!!!!!!!!!!!!!!!!', nodetypes)
         self.__node_types = nodetypes
 
     @Slot()

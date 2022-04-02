@@ -40,6 +40,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_parameter_changed = Signal(int, Parameter, object, object)
     node_parameter_expression_changed = Signal(int, Parameter, object)
     node_settings_applied = Signal(int, str, object)
+    node_custom_settings_saved = Signal(str, str, object)
+    node_default_settings_set = Signal(str, object, object)
     node_created = Signal(int, str, str, QPointF, object)
     nodes_copied = Signal(dict, QPointF)
 
@@ -411,6 +413,43 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self._send_string(settings_name)
             recv_exactly(self.__conn, 1)  # receiving and ignoring result
             self.node_settings_applied.emit(node_id, settings_name, data)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def node_save_custom_settings(self, node_type_name: str, settings_name: str, settings: dict, data):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'savecustomnodesettings\n')
+            self._send_string(node_type_name)
+            self._send_string(settings_name)
+            settings_data = pickle.dumps(settings)
+            self.__conn.sendall(struct.pack('>Q', len(settings_data)))
+            self.__conn.sendall(settings_data)
+            recv_exactly(self.__conn, 1)  # ignore result for now
+            self.node_custom_settings_saved.emit(node_type_name, settings_name, data)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def node_set_settings_default(self, node_type_name: str, settings_name: Optional[str], data):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'setsettingsdefault\n')
+            self._send_string(node_type_name)
+            self.__conn.sendall(struct.pack('>?', settings_name is not None))
+            if settings_name is not None:
+                self._send_string(settings_name)
+            recv_exactly(self.__conn, 1)  # ignore result for now
+            self.node_default_settings_set.emit(node_type_name, settings_name, data)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:

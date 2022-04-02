@@ -209,13 +209,34 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             else:
                 writer.write(b'\1')
 
-        async def comm_save_node_settings():
+        async def comm_save_custom_node_settings():
             node_type_name = await read_string()
             settings_name = await read_string()
             datasize = struct.unpack('>Q', await reader.readexactly(8))[0]
 
-            settings = asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(datasize))
+            settings = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(datasize))
+            try:
+                pluginloader.add_settings_to_existing_package('custom_default', node_type_name, settings_name, settings)
+            except RuntimeError as e:
+                self.__logger.error(f'failed to add custom node settings: {str(e)}')
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
 
+        async def comm_set_settings_default():
+            node_type_name = await read_string()
+            is_setting = struct.unpack('>?', await reader.readexactly(1))[0]
+            if is_setting:
+                settings_name = await read_string()
+            else:
+                settings_name = None
+            try:
+                pluginloader.set_settings_as_default(node_type_name, settings_name)
+            except RuntimeError:
+                self.__logger.error(f'failed to set node default settings: {str(e)}')
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
 
         async def comm_rename_node():  # if command == b'renamenode':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -350,7 +371,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'setnodeparam': comm_set_node_param,
                     b'setnodeparamexpression': comm_set_node_param_expression,
                     b'applynodesettings': comm_apply_node_settings,
-                    b'savenodesettings': comm_save_node_settings,
+                    b'savecustomnodesettings': comm_save_custom_node_settings,
+                    b'setsettingsdefault': comm_set_settings_default,
                     b'renamenode': comm_rename_node,
                     b'duplicatenodes': comm_duplicate_nodes,
                     b'changeconnection': comm_change_connection,

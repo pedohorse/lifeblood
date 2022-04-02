@@ -216,7 +216,16 @@ class BaseNode:
         with self.get_ui().postpone_ui_callbacks():
             for param_name, value in settings.items():
                 try:
-                    self.param(param_name).set_value(value)
+                    param = self.param(param_name)
+                    if isinstance(value, dict):
+                        if 'value' in value:
+                            param.set_value(value['value'])
+                        if 'expression' in value:
+                            param.set_expression(value['expression'])
+                    else:
+                        if param.has_expression():
+                            param.remove_expression()
+                        param.set_value(value)
                 except ParameterNotFound:
                     self.logger().warning(f'applying settings "{settings_name}": skipping unrecognized parameter "{param_name}"')
                     continue

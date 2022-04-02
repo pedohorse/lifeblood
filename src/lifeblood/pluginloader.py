@@ -10,7 +10,7 @@ from pathlib import Path
 from .snippets import NodeSnippetData
 from . import logging, plugin_info, paths
 
-from typing import List, Tuple, Dict, Any, Union
+from typing import List, Tuple, Dict, Any, Union, Optional
 
 
 plugins = {}
@@ -171,11 +171,13 @@ def init():
     plugin_paths: List[Tuple[str, str]] = []  # list of tuples of path to dir, plugin category
     core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
     stock_plugins_path = os.path.join(os.path.dirname(__file__), 'stock_nodes')
-    user_plugins_path = paths.config_path('', 'user_plugins')
+    custom_plugins_path = paths.config_path('', 'custom_plugins')
     plugin_paths.append((core_plugins_path, 'core'))
     plugin_paths.append((stock_plugins_path, 'stock'))
-    if user_plugins_path.exists():
-        plugin_paths.append((str(user_plugins_path), 'user'))
+    (custom_plugins_path/'custom_default').mkdir(exist_ok=True)
+
+    plugin_paths.append((str(custom_plugins_path), 'user'))
+
 
     for plugin_path, plugin_category in plugin_paths:
         for filename in os.listdir(plugin_path):
@@ -225,20 +227,29 @@ def add_settings_to_existing_package(package_name_or_path: Union[str, Path], nod
     if not base_path.exists():
         base_path.mkdir(exist_ok=True)
     with open(base_path / (settings_name + '.lbs'), 'w') as f:
-        toml.dumps(settings)
+        toml.dump(settings, f)
 
     # add to settings
     nodes_settings.setdefault(node_type_name, {})[settings_name] = settings
 
 
-def set_settings_as_default(node_type_name: str, settings_name: str):
+def set_settings_as_default(node_type_name: str, settings_name: Optional[str]):
+    """
+
+    :param node_type_name:
+    :param settings_name: if None - unset any defaults
+    :return:
+    """
     if node_type_name not in nodes_settings:
         raise RuntimeError(f'node type "{nodes_settings}" is unknown')
-    if settings_name not in nodes_settings[node_type_name]:
+    if settings_name is not None and settings_name not in nodes_settings[node_type_name]:
         raise RuntimeError(f'node type "{nodes_settings}" doesn\'t have settings "{settings_name}"')
-    default_settings_config[node_type_name] = settings_name
+    if settings_name is None and node_type_name in default_settings_config:
+        del default_settings_config[node_type_name]
+    else:
+        default_settings_config[node_type_name] = settings_name
     with open(paths.config_path('defaults.toml', 'scheduler.nodes'), 'w') as f:
-        toml.dumps(default_settings_config)
+        toml.dump(default_settings_config, f)
 
 
 def create_node(type_name: str, name, scheduler_parent, node_id):
