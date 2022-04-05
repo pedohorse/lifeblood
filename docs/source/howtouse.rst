@@ -1,6 +1,6 @@
-====================
-How to use Lifeblood
-====================
+=====================
+Overview of Lifeblood
+=====================
 
 .. contents::
     :depth: 2
@@ -13,6 +13,8 @@ Lifeblood is a task processing system. It consists of 3 main component types:
 * scheduler
 * worker
 * viewer
+
+.. _overview-scheduler:
 
 scheduler
 ---------
@@ -118,19 +120,3 @@ Installation
 
 * lifeblood package (scheduler and worker) can be installed from pip: ``pip install lifeblood``, or ``python3 -m pip install lifeblood``
 * lifeblood viewer (viewer, will also install lifeblood package) can be installed from pip: ``pip install lifeblood_viewer`` or ``python3 -m pip install lifeblood``
-
-Usage
-=====
-
-If scheduler is installed as pip package - a ``lifeblood`` command will be added to PATH.
-The component may be launched just by supplying it as argument to lifeblood, like
-
-* ``lifeblood scheduler``
-* ``lifeblood worker``
-* ``lifeblood viewer`` (if lifeblood_viewer package is also installed)
-
-here you would also supply component-specific command line arguments, for example
-
-* ``lifeblood --loglevel DEBUG worker``
-* ``lifeblood --loglevel DEBUG scheduler --verbosity-pinger INFO --db-path path/to/database.db``
-

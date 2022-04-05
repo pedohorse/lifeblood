@@ -1,7 +1,7 @@
 .. _worker:
 
 ====================
-Wroker API Reference
+Worker API Reference
 ====================
 
 .. automodule:: lifeblood.worker

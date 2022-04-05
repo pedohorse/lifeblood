@@ -6,6 +6,7 @@ Welcome to Lifeblood documentation!
     :caption: Contents:
 
     howtouse
+    usage
     api
 
 
