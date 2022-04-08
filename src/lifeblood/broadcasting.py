@@ -22,12 +22,12 @@ async def create_broadcaster(identifier, information, *, broad_port=9000, ip='0.
         family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
 
 
-async def await_broadcast(identifier, broad_port=9000):
+async def await_broadcast(identifier, broad_port: int = 9000, listen_address: str = '0.0.0.0') -> str:
     loop = asyncio.get_event_loop()
     protocol: BroadcastReceiveProtocol
     _, protocol = await loop.create_datagram_endpoint(
         lambda: BroadcastReceiveProtocol(identifier, loop=loop),
-        local_addr=('0.0.0.0', broad_port), family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
+        local_addr=(listen_address, broad_port), family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
     message = await protocol.till_done()
 
     # rebroadcast to localhost
