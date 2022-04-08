@@ -36,6 +36,9 @@ except ImportError:
 class FileLock:
     """
     this should ne a pretty robust solution, but it was not properly tested
+
+    Note: this lock is not really thread-safe, cuz it wasn't even meant to be used in different threads
+          so be careful with locking stuff running from "run_in_executor"
     """
 
     def __init__(self, lockname, base_path=None):
@@ -63,6 +66,51 @@ class FileLock:
         await asyncio.get_event_loop().run_in_executor(None, unlock_file, self.__f.fileno())
         await self.__f.close()
 
+
+class FileRLock(FileLock):
+    """
+    same lock, but recursive
+    same lock object can be locked several times in the SAME process (not just thread)
+    and must be unlocked the same number of times
+
+    2 different lock objects with the same lockname are NOT treated as the same lock
+
+    Note: this lock is not really thread-safe, cuz it wasn't even meant to be used in different threads
+          so be careful with locking stuff running from "run_in_executor"
+    """
+    def __init__(self, lockname, base_path=None):
+        super(FileRLock, self).__init__(lockname, base_path)
+        self.__enters = 0
+
+    def __enter__(self):
+        if self.__enters > 0:
+            self.__enters += 1
+            return
+        super(FileRLock, self).__enter__()
+        self.__enters = 1
+
+    async def __aenter__(self):
+        if self.__enters > 0:
+            self.__enters += 1
+            return
+        await super(FileRLock, self).__aenter__()
+        self.__enters = 1
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        assert self.__enters > 0
+        if self.__enters > 1:
+            self.__enters -= 1
+            return
+        await super(FileRLock, self).__aexit__(exc_type, exc_val, exc_tb)
+        self.__enters = 0
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        assert self.__enters > 0
+        if self.__enters > 1:
+            self.__enters -= 1
+            return
+        super(FileRLock, self).__exit__(exc_type, exc_val, exc_tb)
+        self.__enters = 0
 
 if __name__ == '__main__':
     import time
