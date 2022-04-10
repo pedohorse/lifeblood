@@ -33,17 +33,27 @@ class WorkerPingReply(Enum):
 class AlreadyRunning(RuntimeError):
     pass
 
+class NotEnoughResources(RuntimeError):
+    pass
+
 
 class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
-    def __init__(self, worker: "Worker", limit=2 ** 16):
+    def __init__(self, worker: "Worker", limit: int = 2 ** 16):
         self.__logger = logging.get_logger('worker.protocol')
         self.__timeout = 60.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__worker = worker
+        self.__saved_references = []
         super(WorkerTaskServerProtocol, self).__init__(self.__reader, self.client_connected_cb)
 
     async def client_connected_cb(self, reader, writer):
+        # there is a bug in py <=3.8, callback task can be GCd
+        # see https://bugs.python.org/issue46309
+        # so we HAVE to save a reference to self somewhere
+        print(asyncio.current_task())
+        self.__saved_references.append(asyncio.current_task())
+
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
             return (await reader.readexactly(strlen)).decode('UTF-8')
@@ -94,6 +104,9 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     except AlreadyRunning:
                         self.__logger.debug('BUSY. rejecting task')
                         writer.write(bytes([TaskScheduleStatus.BUSY.value]))
+                    except NotEnoughResources:
+                        self.__logger.debug('Not enough resources. rejecting task')
+                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except Exception as e:
                         self.__logger.exception('no, cuz %s', e)
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
@@ -151,6 +164,8 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
         finally:
             writer.close()
             await writer.wait_closed()
+            # according to the note in the beginning of the function - now reference can be cleared
+            self.__saved_references.remove(asyncio.current_task())
 
 
 class WorkerTaskClient:

@@ -1,9 +1,10 @@
 import uuid
 import psutil
 import pickle
+import copy
 from typing import TYPE_CHECKING, Type
 if TYPE_CHECKING:
-    from basenode import BaseNode
+    from .basenode import BaseNode
 
 
 class NodeTypeMetadata:
@@ -30,3 +31,51 @@ class WorkerResources:
     @classmethod
     def deserialize(cls, data) -> "WorkerResources":
         return pickle.loads(data)
+
+    def is_valid(self):
+        return self.cpu_count >= 0 and \
+               self.mem_size >= 0 and \
+               self.gpu_count >= 0 and \
+               self.gmem_size >= 0
+
+    def __repr__(self):
+        return f'<cpu: {self.cpu_count}, mem: {self.mem_size}, gpu: {self.gpu_count}, gmm: {self.gmem_size}>'
+
+    def __lt__(self, other):
+        if not isinstance(other, WorkerResources):
+            return other > self
+        return self.cpu_count < other.cpu_count or \
+               self.mem_size < other.mem_size or \
+               self.gpu_count < other.gpu_count or \
+               self.gmem_size < other.gmem_size
+
+    def __eq__(self, other):
+        if not isinstance(other, WorkerResources):
+            return other == self
+        return self.cpu_count == other.cpu_count and \
+               self.mem_size == other.mem_size and \
+               self.gpu_count == other.gpu_count and \
+               self.gmem_size == other.gmem_size
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __le__(self, other):
+        return self < other or self == other
+
+    def __sub__(self, other):
+        res = copy.copy(self)
+        res.cpu_count -= other.cpu_count
+        res.mem_size -= other.mem_size
+        res.gpu_count -= other.gpu_count
+        res.gmem_size -= other.gmem_size
+        return res
+
+    def __add__(self, other):
+        res = copy.copy(self)
+        res.cpu_count += other.cpu_count
+        res.mem_size += other.mem_size
+        res.gpu_count += other.gpu_count
+        res.gmem_size += other.gmem_size
+        return res
+

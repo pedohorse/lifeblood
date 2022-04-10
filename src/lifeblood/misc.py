@@ -6,6 +6,20 @@ from .logging import get_logger, logging
 from typing import List, Optional
 
 
+class DummyLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 def atimeit(threshold=0):
     def _atimeit(func):
         logger = get_logger('timeit')

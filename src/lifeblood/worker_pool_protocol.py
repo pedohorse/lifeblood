@@ -15,9 +15,15 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
         self.__timeout = 60
         self.__worker_pool = worker_pool
         self.__reader = asyncio.StreamReader(limit=limit)
+        self.__saved_references = []
         super(WorkerPoolProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        # there is a bug in py <=3.8, callback task can be GCd
+        # see https://bugs.python.org/issue46309
+        # so we HAVE to save a reference to self somewhere
+        self.__saved_references.append(asyncio.current_task())
+
         try:
             prot = await asyncio.wait_for(reader.readexactly(4), self.__timeout)
             if prot != b'\0\0\0\0':
@@ -53,6 +59,8 @@ class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
         finally:
             writer.close()
             await writer.wait_closed()
+            # according to the note in the beginning of the function - now reference can be cleared
+            self.__saved_references.remove(asyncio.current_task())
 
     # def connection_lost(self, exc):
     #     self.__

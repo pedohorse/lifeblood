@@ -200,3 +200,19 @@ PRAGMA synchronous=NORMAL;
 # PRAGMA soft_heap_limit=100000000;
 # PRAGMA mmap_size=100000000;
 # TODO: add after delete triggers for children count
+
+
+worker_resource_db_init_script = '''
+BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "resources" (
+	"pid"	INTEGER NOT NULL,
+	"cpu_count"	INTEGER NOT NULL,
+	"mem_size"	INTEGER NOT NULL,
+	"gpu_count"	INTEGER NOT NULL,
+	"gmem_size"	INTEGER NOT NULL,
+	PRIMARY KEY("pid")
+);
+COMMIT;
+PRAGMA journal_mode=wal;
+PRAGMA synchronous=NORMAL;
+'''

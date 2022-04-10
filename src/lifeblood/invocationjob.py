@@ -5,6 +5,7 @@ import asyncio
 import pickle
 from types import MappingProxyType
 from .enums import WorkerType
+from .net_classes import WorkerResources
 
 from typing import Optional, Iterable, Union, Dict, List, TYPE_CHECKING
 if TYPE_CHECKING:
@@ -105,8 +106,10 @@ class InvocationRequirements:
     def __init__(self, *, min_cpu_count: Optional[int] = None, min_memory_bytes: Optional[int] = None, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
         self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
-        self.__min_cpu_count = min_cpu_count
-        self.__min_memory_bytes = min_memory_bytes
+        self.__min_cpu_count = min_cpu_count or 0
+        self.__min_memory_bytes = min_memory_bytes or 0
+        self.__min_gpu_count = 0
+        self.__min_gpu_memory_bytes = 0
 
     def groups(self):
         return tuple(self.__groups)
@@ -131,9 +134,9 @@ class InvocationRequirements:
 
     def final_where_clause(self):
         conds = [f'("worker_type" = {self.__worker_type.value})']
-        if self.__min_cpu_count is not None:
+        if self.__min_cpu_count > 0:
             conds.append(f'("cpu_count" >= {self.__min_cpu_count - 1e-8 if isinstance(self.__min_cpu_count, float) else self.__min_cpu_count})')   # to ensure sql compare will work
-        if self.__min_memory_bytes is not None:
+        if self.__min_memory_bytes > 0:
             conds.append(f'("mem_size" >= {self.__min_memory_bytes})')
         if len(self.__groups) > 0:
             esc = '\\'
@@ -142,6 +145,30 @@ class InvocationRequirements:
                 return re.sub(r'(?<!\\)\?', '_', re.sub(r'(?<!\\)\*', '%', s.replace('%', r'\%').replace('_', r'\_')))
             conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
+
+    def to_worker_resources(self) -> WorkerResources:
+        res = WorkerResources()
+        res.cpu_count = self.__min_cpu_count
+        res.mem_size = self.__min_memory_bytes
+        res.gpu_count = self.__min_gpu_count
+        res.gmem_size = self.__min_gpu_memory_bytes
+        return res
+
+    def __gt__(self, other):
+        if not isinstance(other, WorkerResources):
+            raise NotImplementedError()
+        return self.__min_cpu_count > other.cpu_count and \
+               self.__min_memory_bytes > other.mem_size and \
+               self.__min_gpu_count > other.gpu_count and \
+               self.__min_gpu_memory_bytes > other.gmem_size
+
+    def __eq__(self, other):
+        if not isinstance(other, WorkerResources):
+            raise NotImplementedError()
+        return self.__min_cpu_count == other.cpu_count and \
+               self.__min_memory_bytes == other.mem_size and \
+               self.__min_gpu_count == other.gpu_count and \
+               self.__min_gpu_memory_bytes == other.gmem_size
 
 
 class InvocationJob:
