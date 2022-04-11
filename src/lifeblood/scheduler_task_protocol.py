@@ -21,9 +21,15 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         self.__timeout = 60.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__scheduler = scheduler
+        self.__saved_references = []
         super(SchedulerTaskProtocol, self).__init__(self.__reader, self.connection_cb)
 
     async def connection_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        # there is a bug in py <=3.8, callback task can be GCd
+        # see https://bugs.python.org/issue46309
+        # so we HAVE to save a reference to self somewhere
+        self.__saved_references.append(asyncio.current_task())
+
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
             return (await reader.readexactly(strlen)).decode('UTF-8')
@@ -65,6 +71,12 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     stdout = await read_string()
                     stderr = await read_string()
                     await self.__scheduler.task_cancel_reported(task, stdout, stderr)
+                    writer.write(b'\1')
+                elif command == b'res':
+                    addr = await read_string()
+                    reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
+                    worker_resources: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
+                    await self.__scheduler.update_worker_resources(addr, worker_resources)
                     writer.write(b'\1')
                 elif command == b'hello':
                     # worker reports for duty
@@ -126,6 +138,8 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         finally:
             writer.close()
             await writer.wait_closed()
+            # according to the note in the beginning of the function - now reference can be cleared
+            self.__saved_references.remove(asyncio.current_task())
 
 
 class SchedulerTaskClient:
@@ -193,6 +207,16 @@ class SchedulerTaskClient:
         except ConnectionResetError as e:
             self.__logger.error('ping failed. %s', e)
             raise
+
+    async def update_resources(self, address_of_worker: str, resources: WorkerResources):
+        await self._ensure_conn_open()
+        self.__writer.write(b'res\n')
+        await self.write_string(address_of_worker)
+        resdata = resources.serialize()
+        self.__writer.write(struct.pack('>Q', len(resdata)))
+        self.__writer.write(resdata)
+        await self.__writer.drain()
+        assert await self.__reader.readexactly(1) == b'\1'
 
     async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
         await self._ensure_conn_open()
