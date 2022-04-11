@@ -170,7 +170,7 @@ class Scheduler:
             self.__ping_interval_mult = 1
             self.__wakeup_event.set()
 
-    def kick_task_processor(self):
+    def poke_task_processor(self):
         """
         kick that lazy ass to stop it's waitings and immediately perform another processing iteration
         this is not connected to wake, __sleep and DORMANT mode,
@@ -401,7 +401,8 @@ class Scheduler:
                     return False
                 if switch_state_on_reset is not None:
                     await self.set_worker_state(worker_row['id'], switch_state_on_reset, con, nocommit=True)
-                return await self.reset_invocations_for_worker(worker_row['id'], con)
+                need_commit = await self.reset_invocations_for_worker(worker_row['id'], con)
+                return need_commit or switch_state_on_reset is not None
 
             self.__pinger_logger.debug('    :: pinger started')
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.CHECKING.value
@@ -643,7 +644,7 @@ class Scheduler:
                                         #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
-                    await con.commit(self.kick_task_processor)
+                    await con.commit(self.poke_task_processor)
                 return
             except Exception as e:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
@@ -656,7 +657,7 @@ class Scheduler:
                                                    'exception_str': str(e),
                                                    'exception_type': str(type(e))})
                                        , task_id))
-                    await con.commit(self.kick_task_processor)
+                    await con.commit(self.poke_task_processor)
                     self.__logger.exception('error happened %s %s', type(e), e)
                 return
 
@@ -761,12 +762,13 @@ class Scheduler:
                 #print(f'split: {time.perf_counter()-_bla1}')
 
                 #_precum = time.perf_counter()-_blo
-                await con.commit(self.kick_task_processor)
+                await con.commit(self.poke_task_processor)
                 #print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
         @atimeit()
         async def _submitter(task_row, worker_row):
+            self.__logger.debug(f'submitter started')
             addr = worker_row['last_address']
             try:
                 ip, port = addr.split(':')
@@ -812,6 +814,16 @@ class Scheduler:
                     reply = TaskScheduleStatus.FAILED
 
                 async with awaiter_lock:
+                    await submit_transaction.execute('BEGIN IMMEDIATE')
+                    async with submit_transaction.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
+                        worker_state = WorkerState((await incur.fetchone())[0])
+                    # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
+                    if worker_state == WorkerState.OFF:
+                        self.__logger.debug('submitter: worker state changed to OFF during submitter work')
+                        if reply == TaskScheduleStatus.SUCCESS:
+                            self.__logger.warning('submitter succeeded, yet worker state changed to OFF in the middle of submission. forcing reply to FAIL')
+                            reply = TaskScheduleStatus.FAILED
+                    assert worker_state != WorkerState.IDLE  # this should never happen as hello preserves INVOKING state
                     if reply == TaskScheduleStatus.SUCCESS:
                         await submit_transaction.execute('UPDATE tasks SET state = ?, '
                                                          '"work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 '
@@ -821,15 +833,17 @@ class Scheduler:
                                                          (WorkerState.BUSY.value, worker_row['id']))
                         await submit_transaction.execute('UPDATE invocations SET state = ? WHERE "id" = ?',
                                                          (InvocationState.IN_PROGRESS.value, invocation_id))
-                        await submit_transaction.commit()
                     else:  # on anything but success - cancel transaction
+                        self.__logger.debug(f'submitter failed, rolling back for wid {worker_row["id"]}')
                         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                         (TaskState.READY.value, task_row['id']))
+                                                         (TaskState.READY.value,
+                                                          task_row['id']))
                         await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                         (WorkerState.IDLE.value, worker_row['id']))
+                                                         (WorkerState.IDLE.value if worker_state != WorkerState.OFF else WorkerState.OFF.value,
+                                                          worker_row['id']))
                         await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
                                                          (invocation_id,))
-                        await submit_transaction.commit()
+                    await submit_transaction.commit()
 
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
@@ -1008,6 +1022,7 @@ class Scheduler:
                             if task_row["_invoc_requirement_clause"] in where_empty_cache:
                                 continue
                             try:
+                                self.__logger.debug('submitter selecting worker')
                                 async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
                                     worker = await worcur.fetchone()
                             except aiosqlite.Error as e:
@@ -1025,7 +1040,15 @@ class Scheduler:
                             if worker is None:  # nothing available
                                 where_empty_cache.add(task_row["_invoc_requirement_clause"])
                                 continue
-
+                            # note that there might be no implicit transaction here yet, so previously selected
+                            # worker might have changed states between that select and this update
+                            # so we doublecheck in a transaction
+                            if not con.in_transaction:
+                                await con.execute('BEGIN IMMEDIATE')
+                                async with con.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker['id'],)) as worcur:
+                                    if (await worcur.fetchone())['state'] != WorkerState.IDLE.value:
+                                        self.__logger.debug('submitter: worker changed state while trying to submit, skipping')
+                                        continue
                             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                                 (TaskState.INVOKING.value, task_row['id']))
                             total_state_changes += 1
@@ -1033,6 +1056,7 @@ class Scheduler:
                                                                 (WorkerState.INVOKING.value, worker['id']))
 
                             submitters.append(_submitter(dict(task_row), dict(worker)))
+                            self.__logger.debug('submitter scheduled')
                         await con.commit()
                         for coro in submitters:
                             tasks_to_wait.add(asyncio.create_task(coro))
@@ -1191,7 +1215,7 @@ class Scheduler:
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
         self.wake()
-        self.kick_task_processor()
+        self.poke_task_processor()
 
     async def _save_external_logs(self, invocation_id, stdout, stderr):
         logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
@@ -1244,16 +1268,17 @@ class Scheduler:
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
+        self.__logger.debug(f'cancelling task done {repr(task)}')
         self.wake()
-        self.kick_task_processor()
+        self.poke_task_processor()
 
     #
     # add new worker to db
     async def add_worker(self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources, assume_active=True):  # TODO: all resource should also go here
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
-            await con.execute('BEGIN IMMEDIATE')
-            async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
+            await con.execute('BEGIN IMMEDIATE')  # don't remember why exactly, but starting transaction here was important... maybe extra lock can be used instead?
+            async with con.execute('SELECT "id", state FROM "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
             if assume_active:
                 ping_state = WorkerPingState.WORKING.value
@@ -1264,6 +1289,8 @@ class Scheduler:
 
             tstamp = int(time.time())
             if worker_row is not None:
+                if worker_row['state'] == WorkerState.INVOKING.value:  # so we are in the middle of sumbission
+                    state = WorkerState.IDLE.value  # then we preserve INVOKING state
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
                                   'hwid=?, '
@@ -1311,7 +1338,41 @@ class Scheduler:
                 #                   '(?, ?, ?)',
                 #                   (new_worker_id, tstamp, ping_state))
             await con.commit()
-        self.kick_task_processor()
+        self.poke_task_processor()
+
+    #
+    # update existing worker's resources
+    async def update_worker_resources(self, addr: str, worker_resources: WorkerResources):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
+            async with con.execute('SELECT id, hwid from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
+                worker_row = await worcur.fetchone()
+            wid = worker_row['id']
+            if worker_row['hwid'] != worker_resources.hwid:
+                # hwid mismatch - this cannot happen in normal work - so assume this worker is bad
+                # ignore this request?
+                self.__logger.warning('logger reporting resources has different hwid from what we expect.\n'
+                                      'This can happen when several workers are reconnecting at the same time.\n'
+                                      'in any other cases this cannot happen and is a bug')
+                await con.commit()
+                return
+
+            await con.execute('UPDATE "workers" SET '
+                              'cpu_count=?, '
+                              'mem_size=?, '
+                              'gpu_count=?, '
+                              'gmem_size=? '
+                              'WHERE "id"==?',
+                              (worker_resources.cpu_count,
+                               worker_resources.mem_size,
+                               worker_resources.gpu_count,
+                               worker_resources.gmem_size,
+                               wid)
+                              )
+
+            await con.commit()
+        self.poke_task_processor()
 
     #
     # worker reports it being stopped
@@ -1321,12 +1382,14 @@ class Scheduler:
         :param addr:
         :return:
         """
+        self.__logger.debug(f'worker reported stopped: {addr}')
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
             wid = worker_row['id']
+            print(wid)
 
             # we ensure there are no invocations running with this worker
             async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND "state" = ?', (wid, InvocationState.IN_PROGRESS.value)) as invcur:
@@ -1336,6 +1399,7 @@ class Scheduler:
             await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
             await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.WAITING.value, x["task_id"]) for x in invocations))
             await con.commit()
+        self.__logger.debug(f'finished worker reported stopped: {addr}')
 
     #
     # cancel invocation
@@ -1389,7 +1453,7 @@ class Scheduler:
             self.__logger.error('could not remove node connection because of database integrity check')
         else:
             self.wake()
-            self.kick_task_processor()
+            self.poke_task_processor()
 
     #
     # force change task state
@@ -1427,7 +1491,7 @@ class Scheduler:
                 await con.commit()
         #print('boop')
         self.wake()
-        self.kick_task_processor()
+        self.poke_task_processor()
 
     #
     # change task's paused state
@@ -1438,7 +1502,7 @@ class Scheduler:
                                   (int(paused), task_ids_or_group))
                 await con.commit()
             self.wake()
-            self.kick_task_processor()
+            self.poke_task_processor()
             return
         if isinstance(task_ids_or_group, int):
             task_ids_or_group = [task_ids_or_group]
@@ -1447,7 +1511,7 @@ class Scheduler:
             await con.executemany(query, ((x,) for x in task_ids_or_group))
             await con.commit()
         self.wake()
-        self.kick_task_processor()
+        self.poke_task_processor()
 
     #
     # change task group archived state
@@ -1457,7 +1521,7 @@ class Scheduler:
             await con.execute('UPDATE task_group_attributes SET state=? WHERE "group"==?', (state.value, task_group_name))  # this triggers all task deadness | 2, so potentially it can be long, beware
             await con.commit()
             if state == TaskGroupArchivedState.NOT_ARCHIVED:
-                self.kick_task_processor()  # unarchived, so kick task processor, just in case
+                self.poke_task_processor()  # unarchived, so kick task processor, just in case
                 return
             # otherwise - it's archived
             # now all tasks belonging to that group should be set to dead|2
@@ -1893,7 +1957,7 @@ class Scheduler:
                 await _inner_shit()
                 await con.commit()
         self.wake()
-        self.kick_task_processor()
+        self.poke_task_processor()
         return SpawnStatus.SUCCEEDED
 
     #
