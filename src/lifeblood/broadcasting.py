@@ -6,7 +6,7 @@ import struct
 
 from . import logging
 
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, Callable, Coroutine
 
 Address = Tuple[str, int]
 
@@ -15,14 +15,14 @@ Address = Tuple[str, int]
 _magic = b'=\xe2\x88\x88\xe2\xad\x95\xe2\x88\x8b='
 
 
-async def create_broadcaster(identifier, information, *, broad_port=9000, ip='0.0.0.0', broadcasts_count: Optional[int] = None, broadcast_interval: int = 10):
+async def create_broadcaster(identifier: str, information, *, broad_port=9000, ip='0.0.0.0', broadcasts_count: Optional[int] = None, broadcast_interval: int = 10):
     loop = asyncio.get_event_loop()
     return await loop.create_datagram_endpoint(
         lambda: BroadcastProtocol(identifier, information, (ip, broad_port), broadcasts_count, broadcast_interval, loop=loop),
         family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
 
 
-async def await_broadcast(identifier, broad_port: int = 9000, listen_address: str = '0.0.0.0') -> str:
+async def await_broadcast(identifier: str, broad_port: int = 9000, listen_address: str = '0.0.0.0') -> str:
     loop = asyncio.get_event_loop()
     protocol: BroadcastReceiveProtocol
     _, protocol = await loop.create_datagram_endpoint(
@@ -34,6 +34,27 @@ async def await_broadcast(identifier, broad_port: int = 9000, listen_address: st
     _, protocol = await create_broadcaster(identifier, message, broad_port=broad_port, ip='127.0.0.1', broadcasts_count=1)  # TODO: bet with my future self - i will regret hardcoding ipv4 localhost like that
     await protocol.till_done()
     return message
+
+
+class BroadcastListener:  # TODO: This was never tested
+    def __init__(self, identifier: str, callback: Callable[[str], Coroutine], broad_port: int = 9000, listen_address: str = '0.0.0.0'):
+        self.__identifier = identifier
+        self.__callback = callback
+        self.__addr = (listen_address, broad_port)
+        self.__proto: Optional[BroadcastReceiveProtocol] = None
+        self.__trans = None
+
+    async def start(self):
+        loop = asyncio.get_event_loop()
+        self.__trans, self.__proto = await loop.create_datagram_endpoint(
+            lambda: BroadcastReceiveProtocol(self.__identifier, loop=loop, single_shot=False, callback=self.__callback),
+            local_addr=self.__addr, family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
+
+    def stop(self):
+        self.__proto.close()
+
+    async def wait_till_stopped(self):
+        await self.__proto.till_done()
 
 
 class BroadcastProtocol(asyncio.DatagramProtocol):
@@ -82,11 +103,14 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
 
 
 class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
-    def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None):
+    def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None, single_shot: bool = True, callback: Optional[Callable[[str], Coroutine]] = None):
         self.__logger = logging.get_logger('broadcast_catcher')
         self.__loop = asyncio.get_event_loop() if loop is None else loop
+        self.__single_shot = single_shot
+        self.__callback = callback
         self.__transport = None
         self.__identifier = identifier
+        self.__last_message = None
         self.__closed_future = self.__loop.create_future()
 
     def connection_made(self, transport: asyncio.transports.DatagramTransport):
@@ -107,8 +131,15 @@ class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
         message = data[8+identlen:8+identlen+bodylen].decode('UTF-8')
         self.__logger.info(f'broadcast received from {identifier} at {addr}')
         self.__logger.debug(f'received: {identifier}, {message}')
+        self.__last_message = message
+        if self.__callback:
+            await self.__callback(message)
+        if self.__single_shot:
+            self.close()
+
+    def close(self):
         self.__transport.close()
-        self.__closed_future.set_result(message)
+        self.__closed_future.set_result(self.__last_message)
 
     async def till_done(self):
         return await self.__closed_future
