@@ -1290,21 +1290,29 @@ class Scheduler:
             tstamp = int(time.time())
             if worker_row is not None:
                 if worker_row['state'] == WorkerState.INVOKING.value:  # so we are in the middle of sumbission
-                    state = WorkerState.IDLE.value  # then we preserve INVOKING state
+                    state = WorkerState.INVOKING.value  # then we preserve INVOKING state
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
                                   'hwid=?, '
                                   'cpu_count=?, '
-                                  'mem_size=?,'
-                                  'gpu_count=?,'
-                                  'gmem_size=?,'
+                                  'total_cpu_count=?, '
+                                  'mem_size=?, '
+                                  'total_mem_size=?, '
+                                  'gpu_count=?, '
+                                  'total_gpu_count=?, '
+                                  'gmem_size=?, '
+                                  'total_gmem_size=?, '
                                   'last_seen=?, ping_state=?, state=?, worker_type=? '
                                   'WHERE last_address=?',
                                   (worker_resources.hwid,
                                    worker_resources.cpu_count,
+                                   worker_resources.total_cpu_count,
                                    worker_resources.mem_size,
+                                   worker_resources.total_mem_size,
                                    worker_resources.gpu_count,
+                                   worker_resources.total_gpu_count,
                                    worker_resources.gmem_size,
+                                   worker_resources.total_gmem_size,
                                    tstamp, ping_state, state, worker_type.value, addr))
                 async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
                     upd_worker_id = (await worcur.fetchone())['id']
@@ -1318,14 +1326,23 @@ class Scheduler:
                 #                   (tstamp, ping_state, upd_worker_id))
             else:
                 async with con.execute('INSERT INTO "workers" '
-                                       '(hwid, cpu_count, mem_size, gpu_count, gmem_size, last_address, last_seen, ping_state, state, worker_type) '
+                                       '(hwid, '
+                                       'cpu_count, total_cpu_count, '
+                                       'mem_size, total_mem_size, '
+                                       'gpu_count, total_gpu_count, '
+                                       'gmem_size, total_gmem_size, '
+                                       'last_address, last_seen, ping_state, state, worker_type) '
                                        'VALUES '
-                                       '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                       '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                                        (worker_resources.hwid,
                                         worker_resources.cpu_count,
+                                        worker_resources.total_cpu_count,
                                         worker_resources.mem_size,
+                                        worker_resources.total_mem_size,
                                         worker_resources.gpu_count,
+                                        worker_resources.total_gpu_count,
                                         worker_resources.gmem_size,
+                                        worker_resources.total_gmem_size,
                                         addr, tstamp, ping_state, state, worker_type.value)) as insworcur:
                     new_worker_id = insworcur.lastrowid
                 self.__db_cache['workers_state'][new_worker_id] = {'last_seen': tstamp,
@@ -1770,7 +1787,16 @@ class Scheduler:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
-            async with con.execute('SELECT workers."id", cpu_count, mem_size, gpu_count, gmem_size, last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
+            async with con.execute('SELECT workers."id", '
+                                   'cpu_count, '
+                                   'total_cpu_count, '
+                                   'mem_size, '
+                                   'total_mem_size, '
+                                   'gpu_count, '
+                                   'total_gpu_count, '
+                                   'gmem_size, '
+                                   'total_gmem_size, '
+                                   'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
                                    'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
