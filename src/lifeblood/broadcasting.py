@@ -6,7 +6,7 @@ import struct
 
 from . import logging
 
-from typing import Tuple, Union, Optional, Callable, Coroutine
+from typing import Tuple, Union, Optional, Callable, Coroutine, Any
 
 Address = Tuple[str, int]
 
@@ -103,7 +103,7 @@ class BroadcastProtocol(asyncio.DatagramProtocol):
 
 
 class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
-    def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None, single_shot: bool = True, callback: Optional[Callable[[str], Coroutine]] = None):
+    def __init__(self, identifier: str, loop: asyncio.AbstractEventLoop = None, single_shot: bool = True, callback: Optional[Callable[[str], Any]] = None):
         self.__logger = logging.get_logger('broadcast_catcher')
         self.__loop = asyncio.get_event_loop() if loop is None else loop
         self.__single_shot = single_shot
@@ -133,7 +133,7 @@ class BroadcastReceiveProtocol(asyncio.DatagramProtocol):
         self.__logger.debug(f'received: {identifier}, {message}')
         self.__last_message = message
         if self.__callback:
-            await self.__callback(message)
+            self.__callback(message)
         if self.__single_shot:
             self.close()
 
