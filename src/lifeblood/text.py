@@ -61,3 +61,13 @@ def filter_by_pattern(pattern: str, items: Iterable[str]) -> List[str]:
     :return: 
     """
     return [x for x in items if match_pattern(pattern, x)]
+
+
+def nice_memory_formatting(memory_bytes: int) -> str:
+    suff = ('B', 'KB', 'MB', 'GB', 'TB', 'PB')
+    next_suff = 'EB'
+    for su in suff:
+        if memory_bytes < 1100:
+            return f'{memory_bytes}{su}'
+        memory_bytes //= 1000
+    return f'{memory_bytes}{next_suff}'
