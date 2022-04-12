@@ -31,10 +31,14 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 );
 CREATE TABLE IF NOT EXISTS "workers" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	"cpu_count"	TEXT NOT NULL,
-	"mem_size"	NUMERIC NOT NULL,
-	"gpu_count"	INTEGER NOT NULL,
+	"cpu_count"	NUMERIC NOT NULL,
+	"total_cpu_count"	INTEGER NOT NULL,
+	"mem_size"	INTEGER NOT NULL,
+	"total_mem_size"	INTEGER NOT NULL,
+	"gpu_count"	NUMERIC NOT NULL,
+	"total_gpu_count"	INTEGER NOT NULL,
 	"gmem_size"	INTEGER NOT NULL,
+	"total_gmem_size"	INTEGER NOT NULL,
 	"last_address"	TEXT NOT NULL UNIQUE,
 	"last_seen"	INTEGER,
 	"last_checked"	INTEGER,
