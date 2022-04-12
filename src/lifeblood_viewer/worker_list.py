@@ -1,6 +1,7 @@
 from datetime import datetime
 from lifeblood.uidata import UiData
 from lifeblood.enums import WorkerType, WorkerState
+from lifeblood.text import nice_memory_formatting
 from .connection_worker import SchedulerConnectionWorker
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView
@@ -33,6 +34,9 @@ class WorkerListWidget(QWidget):
 
 
 class WorkerModel(QAbstractTableModel):
+    __cols_with_totals = {'cpu_count', 'mem_size', 'gpu_count', 'gmem_size'}
+    __mem_cols = {'mem_size', 'gmem_size'}
+
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerModel, self).__init__(parent)
         self.__scheduler_worker = worker
@@ -61,6 +65,11 @@ class WorkerModel(QAbstractTableModel):
         return len(self.__workers)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        def format_display(col_name, raw):
+            if col_name in self.__mem_cols:
+                return nice_memory_formatting(raw)
+            return raw
+
         if not index.isValid():
             return None
         if role not in (Qt.DisplayRole, Qt.BackgroundRole, Qt.UserRole):
@@ -94,6 +103,11 @@ class WorkerModel(QAbstractTableModel):
             return datetime.fromtimestamp(raw_data).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
             return WorkerType(raw_data).name
+
+        raw_data = format_display(col_name, raw_data)
+        if col_name in self.__cols_with_totals:  # if there's total - make value in format if val/total, like 20/32
+            raw_data = f'{raw_data}/{format_display(col_name, self.__workers[self.__order[row]][f"total_{col_name}"])}'
+
         return raw_data
 
     @Slot(object)
