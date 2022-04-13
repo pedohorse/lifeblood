@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS "workers" (
 	"total_gpu_count"	INTEGER NOT NULL,
 	"gmem_size"	INTEGER NOT NULL,
 	"total_gmem_size"	INTEGER NOT NULL,
-	"last_address"	TEXT NOT NULL UNIQUE,
+	"last_address"	TEXT UNIQUE,
 	"last_seen"	INTEGER,
 	"last_checked"	INTEGER,
 	"ping_state"	INTEGER NOT NULL,
