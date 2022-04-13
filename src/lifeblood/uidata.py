@@ -31,6 +31,10 @@ class ParameterExpressionError(Exception):
         return self.__inner_exception
 
 
+class LayoutReadonlyError(Exception):
+    pass
+
+
 class UiData:
     def __init__(self, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
         self.__nodes = ui_nodes
@@ -938,6 +942,7 @@ class NodeUi(ParameterHierarchyItem):
         self.__parameter_layout.set_parent(self)
         self.__attached_node: Optional[BaseNode] = attached_node
         self.__block_ui_callbacks = False
+        self.__lock_ui_readonly = False
         self.__postpone_ui_callbacks = False
         self.__postponed_callbacks = None
         self.__inputs_names = ('main',)
@@ -974,14 +979,33 @@ class NodeUi(ParameterHierarchyItem):
         class _iiLock:
             def __init__(self, lockable):
                 self.__nui = lockable
+                self.__prev_state = None
 
             def __enter__(self):
+                self.__prev_state = self.__nui._NodeUi__block_ui_callbacks
                 self.__nui._NodeUi__block_ui_callbacks = True
 
             def __exit__(self, exc_type, exc_val, exc_tb):
-                self.__nui._NodeUi__block_ui_callbacks = False
+                self.__nui._NodeUi__block_ui_callbacks = self.__prev_state
 
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         return _iiLock(self)
+
+    def lock_interface_readonly(self):
+        class _roLock:
+            def __init__(self, lockable):
+                self.__nui = lockable
+                self.__prev_state = None
+
+            def __enter__(self):
+                self.__prev_state = self.__nui._NodeUi__lock_ui_readonly
+                self.__nui._NodeUi__lock_ui_readonly = True
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.__nui._NodeUi__lock_ui_readonly = self.__prev_state
+
+        return _roLock(self)
 
     def postpone_ui_callbacks(self):
         """
@@ -1040,6 +1064,8 @@ class NodeUi(ParameterHierarchyItem):
         use it in with statement
         :return:
         """
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return NodeUi._slwrapper(self, parameter_layout_producer)
@@ -1053,6 +1079,8 @@ class NodeUi(ParameterHierarchyItem):
 
         :return:
         """
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
@@ -1095,6 +1123,8 @@ class NodeUi(ParameterHierarchyItem):
             def multigroup(self):
                 return self.__new_layout
 
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self, name)
@@ -1121,6 +1151,8 @@ class NodeUi(ParameterHierarchyItem):
 
         :return:
         """
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         return NodeUi._slwrapper(self, CollapsableVerticalGroup, {'group_name': group_name, 'group_label': group_label})
@@ -1135,6 +1167,8 @@ class NodeUi(ParameterHierarchyItem):
             layout.add_layout(new_layout)
 
     def add_parameter(self, param_name: str, param_label: Optional[str], param_type: NodeParameterType, param_val: Any, can_have_expressions: bool = True, readonly: bool = False) -> Parameter:
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
@@ -1146,6 +1180,8 @@ class NodeUi(ParameterHierarchyItem):
         return newparam
 
     def add_input(self, input_name):
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         if input_name not in self.__inputs_names:
@@ -1156,6 +1192,8 @@ class NodeUi(ParameterHierarchyItem):
             self.__outputs_names += (output_name,)
 
     def add_output(self, output_name):
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
@@ -1168,6 +1206,8 @@ class NodeUi(ParameterHierarchyItem):
         self.__outputs_names = self.__outputs_names[:-1]
 
     def remove_last_output(self):
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
@@ -1187,6 +1227,8 @@ class NodeUi(ParameterHierarchyItem):
         self.__ui_callback(definition_changed=True)
 
     def __ui_callback(self, definition_changed=False):
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
         if self.__postpone_ui_callbacks:
             # so we save definition_changed to __postponed_callbacks
             self.__postponed_callbacks = self.__postponed_callbacks or definition_changed
@@ -1220,6 +1262,16 @@ class NodeUi(ParameterHierarchyItem):
         for k, v in newdict.items():
             crap.__dict__[k] = deepcopy(v, memo)
         return crap
+
+    def __setstate__(self, state):
+        ensure_attribs = {  # this exists only for the ease of upgrading NodeUi classes during development
+            '_NodeUi__lock_ui_readonly': False,
+            '_NodeUi__postpone_ui_callbacks': False
+        }
+        self.__dict__.update(state)
+        for attrname, default_value in ensure_attribs.items():
+            if not hasattr(self, attrname):
+                setattr(self, attrname, default_value)
 
     def serialize(self) -> bytes:
         """
