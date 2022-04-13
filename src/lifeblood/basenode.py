@@ -178,7 +178,8 @@ class BaseNode:
         return True
 
     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        return self.process_task(ProcessingContext(self, task_dict))
+        with self.get_ui().lock_interface_readonly():
+            return self.process_task(ProcessingContext(self, task_dict))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -190,7 +191,8 @@ class BaseNode:
         raise NotImplementedError()
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
-        return self.postprocess_task(ProcessingContext(self, task_dict))
+        with self.get_ui().lock_interface_readonly():
+            return self.postprocess_task(ProcessingContext(self, task_dict))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
