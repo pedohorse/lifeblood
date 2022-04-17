@@ -83,7 +83,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         print('worker connected to scheduler')
 
         nid = await sched.add_node('python', 'foof')
-        node = await sched.get_node_object_by_id(nid)
+        node = await sched._get_node_object_by_id(nid)
         node.set_param_value('process', 'schedule()')
         node.set_param_value('invoke', 'import time\ntime.sleep(1)')
         await sched.spawn_tasks(NewTask('testtask', nid))
