@@ -110,6 +110,10 @@ class InvocationRequirements:
         self.__min_memory_bytes = min_memory_bytes or 0
         self.__min_gpu_count = 0
         self.__min_gpu_memory_bytes = 0
+        self.__max_cpu_count = None  # TODO: these are not yet implemented, but None should mean max==min
+        self.__max_memory_bytes = None
+        self.__max_gpu_count = None
+        self.__max_gpu_memory_bytes = None
 
     def groups(self):
         return tuple(self.__groups)
