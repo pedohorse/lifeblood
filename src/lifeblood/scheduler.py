@@ -11,6 +11,8 @@ from enum import Enum
 import asyncio
 import aiosqlite
 import aiofiles
+from aiorwlock import RWLock
+from contextlib import asynccontextmanager
 import signal
 import threading  # for bugfix
 
@@ -50,6 +52,7 @@ class Scheduler:
         self.__logger.info('loading core plugins')
         pluginloader.init()  # TODO: move it outside of constructor
         self.__node_objects: Dict[int, BaseNode] = {}
+        self.__node_objects_locks: Dict[int, RWLock] = {}
         # self.__plugins = {}
         # core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
         # for filename in os.listdir(core_plugins_path):
@@ -201,7 +204,26 @@ class Scheduler:
             raise RuntimeError(f'node with given id {node_id} does not exist')
         return node_row['type'], node_row['name']
 
-    async def get_node_object_by_id(self, node_id: int) -> BaseNode:
+    @asynccontextmanager
+    async def node_object_by_id_for_reading(self, node_id: int):
+        async with self.get_node_lock_by_id(node_id).reader_lock:
+            yield await self._get_node_object_by_id(node_id)
+
+    @asynccontextmanager
+    async def node_object_by_id_for_writing(self, node_id: int):
+        async with self.get_node_lock_by_id(node_id).writer_lock:
+            yield await self._get_node_object_by_id(node_id)
+
+    async def _get_node_object_by_id(self, node_id: int) -> BaseNode:
+        """
+        When accessing node this way - be aware that you SHOULD ensure your access happens within a lock
+        returned by get_node_lock_by_id.
+        If you don't want to deal with that - use scheduler's wrappers to access nodes in a safe way
+        (lol, wrappers are not implemented)
+
+        :param node_id:
+        :return:
+        """
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -227,6 +249,21 @@ class Scheduler:
             await con.commit()
 
             return newnode
+
+    def get_node_lock_by_id(self, node_id: int) -> RWLock:
+        """
+        All read/write operations for a node should be locked within a per node rw lock that scheduler maintains.
+        Usually you do NOT have to be concerned with this.
+        But in cases you get the node object with functions like get_node_object_by_id.
+        it is your responsibility to ensure data is locked when accessed.
+        Lock is not part of the node itself.
+
+        :param node_id: node id to get lock to
+        :return: rw lock for the node
+        """
+        if node_id not in self.__node_objects_locks:
+            self.__node_objects_locks[node_id] = RWLock(fast=True)  # read about fast on github. the points is if we have awaits inside critical section - it's safe to use fast
+        return self.__node_objects_locks[node_id]
 
     async def get_task_attributes(self, task_id: int):
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -641,7 +678,8 @@ class Scheduler:
             task_id = task_row['id']
             loop = asyncio.get_event_loop()
             try:
-                process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
+                async with self.get_node_lock_by_id(task_row['node_id']).reader_lock:
+                    process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
                                         #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -965,14 +1003,18 @@ class Scheduler:
                                                   (TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
-                                if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
+                                # note that ready_to_process_task is ran not inside the read lock
+                                # as it's expected that:
+                                #  - running the function is even faster than locking
+                                #  - function misfire (being highly unlikely) does not have side effects, so will not cause any damage
+                                if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
                                     continue
 
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
-                                awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
+                                awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
                         await con.commit()
                         for coro in awaiters:
@@ -988,14 +1030,14 @@ class Scheduler:
                                                   (TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
-                                if not (await self.get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
+                                if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                     continue
 
                                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
-                                awaiters.append(_awaiter((await self.get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
+                                awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
                         await con.commit()
                         for coro in awaiters:
@@ -1691,10 +1733,10 @@ class Scheduler:
         """
         old_to_new = {}
         for nid in node_ids:
-            node_obj = await self.get_node_object_by_id(nid)
+            node_obj = await self._get_node_object_by_id(nid)
             node_type, node_name = await self.get_node_type_and_name_by_id(nid)
             new_id = await self.add_node(node_type, f'{node_name} copy')
-            new_node_obj = await self.get_node_object_by_id(new_id)
+            new_node_obj = await self._get_node_object_by_id(new_id)
             node_obj.copy_ui_to(new_node_obj)
             old_to_new[nid] = new_id
 

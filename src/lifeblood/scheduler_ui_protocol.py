@@ -74,8 +74,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         # brings in interface data for one particular node
         async def comm_get_node_interface():  # elif command == b'getnodeinterface':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            nodeui: NodeUi = (await self.__scheduler.get_node_object_by_id(node_id)).get_ui()
-            data: bytes = await nodeui.serialize_async()
+            async with self.__scheduler.node_object_by_id_for_reading(node_id) as node:
+                nodeui: NodeUi = node.get_ui()
+                data: bytes = await nodeui.serialize_async()
             writer.write(struct.pack('>I', len(data)))
             writer.write(data)
 
@@ -145,15 +146,14 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             param_name = await read_string()
             try:
-                node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
+                async with self.__scheduler.node_object_by_id_for_reading(node_id) as node:
+                    if node.param(param_name) is None:
+                        writer.write(b'\0')
+                    else:
+                        writer.write(b'\1')
             except Exception:
                 self.__logger.warning(f'FAILED get node {node_id}')
                 writer.write(b'\0')
-            else:
-                if node.param(param_name) is None:
-                    writer.write(b'\0')
-                else:
-                    writer.write(b'\1')
 
         async def comm_set_node_param():  # elif command == b'setnodeparam':
             node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
@@ -169,8 +169,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             else:
                 raise NotImplementedError()
             try:
-                node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-                await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
+                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
+                    await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
+                    value = node.param(param_name).unexpanded_value()
             except Exception:
                 err_val_prev = str(param_value)
                 if len(err_val_prev) > 23:
@@ -181,7 +182,6 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(b'\1')
                 #
                 # send back actual result
-                value = node.param(param_name).unexpanded_value()
                 if param_type == NodeParameterType.FLOAT.value:
                     writer.write(struct.pack('>d', value))
                 elif param_type == NodeParameterType.INT.value:
@@ -196,19 +196,21 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         async def comm_set_node_param_expression():  # elif command == b'setnodeparamexpression':
             node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
             param_name = await read_string()
-            node: BaseNode = await self.__scheduler.get_node_object_by_id(node_id)
-            if set_or_unset:
-                expression = await read_string()
-                node.param(param_name).set_expression(expression)
-            else:
-                node.param(param_name).remove_expression()
+            async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
+                if set_or_unset:
+                    expression = await read_string()
+                    await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).set_expression, expression)
+                    # node.param(param_name).set_expression(expression)
+                else:
+                    node.param(param_name).remove_expression()
             writer.write(b'\1')
 
         async def comm_apply_node_settings():
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             settings_name = await read_string()
             try:
-                await asyncio.get_event_loop().run_in_executor(None, (await self.__scheduler.get_node_object_by_id(node_id)).apply_settings, settings_name)
+                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
+                    await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings_name)
             except Exception:
                 self.__logger.exception(f'FAILED to apply node settings for node {node_id}, settings name "{settings_name}"')
                 writer.write(b'\0')
