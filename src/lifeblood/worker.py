@@ -304,7 +304,7 @@ class Worker:
         async with resource_lock:
             self.__logger.debug('got lock' if not already_locked else 'already locked')
             if self.__running_task is not None:
-                res -= self.__running_task.requirements().to_worker_resources()
+                res -= self.__running_task.requirements().to_min_worker_resources()
             async with aiosqlite.connect(self.__resource_db_path, timeout=30) as con:
                 con.row_factory = aiosqlite.Row
                 to_delete = []
@@ -377,7 +377,7 @@ class Worker:
             # check resources
             self.__logger.debug(repr(self.__my_resources))
             await self.check_update_resources(already_locked=True)  # update our resources
-            task_resource_requirements = task.requirements().to_worker_resources()
+            task_resource_requirements = task.requirements().to_min_worker_resources()
             self.__logger.debug(repr(self.__my_resources))
             self.__logger.debug(repr(task_resource_requirements))
             if self.__my_resources < task_resource_requirements:
@@ -582,7 +582,6 @@ class Worker:
                 self.__logger.exception('could not report cuz i have no idea')
             # end reporting
 
-            task_used_resources = self.__running_task.requirements().to_worker_resources()
 
             self.__running_task = None
             self.__running_process = None
@@ -632,7 +631,6 @@ class Worker:
             except:
                 self.__logger.exception('could not report cuz i have no idea')
 
-            task_used_resources = self.__running_task.requirements().to_worker_resources()
 
             self.__where_to_report = None
             self.__running_task = None

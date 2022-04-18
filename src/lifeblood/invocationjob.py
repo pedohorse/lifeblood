@@ -150,7 +150,7 @@ class InvocationRequirements:
             conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
 
-    def to_worker_resources(self) -> WorkerResources:
+    def to_min_worker_resources(self) -> WorkerResources:
         res = WorkerResources()
         res.cpu_count = self.__min_cpu_count
         res.mem_size = self.__min_memory_bytes
