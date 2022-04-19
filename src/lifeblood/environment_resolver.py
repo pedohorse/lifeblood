@@ -162,6 +162,9 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
 
         resolved_versions = {}
         for package, spec_str in arguments.items():
+            if not package.startswith('package.'):  # all package reqs start with package.
+                continue
+            package = package[len('package.'):]
             if package not in available_software:
                 raise ResolutionImpossibleError(f'no configurations for package {package} found')
             resolved_versions[package] = SimpleSpec(spec_str).select(available_software[package].keys())
@@ -191,6 +194,9 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
                     if isinstance(value, list):
                         value = os.pathsep.join(value)
                     env[env_name] = value
+        if 'user' in arguments:
+            for uservar in ('USER', 'LOGNAME', 'USERNAME'):
+                env[uservar] = arguments['user']
         return env
 
     @classmethod
