@@ -48,7 +48,7 @@ class Ffmpeg(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'houdini', 'image', 'magic', 'stock', 'convert', 'montage'
+        return 'image', 'magic', 'stock', 'convert', 'montage'
 
     @classmethod
     def type_name(cls) -> str:
