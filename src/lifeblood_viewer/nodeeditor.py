@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
+from .db_misc import sql_init_script_nodes
 from lifeblood.uidata import UiData, NodeUi, Parameter
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -229,10 +230,12 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_dict: Dict[int, Task] = {}
         self.__node_dict: Dict[int, Node] = {}
         self.__db_path = db_path
+        self.__nodes_table_name = None
         self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
         self.__cached_nodepresets: Dict[str, Dict[str, Union[NodeSnippetData, NodeSnippetDataPlaceholder]]] = {}
         self.__all_task_groups = set()
         self.__task_group_filter = None
+        self.__db_uid: Optional[int] = None  # this is unique id of the scheduler's db. we use this to determine where to save node positions locally, not to mix and collide
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -410,9 +413,11 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
+            if self.__nodes_table_name is None:
+                raise RuntimeError('node positions requested before db uid set')
             with sqlite3.connect(self.__db_path) as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,))
+                cur = con.execute(f'SELECT * FROM "{self.__nodes_table_name}" WHERE "id" = ?', (node_id,))
                 row = cur.fetchone()
                 if row is not None:
                     return row['posx'], row['posy']
@@ -423,9 +428,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         if isinstance(pos, QPointF):
             pos = pos.toTuple()
         if self.__db_path is not None:
+            if self.__nodes_table_name is None:
+                raise RuntimeError('node positions requested before db uid set')
             with sqlite3.connect(self.__db_path) as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute('INSERT INTO "nodes" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
+                cur = con.execute(f'INSERT INTO "{self.__nodes_table_name}" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
                 row = cur.fetchone()
                 if row is not None:
                     return row['posx'], row['posy']
@@ -436,6 +443,20 @@ class QGraphicsImguiScene(QGraphicsScene):
     @Slot(object)
     def full_update(self, uidata: UiData):
         # logger.debug('full_update')
+
+        if self.__db_uid is not None and self.__db_uid != uidata.db_uid():
+            logger.info('scheduler\'s database changed. resetting the view...')
+            self.save_node_layout()
+            self.clear()
+            self.__db_uid = None
+            self.__nodes_table_name = None
+            # this means we probably reconnected to another scheduler, so existing nodes need to be dropped
+
+        if self.__db_uid is None:
+            self.__db_uid = uidata.db_uid()
+            self.__nodes_table_name = f'nodes_{self.__db_uid}'
+            with sqlite3.connect(self.__db_path) as con:
+                con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
 
         to_del = []
         to_del_tasks = {}
@@ -694,9 +715,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         logger.debug('item removed')
 
     def clear(self):
+        logger.debug('clearing the scene...')
         super(QGraphicsImguiScene, self).clear()
         self.__task_dict = {}
         self.__node_dict = {}
+        logger.debug('scene cleared')
 
     @Slot(NodeSnippetData, QPointF)
     def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF):
@@ -806,13 +829,21 @@ class QGraphicsImguiScene(QGraphicsScene):
     def save_node_layout(self):
         if self.__db_path is None:
             return
+
+        nodes_to_save = [item for item in self.items() if isinstance(item, Node)]
+        if len(nodes_to_save) == 0:
+            return
+        if self.__db_uid is None:
+            logger.warning('db uid is not set while saving nodes')
+
+        if self.__nodes_table_name is None:
+            raise RuntimeError('node positions requested before db uid set')
+
         with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
-            for item in self.items():
-                if not isinstance(item, Node):
-                    continue
-                con.execute('INSERT OR REPLACE INTO "nodes" ("id", "posx", "posy") '
-                            'VALUES (?, ?, ?)', (item.get_id(), *item.pos().toTuple()))
+            for item in nodes_to_save:
+                con.execute(f'INSERT OR REPLACE INTO "{self.__nodes_table_name}" ("id", "posx", "posy") '
+                            f'VALUES (?, ?, ?)', (item.get_id(), *item.pos().toTuple()))
             con.commit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
