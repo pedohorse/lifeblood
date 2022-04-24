@@ -21,3 +21,14 @@ CREATE TABLE IF NOT EXISTS "nodes" (
 COMMIT;
 
 '''
+
+sql_init_script_nodes = '''
+BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "nodes_{db_uid}" (
+    "id"    INTEGER NOT NULL,
+    "posx"    REAL,
+    "posy"    REAL,
+    PRIMARY KEY("id")
+);
+COMMIT;
+'''
