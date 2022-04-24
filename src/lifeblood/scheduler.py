@@ -7,6 +7,8 @@ from datetime import datetime
 import json
 import sqlite3
 import itertools
+import random  # for db id generation
+import struct
 from enum import Enum
 import asyncio
 import aiosqlite
@@ -40,6 +42,8 @@ from .misc import atimeit
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
+
+SCHEDULER_DB_FORMAT_VERSION = 1
 
 # import tracemalloc
 # tracemalloc.start()
@@ -98,10 +102,30 @@ class Scheduler:
             config = get_config('scheduler')
             db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
         db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+        #
         # ensure database is initialized
         with sqlite3.connect(db_file_path) as con:
             con.executescript(sql_init_script)
+        with sqlite3.connect(db_file_path) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.execute('SELECT * FROM lifeblood_metadata')
+            metadata = cur.fetchone()  # there should be exactly one single row.
+            cur.close()
+            if metadata is None:  # if there's no - the DB has not been initialized yet
+                # we need 64bit signed id to save into db
+                db_uid = random.getrandbits(64)  # this is actual db_uid
+                db_uid_signed = struct.unpack('>q', struct.pack('>Q', db_uid))[0]  # this one goes to db
+                con.execute('INSERT INTO lifeblood_metadata ("version", "component", "unique_db_id")'
+                            'VALUES (?, ?, ?)', (SCHEDULER_DB_FORMAT_VERSION, 'scheduler', db_uid_signed))
+                con.commit()
+                # reget metadata
+                cur = con.execute('SELECT * FROM lifeblood_metadata')
+                metadata = cur.fetchone()  # there should be exactly one single row.
+                cur.close()
+            self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
         self.db_path = db_file_path
+        ##
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
         self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
@@ -156,6 +180,14 @@ class Scheduler:
 
     def ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
+
+    def db_uid(self) -> int:
+        """
+        unique id that was generated on creation for the DB currently in use
+
+        :return: 64 bit signed int
+        """
+        return self.__db_uid
 
     def wake(self):
         """
@@ -1862,7 +1894,7 @@ class Scheduler:
                                      } for x in await cur.fetchall())
 
             # print(f'workers: {time.perf_counter() - _dbg}')
-            data = await create_uidata(all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
+            data = await create_uidata(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
 
     #
