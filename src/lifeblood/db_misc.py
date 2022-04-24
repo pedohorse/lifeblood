@@ -1,6 +1,11 @@
 from . import enums
 sql_init_script = '''
 BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "lifeblood_metadata" (
+	"version"	INTEGER NOT NULL DEFAULT 1,
+	"component"	TEXT NOT NULL DEFAULT 'scheduler',
+	"unique_db_id"	INTEGER DEFAULT NULL
+);
 CREATE TABLE IF NOT EXISTS "worker_groups" (
 	"worker_id"	INTEGER NOT NULL,
 	"group"	TEXT NOT NULL,
