@@ -182,6 +182,11 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                 script += '\n'.join(f'    {line}' for line in spawnlines.split('\n')) + '\n'
 
         else:
+            # temporary disallow rendering alembics not in full range
+            script += f'if os.path.splitext(node.parm(output_parm_name).evalAsString())[1] == ".abc":\n' \
+                      f'    raise RuntimeError("not whole range rendering for alembics is not implemented yet")\n'
+            ##
+
             script += \
                 f'for frame in {repr(frames)}:\n' \
                 f'    hou.setFrame(frame)\n' \
