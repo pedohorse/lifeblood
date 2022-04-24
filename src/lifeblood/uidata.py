@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from .basenode import BaseNode
 
 
-async def create_uidata(ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-    return await asyncio.get_event_loop().run_in_executor(None, UiData, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups)
+async def create_uidata(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
+    return await asyncio.get_event_loop().run_in_executor(None, UiData, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups)
 
 
 class ParameterExpressionError(Exception):
@@ -36,12 +36,13 @@ class LayoutReadonlyError(Exception):
 
 
 class UiData:
-    def __init__(self, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
+    def __init__(self, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
         self.__nodes = ui_nodes
         self.__conns = ui_connections
         self.__tasks = ui_tasks
         self.__workers = ui_workers
         self.__task_groups = all_task_groups
+        self.__db_uid = db_uid
         # self.__conns = {}
         # for conn in raw_connections:
         #     id_out = conn['node_id_out']
@@ -66,6 +67,9 @@ class UiData:
 
     def task_groups(self):
         return self.__task_groups
+
+    def db_uid(self) -> int:
+        return self.__db_uid
 
     async def serialize(self, compress=False) -> bytes:
         res = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
