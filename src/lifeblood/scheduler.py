@@ -2008,6 +2008,7 @@ class Scheduler:
         """
 
         async def _inner_shit():
+            current_timestamp = int(datetime.utcnow().timestamp())
             for newtask in newtasks:
                 if newtask.source_invocation_id() is not None:
                     async with con.execute('SELECT node_id, task_id FROM invocations WHERE "id" = ?',
@@ -2049,7 +2050,7 @@ class Scheduler:
                     await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                       (new_id, new_group))
                     await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
-                                      (new_group, int(datetime.utcnow().timestamp())))
+                                      (new_group, current_timestamp))
                     if newtask.default_priority() is not None:
                         await con.execute('UPDATE task_group_attributes SET "priority" = ? WHERE "group" = ?',
                                           (newtask.default_priority(), new_group))
@@ -2058,6 +2059,13 @@ class Scheduler:
                     groups = newtask.extra_group_names()
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                           zip(itertools.repeat(new_id, len(groups)), groups))
+                    for group in groups:
+                        async with con.execute('SELECT "group" FROM task_group_attributes WHERE "group" == ?', (group,)) as gcur:
+                            need_create = await gcur.fetchone() is None
+                        if not need_create:
+                            continue
+                        await con.execute('INSERT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
+                                          (group, current_timestamp))
 
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
