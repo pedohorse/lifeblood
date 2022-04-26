@@ -1357,14 +1357,16 @@ class Scheduler:
             await con.execute('BEGIN IMMEDIATE')  # important to have locked DB during all this state change
             # logic for now:
             #  - search for same last_address, same hwid
-            #  - if no - search for first entry with same hwid, ignore address
+            #  - if no - search for first entry (OFF or UNKNOWN) with same hwid, ignore address
             #    - in this case also delete addr from DB if exists
             async with con.execute('SELECT "id", state FROM "workers" WHERE "last_address" == ? AND hwid == ?', (addr, worker_resources.hwid)) as worcur:
                 worker_row = await worcur.fetchone()
             if worker_row is None:
                 # first ensure that there is no entry with the same address
                 await con.execute('UPDATE "workers" SET "last_address" = ? WHERE "last_address" == ?', (None, addr))
-                async with con.execute('SELECT "id", state FROM "workers" WHERE hwid == ?', (worker_resources.hwid,)) as worcur:
+                async with con.execute('SELECT "id", state FROM "workers" WHERE hwid == ? AND '
+                                       '(state == ? OR state == ?)', (worker_resources.hwid,
+                                                                      WorkerState.OFF.value, WorkerState.UNKNOWN.value)) as worcur:
                     worker_row = await worcur.fetchone()
             if assume_active:
                 ping_state = WorkerPingState.WORKING.value
@@ -1389,7 +1391,7 @@ class Scheduler:
                                   'gmem_size=?, '
                                   'total_gmem_size=?, '
                                   'last_seen=?, ping_state=?, state=?, worker_type=? '
-                                  'WHERE last_address=?',
+                                  'WHERE "id"=?',
                                   (worker_resources.hwid,
                                    worker_resources.cpu_count,
                                    worker_resources.total_cpu_count,
@@ -1399,9 +1401,11 @@ class Scheduler:
                                    worker_resources.total_gpu_count,
                                    worker_resources.gmem_size,
                                    worker_resources.total_gmem_size,
-                                   tstamp, ping_state, state, worker_type.value, addr))
-                async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
-                    upd_worker_id = (await worcur.fetchone())['id']
+                                   tstamp, ping_state, state, worker_type.value,
+                                   worker_row['id']))
+                # async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
+                #     upd_worker_id = (await worcur.fetchone())['id']
+                upd_worker_id = worker_row['id']
                 self.__db_cache['workers_state'][upd_worker_id].update({'last_seen': tstamp,
                                                                         'last_checked': tstamp,
                                                                         'ping_state': ping_state,
