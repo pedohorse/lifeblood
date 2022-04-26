@@ -22,7 +22,7 @@ class StandardEnvResTest(unittest.TestCase):
     def test_one(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'houdini': '>18.0.0,<19.0.0'})
+        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", origenv.get('PATH', ''), "/whatever/you/want/to/append"]),
@@ -37,8 +37,8 @@ class StandardEnvResTest(unittest.TestCase):
     def test_two(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'houdini': '>18.0.0,<19.0.0',
-                                   'assmouth': '~=2.3.2'})
+        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
+                                   'package.assmouth': '~=2.3.2'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", "bananus", origenv.get('PATH', ''), "who/are/you", "/whatever/you/want/to/append"]),
