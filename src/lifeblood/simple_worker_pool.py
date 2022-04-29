@@ -1,5 +1,6 @@
 import sys
 import errno
+import argparse
 import asyncio
 import signal
 import itertools
@@ -28,7 +29,7 @@ class ProcData:
         self.state: WorkerState = WorkerState.OFF
 
 
-class WorkerPool:
+class WorkerPool:  # TODO: split base class, make this just one of implementations
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, scheduler_address: Optional[Tuple[str, int]] = None):
         """
         manages a pool of workers.
@@ -229,3 +230,23 @@ class WorkerPool:
         if self.__id_to_procdata[worker_id].state != state:
             self.__id_to_procdata[worker_id].state = state
             self.__poke_event.set()
+
+
+def main(argv):
+    parser = argparse.ArgumentParser()
+    mut = parser.add_mutually_exclusive_group()
+    mut.add_argument('--list', action='store_true', help='list availabele pool types')
+    mut.add_argument('type', help='worker pool type to start')
+
+    opts = parser.parse_args(argv)
+
+    known_types = ['simple']
+    if opts.list:
+        print('known pool types:' + '\n'.join(f'\t{x}' for x in known_types))
+        return
+
+    # for now it's hardcoded logic, in future TODO: make worker pools extendable as plugins
+    if opts.type == 'simple':
+        pass
+
+

@@ -9,7 +9,7 @@ import time
 import tracemalloc
 
 from lifeblood.logging import get_logger
-from lifeblood.worker_pool import WorkerPool, create_worker_pool
+from lifeblood.simple_worker_pool import WorkerPool, create_worker_pool
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr

@@ -5,7 +5,7 @@ from .enums import WorkerState
 
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
-    from .worker_pool import WorkerPool
+    from .simple_worker_pool import WorkerPool
 
 
 class WorkerPoolProtocol(asyncio.StreamReaderProtocol):

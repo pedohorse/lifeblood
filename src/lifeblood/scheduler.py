@@ -28,7 +28,7 @@ from .invocationjob import InvocationJob
 from .environment_resolver import EnvironmentResolverArguments
 from .uidata import create_uidata
 from .broadcasting import create_broadcaster
-from .worker_pool import WorkerPool
+from .simple_worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
 from .net_classes import WorkerResources
 from .taskspawn import TaskSpawn
