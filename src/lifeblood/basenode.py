@@ -341,8 +341,8 @@ class BaseNodeWithTaskRequirements(BaseNode):
         with ui.initializing_interface_lock():
             with ui.collapsable_group_block('main worker requirements', 'worker requirements'):
                 ui.add_parameter('priority adjustment', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
-                ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
-                ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0).set_value_limits(value_min=0)
+                ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 1.0).set_value_limits(value_min=0)
+                ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0.5).set_value_limits(value_min=0)
                 ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
                 ui.add_parameter('worker type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
                     .add_menu((('standard', WorkerType.STANDARD.value),
