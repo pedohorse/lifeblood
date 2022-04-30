@@ -777,8 +777,14 @@ async def main_async(worker_type=WorkerType.STANDARD,
     and listenting for broadcast starts again
     :return: Never!
     """
+    graceful_closer_no_reentry = False
 
     def graceful_closer():
+        nonlocal graceful_closer_no_reentry
+        if graceful_closer_no_reentry:
+            print('DOUBLE SIGNAL CAUGHT: ALREADY EXITING')
+            return
+        graceful_closer_no_reentry = True
         logging.get_logger('worker').info('SIGINT/SIGTERM caught')
         nonlocal noloop
         noloop = True
@@ -897,10 +903,16 @@ def main(argv):
         config.set_override('worker.scheduler_port', saddr[1])
     try:
         asyncio.run(main_async(wtype, child_priority_adjustment=priority_adjustment, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
+        signal.signal(signal.SIGINT, signal.SIG_IGN)  # already exiting, prevent double signal processing (prevent to some extent at least)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        sys.stdout.flush()  # why this here? dunno really
+        sys.stderr.flush()  # the problem is that somehow we still can catch double sigint at close, but this flush seem to lower the probability of that
+        # though that sigint is safe and breaks absolutely nothing - just prints annoying random errors
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
-        # it's because pycharm sends it's own SIGINT to this child process on top of SIGINT that pool sends
-        global_logger.warning('SIGINT caught')
+        # it's because pycharm and most shells send SIGINTs to this child process on top of SIGINT that pool sends
+        # this stuff above tries to suppress that double SIGINTing, but it's not 100% solution
+        global_logger.warning('SIGINT caught where it wasn\'t supposed to be caught')
         global_logger.info('SIGINT caught. Worker is stopped now.')
 
 
