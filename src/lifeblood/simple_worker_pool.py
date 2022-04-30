@@ -14,8 +14,8 @@ from .enums import WorkerState, WorkerType
 from typing import Tuple, Dict, List, Optional
 
 
-async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, scheduler_address: Optional[Tuple[str, int]] = None):
-    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, scheduler_address=scheduler_address)
+async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256, scheduler_address: Optional[Tuple[str, int]] = None):
+    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total, scheduler_address=scheduler_address)
     await swp.start()
     return swp
 
@@ -30,7 +30,7 @@ class ProcData:
 
 
 class WorkerPool:  # TODO: split base class, make this just one of implementations
-    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, scheduler_address: Optional[Tuple[str, int]] = None):
+    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256, scheduler_address: Optional[Tuple[str, int]] = None):
         """
         manages a pool of workers.
         :param worker_type: workers are created of given type
@@ -48,7 +48,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__logger = get_logger(self.__class__.__name__.lower())
         self.__ensure_minimum_total = minimal_total_to_ensure
         self.__ensure_minimum_idle = minimal_idle_to_ensure
-        self.__maximum_total = 256
+        self.__maximum_total = maximum_total
         self.__worker_type = worker_type
         self.__scheduler_address = scheduler_address
 
@@ -83,6 +83,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__logger.debug(f'worker pool protocol listening on {self.__my_port}')
 
     def stop(self):
+        if self.__stopped:
+            return
         self.__worker_server.close()
         self.__stop_event.set()
         self.__stopped = True
@@ -232,21 +234,40 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             self.__poke_event.set()
 
 
-def main(argv):
+async def async_main(argv):
+    logger = get_logger('simple_worker_pool')
     parser = argparse.ArgumentParser()
-    mut = parser.add_mutually_exclusive_group()
-    mut.add_argument('--list', action='store_true', help='list availabele pool types')
-    mut.add_argument('type', help='worker pool type to start')
+    parser.add_argument('--min-idle', '-m',
+                        dest='minimal_idle_to_ensure',
+                        default=1, type=int,
+                        help='worker pool will ensure at least this amount of workers is up idle (default=1)')
+    parser.add_argument('--min-total',
+                        dest='minimal_total_to_ensure',
+                        default=0, type=int,
+                        help='worker pool will ensure at least this amount of workers is up total (default=0)')
+    parser.add_argument('--max', '-M',
+                        dest='maximum_total',
+                        default=256, type=int,
+                        help='no more than this amount of workers will be run locally at the same time (default=256)')
 
     opts = parser.parse_args(argv)
 
-    known_types = ['simple']
-    if opts.list:
-        print('known pool types:' + '\n'.join(f'\t{x}' for x in known_types))
-        return
+    def graceful_closer():
+        logger.info('SIGINT/SIGTERM caught')
+        pool.stop()
 
-    # for now it's hardcoded logic, in future TODO: make worker pools extendable as plugins
-    if opts.type == 'simple':
-        pass
+    logger.debug(f'starting {__name__} with: ' + ', '.join(f'{key}={val}' for key, val in opts.__dict__.items()))
+    pool = await create_worker_pool(WorkerType.STANDARD, **opts.__dict__)
 
+    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+
+    await pool.wait_till_stops()
+
+
+def main(argv):
+    try:
+        asyncio.run(async_main(argv))
+    except KeyboardInterrupt:
+        get_logger('simple_worker_pool').warning('SIGINT caught where it wasn\'t supposed to be caught')
 
