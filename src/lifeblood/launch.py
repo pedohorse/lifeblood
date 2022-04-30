@@ -15,25 +15,28 @@ def main(argv):
 
     viewparser = subparsers.add_parser('viewer', description='run default viewer')
 
+    poolparser = subparsers.add_parser('pool', description='run a worker pool')
+    poolparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the pool')
+
     baseopts, _ = parser.parse_known_args()
     cmd_id = argv.index(baseopts.command)
     cmd_argv = argv[cmd_id + 1:]
     baseargv = argv[:cmd_id + 1]
     opts = parser.parse_args(baseargv)
 
+    if opts.loglevel is not None:
+        logging.set_default_loglevel(opts.loglevel)
+
     if opts.command == 'scheduler':
-        if opts.loglevel is not None:
-            logging.set_default_loglevel(opts.loglevel)
         from .scheduler import main
         return main(cmd_argv)
     elif opts.command == 'worker':
-        if opts.loglevel is not None:
-            logging.set_default_loglevel(opts.loglevel)
         from .worker import main
-        return main(cmd_argv)  # TODO: unify this approach to other commands
+        return main(cmd_argv)
+    elif opts.command == 'pool':
+        from .worker_pool import main
+        return main(cmd_argv)
     elif opts.command == 'viewer':
-        if opts.loglevel is not None:
-            logging.set_default_loglevel(opts.loglevel)
         try:
             from lifeblood_viewer.launch import main
         except ImportError as e:
