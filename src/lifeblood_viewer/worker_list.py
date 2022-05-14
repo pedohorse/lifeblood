@@ -18,8 +18,13 @@ class WorkerListWidget(QWidget):
         self.__worker_model = WorkerModel(worker, self)
         self.__sort_model = QSortFilterProxyModel(self)
         self.__sort_model.setSourceModel(self.__worker_model)
-        self.__sort_model.setSortRole(Qt.UserRole)
+        self.__sort_model.setSortRole(WorkerModel.SORT_ROLE)
         self.__sort_model.setDynamicSortFilter(True)  # careful with this if we choose to modify model through interface in future
+
+        self.__sort_model.setFilterRole(WorkerModel.SORT_ROLE)
+        self.__sort_model.setFilterRegExp(rf'^(?:(?!{WorkerState.UNKNOWN.value}).)*$')
+        self.__sort_model.setFilterKeyColumn(self.__worker_model.column_by_name('state'))
+
         self.__worker_list.setModel(self.__sort_model)
         self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.__worker_list.setSortingEnabled(True)
@@ -36,6 +41,7 @@ class WorkerListWidget(QWidget):
 class WorkerModel(QAbstractTableModel):
     __cols_with_totals = {'cpu_count', 'mem_size', 'gpu_count', 'gmem_size'}
     __mem_cols = {'mem_size', 'gmem_size'}
+    SORT_ROLE = Qt.UserRole + 0
 
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerModel, self).__init__(parent)
@@ -47,9 +53,13 @@ class WorkerModel(QAbstractTableModel):
                        'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
                        'progress': 'task progress', 'groups': 'groups', 'task_id': 'task id'}
         self.__cols_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'groups', 'last_seen', 'worker_type')
+        self.__colname_to_index = {k: i for i, k in enumerate(self.__cols_order)}
         assert len(self.__cols) == len(self.__cols_order)
 
         self.start()
+
+    def column_by_name(self, name):
+        return self.__colname_to_index[name]
 
     def headerData(self, section: int, orientation, role: int = Qt.DisplayRole):
         if orientation == Qt.Vertical:
@@ -72,13 +82,13 @@ class WorkerModel(QAbstractTableModel):
 
         if not index.isValid():
             return None
-        if role not in (Qt.DisplayRole, Qt.BackgroundRole, Qt.UserRole):
+        if role not in (Qt.DisplayRole, Qt.BackgroundRole, self.SORT_ROLE):
             return None
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
         raw_data = self.__workers[self.__order[row]][col_name]
-        if role == Qt.UserRole:  # for sorting
+        if role == self.SORT_ROLE:  # for sorting
             return raw_data
 
         if col_name == 'state':
