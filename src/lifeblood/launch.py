@@ -8,17 +8,17 @@ def main(argv):
     parser.add_argument('--loglevel', help='logging level, like DEBUG, INFO, WARNING, ERROR')
 
     subparsers = parser.add_subparsers(title='command', required=True, dest='command')
-    schedparser = subparsers.add_parser('scheduler', description='run main scheduler server')
+    schedparser = subparsers.add_parser('scheduler', description='run main scheduler server', add_help=False)
 
-    workerparser = subparsers.add_parser('worker', description='run a worker')
+    workerparser = subparsers.add_parser('worker', description='run a worker', add_help=False)
     workerparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the worker')
 
     viewparser = subparsers.add_parser('viewer', description='run default viewer')
 
-    poolparser = subparsers.add_parser('pool', description='run a worker pool')
+    poolparser = subparsers.add_parser('pool', description='run a worker pool', add_help=False)
     poolparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the pool')
 
-    baseopts, _ = parser.parse_known_args()
+    baseopts, _ = parser.parse_known_args(argv)
     cmd_id = argv.index(baseopts.command)
     cmd_argv = argv[cmd_id + 1:]
     baseargv = argv[:cmd_id + 1]

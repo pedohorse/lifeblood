@@ -863,7 +863,7 @@ def main(argv):
     #
     # prev = signal.signal(signal.SIGINT, signal_handler)
     import argparse
-    parser = argparse.ArgumentParser('lifeblood.worker', description='executes invocations from scheduler')
+    parser = argparse.ArgumentParser('lifeblood worker', description='executes invocations from scheduler')
     parser.add_argument('--scheduler-address', help='manually specify scheduler to connect to. if not specified - by default worker will start listening to broadcasts from schedulers')
     parser.add_argument('--no-listen-broadcast', action='store_true', help='do not listen to scheduler\'s broadcast, use config')
     parser.add_argument('--no-loop', action='store_true', help='by default worker will return into the loop of waiting for scheduler every time it quits because of connection loss, or other errors. '

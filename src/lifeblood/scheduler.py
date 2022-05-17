@@ -2217,7 +2217,7 @@ async def main_async(db_path=None):
 
 def main(argv):
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser('lifeblood scheduler')
     parser.add_argument('--db-path', help='path to sqlite database to use')
     parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
     opts = parser.parse_args(argv)

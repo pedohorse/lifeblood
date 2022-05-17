@@ -236,7 +236,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
 async def async_main(argv):
     logger = get_logger('simple_worker_pool')
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser('lifeblood pool simple')
     parser.add_argument('--min-idle', '-m',
                         dest='minimal_idle_to_ensure',
                         default=1, type=int,
