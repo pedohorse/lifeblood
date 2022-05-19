@@ -1522,6 +1522,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if changed:
                 self.__menu_popup_selection_id = 0
             item_number = 0
+            max_items = 32
             for (entity_type, entity_type_label, package), (type_name, type_meta) in chain(zip(repeat(('node', None, None)), self.__node_types.items()),
                                                                         zip(repeat(('vpreset', 'preset', None)), self.__viewer_presets.items()),
                                                                         *(zip(repeat(('spreset', 'preset', pkg)), pkgdata.items()) for pkg, pkgdata in self.__scheduler_presets.items())):
@@ -1540,6 +1541,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
                         self.__menu_popup_selection_id = item_number
                         self.__menu_popup_selection_name = (package, type_name, entity_type)
                     item_number += 1
+                    if item_number >= max_items:
+                        break
 
             imguio: imgui.core._IO = imgui.get_io()
             if imguio.keys_down[imgui.KEY_DOWN_ARROW]:  # TODO: pauses until key up
