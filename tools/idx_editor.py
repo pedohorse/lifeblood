@@ -93,7 +93,51 @@ class Index:
         return index
 
 
+def bytes_to_text(data: bytes) -> str:
+    partlist = []
+    for c in data:
+        sc = chr(c)
+        if c <= 127 and sc in string.printable:
+            if sc == '\\':  # escape all \
+                partlist.append(r'\\')
+            else:
+                partlist.append(sc)
+        else:
+            partlist.append(rf'\x{c:02}')
+
+    return ''.join(partlist)
+
+
+def text_to_bytes(text: str) -> bytes:
+    partlist = []
+    escaping = False
+    hexcode = None
+    for c in text:
+        if hexcode is not None:
+            if hexcode < 0:  # first symbol
+                hexcode = int(c, base=16) * 16
+            else:  # second symbol
+                hexcode += int(c, base=16)
+                partlist.append(hexcode.to_bytes(1, 'big'))
+                hexcode = None
+        elif escaping:
+            escaping = False
+            if c == '\\':
+                partlist.append(c.encode('ascii'))
+            elif c == 'x':
+                hexcode = -1
+            else:
+                raise RuntimeError('should not happen!')
+        else:
+            if c == '\\':
+                escaping = True
+            else:
+                partlist.append(c.encode('ascii'))
+    return b''.join(partlist)
+
+
 from PySide2.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QFileDialog
+from PySide2.QtGui import QFont
 import string
 
 
@@ -107,7 +151,11 @@ class Editor(QWidget):
         self.__layout.addWidget(self.__tabwidget)
 
         self.__load_button = QPushButton('load file')
-        self.__layout.addWidget(self.__load_button)
+        self.__save_button = QPushButton('save to file')
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.__load_button)
+        btn_layout.addWidget(self.__save_button)
+        self.__layout.addLayout(btn_layout)
 
         self.__tabs: List[QWidget] = []
 
@@ -115,6 +163,7 @@ class Editor(QWidget):
 
         # connec
         self.__load_button.clicked.connect(self.load_button_callback)
+        self.__save_button.clicked.connect(self.save_button_callback)
 
     def clear(self):
         self.__tabwidget.clear()
@@ -130,20 +179,35 @@ class Editor(QWidget):
 
         for entry in self.__index.entries:
             tab = QTextEdit()
+            font = QFont('monospace')
+            font.setFixedPitch(True)
+            tab.setFont(font)
             print(repr(entry.rawdata))
-            text = entry.rawdata.decode(encoding='ascii', errors='backslashreplace')
-            text = ''.join(c if c in string.printable else rf'\x{ord(c):02}' for c in text)
+
+            text = bytes_to_text(entry.rawdata)
+            assert entry.rawdata == text_to_bytes(text)
             tab.setText(text)
 
             self.__tabs.append(tab)
             self.__tabwidget.addTab(tab, entry.name.decode('UTF-8'))
 
+    def save_file(self, filepath):
+        for entry, tab in zip(self.__index.entries, self.__tabs):
+            entry.rawdata = text_to_bytes(tab.toPlainText())
+        with open(filepath, 'wb') as f:
+            f.write(self.__index.serialize())
+
     def load_button_callback(self):
         filepath, _ = QFileDialog.getOpenFileName(self)
-        print(filepath)
         if not filepath:
             return
         self.load_file(filepath)
+
+    def save_button_callback(self):
+        filepath, _ = QFileDialog.getSaveFileName(self)
+        if not filepath:
+            return
+        self.save_file(filepath)
 
 
 if __name__ == '__main__':
@@ -152,6 +216,7 @@ if __name__ == '__main__':
     qapp = QApplication(sys.argv)
 
     wgt = Editor()
+    wgt.resize(666, 666)
     wgt.show()
 
     sys.exit(qapp.exec_())
