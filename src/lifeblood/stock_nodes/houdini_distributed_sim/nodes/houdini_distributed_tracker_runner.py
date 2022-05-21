@@ -56,8 +56,8 @@ async def do(port, webport, killport):
         probe_s.close()
 
     attrs = json.loads(os.environ['LBATTRS_JSON'])
-    attrs['SIMTRACKER_HOST'] = ip
-    attrs['SIMTRACKER_PORT'] = port
+    attrs['simtracker_host'] = ip
+    attrs['simtracker_port'] = port
     attrs['tracker kill port'] = killport
     lifeblood_connection.create_task('spawned task', attrs)
     await asyncio.wait([proc_end_waiter(proc), server_close_waiter(server)], return_when=asyncio.FIRST_COMPLETED)
@@ -89,6 +89,16 @@ class HoudiniDistributedTracker(BaseNode):
     @classmethod
     def type_name(cls) -> str:
         return 'houdini_distributed_tracker'
+
+    @classmethod
+    def description(cls) -> str:
+        return 'creates a running houdini distributed simulation tracker\n' \
+               'when tracker is up and running - a child task is created\n' \
+               'child task inherits all attributes from parent\n' \
+               'additionally these attribs are created:\n' \
+               '    SIMTRACKER_HOST: hostname of the tracker\n' \
+               '    SIMTRACKER_PORT: port of the tracker\n' \
+               '    tracker kill port: port of the tracker for control commands'
 
     def __init__(self, name: str):
         super(HoudiniDistributedTracker, self).__init__(name)

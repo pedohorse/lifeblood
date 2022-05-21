@@ -169,7 +169,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "`task['SIMTRACKER_HOST']`",
+                    "uvalue": "`task['simtracker_host']`",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -271,7 +271,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "slice SIMTRACKER_*",
+                    "uvalue": "slice simtracker_*",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
