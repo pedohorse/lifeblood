@@ -136,7 +136,8 @@ def text_to_bytes(text: str) -> bytes:
     return b''.join(partlist)
 
 
-from PySide2.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QFileDialog
+from PySide2.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QFileDialog,\
+                              QInputDialog, QMessageBox
 from PySide2.QtGui import QFont
 import string
 
@@ -148,6 +149,13 @@ class Editor(QWidget):
         self.__layout = QVBoxLayout(self)
 
         self.__tabwidget = QTabWidget()
+        tabcontrol_layout = QHBoxLayout()
+        self.__newtab_button = QPushButton('add')
+        self.__deltab_button = QPushButton('delete')
+        tabcontrol_layout.addStretch(1)
+        tabcontrol_layout.addWidget(self.__newtab_button)
+        tabcontrol_layout.addWidget(self.__deltab_button)
+        self.__layout.addLayout(tabcontrol_layout)
         self.__layout.addWidget(self.__tabwidget)
 
         self.__load_button = QPushButton('load file')
@@ -159,18 +167,27 @@ class Editor(QWidget):
 
         self.__tabs: List[QWidget] = []
 
-        self.__index: Optional[Index] = None
+        self.__index: Index = Index()
 
         # connec
-        self.__load_button.clicked.connect(self.load_button_callback)
-        self.__save_button.clicked.connect(self.save_button_callback)
+        self.__load_button.clicked.connect(self._load_button_callback)
+        self.__save_button.clicked.connect(self._save_button_callback)
+        self.__newtab_button.clicked.connect(self._newtab_callback)
+        self.__deltab_button.clicked.connect(self._deltab_callback)
 
     def clear(self):
         self.__tabwidget.clear()
         for tab in self.__tabs:
             tab.deleteLater()
         self.__tabs.clear()
-        self.__index = None
+        self.__index = Index()
+
+    def _new_tab_widget(self) -> QTextEdit:
+        tab = QTextEdit()
+        font = QFont('monospace')
+        font.setFixedPitch(True)
+        tab.setFont(font)
+        return tab
 
     def load_file(self, filepath):
         self.clear()
@@ -178,18 +195,14 @@ class Editor(QWidget):
             self.__index = Index.parse_index_root(f.read())
 
         for entry in self.__index.entries:
-            tab = QTextEdit()
-            font = QFont('monospace')
-            font.setFixedPitch(True)
-            tab.setFont(font)
-            print(repr(entry.rawdata))
+            tab = self._new_tab_widget()
 
             text = bytes_to_text(entry.rawdata)
             assert entry.rawdata == text_to_bytes(text)
             tab.setText(text)
 
             self.__tabs.append(tab)
-            self.__tabwidget.addTab(tab, entry.name.decode('UTF-8'))
+            self.__tabwidget.addTab(tab, entry.name.decode('ascii'))
 
     def save_file(self, filepath):
         for entry, tab in zip(self.__index.entries, self.__tabs):
@@ -197,17 +210,47 @@ class Editor(QWidget):
         with open(filepath, 'wb') as f:
             f.write(self.__index.serialize())
 
-    def load_button_callback(self):
+    def _load_button_callback(self):
         filepath, _ = QFileDialog.getOpenFileName(self)
         if not filepath:
             return
         self.load_file(filepath)
 
-    def save_button_callback(self):
+    def _save_button_callback(self):
         filepath, _ = QFileDialog.getSaveFileName(self)
         if not filepath:
             return
         self.save_file(filepath)
+
+    def _newtab_callback(self):
+        name, good =QInputDialog.getText(self, 'entry name', 'name of new preset')
+        if not good or not name:
+            return
+        try:
+            name = name.encode('ascii')
+        except UnicodeEncodeError:
+            QMessageBox.warning(self, 'bad name', 'name should be ascii')
+            return
+        entry = Entry()
+        entry.name = name
+        entry.ctime = 0
+        tab = self._new_tab_widget()
+        self.__tabs.append(tab)
+        self.__tabwidget.addTab(tab, entry.name.decode('ascii'))
+        self.__index.entries.append(entry)
+
+    def _deltab_callback(self):
+        if QMessageBox.warning(self, 'confirm', 'delete current tab?', QMessageBox.Ok | QMessageBox.Cancel) != QMessageBox.Ok:
+            return
+        wgt = self.__tabwidget.currentWidget()
+        if wgt is None:
+            return
+        idx = self.__tabwidget.currentIndex()
+        assert self.__tabs[idx] == wgt
+
+        self.__tabwidget.removeTab(idx)
+        self.__tabs.pop(idx)
+        self.__index.entries.pop(idx)
 
 
 if __name__ == '__main__':
