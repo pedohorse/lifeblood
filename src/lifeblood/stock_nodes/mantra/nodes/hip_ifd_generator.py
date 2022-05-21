@@ -38,7 +38,7 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
                     .append_visibility_condition(mask_hip, '==', True)
             ui.add_parameter('driver path', 'mantra node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
-            ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`/ifds/`node.name`.$F4.ifd.sc")
+            ui.add_parameter('ifd file path', 'ifd file path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`/`task.name`_`task.id`/ifds/`node.name`.$F4.ifd.sc")
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
                 ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
