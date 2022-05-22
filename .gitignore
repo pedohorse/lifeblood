@@ -13,3 +13,4 @@ pkg_*/dist
 pkg_*/src
 **/otls/backup
 **/houdini/houdini.project
+dcc_plugins/houdini/otls/Driver-taskflow*
