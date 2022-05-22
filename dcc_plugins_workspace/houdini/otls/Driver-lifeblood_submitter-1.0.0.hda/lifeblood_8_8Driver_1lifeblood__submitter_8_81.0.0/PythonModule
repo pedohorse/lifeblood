@@ -1,4 +1,5 @@
 import json
+import os
 try:
     from lifeblood_runtime import submitting
 except ImportError:
@@ -9,13 +10,13 @@ def submit_button_callback(node):
     try:
         submit(node)
     except hou.Error as e:
-        hou.ui.displayMessage('{} ({}): {}'.format(e.exceptionTypeName(), e.description(), e.instanceMessage()))
-    except ConnectionError as e:
-        hou.ui.displayMessage('Failed to connect to the scheduler: {}'.format(str(e)))
+        hou.ui.displayMessage('{}: {}'.format(e.exceptionTypeName(), e.instanceMessage()), severity=hou.severityType.Error)
+    except IOError as e:
+        hou.ui.displayMessage('Failed to connect to the scheduler: {}'.format(str(e)), severity=hou.severityType.Error)
     except RuntimeError as e:
-        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)))
+        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
     except Exception as e:
-        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)))
+        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
 
 def submit(node):
     s_ip = node.parm('sch_ip').evalAsString()

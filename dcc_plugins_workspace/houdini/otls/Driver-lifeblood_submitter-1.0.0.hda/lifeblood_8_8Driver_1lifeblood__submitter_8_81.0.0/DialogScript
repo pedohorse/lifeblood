@@ -35,7 +35,7 @@
         label   "create task"
         type    button
         default { "0" }
-        parmtag { "script_callback" "hou.phm().submit(kwargs['node'])" }
+        parmtag { "script_callback" "hou.phm().submit_button_callback(kwargs['node'])" }
         parmtag { "script_callback_language" "python" }
     }
     parm {
