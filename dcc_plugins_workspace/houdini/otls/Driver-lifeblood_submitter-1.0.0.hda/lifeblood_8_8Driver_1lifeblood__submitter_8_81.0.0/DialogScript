@@ -127,7 +127,7 @@
         name    "netscratchpath"
         label   "global scratch location"
         type    string
-        default { "/tmp" }
+        default { "" }
         help    "it just sets additional attribute called global_scratch_location"
         parmtag { "script_callback_language" "python" }
     }
