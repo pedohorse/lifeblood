@@ -1,0 +1,14 @@
+Operator:     lifeblood::lifeblood_submitter::1.0.0
+Label:        Lifeblood Submitter
+Path:         oplib:/lifeblood::Driver/lifeblood_submitter::1.0.0?lifeblood::Driver/lifeblood_submitter::1.0.0
+Icon:         ROP_subnet
+Table:        Driver
+License:      
+Extra:        
+User:         
+Inputs:       0 to 0
+Subnet:       true
+Python:       false
+Empty:        false
+Modified:     Tue Apr 19 01:55:06 2022
+

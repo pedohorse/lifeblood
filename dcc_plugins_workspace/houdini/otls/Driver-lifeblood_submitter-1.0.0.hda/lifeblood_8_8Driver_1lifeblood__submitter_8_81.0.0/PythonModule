@@ -1,0 +1,114 @@
+import json
+try:
+    from lifeblood_runtime import submitting
+except ImportError:
+    print('lifeblood_runtime is not loaded. lifeblood submitter will not work, it is most likely not a problem if running in batch mode')
+
+
+def submit(node):
+    s_ip = node.parm('sch_ip').evalAsString()
+    s_port = node.parm('sch_port').evalAsInt()
+    
+    nodename = node.parm('node_name').evalAsString().strip()
+    if nodename == '':
+        raise hou.Error('node name cannot be empty')
+    taskname = node.parm('task_name').evalAsString().strip()
+    if taskname == '':
+        raise hou.Error('task name cannot be empty')
+        
+    task = submitting.create_task(taskname, nodename, (s_ip, s_port), priority=node.evalParm('priority'))
+    env_args = {}
+    env_name = node.evalParm('env_resolver_name')
+    for i in range(node.parm('env_resolver_args').evalAsInt()):
+        env_args[node.evalParm('env_arg_name_%d' % i)] = node.evalParm('env_arg_val_%d' % i)
+    task.set_environment_resolver(env_name, env_args)
+    
+    task.set_attribute('global_scratch_location', node.parm('netscratchpath').evalAsString())
+    
+    for i in range(node.parm('attribs').evalAsInt()):
+        if not node.parm('enable_%d' % i).evalAsInt():
+            continue
+        attrname = node.parm('attr_name_%d' % i).evalAsString()
+        attrtype = node.parm('attr_type_%d' % i).evalAsString()
+        if attrtype == 'int':
+            val = node.parm('val_int_%d' % i).evalAsInt()
+        elif attrtype == 'float':
+            val = node.parm('val_flt_%d' % i).evalAsFloat()
+        elif attrtype == 'str':
+            val = node.parm('val_str_%d' % i).evalAsString()
+        elif attrtype == 'bool':
+            val = node.parm('val_bln_%d' % i).evalAsInt() != 0
+        elif attrtype == 'list':
+            val = []
+            for j in range(node.parm('val_lst_%d' % i).evalAsInt()):
+                lst_attrtype = node.parm('lst_attr_type_%d_%d' % (i, j)).evalAsString()
+                if lst_attrtype == 'int':
+                    val.append(node.parm('lst_val_int_%d_%d' % (i, j)).evalAsInt())
+                elif lst_attrtype == 'float':
+                    val.append(node.parm('lst_val_flt_%d_%d' % (i, j)).evalAsFloat())
+                elif lst_attrtype == 'str':
+                    val.append(node.parm('lst_val_str_%d_%d' % (i, j)).evalAsString())
+                elif lst_attrtype == 'bool':
+                    val.append(node.parm('lst_val_bln_%d_%d' % (i, j)).evalAsInt() != 0)
+        elif attrtype == 'json':
+            val = json.loads(node.parm('val_jsn_%d' % i).evalAsString())
+        else:
+            raise NotImplementedError('unsupported attribute type %s' % attrtype)
+        task.set_attribute(attrname, val)
+    
+    task.submit()
+
+    
+def address_from_broadcast(node):
+    import socket
+    import struct
+    magic = b'=\xe2\x88\x88\xe2\xad\x95\xe2\x88\x8b='
+    s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    s.settimeout(1)
+    s.bind(('0.0.0.0', 9000))
+    
+    awaited_id = node.evalParm('brd_identifier')
+    timeout = node.evalParm('brd_timeout')
+
+    with hou.InterruptableOperation('listening to scheduler broadcast...', open_interrupt_dialog=True) as op:
+        for i in range(timeout):
+            op.updateProgress(i*1.0/timeout)
+            try:
+                data = s.recv(1024)
+            except socket.timeout:
+                pass
+            else:
+                if not data.startswith(magic):
+                    continue
+                data = data[len(magic):]
+                idlen, infolen = struct.unpack('>II', data[:8])
+                id = data[8:8+idlen].decode('UTF-8')
+                if id != awaited_id:
+                    continue
+                info = json.loads(data[8+idlen:8+idlen+infolen].decode('UTF-8'))
+                ip, port = info.get('worker', '127.0.0.1:7979').split(':')
+                return ip, int(port)
+            
+    return None, None
+    
+
+def fill_address_from_broadcast(node):
+    ip = None
+    port = None
+    try:
+        ip, port = address_from_broadcast(node)
+    except hou.OperationInterrupted:
+        if hou.isUIAvailable():
+            hou.ui.displayMessage('waiting interrupted', severity=hou.severityType.Warning)
+        else:
+            print('waiting interrupted')
+    if ip is None:
+        if hou.isUIAvailable():
+            hou.ui.displayMessage('did not receive a broadcast within timeout', severity=hou.severityType.Warning)
+        else:
+            print('did not receive a broadcast within timeout')
+        return
+    assert port is not None
+    node.parm('sch_ip').set(ip)
+    node.parm('sch_port').set(port)

@@ -1,0 +1,331 @@
+# Dialog script for lifeblood::lifeblood_submitter::1.0.0 automatically generated
+
+{
+    name	lifeblood::lifeblood_submitter::1.0.0
+    script	lifeblood::lifeblood_submitter::1.0.0
+    label	"Lifeblood Submitter"
+
+    help {
+	""
+    }
+
+    group {
+        name    "_hidden"
+        label   "_hidden"
+        invisibletab
+
+        parm {
+            name    "execute"
+            baseparm
+            label   "Render"
+            joinnext
+            export  none
+        }
+        parm {
+            name    "renderdialog"
+            baseparm
+            label   "Controls..."
+            nolabel
+            export  none
+        }
+    }
+
+    parm {
+        name    "submit"
+        label   "create task"
+        type    button
+        default { "0" }
+        parmtag { "script_callback" "hou.phm().submit(kwargs['node'])" }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "sch_ip"
+        label   "ip"
+        type    string
+        joinnext
+        default { "127.0.0.1" }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "sch_port"
+        label   "port"
+        type    integer
+        nolabel
+        default { "7979" }
+        range   { 0 10 }
+        parmtag { "script_callback_language" "python" }
+    }
+    groupcollapsible {
+        name    "broadcast_parameters"
+        label   "broadcast parameters"
+
+        parm {
+            name    "brd_ip"
+            label   "broadcast ip"
+            type    string
+            joinnext
+            default { "0.0.0.0" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "brd_port"
+            label   "port"
+            type    integer
+            nolabel
+            default { "9000" }
+            range   { 0 10 }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "brd_timeout"
+            label   "timeout (sec)"
+            type    integer
+            default { "15" }
+            range   { 1! 20 }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "brd_identifier"
+            label   "identifier"
+            type    string
+            default { "lifeblood_scheduler" }
+            parmtag { "script_callback_language" "python" }
+        }
+    }
+
+    parm {
+        name    "broadcast_listen"
+        label   "Listen to Scheduler's broadcast to get ip and port"
+        type    button
+        default { "0" }
+        parmtag { "script_callback" "hou.phm().fill_address_from_broadcast(hou.pwd())" }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "node_name"
+        label   "node name"
+        type    string
+        default { "" }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "task_name"
+        label   "task name"
+        type    string
+        default { "$OS" }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "priority"
+        label   "task group priority"
+        type    float
+        default { "50" }
+        range   { 0! 100 }
+        parmtag { "script_callback_language" "python" }
+    }
+    parm {
+        name    "netscratchpath"
+        label   "global scratch location"
+        type    string
+        default { "/tmp" }
+        help    "it just sets additional attribute called global_scratch_location"
+        parmtag { "script_callback_language" "python" }
+    }
+    group {
+        name    "folder0"
+        label   "Attributes"
+
+        multiparm {
+            name    "attribs"
+            label    "attributes"
+            default 1
+            parmtag { "multistartoffset" "0" }
+
+            parm {
+                name    "enable_#"
+                label   "name"
+                type    toggle
+                joinnext
+                default { "1" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "attr_name_#"
+                label   "name"
+                type    string
+                nolabel
+                joinnext
+                default { "attr1" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "attr_type_#"
+                label   "type"
+                type    ordinal
+                nolabel
+                joinnext
+                default { "0" }
+                menu {
+                    "int"   "int"
+                    "float" "float"
+                    "str"   "string"
+                    "bool"  "bool"
+                    "list"  "list"
+                    "json"  "json form"
+                }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "val_int_#"
+                label   "value"
+                type    integer
+                nolabel
+                joinnext
+                default { "0" }
+                hidewhen "{ attr_type_# != int }"
+                range   { 0 10 }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "val_flt_#"
+                label   "value"
+                type    float
+                nolabel
+                joinnext
+                default { "0" }
+                hidewhen "{ attr_type_# != float }"
+                range   { 0 10 }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "val_str_#"
+                label   "value"
+                type    string
+                nolabel
+                default { "" }
+                hidewhen "{ attr_type_# != str }"
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "val_jsn_#"
+                label   "value"
+                type    string
+                nolabel
+                default { "" }
+                hidewhen "{ attr_type_# != json }"
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "val_bln_#"
+                label   "value"
+                type    toggle
+                nolabel
+                default { "0" }
+                hidewhen "{ attr_type_# != bool }"
+                parmtag { "script_callback_language" "python" }
+            }
+            multiscroll {
+                name    "val_lst_#"
+                label    "list values count"
+                hidewhen "{ attr_type_# != list }"
+                parmtag { "multistartoffset" "0" }
+
+                parm {
+                    name    "lst_attr_type_#_#"
+                    label   "type"
+                    type    ordinal
+                    nolabel
+                    joinnext
+                    default { "0" }
+                    menu {
+                        "int"   "int"
+                        "float" "float"
+                        "str"   "string"
+                        "bool"  "bool"
+                    }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "lst_val_int_#_#"
+                    label   "value"
+                    type    integer
+                    nolabel
+                    joinnext
+                    default { "0" }
+                    hidewhen "{ lst_attr_type_#_# != int }"
+                    range   { 0 10 }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "lst_val_flt_#_#"
+                    label   "value"
+                    type    float
+                    nolabel
+                    joinnext
+                    default { "0" }
+                    hidewhen "{ lst_attr_type_#_# != float }"
+                    range   { 0 10 }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "lst_val_str_#_#"
+                    label   "value"
+                    type    string
+                    nolabel
+                    joinnext
+                    default { "" }
+                    hidewhen "{ lst_attr_type_#_# != str }"
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "lst_val_bln_#_#"
+                    label   "value"
+                    type    toggle
+                    nolabel
+                    default { "0" }
+                    hidewhen "{ lst_attr_type_#_# != bool }"
+                    parmtag { "script_callback_language" "python" }
+                }
+            }
+
+        }
+
+    }
+
+    group {
+        name    "folder0_1"
+        label   "Environment resolver"
+
+        parm {
+            name    "env_resolver_name"
+            label   "Environment Resolver Name"
+            type    string
+            default { "StandardEnvironmentResolver" }
+            parmtag { "script_callback_language" "python" }
+        }
+        multiparm {
+            name    "env_resolver_args"
+            label    "environment resolver parameters"
+            default 2
+            parmtag { "multistartoffset" "0" }
+
+            parm {
+                name    "env_arg_name_#"
+                label   "name"
+                type    string
+                joinnext
+                default { "" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "env_arg_val_#"
+                label   "value"
+                type    string
+                default { "" }
+                parmtag { "script_callback_language" "python" }
+            }
+        }
+
+    }
+
+}

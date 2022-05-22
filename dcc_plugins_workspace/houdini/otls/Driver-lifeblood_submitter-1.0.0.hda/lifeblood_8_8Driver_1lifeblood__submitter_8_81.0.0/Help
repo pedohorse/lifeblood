@@ -1,0 +1,69 @@
+= Lifeblood Task Creator =
+
+"""Create a Lifeblood task"""
+
+This node allows for generic Lifeblood task creation.
+Arbitrary task attributes may be set, arbitrary environment resolvers used
+
+Generally this node should be wrapped into more artist-friendly nodes that specialize this general behaviour,
+but still this node comes with a couple of presets to be used in conjuncture with lifeblood's stock presets, and are
+a convenient starting point.
+
+@parameters
+
+== Scheduler Connection Related Parameters ==
+
+create task:
+    #id: submit
+
+    create a lifeblood task given all parameters specified below
+
+ip:
+    #id: sch_ip
+
+    ip address and port of the scheduler, use Listen To Scheduler's Broadcast button to fill it automatically
+
+Listen To Scheduler's Broadcast to get ip and port:
+    #id: broadcast_listen
+
+    for a given timeout listen to scheduler's broadcasts on the network to get ip and port of the scheduler
+
+node name:
+    #id: node_name
+
+    Task will be created on a certain node in Lifeblood's node graph. Here you set that name of that node.
+
+    NOTE:
+        In Lifeblood name doesn't have to be unique, so make sure to create a unique name for your input nodes in Lifeblood graph
+
+task name:
+    #id: task_name
+
+    Name of the task to be created. By default the new task will be added to the group with the same name
+
+priority:
+    #id: priority
+
+    This priority will be set to the newly created task group
+
+global scratch location:
+    #id: netscratchpath
+
+    This is the root folder that must be accessible by ALL workers (network shared folder)
+
+    Some Lifeblood nodes are set by default to use this location to temporary store task's files. For example - ifd files of the render.
+    IFD files will be created there by one node and later rendered by another.
+
+    If you are only using a single machine - this can be set to any local path (temp dir by default)
+
+    If you have several machines that run workers in your home network - this should be some path that is accessible on every machine.
+    * in case of windows this can be a mounted network share, like `Z:\shared\lifeblood_scratch\`
+    * in case of linux this can be, well, anything, depending on your network setup...
+
+    Assuming that you have already set up network (otherwise workers from other machines won't be able to access hip files, caches,
+    textures, assets etc) - it shouldn't be a problem to find a shared scratch location.
+
+    TIP:
+        you may save certain scratch location as permanent defaults for your houdini not to write it in every time.
+
+
