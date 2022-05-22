@@ -5,6 +5,18 @@ except ImportError:
     print('lifeblood_runtime is not loaded. lifeblood submitter will not work, it is most likely not a problem if running in batch mode')
 
 
+def submit_button_callback(node):
+    try:
+        submit(node)
+    except hou.Error as e:
+        hou.ui.displayMessage('{} ({}): {}'.format(e.exceptionTypeName(), e.description(), e.instanceMessage()))
+    except ConnectionError as e:
+        hou.ui.displayMessage('Failed to connect to the scheduler: {}'.format(str(e)))
+    except RuntimeError as e:
+        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)))
+    except Exception as e:
+        hou.ui.displayMessage('Failed to submit: {}'.format(str(e)))
+
 def submit(node):
     s_ip = node.parm('sch_ip').evalAsString()
     s_port = node.parm('sch_port').evalAsInt()
