@@ -9,6 +9,12 @@ Welcome to Lifeblood documentation!
     usage
     api
 
+.. toctree::
+    :maxdepth: 2
+    :caption: Components:
+
+    scheduler
+
 
 
 Indices and tables

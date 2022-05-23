@@ -1,4 +1,4 @@
-.. _scheduler:
+.. _scheduler_api:
 
 =======================
 Scheduler API Reference

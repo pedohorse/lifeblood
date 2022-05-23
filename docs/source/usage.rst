@@ -66,6 +66,26 @@ Detailed config file description see at:
 | ``lifeblood scheduler``
 | use ``lifeblood <command> --help`` to get reference for each command
 
+Hardware Setup
+==============
+
+In this How To it's assumed that you have the simplest and most common individual network setup:
+
+* all your computers on the network can directly communicate to each other
+* all your computers in the same subnetwork
+* all your computers have some shared location accessible from all computers with the same address
+
+
+
+Prepare To Lunch
+================
+
+| As said before, the most common use case for Lifeblood needs little to none configuration,
+| However, if you plan to use default standard environment resolver - it needs to detect the location of
+  the software it can resolve.
+
+* TODO: add steps how to generate initial resolver config
+
 Launch
 ======
 
@@ -80,53 +100,9 @@ Start a Scheduler
 
 | Scheduler is the central part of Lifeblood: it manages tasks and workers.
 | Generally there should always be only one single scheduler running in a local network.
-| read more here :ref:`in overview <overview-scheduler>`
+| read more here :ref:`in overview <scheduler>`
 
-| sure, you could just start scheruler with simple command ``lifeblood scheduler``
-| but let's first cover a couple of important moments:
-
-Database
-^^^^^^^^
-
-when launched with ``lifeblood scheduler`` - scheduler will start with default database located at
-``<config_dir>>/scheduler/main.db``
-
-It is recommended to keep database on a fast drive (SSD is better than HDD), so you can adjust database location
-in the config file ``<config_dir>>/scheduler/config.toml``
-
-Broadcasting
-^^^^^^^^^^^^
-
-| By default Scheduler will start broadcasting it's address over the local network (every 10s by default)
-| This way other components (worker, viewer) will be able to automatically connect to it when started
-  from anywhere within the LAN.
-| You should never start 2 or more broadcasting schedulers in the same LAN, otherwise their broadcasts will collide
-  and workers and viewers will get confused.
-
-You can disable broadasting in scheduler's config file, but then you will have to properly configure workers and viewers manually
-so they know where to connect.
-
-Logging
-^^^^^^^
-
-| All Lifeblood components log to stdout, as well as to a log file.
-| Log files location is:
-
-* ``/home/<username>/.local/share/lifeblood/log`` (or ``$XDG_DATA_HOME`` if defined) (linux)
-* ``C:\Users\<username>\AppData\Local\lifeblood\log`` (based on ``%LOCALAPPDATA%``) (windows)
-* ``/Users/<username>/Library/Application Support/lifeblood/log`` (mac)
-
-By default all components of Lifeblood are set to log only "important" messages (like warnings and errors),
-but to figure out what's happening sometimes you would need a bit more information.
-
-| All of Lifeblood's components can accept ``--loglevel`` parameter before command to specify minimum log level to, well, log.
-| for example ``lifeblood scheduler --loglevel DEBUG`` will set default log level to DEBUG and you will see all the
-  crap printed out into stdout
-
-Let's actually start it already
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-As I've mentioned before, starting scheduler is simple:
+Starting scheduler is simple:
 
 * ``lifeblood scheduler`` - this will start scheduler with all settings taken from configs
 * ``lifeblood --loglevel DEBUG scheduler`` - this would start scheduler with loglevel set to verbose DEBUG level.
@@ -150,7 +126,7 @@ Start Workers
 
 currently worker requires:
 
-* existing temporary directory, shared between all worker instances
+* existing temporary directory, shared between all worker instances (:ref:`scratch location`)
 * all worker instances must share the same process namespace
 
 * ``lifeblood worker``
