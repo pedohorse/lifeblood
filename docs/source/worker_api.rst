@@ -1,4 +1,4 @@
-.. _worker:
+.. _worker_api:
 
 ====================
 Worker API Reference

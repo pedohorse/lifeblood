@@ -7,14 +7,16 @@ Welcome to Lifeblood documentation!
 
     howtouse
     usage
+    tutorials
     api
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 1
     :caption: Components:
 
     scheduler
-
+    worker
+    viewer
 
 
 Indices and tables

@@ -9,5 +9,5 @@ API Reference
     :caption: Contents
 
     scheduler_api
-    worker
-    viewer
+    worker_api
+    viewer_api

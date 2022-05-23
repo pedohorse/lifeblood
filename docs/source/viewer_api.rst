@@ -1,4 +1,4 @@
-.. _viewer:
+.. _viewer_api:
 
 ====================
 Viewer API Reference

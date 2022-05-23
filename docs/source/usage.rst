@@ -1,3 +1,5 @@
+.. _usage:
+
 ==========
 How to Use
 ==========
@@ -69,12 +71,17 @@ Detailed config file description see at:
 Hardware Setup
 ==============
 
-In this How To it's assumed that you have the simplest and most common individual network setup:
+In this "How To" it's assumed that you have the simplest and most common individual network setup:
 
-* all your computers on the network can directly communicate to each other
-* all your computers in the same subnetwork
-* all your computers have some shared location accessible from all computers with the same address
-
+* All your computers on the network can directly communicate to each other
+* | All your computers in the same subnetwork
+  | This is required for broadcasting. To ease the setup scheduler will broadcast it's address into current subnetwork.
+    Subnetwork targeted broadcasts should be forwarded by routers if needed, but it's safer (and common) to have
+    all devices connected to the same router.
+* | All your computers have some shared location accessible from all computers with the same address
+  | This is a reasonable assumption as most commonly you would want to have uniform access to scenes,
+    textures, models etc from all work machines, and so that ``path/to/texture1`` leads to the same texture file
+    on all machines
 
 
 Prepare To Lunch
@@ -100,7 +107,7 @@ Start a Scheduler
 
 | Scheduler is the central part of Lifeblood: it manages tasks and workers.
 | Generally there should always be only one single scheduler running in a local network.
-| read more here :ref:`in overview <scheduler>`
+| read more :ref:`in scheduler documentation <scheduler>`
 
 Starting scheduler is simple:
 
@@ -122,51 +129,43 @@ Start Workers
   resources among each other
 | Workers can be started on the same machine with scheduler, BUT you should be careful to leave enough resources for
   scheduler to work. If machine runs out of memory - scheduler will have problems working and may crash
-  or be killed by system.
+  or be killed by the system.
 
-currently worker requires:
+Read more :ref:`in worker documentation <worker>`
 
-* existing temporary directory, shared between all worker instances (:ref:`scratch location`)
-* all worker instances must share the same process namespace
+.. _usage pools:
 
-* ``lifeblood worker``
-* ``lifeblood viewer`` (if lifeblood_viewer package is also installed)
+Use Pools instead
+^^^^^^^^^^^^^^^^^
 
-here you would also supply component-specific command line arguments, for example
+Instead of starting individual workers you will probably want to start some kind of worker pool that will manage workers
+for you
 
-* ``lifeblood --loglevel DEBUG worker``
-* ``lifeblood --loglevel DEBUG scheduler --verbosity-pinger INFO --db-path path/to/database.db``
+If you just want to get it started:
 
-It's important to understand: one worker can launch only one payload process at one time,
-there is no concept of slots. Instead, workers running locally share resources among each other.
+  ``lifeblood pool simple``
 
-So all locally running workers will inform each other about the amount of resources that the task they
-execute requested, sharing all machine resources without overspending.
+That's it. This way a "simple" worker pool will be started. it creates new workers as long as no idle workers exist and
+system has resources left to do work.
 
-On a machine with a lot of CPU cores for example it makes sense to have more than one workers running
-to use resources efficiently, and it can be tedious to manually launch all workers.
+You can start individual workers yourself manually with, but simple cases should be covered by the pool
 
-For that reason worker pools exist. Generally it's a bigger concept, in this case we need a simplest worker pool
-implementation - simple local worker pool.
+  ``lifeblood worker``
 
-This pool operates according to the following logic:
+Start Viewer
+------------
 
-* if there is no free workers and we are not at worker limit - launch a worker
-* a worker that finishes a task terminates
+Viewer is a component that is used to connect to the scheduler and:
 
-well, that's it, not much complicated logic in there, but it's more powerful than a worker with constant number of slots:
+* see the progress of your tasks
+* create node graph
+* manipulate tasks
 
-* pool launches a worker (let's call it worker1), it advertises to scheduler all of it's (for example) 32 cores and 64 GBs of ram
-* scheduler assigns worker1 a task that requires 8 cpu cores adn 16GB ram
-* there's no free workers now, so pool launches another worker (worker2). worker2 will communicate with worker1
-  and learn about the task it's executing, so worker2 will only advertise 24 cores and 48 GBs of ram to the scheduler
-* scheduler assigns worker2 a task that requires 20 cores and 40GB of ram
-* there's no free workers now, so pool launches another worker (worker3). worker3 will communicate with worker1
-  and worker2 and set it's resources to 4 cores and 8 GBs of ram
-* now worker1 finishes task and terminates, worker2 and worker3 are informed, and both of them adjust the resources
-  advertised to scheduler to 12 cores and 24 GB of ram, though worker2 is still working on it's task
-* worker2 finishes task and terminates, worker3 is informed, so it adjusts resources advertised to scheduler to full
-  machine's resources: 32 cores and 64 GBs of ram.
+  ``lifeblood viewer``
 
-and this can get as granular as resources allow. That's why always make sure to set up non zero resources usage for your tasks
-and limit maximum workers that pool can spawn to some sane and safe amount.
+Viewer is just a user interface, it's not needed for proper scheduler or worker operation.
+
+You will have to use viewer to set up your Lifeblood task processing node network.
+By default scheduler with a new database has no nodes, so no tasks can be created.
+
+see :ref:`tutorials<tutorials_viewer>` to understand how to work in the viewer

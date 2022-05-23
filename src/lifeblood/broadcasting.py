@@ -5,6 +5,7 @@ import random
 import struct
 
 from . import logging
+from .nethelpers import get_localhost
 
 from typing import Tuple, Union, Optional, Callable, Coroutine, Any
 
@@ -31,7 +32,7 @@ async def await_broadcast(identifier: str, broad_port: int = 9000, listen_addres
     message = await protocol.till_done()
 
     # rebroadcast to localhost
-    _, protocol = await create_broadcaster(identifier, message, broad_port=broad_port, ip='127.0.0.1', broadcasts_count=1)  # TODO: bet with my future self - i will regret hardcoding ipv4 localhost like that
+    _, protocol = await create_broadcaster(identifier, message, broad_port=broad_port, ip=get_localhost(), broadcasts_count=1)  # TODO: bet with my future self - i will regret hardcoding ipv4 localhost like that
     await protocol.till_done()
     return message
 
@@ -151,6 +152,6 @@ if __name__ == '__main__':
         result = await await_broadcast('teststuff')
         print('got result', result)
 
-    asyncio.get_event_loop().create_task(create_broadcaster('teststuff', '127.0.0.1:6669'))
+    asyncio.get_event_loop().create_task(create_broadcaster('teststuff', f'{get_localhost()}:6669'))
     asyncio.get_event_loop().create_task(message_receiver())
     asyncio.get_event_loop().run_forever()
