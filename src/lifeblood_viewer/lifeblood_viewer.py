@@ -1,4 +1,5 @@
 import os
+import pathlib
 from datetime import datetime, timezone
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
@@ -158,6 +159,9 @@ class GroupsView(QTreeView):
 class LifebloodViewer(QMainWindow):
     def __init__(self, db_path: str = None, parent=None):
         super(LifebloodViewer, self).__init__(parent)
+        # icon
+        self.setWindowIcon(QIcon(str(pathlib.Path(__file__).parent/'icons'/'lifeblood.svg')))
+
         if db_path is None:
             db_path = paths.config_path('node_viewer.db', 'viewer')
 
