@@ -11,14 +11,12 @@ jobs:
     runs-on: ubuntu-latest
   
     steps:
+    - uses: actions/checkout@v1
     - name: Set up Python 3.8
       uses: actions/setup-python@v2
       with:
         python-version: 3.8
-    - name: Sphinx Pages
-      uses: seanzhengw/sphinx-pages@d29427677b3b89c1b5311d9eb135fb4168f4ba4a
+    - uses: ammaraskar/sphinx-action@f9cb44b1fdc634b1e7d71ff0721400226babd4ad
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        create_readme: true
-        source_dir: docs/source
-        install_extensions: true
+        docs-folder: "docs/source"
+
