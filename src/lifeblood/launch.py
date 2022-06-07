@@ -18,6 +18,9 @@ def main(argv):
     poolparser = subparsers.add_parser('pool', description='run a worker pool', add_help=False)
     poolparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the pool')
 
+    envresparser = subparsers.add_parser('resolver', description='configurate environment resolvers', add_help=False)
+    envresparser.add_argument('args', nargs=argparse.REMAINDER, help='arguments to pass to the pool')
+
     baseopts, _ = parser.parse_known_args(argv)
     cmd_id = argv.index(baseopts.command)
     cmd_argv = argv[cmd_id + 1:]
@@ -44,6 +47,9 @@ def main(argv):
             logger.error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
             logger.exception(e)
             return
+        return main(cmd_argv)
+    elif opts.command == 'resolver':
+        from .environment_resolver import main
         return main(cmd_argv)
 
 
