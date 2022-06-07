@@ -14,6 +14,7 @@ for all workers, not several different wrappers
 import asyncio
 import os
 import json
+import inspect
 from semantic_version import Version, SimpleSpec
 from types import MappingProxyType
 from . import invocationjob, paths, logging
@@ -28,9 +29,13 @@ _resolvers: Dict[str, Type["BaseEnvironmentResolver"]] = {}  # this should be lo
 
 def _populate_resolvers():
     for k, v in dict(globals()).items():
-        if not isinstance(v, BaseEnvironmentResolver) or v.__module__ != __name__:  # why this strange way?
+        if not inspect.isclass(v) \
+                or not issubclass(v, BaseEnvironmentResolver) \
+                or v == BaseEnvironmentResolver \
+                or v.__module__ != __name__:
             continue
         _resolvers[k] = v
+    logging.get_logger('environment_resolver_registry').info('resolvers found:\n' + '\n'.join(f'\t{k}' for k in _resolvers))
 
 
 def get_resolver(name: str) -> "BaseEnvironmentResolver":
