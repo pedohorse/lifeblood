@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
   
     steps:
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
     - name: Sphinx Pages
       uses: seanzhengw/sphinx-pages@d29427677b3b89c1b5311d9eb135fb4168f4ba4a
       with:
