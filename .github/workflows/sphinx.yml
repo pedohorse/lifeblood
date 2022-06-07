@@ -26,7 +26,7 @@ jobs:
         cd gh-pages
         touch .nojekyll
         git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.name "Documentation Master"
         git add .
         git commit -m "Update documentation" -a || true
         # The above command will fail if no changes were present, so we ignore
