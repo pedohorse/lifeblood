@@ -1,5 +1,5 @@
 import socket
-import netifaces
+import psutil
 import asyncio
 import time
 
@@ -90,13 +90,13 @@ def get_localhost():
 
 def get_default_broadcast_addr():
     addr = get_default_addr()
-    for iface in netifaces.interfaces():
-        ifaddrs = netifaces.ifaddresses(iface)
-        if netifaces.AF_INET not in ifaddrs:
-            continue
-        for inet_addr in ifaddrs[netifaces.AF_INET]:
-            if inet_addr.get('addr', None) == addr and 'broadcast' in inet_addr:
-                return inet_addr['broadcast']
+    net_addrs = psutil.net_if_addrs()
+    for iface, ifdatalist in net_addrs.items():
+        for ifdata in ifdatalist:
+            if ifdata.family != socket.AF_INET:
+                continue
+            if ifdata.address == addr and ifdata.broadcast is not None:
+                return ifdata.broadcast
     # if all fails
     get_logger('NETWORK').warning('could not detect a proper broadcast address, trying general 255.255.255.255')
     return '<broadcast>'
