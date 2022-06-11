@@ -1,25 +1,31 @@
 |master|dev|
 |---|---|
 |[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
+https://raw.githubusercontent.com/pedohorse/lifeblood/master/icon/lifeblood.svg
+![](icon/lifeblood_cleaned.svg)
 
-## Task Flow
-is a task/job management package  
-in terms of CG industry it's a mini render farm manager
+## Lifeblood
+is a task/job management software package  
 
-it consists of **scheduler**, **workers** and **GUIs**
+In terms of CG industry it's a mini render farm manager
+
+it consists of **scheduler**, **workers** and **viewers**
 
 a scheduler manages multiple workers, giving them tasks to complete.  
-GUI tool is used to check on the state of scheduler and tasks.
+GUI tool is used to check on the state of scheduler and tasks and modify task
+processing graph.
 
 This system overview should be very familiar to anyone who saw at least one renderfarm.
 
-### Original Purpose
-the purpose of this particular task manager is to be:
+### Features:
 - instantly and easily deployable
+- easy scaling in mind
+- dynamic worker resources management
 - aim for smaller farms or even individual setups
-- keep potential scaling in mind
-- be integrateable (to some extent) with existing farms
-- replacement for TOPs for any non-houdini related tasks
+  
+### TBD:
+- easy cloud deployment
+- be integrateable (to some extent) with existing farm managers
 
 ## UNDER DEVELOPMENT
 [task tracking in trello](https://trello.com/b/sSbc8u6M/lifeblood)
