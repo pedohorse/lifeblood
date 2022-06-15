@@ -41,7 +41,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
     def tearDownClass(cls) -> None:
         print('tearingdown')
         cls._scheduler_proc: subprocess.Popen
-        cls._scheduler_proc.send_signal(signal.SIGINT)
+        cls._scheduler_proc.send_signal(signal.SIGTERM)
         cls._scheduler_proc.wait()
         tracemalloc.stop()
         print('tearingdown done')
@@ -78,8 +78,8 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
-        tuple(workers.values())[-1].process.send_signal(signal.SIGINT)
-        tuple(workers.values())[-2].process.send_signal(signal.SIGINT)
+        tuple(workers.values())[-1].process.send_signal(signal.SIGTERM)
+        tuple(workers.values())[-2].process.send_signal(signal.SIGTERM)
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
