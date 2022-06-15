@@ -7,6 +7,8 @@ import struct
 from . import logging
 from .nethelpers import get_localhost
 
+from . import os_based_cheats
+
 from typing import Tuple, Union, Optional, Callable, Coroutine, Any
 
 Address = Tuple[str, int]
