@@ -209,7 +209,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             for procdata in itertools.chain(self.__worker_pool.values(), self.__workers_to_merge):
                 try:
                     self.__logger.debug(f'sending SIGINT to {procdata.process.pid}')
-                    procdata.process.send_signal(signal.SIGINT)
+                    procdata.process.send_signal(signal.SIGTERM)
                 except ProcessLookupError:
                     continue
                 wait_tasks.append(_proc_waiter(procdata.process))
@@ -252,15 +252,19 @@ async def async_main(argv):
 
     opts = parser.parse_args(argv)
 
-    def graceful_closer():
+    def graceful_closer(*args):
         logger.info('SIGINT/SIGTERM caught')
         pool.stop()
 
     logger.debug(f'starting {__name__} with: ' + ', '.join(f'{key}={val}' for key, val in opts.__dict__.items()))
     pool = await create_worker_pool(WorkerType.STANDARD, **opts.__dict__)
 
-    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    try:
+        asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+        asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # temporary solution for windows
+        signal.signal(signal.SIGINT, graceful_closer)
+        signal.signal(signal.SIGTERM, graceful_closer)
 
     await pool.wait_till_stops()
 

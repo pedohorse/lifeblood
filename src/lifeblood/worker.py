@@ -779,7 +779,7 @@ async def main_async(worker_type=WorkerType.STANDARD,
     """
     graceful_closer_no_reentry = False
 
-    def graceful_closer():
+    def graceful_closer(*args):
         nonlocal graceful_closer_no_reentry
         if graceful_closer_no_reentry:
             print('DOUBLE SIGNAL CAUGHT: ALREADY EXITING')
@@ -794,8 +794,13 @@ async def main_async(worker_type=WorkerType.STANDARD,
 
     worker = None
     stop_event = asyncio.Event()
-    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    try:
+        asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+        asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # temporary solution for windows
+        signal.signal(signal.SIGINT, graceful_closer)
+        signal.signal(signal.SIGTERM, graceful_closer)
+
     config = get_config('worker')
     logger = logging.get_logger('worker')
     if await config.get_option('worker.listen_to_broadcast', True):

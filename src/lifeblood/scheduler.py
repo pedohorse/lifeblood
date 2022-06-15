@@ -2205,12 +2205,17 @@ default_config = '''
 
 
 async def main_async(db_path=None):
-    def graceful_closer():
+    def graceful_closer(*args):
         scheduler.stop()
 
     scheduler = Scheduler(db_path)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    try:
+        asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+        asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # temporary solution for windows
+        signal.signal(signal.SIGINT, graceful_closer)
+        signal.signal(signal.SIGTERM, graceful_closer)
+
     await scheduler.start()
     await scheduler.wait_till_stops()
 
