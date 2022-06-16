@@ -1390,7 +1390,8 @@ class Scheduler:
                                   'total_gpu_count=?, '
                                   'gmem_size=?, '
                                   'total_gmem_size=?, '
-                                  'last_seen=?, ping_state=?, state=?, worker_type=? '
+                                  'last_seen=?, ping_state=?, state=?, worker_type=?, '
+                                  'last_address=?  '
                                   'WHERE "id"=?',
                                   (worker_resources.hwid,
                                    worker_resources.cpu_count,
@@ -1402,6 +1403,7 @@ class Scheduler:
                                    worker_resources.gmem_size,
                                    worker_resources.total_gmem_size,
                                    tstamp, ping_state, state, worker_type.value,
+                                   addr,
                                    worker_row['id']))
                 # async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
                 #     upd_worker_id = (await worcur.fetchone())['id']
@@ -1496,7 +1498,7 @@ class Scheduler:
             async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
             wid = worker_row['id']
-            print(wid)
+            # print(wid)
 
             # we ensure there are no invocations running with this worker
             async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND "state" = ?', (wid, InvocationState.IN_PROGRESS.value)) as invcur:
