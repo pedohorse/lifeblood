@@ -51,7 +51,6 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
         # there is a bug in py <=3.8, callback task can be GCd
         # see https://bugs.python.org/issue46309
         # so we HAVE to save a reference to self somewhere
-        print(asyncio.current_task())
         self.__saved_references.append(asyncio.current_task())
 
         async def read_string() -> str:
