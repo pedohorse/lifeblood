@@ -1251,7 +1251,8 @@ class Task(NetworkItemWithUI):
 
         self.__final_pos = pos
         self.__final_layer = layer
-        self.__animation_group.addAnimation(new_animation)
+        # turns out i do NOT need to add animation to group IF animgroup was passed as parent to animation - it's added automatically
+        # self.__animation_group.addAnimation(new_animation)
         if self.__animation_group.state() != QAbstractAnimation.Running:
             self.__animation_group.start()
         if self.__node and self.__node != node:
