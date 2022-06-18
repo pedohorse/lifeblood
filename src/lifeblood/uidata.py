@@ -172,7 +172,7 @@ def evaluate_expression(expression, context: Optional[ProcessingContext]):
                     {'os': os, 'pathlib': pathlib, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
                     context.locals() if context is not None else {})
     except Exception as e:
-        raise ParameterExpressionError(e)
+        raise ParameterExpressionError(e) from None
 
 
 class Parameter(ParameterHierarchyLeaf):
