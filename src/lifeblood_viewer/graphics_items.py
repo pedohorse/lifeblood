@@ -1183,9 +1183,6 @@ class Task(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
-    def set_groups(self, groups: Iterable[str]):
-        self.__groups = set(groups)
-
     def update_log(self, alllog: Dict[int, Dict[int, dict]]):
         """
         This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
