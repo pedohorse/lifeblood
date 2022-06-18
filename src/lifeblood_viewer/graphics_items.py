@@ -1244,7 +1244,7 @@ class Task(NetworkItemWithUI):
         if animgroup is None:
             animgroup = QSequentialAnimationGroup(self.scene())
             animgroup.finished.connect(self._clear_animation_group)
-        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=animgroup)
+        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 1.0), parent=animgroup)
         if self.__animation_group is None:
             self.setParentItem(None)
             self.__animation_group = animgroup
