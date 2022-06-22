@@ -52,7 +52,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
 
     async def _helper_test_basic(self, rnd):
         print('a')
-        swp = await create_worker_pool(scheduler_address=WorkerPoolTests.sched_addr)
+        swp = await create_worker_pool(idle_timeout=30, scheduler_address=WorkerPoolTests.sched_addr)
         print('b')
         await swp.add_worker()
         print('c')
@@ -74,7 +74,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
     async def _helper_test_min1(self, rnd):
         mint = 4
         mini = 1
-        swp = await create_worker_pool(minimal_total_to_ensure=mint, minimal_idle_to_ensure=mini, scheduler_address=WorkerPoolTests.sched_addr)
+        swp = await create_worker_pool(minimal_total_to_ensure=mint, minimal_idle_to_ensure=mini, worker_suspicious_lifetime=0, scheduler_address=WorkerPoolTests.sched_addr)
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
@@ -120,3 +120,6 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         for _ in range(5):
             await self._helper_test_smth1(rnd)
 
+    #TODO: add tests for worker_suspicious_lifetime
+    #TODO: add tests for idle_timeout
+    #TODO: add sanity check for behaviour when scheduler goes offline
