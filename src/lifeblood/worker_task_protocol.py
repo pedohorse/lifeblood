@@ -2,6 +2,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 import struct
+from .exceptions import NotEnoughResources
 from . import logging
 from . import invocationjob
 from . import nethelpers
@@ -31,9 +32,6 @@ class WorkerPingReply(Enum):
 
 
 class AlreadyRunning(RuntimeError):
-    pass
-
-class NotEnoughResources(RuntimeError):
     pass
 
 
@@ -109,6 +107,11 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     except Exception as e:
                         self.__logger.exception('no, cuz %s', e)
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
+                #
+                # quit worker
+                elif command == b'quit':
+                    self.__worker.stop()
+                    writer.write(b'\1')
                 #
                 # command drop/cancel current task
                 elif command == b'drop':  # scheduler wants us to drop current task
