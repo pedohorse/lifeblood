@@ -154,7 +154,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "fat cat*",
+                    "uvalue": "",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 }
