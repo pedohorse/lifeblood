@@ -3,8 +3,12 @@ import errno
 import argparse
 import asyncio
 import signal
+import time
 import itertools
 from types import MappingProxyType
+import json
+from .broadcasting import await_broadcast
+from .pulse_checker import PulseChecker
 
 from .logging import get_logger
 from .worker_pool_protocol import WorkerPoolProtocol
@@ -21,12 +25,15 @@ async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, m
 
 
 class ProcData:
-    __slots__ = {'process', 'id', 'state'}
+    __slots__ = {'process', 'id', 'state', 'state_entering_time', 'start_time', 'sent_term_signal'}
 
     def __init__(self, process: asyncio.subprocess.Process, id: int):
         self.process = process
         self.id = id
         self.state: WorkerState = WorkerState.OFF
+        self.state_entering_time = 0
+        self.start_time = time.time()
+        self.sent_term_signal = False
 
 
 class WorkerPool:  # TODO: split base class, make this just one of implementations
@@ -50,7 +57,14 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__ensure_minimum_idle = minimal_idle_to_ensure
         self.__maximum_total = maximum_total
         self.__worker_type = worker_type
+        self.__idle_timeout = 10  # after this amount of idling worker will be stopped if total count is above minimum
         self.__scheduler_address = scheduler_address
+
+        # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
+        self.__suspiciously_short_process_time = 4
+
+        self.__pulse_checker = PulseChecker(self.__scheduler_address, interval=10, maximum_misses=10)
+        self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
 
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
@@ -80,6 +94,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             raise RuntimeError('could not find an opened port!')
 
         self.__pool_task = asyncio.create_task(self.local_worker_pool_manager())
+        await self.__pulse_checker.start()
         self.__logger.debug(f'worker pool protocol listening on {self.__my_port}')
 
     def stop(self):
@@ -87,6 +102,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             return
         self.__worker_server.close()
         self.__stop_event.set()
+        self.__pulse_checker.stop()
         self.__stopped = True
 
     def __await__(self):
@@ -97,6 +113,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             return
         await self.__pool_task
         await self.__worker_server.wait_closed()
+        await self.__pulse_checker
 
     async def add_worker(self):
         if self.__stopped:
@@ -141,13 +158,22 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         kill them if aborted
         :return:
         """
+        async def _wait_and_reset_event(event: asyncio.Event, timeout):
+            await asyncio.sleep(timeout)
+            event.clear()
+
         check_timeout = 10
         stop_waiter = asyncio.create_task(self.__stop_event.wait())
         poke_waiter = asyncio.create_task(self.__poke_event.wait())
+        no_adding_workers = asyncio.Event()
+        wait_event_task = None
         try:
             while True:
                 done, pending = await asyncio.wait(itertools.chain(self.__worker_pool.keys(), (stop_waiter, poke_waiter)), timeout=check_timeout, return_when=asyncio.FIRST_COMPLETED)
                 time_to_stop = False
+                if wait_event_task is not None and wait_event_task.done():
+                    wait_event_task = None
+
                 for x in done:
                     if x == stop_waiter:
                         time_to_stop = True
@@ -159,6 +185,12 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                         self.__poke_event.clear()
                         poke_waiter = asyncio.create_task(self.__poke_event.wait())
                         continue
+                    # if not those 2 - x must be a process awaiting task
+                    if (span := time.time() - self.__worker_pool[x].start_time) < self.__suspiciously_short_process_time:
+                        self.__logger.warning(f'worker died within suspicious time threshold: {span}s. pausing worker creation for a bit')
+                        if wait_event_task is None:
+                            no_adding_workers.set()
+                            wait_event_task = asyncio.create_task(_wait_and_reset_event(no_adding_workers, 5))
                     wid = self.__worker_pool[x].id
                     del self.__worker_pool[x]
                     del self.__id_to_procdata[wid]
@@ -172,16 +204,40 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
                 self.__workers_to_merge.clear()
 
-                # ensure the ensure
-                just_added = 0
-                if len(self.__worker_pool) < self.__ensure_minimum_total:
-                    for _ in range(self.__ensure_minimum_total - len(self.__worker_pool)):
-                        await self.add_worker()
-                        just_added += 1
+                # check for idle workers
                 idle_guys = len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])  # consider OFF ones as IDLEs that just boot up
-                if idle_guys + just_added < self.__ensure_minimum_idle:
-                    for _ in range(self.__ensure_minimum_idle - idle_guys - just_added):
-                        await self.add_worker()
+                if idle_guys > self.__ensure_minimum_idle:
+                    max_to_kill = idle_guys - self.__ensure_minimum_idle
+                    # if we above minimum - we can kill some idle ones
+                    now = time.time()
+                    for procdata in self.__worker_pool.values():
+                        if max_to_kill <= 0:
+                            break
+                        if procdata.state != WorkerState.IDLE or now - procdata.state_entering_time < self.__idle_timeout or procdata.sent_term_signal:
+                            continue
+                        try:
+                            procdata.process.send_signal(signal.SIGTERM)
+                            procdata.sent_term_signal = True
+                        except ProcessLookupError:
+                            # probability is low, but this can happen. though if this happens often - something is wrong
+                            self.__logger.warning("tried kill some idle workers, but it was already dead")
+                        else:
+                            max_to_kill -= 1
+                            self.__poke_event.set()  # poke ourselves to clean up finished processes
+
+                # ensure the ensure
+                if not no_adding_workers.is_set():
+                    just_added = 0
+                    if len(self.__worker_pool) < self.__ensure_minimum_total:
+                        for _ in range(self.__ensure_minimum_total - len(self.__worker_pool)):
+                            await self.add_worker()
+                            just_added += 1  # cuz add_worker will not add to __id_to_procdata or __worker_pool - we do on next iteration
+
+                    if idle_guys + just_added < self.__ensure_minimum_idle:
+                        for _ in range(self.__ensure_minimum_idle - idle_guys - just_added):
+                            await self.add_worker()
+                else:
+                    self.__logger.debug('temporarily not adding workers')
 
             # debug logging
             self.__logger.debug(f'at pool closing, before cleanup: total workers: {len(self.__worker_pool)}, idle: {len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])}')
@@ -224,6 +280,11 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
     #
     # callbacks
+    async def _on_pulse_fail(self):
+        self.stop()
+
+    #
+    # callbacks from protocol
     async def _worker_state_change(self, worker_id: int, state: WorkerState):
         if worker_id not in self.__id_to_procdata:
             self.__logger.warning(f'reported state {state} for worker {worker_id} that DOESN\'T BELONG TO US')
@@ -231,6 +292,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
         if self.__id_to_procdata[worker_id].state != state:
             self.__id_to_procdata[worker_id].state = state
+            self.__id_to_procdata[worker_id].state_entering_time = time.time()
             self.__poke_event.set()
 
 
@@ -252,21 +314,61 @@ async def async_main(argv):
 
     opts = parser.parse_args(argv)
 
+    graceful_closer_no_reentry = False
+
     def graceful_closer(*args):
+        nonlocal graceful_closer_no_reentry
+        if graceful_closer_no_reentry:
+            print('DOUBLE SIGNAL CAUGHT: ALREADY EXITING')
+            return
+        graceful_closer_no_reentry = True
         logger.info('SIGINT/SIGTERM caught')
-        pool.stop()
+        nonlocal noloop
+        noloop = True
+        stop_event.set()
+        if pool:
+            pool.stop()
 
     logger.debug(f'starting {__name__} with: ' + ', '.join(f'{key}={val}' for key, val in opts.__dict__.items()))
-    pool = await create_worker_pool(WorkerType.STANDARD, **opts.__dict__)
+    pool = None
+    noloop = False  # TODO: add arg
 
+    # override event handlers
     try:
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
         asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
     except NotImplementedError:  # temporary solution for windows
         signal.signal(signal.SIGINT, graceful_closer)
         signal.signal(signal.SIGTERM, graceful_closer)
+    #
 
-    await pool.wait_till_stops()
+    stop_event = asyncio.Event()
+    stop_task = asyncio.create_task(stop_event.wait())
+    while True:
+        logger.info('listening for scheduler broadcasts...')
+        broadcast_task = asyncio.create_task(await_broadcast('lifeblood_scheduler'))
+        done, _ = await asyncio.wait((broadcast_task, stop_task), return_when=asyncio.FIRST_COMPLETED)
+        if stop_task in done:
+            broadcast_task.cancel()
+            logger.info('broadcast listening cancelled')
+            break
+        assert broadcast_task.done()
+        message = await broadcast_task
+        scheduler_info = json.loads(message)
+        logger.debug('received', scheduler_info)
+        addr = scheduler_info['worker']
+        ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
+        port = int(sport)
+        try:
+            pool = await create_worker_pool(WorkerType.STANDARD, scheduler_address=(ip, port), **opts.__dict__)
+        except Exception:
+            logger.exception('could not start the pool')
+        else:
+            await pool.wait_till_stops()
+            logger.info('pool quited')
+        if noloop:
+            break
+    logger.info('pool loop stopped')
 
 
 def main(argv):
