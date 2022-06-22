@@ -34,16 +34,20 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("parent_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS "resources" (
+	"hwid"	TEXT NOT NULL UNIQUE,
+	"cpu_count"	INTEGER NOT NULL,
+	"total_cpu_count"	INTEGER NOT NULL,
+	"cpu_mem"	INTEGER NOT NULL,
+	"total_cpu_mem"	INTEGER NOT NULL,
+	"gpu_count"	INTEGER NOT NULL,
+	"total_gpu_count"	INTEGER NOT NULL,
+	"gpu_mem"	INTEGER NOT NULL,
+	"total_gpu_mem"	INTEGER NOT NULL,
+	PRIMARY KEY("hwid")
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS "workers" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-	"cpu_count"	NUMERIC NOT NULL,
-	"total_cpu_count"	INTEGER NOT NULL,
-	"mem_size"	INTEGER NOT NULL,
-	"total_mem_size"	INTEGER NOT NULL,
-	"gpu_count"	NUMERIC NOT NULL,
-	"total_gpu_count"	INTEGER NOT NULL,
-	"gmem_size"	INTEGER NOT NULL,
-	"total_gmem_size"	INTEGER NOT NULL,
 	"last_address"	TEXT UNIQUE,
 	"last_seen"	INTEGER,
 	"last_checked"	INTEGER,
@@ -216,9 +220,9 @@ BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS "resources" (
 	"pid"	INTEGER NOT NULL,
 	"cpu_count"	INTEGER NOT NULL,
-	"mem_size"	INTEGER NOT NULL,
+	"cpu_mem"	INTEGER NOT NULL,
 	"gpu_count"	INTEGER NOT NULL,
-	"gmem_size"	INTEGER NOT NULL,
+	"gpu_mem"	INTEGER NOT NULL,
 	PRIMARY KEY("pid")
 );
 COMMIT;
