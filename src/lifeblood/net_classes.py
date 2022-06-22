@@ -18,7 +18,7 @@ class NodeTypeMetadata:
 
 
 class WorkerResources:
-    __res_names = ('cpu_count', 'mem_size', 'gpu_count', 'gmem_size')  # name of all main resources
+    __res_names = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')  # name of all main resources
     __resource_epsilon = 1e-5
 
     def __init__(self):
@@ -28,13 +28,13 @@ class WorkerResources:
         """
         self.hwid = uuid.getnode()
         self.cpu_count = psutil.cpu_count()  # note, cpu/gpu count can be float by design, but we don't like "almost" round float values
-        self.mem_size = psutil.virtual_memory().total
+        self.cpu_mem = psutil.virtual_memory().total
         self.gpu_count = 0  # TODO: implement this
-        self.gmem_size = 0
+        self.gpu_mem = 0
         self.total_cpu_count = self.cpu_count
-        self.total_mem_size = self.mem_size
+        self.total_cpu_mem = self.cpu_mem
         self.total_gpu_count = self.gpu_count
-        self.total_gmem_size = self.gmem_size
+        self.total_gpu_mem = self.gpu_mem
 
         for rname in self.__res_names:  # sanity check
             assert hasattr(self, rname)
@@ -50,21 +50,21 @@ class WorkerResources:
     def is_valid(self):
         return all(getattr(self, res) >= 0 for res in self.__res_names)
         # return self.cpu_count >= 0 and \
-        #        self.mem_size >= 0 and \
+        #        self.cpu_mem >= 0 and \
         #        self.gpu_count >= 0 and \
-        #        self.gmem_size >= 0
+        #        self.gpu_mem >= 0
 
     def __repr__(self):
-        return f'<cpu: {self.cpu_count}/{self.total_cpu_count}, mem: {self.mem_size}/{self.total_mem_size}, gpu: {self.gpu_count}/{self.total_gpu_count}, gmm: {self.gmem_size}/{self.total_gmem_size}>'
+        return f'<cpu: {self.cpu_count}/{self.total_cpu_count}, mem: {self.cpu_mem}/{self.total_cpu_mem}, gpu: {self.gpu_count}/{self.total_gpu_count}, gmm: {self.gpu_mem}/{self.total_gpu_mem}>'
 
     def __lt__(self, other):
         if not isinstance(other, WorkerResources):
             return other > self
         return any(getattr(self, res) < getattr(other, res) for res in self.__res_names)
         # return self.cpu_count < other.cpu_count or \
-        #        self.mem_size < other.mem_size or \
+        #        self.cpu_mem < other.cpu_mem or \
         #        self.gpu_count < other.gpu_count or \
-        #        self.gmem_size < other.gmem_size
+        #        self.gpu_mem < other.gpu_mem
 
     def __eq__(self, other):
         """
@@ -76,9 +76,9 @@ class WorkerResources:
             return other == self
         return all(getattr(self, res) == getattr(other, res) for res in self.__res_names)
         # return self.cpu_count == other.cpu_count and \
-        #        self.mem_size == other.mem_size and \
+        #        self.cpu_mem == other.cpu_mem and \
         #        self.gpu_count == other.gpu_count and \
-        #        self.gmem_size == other.gmem_size
+        #        self.gpu_mem == other.gpu_mem
 
     def __ne__(self, other):
         return not (self == other)
@@ -96,9 +96,9 @@ class WorkerResources:
                     val = rounded_val
             setattr(res, resname, val)
         # res.cpu_count -= other.cpu_count
-        # res.mem_size -= other.mem_size
+        # res.cpu_mem -= other.cpu_mem
         # res.gpu_count -= other.gpu_count
-        # res.gmem_size -= other.gmem_size
+        # res.gpu_mem -= other.gpu_mem
         return res
 
     def __add__(self, other):
@@ -111,8 +111,8 @@ class WorkerResources:
                     val = rounded_val
             setattr(res, resname, val)
         # res.cpu_count += other.cpu_count
-        # res.mem_size += other.mem_size
+        # res.cpu_mem += other.cpu_mem
         # res.gpu_count += other.gpu_count
-        # res.gmem_size += other.gmem_size
+        # res.gpu_mem += other.gpu_mem
         return res
 
