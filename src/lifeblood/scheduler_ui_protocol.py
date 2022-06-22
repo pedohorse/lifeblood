@@ -172,11 +172,12 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
                     await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
                     value = node.param(param_name).unexpanded_value()
-            except Exception:
+            except Exception as e:
                 err_val_prev = str(param_value)
                 if len(err_val_prev) > 23:
                     err_val_prev = err_val_prev[:20] + '...'
                 self.__logger.warning(f'FAILED request to set node {node_id} parameter {param_name}({NodeParameterType(param_type).name}) to {err_val_prev}')
+                self.__logger.exception(e)
                 writer.write(b'\0')
             else:
                 writer.write(b'\1')
