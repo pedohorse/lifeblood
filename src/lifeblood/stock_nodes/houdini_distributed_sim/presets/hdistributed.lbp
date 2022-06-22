@@ -150,7 +150,7 @@
         {
             "tmpid": 4,
             "type": "null",
-            "name": "null Kuvys copy",
+            "name": "Done",
             "parameters": {},
             "pos": [
                 3219.9183963544815,
@@ -193,7 +193,7 @@
         {
             "tmpid": 6,
             "type": "hip_driver_renderer",
-            "name": "hip_driver_renderer Ipyfufa",
+            "name": "run sim slice",
             "parameters": {
                 "priority adjustment": {
                     "name": "priority adjustment",
@@ -241,7 +241,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "`task['file']`",
+                    "uvalue": "`task['hipfile']`",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -396,7 +396,7 @@
         {
             "tmpid": 8,
             "type": "parent_children_waiter",
-            "name": "parent_children_waiter Ifodul",
+            "name": "wait for slices to finish",
             "parameters": {
                 "recursive": {
                     "name": "recursive",
