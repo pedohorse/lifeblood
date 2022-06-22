@@ -178,8 +178,10 @@ class BaseNode:
         return True
 
     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        with self.get_ui().lock_interface_readonly():
-            return self.process_task(ProcessingContext(self, task_dict))
+        # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!
+        #  TODO: , in case threads do l1---r1    - release2 WILL leave lock in locked state forever, as it remembered it at l2
+        #  TODO:                         l2---r2
+        return self.process_task(ProcessingContext(self, task_dict))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -191,8 +193,8 @@ class BaseNode:
         raise NotImplementedError()
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
-        with self.get_ui().lock_interface_readonly():
-            return self.postprocess_task(ProcessingContext(self, task_dict))
+        # with self.get_ui().lock_interface_readonly():  #TODO: read comment for _process_task_wrapper
+        return self.postprocess_task(ProcessingContext(self, task_dict))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
