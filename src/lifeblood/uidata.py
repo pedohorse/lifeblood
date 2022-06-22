@@ -997,6 +997,7 @@ class NodeUi(ParameterHierarchyItem):
         return _iiLock(self)
 
     def lock_interface_readonly(self):
+        raise NotImplementedError("read trello task, read TODO. this do NOT work multitheaded, leads to permalocks, needs rethinking")
         class _roLock:
             def __init__(self, lockable):
                 self.__nui = lockable
@@ -1261,6 +1262,7 @@ class NodeUi(ParameterHierarchyItem):
         crap = cls.__new__(cls)
         newdict = self.__dict__.copy()
         newdict['_NodeUi__attached_node'] = None
+        newdict['_NodeUi__lock_ui_readonly'] = False
         assert id(self) not in memo
         memo[id(self)] = crap  # to avoid recursion, though manual tells us to treat memo as opaque object
         for k, v in newdict.items():
