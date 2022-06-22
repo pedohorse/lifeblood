@@ -153,10 +153,10 @@ class Scheduler:
         self.__task_processor_kick_event = asyncio.Event()
         self.__wakeup_event.set()
         self.__server = None
-        self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
+        self.__server_coro = loop.create_server(self._scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
         self.__ui_server = None
-        self.__ui_server_coro = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
+        self.__ui_server_coro = loop.create_server(self._ui_protocol_factory, ui_ip, ui_port, backlog=16)
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting is None:
             do_broadcasting = config.get_option_noasync('core.broadcast', True)
@@ -176,10 +176,10 @@ class Scheduler:
     def get_event_loop(self):
         return self.__event_loop
 
-    def scheduler_protocol_factory(self):
+    def _scheduler_protocol_factory(self):
         return SchedulerTaskProtocol(self)
 
-    def ui_protocol_factory(self):
+    def _ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
 
     def db_uid(self) -> int:
