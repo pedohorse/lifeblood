@@ -15,6 +15,7 @@ class WorkerListWidget(QWidget):
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerListWidget, self).__init__(parent, Qt.Tool)
         self.__worker_list = QTableView()
+        self.__worker_list.verticalHeader().setDefaultSectionSize(10)
         self.__worker_model = WorkerModel(worker, self)
         self.__sort_model = QSortFilterProxyModel(self)
         self.__sort_model.setSourceModel(self.__worker_model)
@@ -39,8 +40,8 @@ class WorkerListWidget(QWidget):
 
 
 class WorkerModel(QAbstractTableModel):
-    __cols_with_totals = {'cpu_count', 'mem_size', 'gpu_count', 'gmem_size'}
-    __mem_cols = {'mem_size', 'gmem_size'}
+    __cols_with_totals = {'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem'}
+    __mem_cols = {'cpu_mem', 'gpu_mem'}
     SORT_ROLE = Qt.UserRole + 0
 
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
@@ -49,10 +50,10 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, dict] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'mem_size': 'mem',
-                       'gpu_count': 'gpus', 'gmem_size': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
+        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
+                       'gpu_count': 'gpus', 'gpu_mem': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
                        'progress': 'task progress', 'groups': 'groups', 'task_id': 'task id'}
-        self.__cols_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'mem_size', 'gpu_count', 'gmem_size', 'groups', 'last_seen', 'worker_type')
+        self.__cols_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
         self.__colname_to_index = {k: i for i, k in enumerate(self.__cols_order)}
         assert len(self.__cols) == len(self.__cols_order)
 
