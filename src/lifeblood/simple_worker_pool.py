@@ -18,8 +18,12 @@ from .enums import WorkerState, WorkerType
 from typing import Tuple, Dict, List, Optional
 
 
-async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256, scheduler_address: Optional[Tuple[str, int]] = None):
-    swp = WorkerPool(worker_type, minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total, scheduler_address=scheduler_address)
+async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
+                             minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
+                             idle_timeout=10, worker_suspicious_lifetime=4, scheduler_address: Optional[Tuple[str, int]] = None):
+    swp = WorkerPool(worker_type,
+                     minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
+                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, scheduler_address=scheduler_address)
     await swp.start()
     return swp
 
@@ -37,7 +41,9 @@ class ProcData:
 
 
 class WorkerPool:  # TODO: split base class, make this just one of implementations
-    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *, minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256, scheduler_address: Optional[Tuple[str, int]] = None):
+    def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *,
+                 minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
+                 idle_timeout=10, worker_suspicious_lifetime=4, scheduler_address: Optional[Tuple[str, int]] = None):
         """
         manages a pool of workers.
         :param worker_type: workers are created of given type
@@ -57,11 +63,11 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__ensure_minimum_idle = minimal_idle_to_ensure
         self.__maximum_total = maximum_total
         self.__worker_type = worker_type
-        self.__idle_timeout = 10  # after this amount of idling worker will be stopped if total count is above minimum
+        self.__idle_timeout = idle_timeout  # after this amount of idling worker will be stopped if total count is above minimum
         self.__scheduler_address = scheduler_address
 
         # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
-        self.__suspiciously_short_process_time = 4
+        self.__suspiciously_short_process_time = worker_suspicious_lifetime
 
         self.__pulse_checker = PulseChecker(self.__scheduler_address, interval=10, maximum_misses=10)
         self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
