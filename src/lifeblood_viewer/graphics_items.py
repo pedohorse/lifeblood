@@ -182,6 +182,10 @@ class Node(NetworkItemWithUI):
         self.reanalyze_nodeui()
 
     def reanalyze_nodeui(self):
+        self.prepareGeometryChange()  # not calling this seem to be able to break scene's internal index info on our connections
+        # bug that appears - on first scene load deleting a node with more than 1 input/output leads to crash
+        # on open nodes have 1 output, then they receive interface update and this func is called, and here's where bug may happen
+
         Node._node_inputs_outputs_cached[self.__node_type] = (list(self.__nodeui.inputs_names()), list(self.__nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
         self.__header_brush = QBrush(QColor(*(x * 255 for x in self.__nodeui.color_scheme().main_color()), 192))
@@ -607,7 +611,7 @@ class Node(NetworkItemWithUI):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value:   # item was just selected
                 self.scene().request_node_ui(self.get_id())
-        elif change == QGraphicsItem.ItemSceneChange:
+        elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
             for connection in conns:
                 if self.scene() is not None and value != self.scene():
