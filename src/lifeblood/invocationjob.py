@@ -115,7 +115,7 @@ class InvocationRequirements:
         self.__min_gpu_count = 0
         self.__min_gpu_memory_bytes = 0
 
-        self.__pref_cpu_count = None  # TODO: these are not yet implemented, but None should mean preferred==min
+        self.__pref_cpu_count = None
         self.__pref_memory_bytes = None
         self.__pref_gpu_count = None
         self.__pref_gpu_memory_bytes = None
@@ -137,6 +137,12 @@ class InvocationRequirements:
 
     def set_min_memory_bytes(self, min_memory_bytes):
         self.__min_memory_bytes = min_memory_bytes
+
+    def set_preferred_cpu_count(self, pref_cpu_count):
+        self.__pref_cpu_count = pref_cpu_count
+
+    def set_preferred_memory_bytes(self, pref_memory_bytes):
+        self.__pref_memory_bytes = pref_memory_bytes
 
     def set_worker_type(self, worker_type: WorkerType):
         self.__worker_type = worker_type
