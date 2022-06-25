@@ -13,6 +13,12 @@ oh_no_its_windows = platform.system() == 'Windows'
 
 
 async def create_process(args, env) -> asyncio.subprocess.Process:
+    """
+    helper function mainly for worker to spawn a new process with a new process group
+    :param args:
+    :param env:
+    :return:
+    """
     if oh_no_its_windows:
         return await asyncio.create_subprocess_exec(
             *args,
@@ -32,22 +38,49 @@ async def create_process(args, env) -> asyncio.subprocess.Process:
         )
 
 
-async def kill_process_tree_posix(process: asyncio.subprocess.Process) -> int:
+async def kill_process_tree(process: asyncio.subprocess.Process, graceful_close_timeout=10) -> int:
+    """
+    kill somehow
+
+    :param process:
+    :param graceful_close_timeout:
+    :return:
+    """
+    if oh_no_its_windows:
+        return await kill_process_tree_windows(process, graceful_close_timeout)
+    return await kill_process_tree_posix(process, graceful_close_timeout)
+
+
+async def kill_process_tree_posix(process: asyncio.subprocess.Process, graceful_close_timeout=10) -> int:
+    """
+    POSIX ONLY
+    this one tries to walk the process tree and SIGTERM all processes, then SIGKILL ones that are stuck
+    And then SIGKILL by the process group.
+    Note: process set defined by pgroup and by process tree may easily be different.
+
+    NOTE: this ASSUMES the process being killed IS the process group leader, as created by create_process
+
+    :param process:
+    :param graceful_close_timeout:
+    :return:
+    """
+    all_proc = []
     try:
         puproc = psutil.Process(process.pid)
-        all_proc = puproc.children(recursive=True)  # both these lines can raise NoSuchProcess
+        all_proc.append(puproc)
+        all_proc += puproc.children(recursive=True)  # both these lines can raise NoSuchProcess
     except psutil.NoSuchProcess:
         __logger.warning(f'cannot find process with pid {process.pid}. Assuming it finished. retcode={process.returncode}')
     else:
-        all_proc.append(puproc)
         for proc in all_proc:
             try:
                 proc.terminate()
             except psutil.NoSuchProcess:
                 pass
-        for i in range(20):  # TODO: make a parameter out of this!
+        poll_time = 0.5
+        for i in range(int(graceful_close_timeout / poll_time)):
             if not all(not proc.is_running() for proc in all_proc):
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(poll_time)
             else:
                 break
         else:
@@ -66,8 +99,39 @@ async def kill_process_tree_posix(process: asyncio.subprocess.Process) -> int:
     return await process.wait()
 
 
-async def kill_process_tree_windows(process: asyncio.subprocess.Process) -> int:
-    # this HOPEFULLY kills them
+async def kill_process_tree_windows(process: asyncio.subprocess.Process, graceful_close_timeout=10) -> int:
+    """
+    WINDOWS ONLY!
+
+    :param process:
+    :param graceful_close_timeout:
+    :return:
+    """
+    # smth to read: https://stackoverflow.com/questions/35772001/how-to-handle-a-signal-sigint-on-a-windows-os-machine
+    # first get all existing processes
+    all_proc = []
+    try:
+        puproc = psutil.Process(process.pid)
+        all_proc.append(puproc)
+        all_proc += puproc.children(recursive=True)  # both these lines can raise NoSuchProcess
+    except psutil.NoSuchProcess:
+        __logger.warning(f'cannot find process with pid {process.pid}. Assuming it finished. retcode={process.returncode}')
+
+    # this will actually act as SIGTERM to a pg, so here processes will have time to respond
     process.send_signal(signal.CTRL_BREAK_EVENT)
+
+    # give them time to gracefully close
+    poll_time = 0.5
+    for i in range(int(graceful_close_timeout / poll_time)):
+        if any(proc.is_running() for proc in all_proc):
+            await asyncio.sleep(poll_time)
+        else:
+            break
+    # now go through processes who did not stop and kill
+    for proc in all_proc:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
     return await process.wait()
