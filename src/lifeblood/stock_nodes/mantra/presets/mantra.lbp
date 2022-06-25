@@ -64,7 +64,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.0,
+                    "uvalue": 2.0,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -74,7 +74,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.0,
+                    "uvalue": 2.0,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -251,7 +251,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.0,
+                    "uvalue": 2.0,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -261,7 +261,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.0,
+                    "uvalue": 0.5,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
