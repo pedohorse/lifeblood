@@ -31,6 +31,7 @@ from .enums import WorkerType, WorkerState
 from .paths import config_path
 from .local_notifier import LocalMessageExchanger
 from .filelock import FileCoupledLock
+from .process_utils import create_process, kill_process_tree
 from . import db_misc
 from .misc import DummyLock
 
@@ -451,15 +452,7 @@ class Worker:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process_start_time = time.time()
-                self.__running_process: asyncio.subprocess.Process = \
-                    await asyncio.create_subprocess_exec(
-                        *args,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        env=env,
-                        restore_signals=True,
-                        start_new_session=True
-                    )
+                self.__running_process: asyncio.subprocess.Process = await create_process(args, env)
             except Exception as e:
                 self.__logger.exception('task creation failed with error: %s' % (repr(e),))
                 raise
@@ -547,38 +540,9 @@ class Worker:
             self.__running_awaiter.cancel()
             cancelling_awaiter = self.__running_awaiter
             self.__running_awaiter = None
-            try:
-                puproc = psutil.Process(self.__running_process.pid)
-                all_proc = puproc.children(recursive=True)  # both these lines can raise NoSuchProcess
-            except psutil.NoSuchProcess:
-                self.__logger.warning(f'cannot find process with pid {self.__running_process.pid}. Assuming it finished. retcode={self.__running_process.returncode}')
-            else:
-                all_proc.append(puproc)
-                for proc in all_proc:
-                    try:
-                        proc.terminate()
-                    except psutil.NoSuchProcess:
-                        pass
-                for i in range(20):  # TODO: make a parameter out of this!
-                    if not all(not proc.is_running() for proc in all_proc):
-                        await asyncio.sleep(0.5)
-                    else:
-                        break
-                else:
-                    for proc in all_proc:
-                        if not proc.is_running():
-                            continue
-                        try:
-                            proc.kill()
-                        except psutil.NoSuchProcess:
-                            pass
-            if hasattr(os, 'killpg'):  # only on POSIX
-                try:
-                    os.killpg(self.__running_process.pid, 9)
-                except OSError:
-                    pass
 
-            await self.__running_process.wait()
+            await kill_process_tree(self.__running_process)
+
             self.__running_process._transport.close()  # sometimes not closed straight away transport ON EXIT may cause exceptions in __del__ that event loop is closed
 
             # report to scheduler that cancel was a success
@@ -805,14 +769,27 @@ async def main_async(worker_type=WorkerType.STANDARD,
         if worker is not None:
             worker.stop()
 
+    noasync_do_close = False
+
+    def noasync_windows_graceful_closer_event(*args):
+        nonlocal noasync_do_close
+        noasync_do_close = True
+
+    async def windows_graceful_closer():
+        while not noasync_do_close:
+            await asyncio.sleep(1)
+        graceful_closer()
+
     worker = None
     stop_event = asyncio.Event()
+    win_signal_waiting_task = None
     try:
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
         asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
-    except NotImplementedError:  # temporary solution for windows
-        signal.signal(signal.SIGINT, graceful_closer)
-        signal.signal(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # solution for windows
+        signal.signal(signal.SIGINT, noasync_windows_graceful_closer_event)
+        signal.signal(signal.SIGBREAK, noasync_windows_graceful_closer_event)
+        win_signal_waiting_task = asyncio.create_task(windows_graceful_closer())
 
     config = get_config('worker')
     logger = logging.get_logger('worker')
@@ -859,6 +836,9 @@ async def main_async(worker_type=WorkerType.STANDARD,
             if noloop:
                 break
 
+    if win_signal_waiting_task is not None:
+        if not win_signal_waiting_task.done():
+            win_signal_waiting_task.cancel()
     asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)  # this seem to fix the bad signal fd error
     asyncio.get_event_loop().remove_signal_handler(signal.SIGTERM)  # my guess what happens is that loop closes, but signal handlers remain if not unsed
 
