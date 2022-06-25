@@ -9,6 +9,7 @@ from types import MappingProxyType
 import json
 from .broadcasting import await_broadcast
 from .pulse_checker import PulseChecker
+from .process_utils import create_worker_process, send_stop_signal_to_worker
 
 from .logging import get_logger
 from .worker_pool_protocol import WorkerPoolProtocol
@@ -137,9 +138,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         if self.__scheduler_address is not None:
             args += ['--scheduler-address', ':'.join(str(x) for x in self.__scheduler_address)]
 
-        self.__workers_to_merge.append(ProcData(await asyncio.create_subprocess_exec(*args,
-                                                                                     close_fds=True
-                                                                                     ), self.__next_wid))
+        self.__workers_to_merge.append(ProcData(await create_worker_process(args), self.__next_wid))
         self.__logger.debug(f'adding new worker (id: {self.__next_wid}) to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
         self.__next_wid += 1
         self.__poke_event.set()
@@ -222,7 +221,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                         if procdata.state != WorkerState.IDLE or now - procdata.state_entering_time < self.__idle_timeout or procdata.sent_term_signal:
                             continue
                         try:
-                            procdata.process.send_signal(signal.SIGTERM)
+                            send_stop_signal_to_worker(procdata.process)
                             procdata.sent_term_signal = True
                         except ProcessLookupError:
                             # probability is low, but this can happen. though if this happens often - something is wrong
@@ -270,8 +269,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             wait_tasks = []
             for procdata in itertools.chain(self.__worker_pool.values(), self.__workers_to_merge):
                 try:
-                    self.__logger.debug(f'sending SIGINT to {procdata.process.pid}')
-                    procdata.process.send_signal(signal.SIGTERM)
+                    self.__logger.debug(f'sending SIGTERM to {procdata.process.pid}')
+                    send_stop_signal_to_worker(procdata.process)
                 except ProcessLookupError:
                     continue
                 wait_tasks.append(_proc_waiter(procdata.process))
