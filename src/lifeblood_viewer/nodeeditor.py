@@ -742,7 +742,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 for param_name, param_data in parm_pairs:
                     self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
                     _, _, has_param = yield
-                    if not has_param:
+                    if not has_param:  # ffs, i could leave some comments for myself... this seem to be dealing with multiparms. if parm instance is not there yet - wait with it
                         if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
                             parm_pairs.append((param_name, param_data))
                             cyclestart = param_name
