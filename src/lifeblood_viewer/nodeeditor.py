@@ -1548,12 +1548,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if imguio.keys_down[imgui.KEY_DOWN_ARROW]:
                 if not self.__menu_popup_arrow_down:
                     self.__menu_popup_selection_id += 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % item_number
+                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                     self.__menu_popup_arrow_down = True
             elif imguio.keys_down[imgui.KEY_UP_ARROW]:
                 if not self.__menu_popup_arrow_down:
                     self.__menu_popup_selection_id -= 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % item_number
+                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                     self.__menu_popup_arrow_down = True
             if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
                 imgui.close_current_popup()
