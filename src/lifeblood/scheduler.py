@@ -2261,16 +2261,31 @@ async def main_async(db_path=None):
     def graceful_closer(*args):
         scheduler.stop()
 
+    noasync_do_close = False
+    def noasync_windows_graceful_closer_event(*args):
+        nonlocal noasync_do_close
+        noasync_do_close = True
+
+    async def windows_graceful_closer():
+        while not noasync_do_close:
+            await asyncio.sleep(1)
+        graceful_closer()
+
     scheduler = Scheduler(db_path)
+    win_signal_waiting_task = None
     try:
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
         asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
-    except NotImplementedError:  # temporary solution for windows
-        signal.signal(signal.SIGINT, graceful_closer)
-        signal.signal(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # solution for windows
+        signal.signal(signal.SIGINT, noasync_windows_graceful_closer_event)
+        signal.signal(signal.SIGBREAK, noasync_windows_graceful_closer_event)
+        win_signal_waiting_task = asyncio.create_task(windows_graceful_closer())
 
     await scheduler.start()
     await scheduler.wait_till_stops()
+    if win_signal_waiting_task is not None:
+        if not win_signal_waiting_task.done():
+            win_signal_waiting_task.cancel()
     logging.get_logger('scheduler').info('SCHEDULER STOPPED')
 
 
