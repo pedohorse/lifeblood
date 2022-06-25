@@ -1468,11 +1468,16 @@ class Scheduler:
             await con.commit()
         self.poke_task_processor()
 
-    #TODO: add decorator that locks method from reentry
+    # TODO: add decorator that locks method from reentry or smth
+    #  potentially a worker may report done while this works,
+    #  or when scheduler picked worker and about to run this, which will lead to inconsistency warning
+    #  NOTE!: so far it's always called from a STARTED transaction, so there should not be reentry possible
+    #  But that is not enforced right now, easy to make mistake
     async def __update_worker_resouce_usage(self, worker_id: int, resources: Optional[dict] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
         """
         updates resource information based on new worker resources usage
         as part of ongoing transaction
+        Note: con SHOULD HAVE STARTED TRANSACTION, otherwise it might be not safe to call this
 
         :param worker_id:
         :param hwid: if hwid of worker_id is already known - provide it here to skip extra db query. but be SURE it's correct!
@@ -1516,7 +1521,11 @@ class Scheduler:
                     continue
                 if available_res[field] < resources[field]:
                     raise NotEnoughResources(f'{field}: {resources[field]} out of {available_res[field]}')
-                workers_resources[worker_id][field] = min(available_res[field], resources.get(f'pref_{field}', resources[field]))
+                # so we take preferred amount of resources (or minimum if pref not set), but no more than available
+                # if preferred is lower than min - it's ignored
+                workers_resources[worker_id][field] = min(available_res[field],
+                                                          max(resources.get(f'pref_{field}', resources[field]),
+                                                              resources[field]))
                 available_res[field] -= workers_resources[worker_id][field]
 
             workers_resources[worker_id]['hwid'] = hwid  # just to ensure it was not overriden
