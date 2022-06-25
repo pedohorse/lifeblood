@@ -12,9 +12,38 @@ __logger = get_logger('process management')
 oh_no_its_windows = platform.system() == 'Windows'
 
 
+async def create_worker_process(args):
+    """
+    helper function to use to create a worker from worker pool
+
+    :param args:
+    :return:
+    """
+    if oh_no_its_windows:
+        return await asyncio.create_subprocess_exec(*args, close_fds=True,
+                                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)  # this is cuz win "bReAk eVeNt" can only be sent to process group)
+    else:
+        return await asyncio.create_subprocess_exec(*args, close_fds=True)
+
+
+def send_stop_signal_to_worker(process):
+    """
+    helper function to tell worker process to stop
+    used by worker pool
+
+    :param process:
+    :return:
+    """
+    if oh_no_its_windows:
+        return process.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+        return process.send_signal(signal.SIGTERM)
+
+
 async def create_process(args, env) -> asyncio.subprocess.Process:
     """
     helper function mainly for worker to spawn a new process with a new process group
+
     :param args:
     :param env:
     :return:
