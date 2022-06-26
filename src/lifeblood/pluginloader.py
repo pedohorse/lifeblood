@@ -141,6 +141,7 @@ def _install_package(package_path, plugin_category):
                     snippet = NodeSnippetData.deserialize(f.read())
             except Exception as e:
                 logger.error(f'failed to load snippet {filebasename}, error: {str(e)}')
+                continue
 
             if package_name not in presets:
                 presets[package_name] = {}
