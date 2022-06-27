@@ -40,6 +40,7 @@ from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, Wor
 from .config import get_config, create_default_user_config_file
 from .misc import atimeit
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
+from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
 from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
 
@@ -145,9 +146,9 @@ class Scheduler:
                            'invocations': {}}
 
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-        server_port = config.get_option_noasync('core.server_port', 7979)
+        server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
-        ui_port = config.get_option_noasync('core.ui_port', 7989)
+        ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
         self.__stop_event = asyncio.Event()
         self.__wakeup_event = asyncio.Event()
         self.__task_processor_kick_event = asyncio.Event()
@@ -2239,14 +2240,14 @@ class Scheduler:
         return self.__server_address
 
 
-default_config = '''
+default_config = f'''
 [core]
 ## you can uncomment stuff below to specify some static values
 ## 
 # server_ip = "192.168.0.2"
-# server_port = 7979
+# server_port = {default_scheduler_port()}
 # ui_ip = "192.168.0.2"
-# ui_port = 7989
+# ui_port = {default_ui_port()}
 
 [scheduler]
 ## you may specify here some db to load

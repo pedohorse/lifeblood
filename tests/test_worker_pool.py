@@ -13,6 +13,7 @@ from lifeblood.simple_worker_pool import WorkerPool, create_worker_pool
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
+from lifeblood.defaults import scheduler_port
 from lifeblood import launch
 
 
@@ -32,7 +33,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         cls._scheduler_proc = subprocess.Popen(['python', '-m', 'lifeblood.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-        server_port = config.get_option_noasync('core.server_port', 7979)
+        server_port = config.get_option_noasync('core.server_port', scheduler_port())
         cls.sched_addr = (server_ip, server_port)
         time.sleep(5)  # this is very arbitrary, but i'm too lazy to
         print('settingup done')

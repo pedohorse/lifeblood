@@ -16,6 +16,7 @@ from lifeblood.uidata import Parameter
 from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.snippets import NodeSnippetData
+from lifeblood.defaults import ui_port
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
@@ -140,7 +141,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 #sche_port = int(sche_port)
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
-            sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
+            sche_port = config.get_option_noasync('viewer.scheduler_port', ui_port())
         logger.debug(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
 
         while not self.interruption_requested():

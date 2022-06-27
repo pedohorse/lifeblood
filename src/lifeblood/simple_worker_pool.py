@@ -15,6 +15,7 @@ from .logging import get_logger
 from .worker_pool_protocol import WorkerPoolProtocol
 from .nethelpers import get_localhost
 from .enums import WorkerState, WorkerType
+from .defaults import worker_pool_port as default_worker_pool_port
 
 from typing import Tuple, Dict, List, Optional
 
@@ -76,7 +77,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
         self.__my_addr = get_localhost()
-        self.__my_port = 7957
+        self.__my_port = default_worker_pool_port()
 
         self.__poke_event.set()
         self.__stopped = False

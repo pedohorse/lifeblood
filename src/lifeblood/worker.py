@@ -34,6 +34,7 @@ from .filelock import FileCoupledLock
 from .process_utils import create_process, kill_process_tree
 from . import db_misc
 from .misc import DummyLock
+from .defaults import worker_pool_port as default_worker_pool_port, scheduler_port as default_scheduler_port
 
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
@@ -125,7 +126,7 @@ class Worker:
         self.__my_addr: Optional[Tuple[str, int]] = None
         self.__worker_id = worker_id
         if pool_address is None:
-            self.__pool_address = (get_localhost(), 7959)
+            self.__pool_address = (get_localhost(), default_worker_pool_port())
         else:
             self.__pool_address: Tuple[str, int] = pool_address
 
@@ -823,7 +824,7 @@ async def main_async(worker_type=WorkerType.STANDARD,
         logger.info('boradcast listening disabled')
         while True:
             ip = await config.get_option('worker.scheduler_ip', get_default_addr())
-            port = await config.get_option('worker.scheduler_port', 7979)
+            port = await config.get_option('worker.scheduler_port', default_scheduler_port())
             logger.debug(f'using {ip}:{port}')
             try:
                 worker = await create_worker(ip, port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
