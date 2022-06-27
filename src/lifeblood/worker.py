@@ -34,7 +34,9 @@ from .filelock import FileCoupledLock
 from .process_utils import create_process, kill_process_tree
 from . import db_misc
 from .misc import DummyLock
-from .defaults import worker_pool_port as default_worker_pool_port, scheduler_port as default_scheduler_port
+from .defaults import worker_pool_port as default_worker_pool_port, \
+                      scheduler_port as default_scheduler_port, \
+                      worker_start_port as default_worker_start_port
 
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
@@ -176,7 +178,7 @@ class Worker:
             abort_start = False
             loop = asyncio.get_event_loop()
             my_ip = get_addr_to(self.__scheduler_addr[0])
-            my_port = 6969
+            my_port = default_worker_start_port()
             for i in range(1024):  # big but finite
                 try:
                     self.__server = await loop.create_server(lambda: WorkerTaskServerProtocol(self), my_ip, my_port, backlog=16)

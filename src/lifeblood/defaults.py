@@ -13,3 +13,7 @@ def broadcast_port() -> int:
 
 def worker_pool_port() -> int:
     return 7957
+
+
+def worker_start_port() -> int:
+    return 6969
