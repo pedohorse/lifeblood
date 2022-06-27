@@ -1,18 +1,18 @@
 
 def scheduler_port() -> int:
-    return 7979
+    return 1384
 
 
 def ui_port() -> int:
-    return 7989
+    return 1385
 
 
 def broadcast_port() -> int:
-    return 9000
+    return 34305
 
 
 def worker_pool_port() -> int:
-    return 7957
+    return 1386
 
 
 def worker_start_port() -> int:
