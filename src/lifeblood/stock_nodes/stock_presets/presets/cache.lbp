@@ -1,0 +1,292 @@
+{
+    "nodes": [
+        {
+            "tmpid": 0,
+            "type": "null",
+            "name": "out cache",
+            "parameters": {},
+            "pos": [
+                3842.950120291692,
+                1830.538625215772
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 1,
+            "type": "null",
+            "name": "IN CACHE",
+            "parameters": {},
+            "pos": [
+                3843.3175954811804,
+                1495.556552773486
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 2,
+            "type": "hip_driver_renderer",
+            "name": "hip_driver_renderer Hykap",
+            "parameters": {
+                "priority adjustment": {
+                    "name": "priority adjustment",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost": {
+                    "name": "worker cpu cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1.0,
+                    "expr": "task['requirements']['cpu']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost preferred": {
+                    "name": "worker cpu cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cpu']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost": {
+                    "name": "worker mem cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements']['cmem']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost preferred": {
+                    "name": "worker mem cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cmem']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker groups": {
+                    "name": "worker groups",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker type": {
+                    "name": "worker type",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "hip path": {
+                    "name": "hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipfile']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask as different hip": {
+                    "name": "mask as different hip",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask hip path": {
+                    "name": "mask hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task.get('hipfile_orig', task['hipfile'])`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "driver path": {
+                    "name": "driver path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipdriver']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "ignore inputs": {
+                    "name": "ignore inputs",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to context": {
+                    "name": "attrs to context",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "whole range": {
+                    "name": "whole range",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "skip if exists": {
+                    "name": "skip if exists",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "gen for skipped": {
+                    "name": "gen for skipped",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do override output": {
+                    "name": "do override output",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override output": {
+                    "name": "override output",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do override parmname": {
+                    "name": "do override parmname",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override parmname": {
+                    "name": "override parmname",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "sopoutput",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs": {
+                    "name": "attrs",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "*",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to extract": {
+                    "name": "attrs to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "intrinsics to extract": {
+                    "name": "intrinsics to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                3842.950120291692,
+                1665.1996526156381
+            ],
+            "__dataclass__": "NodeData"
+        }
+    ],
+    "connections": [
+        {
+            "tmpout": 2,
+            "out_name": "main",
+            "tmpin": 0,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 1,
+            "out_name": "main",
+            "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        }
+    ],
+    "label": "cache setup",
+    "tags": [],
+    "__NodeSnippetData__": "==3*E==",
+    "__format_version__": [
+        1,
+        0,
+        0
+    ]
+}

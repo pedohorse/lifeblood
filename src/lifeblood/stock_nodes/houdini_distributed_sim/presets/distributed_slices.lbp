@@ -2,8 +2,8 @@
     "nodes": [
         {
             "tmpid": 0,
-            "type": "hip_ifd_generator",
-            "name": "generate ifds",
+            "type": "hip_driver_renderer",
+            "name": "run sim slice",
             "parameters": {
                 "priority adjustment": {
                     "name": "priority adjustment",
@@ -11,7 +11,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.5649999976158142,
+                    "uvalue": 0.0,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -21,7 +21,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 2.0,
+                    "uvalue": 8.0,
                     "expr": "task['requirements']['cpu']['min']",
                     "__dataclass__": "ParamData"
                 },
@@ -31,7 +31,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 4.0,
+                    "uvalue": 64.0,
                     "expr": "task['requirements']['cpu']['pref']",
                     "__dataclass__": "ParamData"
                 },
@@ -41,7 +41,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 2.0,
+                    "uvalue": 16.0,
                     "expr": "task['requirements']['cmem']['min']",
                     "__dataclass__": "ParamData"
                 },
@@ -51,7 +51,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.5,
+                    "uvalue": 64.0,
                     "expr": "task['requirements']['cmem']['pref']",
                     "__dataclass__": "ParamData"
                 },
@@ -115,23 +115,33 @@
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
+                "ignore inputs": {
+                    "name": "ignore inputs",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
                 "attrs to context": {
                     "name": "attrs to context",
                     "type": {
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "",
+                    "uvalue": "slice simtracker_*",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
-                "ifd file path": {
-                    "name": "ifd file path",
+                "whole range": {
+                    "name": "whole range",
                     "type": {
-                        "value": 3,
+                        "value": 1,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "`task['global_scratch_location']`/`node.name`/`task.name`_`task.id`/ifds/`node.name`.$F4.ifd.sc",
+                    "uvalue": false,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -155,13 +165,43 @@
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
-                "ifd force inline": {
-                    "name": "ifd force inline",
+                "do override output": {
+                    "name": "do override output",
                     "type": {
                         "value": 1,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": true,
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override output": {
+                    "name": "override output",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do override parmname": {
+                    "name": "do override parmname",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override parmname": {
+                    "name": "override parmname",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "sopoutput",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -171,29 +211,60 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "requirements_mantra",
+                    "uvalue": "*",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to extract": {
+                    "name": "attrs to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "intrinsics to extract": {
+                    "name": "intrinsics to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 }
             },
             "pos": [
-                4580.303530900657,
-                1786.2739305753025
+                3672.188094440093,
+                2803.6039012339797
             ],
             "__dataclass__": "NodeData"
         },
         {
             "tmpid": 1,
-            "type": "split_waiter",
-            "name": "wait for all split parts",
+            "type": "killer",
+            "name": "kill unused",
+            "parameters": {},
+            "pos": [
+                3651.1775916449155,
+                3387.2364488463686
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 2,
+            "type": "parent_children_waiter",
+            "name": "wait for slices to finish",
             "parameters": {
-                "wait for all": {
-                    "name": "wait for all",
+                "recursive": {
+                    "name": "recursive",
                     "type": {
                         "value": 1,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": true,
+                    "uvalue": false,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
@@ -203,80 +274,177 @@
                         "value": 0,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 1,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "src_attr_name_0": {
-                    "name": "src_attr_name_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "images",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "transfer_type_0": {
-                    "name": "transfer_type_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "extend",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "dst_attr_name_0": {
-                    "name": "dst_attr_name_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "images",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "sort_by_0": {
-                    "name": "sort_by_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "frames",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "reversed_0": {
-                    "name": "reversed_0",
-                    "type": {
-                        "value": 1,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": false,
+                    "uvalue": 0,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 }
             },
             "pos": [
-                4583.981089337652,
-                2560.5255375361307
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 2,
-            "type": "null",
-            "name": "out mantra",
-            "parameters": {},
-            "pos": [
-                4585.264515235215,
-                2704.2892083839133
+                3595.0653697220355,
+                2963.0495498353166
             ],
             "__dataclass__": "NodeData"
         },
         {
             "tmpid": 3,
+            "type": "null",
+            "name": "out distributed slices",
+            "parameters": {},
+            "pos": [
+                3376.7052369916382,
+                3531.849522328397
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 4,
+            "type": "spawn_children",
+            "name": "spawn distributed slices",
+            "parameters": {
+                "count": {
+                    "name": "count",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": "task['slice count']",
+                    "__dataclass__": "ParamData"
+                },
+                "number attribute": {
+                    "name": "number attribute",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "slice",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "child basename": {
+                    "name": "child basename",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task.name`_child",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "inherit attributes": {
+                    "name": "inherit attributes",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "*",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                3605.180094547772,
+                2644.355467039656
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 5,
+            "type": "null",
+            "name": "IN DISTRIBUTED SLICES",
+            "parameters": {},
+            "pos": [
+                3373.985432428944,
+                2300.111494354379
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 6,
+            "type": "houdini_distributed_tracker_stopper",
+            "name": "stop sim tracker",
+            "parameters": {
+                "host": {
+                    "name": "host",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['simtracker_host']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "kport": {
+                    "name": "kport",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 19377,
+                    "expr": "task['tracker kill port']",
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                3505.6747894766963,
+                3112.216851337692
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 7,
+            "type": "houdini_distributed_tracker",
+            "name": "create sim tracker",
+            "parameters": {
+                "port": {
+                    "name": "port",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 19375,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "wport": {
+                    "name": "wport",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 19376,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "kport": {
+                    "name": "kport",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 19377,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "use helper": {
+                    "name": "use helper",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                3375.1598194125304,
+                2428.5773450974893
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 8,
             "type": "parent_children_waiter",
             "name": "wait for children",
             "parameters": {
@@ -296,396 +464,72 @@
                         "value": 0,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 1,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "src_attr_name_0": {
-                    "name": "src_attr_name_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "file",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "transfer_type_0": {
-                    "name": "transfer_type_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "extend",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "dst_attr_name_0": {
-                    "name": "dst_attr_name_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "images",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "sort_by_0": {
-                    "name": "sort_by_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "frames",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "reversed_0": {
-                    "name": "reversed_0",
-                    "type": {
-                        "value": 1,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": false,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                }
-            },
-            "pos": [
-                4581.638451503372,
-                2414.014892015606
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 4,
-            "type": "framerange_splitter",
-            "name": "split framerange",
-            "parameters": {
-                "chunk size": {
-                    "name": "chunk size",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 10,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                }
-            },
-            "pos": [
-                4581.996971985054,
-                1642.9750451563123
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 5,
-            "type": "null",
-            "name": "IN MANTRA",
-            "parameters": {},
-            "pos": [
-                4582.124925071043,
-                1504.4279029767154
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 6,
-            "type": "mantra",
-            "name": "mantra render ifds",
-            "parameters": {
-                "priority adjustment": {
-                    "name": "priority adjustment",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0.0,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "worker cpu cost": {
-                    "name": "worker cpu cost",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 2.0,
-                    "expr": "task['requirements_mantra']['cpu']['min']",
-                    "__dataclass__": "ParamData"
-                },
-                "worker cpu cost preferred": {
-                    "name": "worker cpu cost preferred",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 4.0,
-                    "expr": "task['requirements_mantra']['cpu']['pref']",
-                    "__dataclass__": "ParamData"
-                },
-                "worker mem cost": {
-                    "name": "worker mem cost",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0.5,
-                    "expr": "task['requirements_mantra']['cmem']['min']",
-                    "__dataclass__": "ParamData"
-                },
-                "worker mem cost preferred": {
-                    "name": "worker mem cost preferred",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0.5,
-                    "expr": "task['requirements_mantra']['cmem']['pref']",
-                    "__dataclass__": "ParamData"
-                },
-                "worker groups": {
-                    "name": "worker groups",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "worker type": {
-                    "name": "worker type",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
                     "uvalue": 0,
                     "expr": null,
                     "__dataclass__": "ParamData"
-                },
-                "ifd path": {
-                    "name": "ifd path",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "`task['file']`",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "image path": {
-                    "name": "image path",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "`task['outimage']`",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "skip if exists": {
-                    "name": "skip if exists",
-                    "type": {
-                        "value": 1,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": false,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
                 }
             },
             "pos": [
-                4705.150219959042,
-                2096.180477567481
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 7,
-            "type": "set_attrib",
-            "name": "save ifd file path for deletion",
-            "parameters": {
-                "attr_count": {
-                    "name": "attr_count",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 1,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "name_0": {
-                    "name": "name_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "ifdfile",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "type_0": {
-                    "name": "type_0",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 3,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "svalue_0": {
-                    "name": "svalue_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "`task['file']`",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "ivalue_0": {
-                    "name": "ivalue_0",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "fvalue_0": {
-                    "name": "fvalue_0",
-                    "type": {
-                        "value": 2,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0.0,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "bvalue_0": {
-                    "name": "bvalue_0",
-                    "type": {
-                        "value": 1,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": false,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "rf1value_0": {
-                    "name": "rf1value_0",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 0,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "rf2value_0": {
-                    "name": "rf2value_0",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 9,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "rf3value_0": {
-                    "name": "rf3value_0",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 1,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                }
-            },
-            "pos": [
-                4705.07476313525,
-                1966.3527812801685
-            ],
-            "__dataclass__": "NodeData"
-        },
-        {
-            "tmpid": 8,
-            "type": "fileops",
-            "name": "delete ifd file",
-            "parameters": {
-                "on workers": {
-                    "name": "on workers",
-                    "type": {
-                        "value": 1,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": false,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "item count": {
-                    "name": "item count",
-                    "type": {
-                        "value": 0,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": 1,
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "path_0": {
-                    "name": "path_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "`task['ifdfile']`",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                },
-                "op_0": {
-                    "name": "op_0",
-                    "type": {
-                        "value": 3,
-                        "__NodeParameterType__": "==3*E=="
-                    },
-                    "uvalue": "rm",
-                    "expr": null,
-                    "__dataclass__": "ParamData"
-                }
-            },
-            "pos": [
-                4704.903907894983,
-                2236.7178859566125
+                3378.151678395929,
+                3267.7993359679995
             ],
             "__dataclass__": "NodeData"
         }
     ],
     "connections": [
         {
-            "tmpout": 3,
-            "out_name": "main",
-            "tmpin": 1,
-            "in_name": "main",
-            "__dataclass__": "ConnData"
-        },
-        {
             "tmpout": 5,
             "out_name": "main",
-            "tmpin": 4,
+            "tmpin": 7,
             "in_name": "main",
             "__dataclass__": "ConnData"
         },
         {
             "tmpout": 4,
             "out_name": "main",
+            "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 4,
+            "out_name": "spawned",
             "tmpin": 0,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "main",
+            "tmpin": 2,
+            "in_name": "children",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 8,
+            "out_name": "main",
+            "tmpin": 3,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 8,
+            "out_name": "children",
+            "tmpin": 1,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 2,
+            "out_name": "main",
+            "tmpin": 6,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 2,
+            "out_name": "children",
+            "tmpin": 1,
             "in_name": "main",
             "__dataclass__": "ConnData"
         },
@@ -693,46 +537,25 @@
             "tmpout": 6,
             "out_name": "main",
             "tmpin": 8,
-            "in_name": "main",
+            "in_name": "children",
             "__dataclass__": "ConnData"
         },
         {
             "tmpout": 7,
             "out_name": "main",
-            "tmpin": 6,
+            "tmpin": 8,
             "in_name": "main",
             "__dataclass__": "ConnData"
         },
         {
-            "tmpout": 8,
-            "out_name": "main",
-            "tmpin": 3,
-            "in_name": "children",
-            "__dataclass__": "ConnData"
-        },
-        {
-            "tmpout": 0,
-            "out_name": "main",
-            "tmpin": 3,
-            "in_name": "main",
-            "__dataclass__": "ConnData"
-        },
-        {
-            "tmpout": 0,
+            "tmpout": 7,
             "out_name": "spawned",
-            "tmpin": 7,
-            "in_name": "main",
-            "__dataclass__": "ConnData"
-        },
-        {
-            "tmpout": 1,
-            "out_name": "main",
-            "tmpin": 2,
+            "tmpin": 4,
             "in_name": "main",
             "__dataclass__": "ConnData"
         }
     ],
-    "label": "mantra setup",
+    "label": "distributed slices setup",
     "tags": [],
     "__NodeSnippetData__": "==3*E==",
     "__format_version__": [
