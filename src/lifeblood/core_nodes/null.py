@@ -23,6 +23,9 @@ class NullNode(BaseNode):
 
     def __init__(self, name: str):
         super(NullNode, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.22, 0.24, 0.22)
 
     def process_task(self, context) -> ProcessingResult:
         return ProcessingResult()
