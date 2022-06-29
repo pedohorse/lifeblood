@@ -106,7 +106,7 @@ def address_from_broadcast(node):
                 if id != awaited_id:
                     continue
                 info = json.loads(data[8+idlen:8+idlen+infolen].decode('UTF-8'))
-                ip, port = info.get('worker', '127.0.0.1:7979').split(':')
+                ip, port = info.get('worker', '127.0.0.1:1384').split(':')
                 return ip, int(port)
             
     return None, None

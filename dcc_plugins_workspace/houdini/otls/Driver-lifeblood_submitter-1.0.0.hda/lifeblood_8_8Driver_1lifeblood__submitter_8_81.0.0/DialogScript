@@ -51,7 +51,7 @@
         label   "port"
         type    integer
         nolabel
-        default { "7979" }
+        default { "1384" }
         range   { 0 10 }
         parmtag { "script_callback_language" "python" }
     }
