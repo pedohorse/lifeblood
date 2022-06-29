@@ -369,7 +369,7 @@
                         "__NodeParameterType__": "==3*E=="
                     },
                     "uvalue": 10,
-                    "expr": null,
+                    "expr": "task.get('framechunk_size', 10)",
                     "__dataclass__": "ParamData"
                 }
             },
