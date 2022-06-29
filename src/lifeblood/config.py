@@ -1,13 +1,12 @@
 import os
+from pathlib import Path
 import copy
 import toml
 import asyncio
 from threading import Lock
 from . import paths
 
-from typing import Any, List, Tuple, Union, Callable, TYPE_CHECKING
-if TYPE_CHECKING:
-    from pathlib import Path
+from typing import Any, List, Tuple, Union, Callable
 
 
 _conf_cache = {}
@@ -103,6 +102,14 @@ class Config:
         :return:
         """
         return self.__writable_config_path
+
+    def override_config_save_location(self, path: Union[Path, str]):
+        """
+        change default config write location
+
+        :return:
+        """
+        self.__writable_config_path = Path(path)
 
     def loaded_files(self) -> Tuple["Path"]:
         """
