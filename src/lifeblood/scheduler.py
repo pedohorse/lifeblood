@@ -1209,7 +1209,7 @@ class Scheduler:
                         async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({}) AND dead = 0'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
                             total = await cur.fetchone()
                         if total is None or total['total'] == 0:
-                            self.__logger.info('no useful tasks seem to be available')
+                            self.__logger.debug('no useful tasks seem to be available')
                             self.__sleep()
                 else:
                     self.wake()
