@@ -85,7 +85,7 @@ def address_from_broadcast(node):
     s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     s.settimeout(1)
-    s.bind(('0.0.0.0', 9000))
+    s.bind((node.parm('brd_ip').evalAsString(), node.parm('brd_port').evalAsInt()))
     
     awaited_id = node.evalParm('brd_identifier')
     timeout = node.evalParm('brd_timeout')
