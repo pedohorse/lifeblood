@@ -233,7 +233,7 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
         packages = {}
 
         houre = re.compile(r'^(?:[Hh]oudini|hfs)\s*(\d+\.\d+\.\d+)(?:\.py(\d+))?$')
-        pyre = re.compile(r'^python(\d+\.\d+).*$')
+        pyre = re.compile(r'^python(\d+)\.(\d+).*$')
         if base.exists():
             for houdir in base.iterdir():
                 if not houdir.exists() or not houdir.is_dir():
@@ -247,7 +247,7 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
                         pymatch = pyre.match(str(file.name))
                         if not pymatch:
                             continue
-                        hpy = pymatch.group(1).split('.', 1)[0]
+                        hpy = pymatch.group(1)
                         break
                 if f'houdini.py{hpy}' not in packages:
                     packages[f'houdini.py{hpy}'] = {}
@@ -276,6 +276,7 @@ def main(args):
 
     cmdparser = subparser.add_parser('generate', description='generate configuration file in user dir')
     cmdparser.add_argument('--basepath', '-p', help='optional comma (,) separated base path list to search software in')
+    cmdparser.add_argument('--output', '-o', help='save config to this file instead of default config location')
 
     schparser = subparser.add_parser('scan', description='scan for software but do NOT generate config files')
     schparser.add_argument('--basepath', '-p', help='optional comma (,) separated base path list to search software in')
@@ -289,6 +290,8 @@ def main(args):
 
     if opts.command == 'generate':
         config = get_config('standard_environment_resolver')
+        if opts.output:
+            config.override_config_save_location(opts.output)
         config.set_toml_encoder_generator(TomlFlatConfigEncoder)
         logger = logging.get_logger('environment resolver')
         logger.info('standard environment resolver is used, but no configuration found. auto generating configuration...')
