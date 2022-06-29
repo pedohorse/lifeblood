@@ -7,6 +7,12 @@ except ImportError:
 
 
 def submit_button_callback(node):
+    if hou.hipFile.hasUnsavedChanges():
+        if hou.ui.displayMessage('scene has unsaved changes, save and continue?', buttons=('Ok', 'Cancel'),
+                                 severity=hou.severityType.Warning,
+                                 default_choice=1,
+                                 close_choice=1) == 1:
+            return
     try:
         submit(node)
     except hou.Error as e:
