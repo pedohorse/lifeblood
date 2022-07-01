@@ -2249,12 +2249,17 @@ default_config = f'''
 # ui_ip = "192.168.0.2"
 # ui_port = {default_ui_port()}
 
+## you can turn off scheduler broadcasting if you want to manually configure viewer and workers to connect
+## to a specific address
+# broadcast = false
+
 [scheduler]
-## you may specify here some db to load
-## ore use --db-path cmd argument to override whatever is in the config
-# db_path = "~/some_special_place/main.db"
 
 [scheduler.database]
+## you can specify default database path, 
+##  but this can be overriden with command line argument --db-path
+# path = "/path/to/database.db"
+
 ## uncomment line below to store task logs outside of the database
 ##  it works in a way that all NEW logs will be saved according to settings below
 ##  existing logs will be kept where they are
@@ -2310,7 +2315,7 @@ def main(argv):
     create_default_user_config_file('scheduler', default_config)
 
     config = get_config('scheduler')
-    db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
+    db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
     global_logger = logging.get_logger('scheduler')
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
