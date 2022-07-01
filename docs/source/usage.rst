@@ -10,6 +10,8 @@ How to Use
 Step by step guide
 ******************
 
+.. _installation:
+
 Installation
 ============
 
@@ -33,11 +35,16 @@ while extra machines will only run workers.
 
 Check :ref:`overview <overview-scheduler>` to learn basic components of Lifeblood
 
+.. _configuration:
+
 Configuration
 =============
 
 Lifeblood is made in a way so you can start it with minimum to zero pre-configuration.
 But even in simplest cases you might will need to adjust something.
+
+Lifeblood's components will create default configs for themselves on first launch.
+You can start with default config and adjust it if such need arises.
 
 All components of Lifeblood are configured by a number of configs files, some of those values can be overriden with command-line arguments
 
@@ -49,18 +56,21 @@ Config location
 Config files are generated and stored in location defined by ``LIFEBLOOD_CONFIG_LOCATION`` environment variable,
 by default it's:
 
-* ``/home/<username>/lifeblood`` (linux)
-* ``C:\Users\<username>\Documents\lifeblood`` (windows)
-* ``/Users/<username>/Library/Preferences/lifeblood`` (mac)
+* on linux it's ``~``: ``~/lifeblood``, ``/home/<username>/lifeblood`` (linux)
+* on windows it's your ``Documents`` folder: ``%HOME%/lifeblood``, ``C:\Users\<username>\Documents\lifeblood`` (windows)
+* on mac it's in ``~/Library/Preferences/lifeblood``, ``/Users/<username>/Library/Preferences/lifeblood`` (mac)
+
+In your config location you will find subdirs named after components, and certain component-specific configuration files within.
+The main config file in most cases is called ``config.toml``. It uses `toml language <https://toml.io/>`_.
 
 | All configurations use TOML config language.
 | In future we will refer to config location as ``<config_dir>``
 
 Detailed config file description see at:
 
-* TODO: add config description for scheduler
-* TODO: add config description for worker
-* TODO: add config description for viewer
+* :ref:`scheduler configs`
+* :ref:`worker configs`
+* :ref:`viewer configs`
 
 | Some parameters defined in config files can be overriden with command line arguments
 | If scheduler is installed as pip package - a ``lifeblood`` command will be added to PATH.

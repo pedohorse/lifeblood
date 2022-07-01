@@ -16,17 +16,17 @@ Lifeblood is a task processing system. It consists of 3 main component types:
 
 .. _overview-scheduler:
 
-scheduler
----------
+:ref:`scheduler <scheduler>`
+----------------------------
 Scheduler is the main brain of Lifeblood.
 It processes tasks, moves them around and schedules them for execution on workers.
 
-worker
-------
+:ref:`worker <worker>`
+----------------------
 Worker is the one component that does the (usually) heavy work specified by tasks' invocations.
 
-viewer
-------
+:ref:`viewer <viewer>`
+----------------------
 Viewer is the tool that allows a user to view scheduler's state.
 With a viewer you can see the state of the processing of your task group, or modify or create new node setups,
 move tasks around, or otherwise change things in scheduler.
@@ -43,34 +43,24 @@ and to make lifeblood package lighter.
 
 Configuration
 ^^^^^^^^^^^^^
-Configuration for lifeblood components is done with config files. Config files are located by default in your user folder:
+Configuration for lifeblood components is done with config files. Config files are located by default in your user folder,
+see :ref:`config-dir`
 
-* on linux it's ``~`` (``~/lifeblood``) (i.e. ``/home/username/lifeblood``)
-* on windows it's your ``Documents`` folder (``%HOME%/lifeblood``) (i.e. ``C:\Users\username\Documents\lifeblood``)
-* on mac it's in ``~/Library/Preferences/lifeblood``
-
-In your config location you will find subdirs named after components, and certain component-specific configuration files within.
-The main config file in most cases is called ``config.toml``. It uses `toml language <https://toml.io/>`_.
-
-Lifeblood's components will create default configs for themselves on first launch.
-You can start with default config and adjust it for your needs.
-
-Some configuration values may be overriden as command line arguments. See command specifications for details.
 
 Database location
 """""""""""""""""
-Probably the most important part of the configuration is where your scheduler's database is stored.
-Lifeblood uses `sqlite <https://www.sqlite.org/>`_ as it's database engine.
 
-By default, the database file location is set to be next to scheduler's config file.
+A scheduler's database is something like a farm manager repository - it's where all nodes and tasks are stored.
 
-However it may be overriden by config entry ``core.database.path``, or command line argument ``--db-path``.
-It is quite reasonable to have multiple databases to test different things around.
-However the main idea of Lifeblood, scheduler is to set up your pipeline logic in one single database.
+You can have multiple databases and switch between them, but at one time only one may be used.
 
-    NOTE: it is better to create the database on an **SSD** drive if possible,
-    as it will be much faster, especially on huge databases.
-    Though database on HDD is quite fine for low task load.
+Read more at :ref:`scheduler database`
+
+.. warning::
+    do NOT run multiple schedulers with different databases at the same time. Though it is supported
+    in general - it requires some configuration, like disabling broadcasting. So you need to know what you
+    are doing
+
 
 -----
 
@@ -86,7 +76,8 @@ You can change that behaviour in scheduler's config. in ``core`` section ``broad
 with ``server_ip``, ``server_port`` you can override ip and port to use for worker connections, and with ``ui_ip``, ``ui_port``
 you can override ip and port to use for viewer connections.
 
-    Note: **IF BROADCASTING IS OFF** it is quite possible to run multiple schedulers on the same network (though you should not have a need to do it),
+.. note::
+    **IF BROADCASTING IS OFF** it is quite possible to run multiple schedulers on the same network (though you should not have a need to do it),
     or even on the same machine (but they MUST use different databases).
     But if broadcasting if enabled - multiple schedulers on the same local network will start to conflict with each other.
     Again: you should NOT have a need to run multiple schedulers.
@@ -104,7 +95,7 @@ so example config might look like this:
 
 Requirements
 ============
-python3.6 or higher is required
+python3.8 or higher is required
 
 OS support
 ----------

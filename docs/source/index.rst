@@ -5,18 +5,17 @@ Welcome to Lifeblood documentation!
     :maxdepth: 2
     :caption: Contents:
 
-    howtouse
+    overview
     usage
     tutorials
-    api
 
 .. toctree::
     :maxdepth: 1
     :caption: Components:
 
-    scheduler
+    scheduler/scheduler
     worker
-    viewer
+    viewer/viewer
 
 
 Indices and tables

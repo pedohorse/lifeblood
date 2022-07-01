@@ -4,21 +4,20 @@
 Lifeblood Scheduler
 ===================
 
-.. contents::
-    :local:
+.. toctree::
+    :maxdepth: 1
+
+    scheduler_configs
 
 Scheduler is the central part of Lifeblood: it manages tasks and workers.
 
-Generally there should always be only one single scheduler running in a local network.
+Generally there should always be only ONE single scheduler running in a local network.
 
-Database
-========
+.. _scheduler database:
 
-when launched with ``lifeblood scheduler`` - scheduler will start with default database located at
-:ref:`config-dir <config-dir>` ``/scheduler/main.db``
+.. include:: database.rst
 
-It is recommended to keep database on a fast drive (SSD is better than HDD), so you can adjust database location
-in the config file ``<config_dir>>/scheduler/config.toml``
+.. _scheduler broadcasting:
 
 Broadcasting
 ============
@@ -32,4 +31,6 @@ Broadcasting
 You can disable broadcasting in scheduler's config file, but then you will have to properly configure workers and viewers manually
 so they know where to connect.
 
-.. include:: logging.rst
+.. _scheduler logging:
+
+.. include:: ../logging.rst
