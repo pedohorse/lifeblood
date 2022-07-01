@@ -13,6 +13,7 @@ def submit_button_callback(node):
                                  default_choice=1,
                                  close_choice=1) == 1:
             return
+        hou.hipFile.save()
     try:
         submit(node)
     except hou.Error as e:
