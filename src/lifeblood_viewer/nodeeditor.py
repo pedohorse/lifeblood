@@ -1009,14 +1009,29 @@ class Shortcutable:
     def __init__(self, config_name):
         assert isinstance(self, QObject)
         self.__shortcuts: Dict[str, QShortcut] = {}
+        self.__shortcut_contexts: Dict[str, Set[str]] = {}
         config = get_config(config_name)
         defaults = self.default_shortcuts()
+        self.__context_name = 'main'
+
         for action, meth in self.shortcutable_methods().items():
             shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
             if shortcut is None:
                 continue
             self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
+            self.__shortcut_contexts[action] = {'main'}  # TODO: make a way to define shortcut context per shortcut or per action, dunno
             self.__shortcuts[action].activated.connect(meth)
+
+    def change_shortcut_context(self, new_context_name: str) -> None:
+        self.disable_shortcuts()
+        self.__context_name = new_context_name
+        self.enable_shortcuts()
+
+    def reset_shortcut_context(self) -> None:
+        return self.change_shortcut_context('main')
+
+    def current_shortcut_context(self) -> str:
+        return self.__context_name
 
     def shortcuts(self):
         return MappingProxyType(self.__shortcuts)
@@ -1028,12 +1043,24 @@ class Shortcutable:
         return {}
 
     def disable_shortcuts(self):
-        for shortcut in self.__shortcuts.values():
-            shortcut.setEnabled(False)
+        """
+        disable shortcuts for current context
+
+        :return:
+        """
+        for action, shortcut in self.__shortcuts.items():
+            if self.__context_name in self.__shortcut_contexts.get(action, {}):
+                shortcut.setEnabled(False)
 
     def enable_shortcuts(self):
-        for shortcut in self.__shortcuts.values():
-            shortcut.setEnabled(True)
+        """
+        enable shortcuts for current context
+
+        :return:
+        """
+        for action, shortcut in self.__shortcuts.items():
+            if self.__context_name in self.__shortcut_contexts.get(action, {}):
+                shortcut.setEnabled(True)
 
 
 class NodeEditor(QGraphicsView, Shortcutable):
@@ -1514,6 +1541,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
             self.__menu_popup_selection_name = ()
             self.__menu_popup_arrow_down = False
 
+            self.change_shortcut_context('create_node')
+
         if imgui.begin_popup('create node'):
             changed, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
             if not imgui.is_item_active() and not imgui.is_mouse_down():
@@ -1557,6 +1586,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     self.__menu_popup_arrow_down = True
             if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
                 imgui.close_current_popup()
+                self.reset_shortcut_context()
                 # for type_name, type_meta in self.__node_types.items():
                 #     if self.__node_type_input in type_name \
                 #             or self.__node_type_input in type_meta.tags \
@@ -1581,6 +1611,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
+                self.reset_shortcut_context()
                 self.__node_type_input = ''
                 self.__menu_popup_selection_id = 0
             imgui.end_popup()
