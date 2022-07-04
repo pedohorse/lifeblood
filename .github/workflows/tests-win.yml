@@ -31,7 +31,7 @@ jobs:
         if [ -f requirements_tests.txt ]; then pip install -r requirements_tests.txt; fi
       shell: bash
     - name: Adjust PYTHONPATH
-      run: echo "PYTHONPATH=./src:$PYTHOPATH" >> $GITHUB_ENV
+      run: echo "PYTHONPATH=$PWD\\src:$PYTHOPATH" >> $GITHUB_ENV
       shell: bash
 #     - name: Lint with flake8
 #       run: |
