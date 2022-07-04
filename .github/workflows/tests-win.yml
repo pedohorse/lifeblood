@@ -32,7 +32,6 @@ jobs:
       shell: bash
     - name: Adjust PYTHONPATH
       run: echo "PYTHONPATH=$PWD\\src:$PYTHOPATH" >> $GITHUB_ENV
-      shell: bash
 #     - name: Lint with flake8
 #       run: |
 #         # stop the build if there are Python syntax errors or undefined names
