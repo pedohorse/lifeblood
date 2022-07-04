@@ -64,3 +64,8 @@ class InvocationState(Enum):
 class SpawnStatus(Enum):
     SUCCEEDED = 0
     FAILED = 1
+
+
+class ProcessPriorityAdjustment(Enum):
+    NO_CHANGE = 0
+    LOWER = 1

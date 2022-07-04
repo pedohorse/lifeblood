@@ -27,7 +27,7 @@ from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob
 from .config import get_config, create_default_user_config_file
 from . import environment_resolver
-from .enums import WorkerType, WorkerState
+from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
 from .paths import config_path
 from .local_notifier import LocalMessageExchanger
 from .filelock import FileCoupledLock
@@ -45,11 +45,6 @@ from typing import Optional, Dict, Tuple
 
 
 is_posix = not sys.platform.startswith('win')
-
-
-class ProcessPriorityAdjustment(Enum):
-    NO_CHANGE = 0
-    LOWER = 1
 
 
 async def create_worker(scheduler_ip: str, scheduler_port: int, *,
