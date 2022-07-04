@@ -14,7 +14,7 @@ from .process_utils import create_worker_process, send_stop_signal_to_worker
 from .logging import get_logger
 from .worker_pool_protocol import WorkerPoolProtocol
 from .nethelpers import get_localhost
-from .enums import WorkerState, WorkerType
+from .enums import WorkerState, WorkerType, ProcessPriorityAdjustment
 from .defaults import worker_pool_port as default_worker_pool_port
 
 from typing import Tuple, Dict, List, Optional
@@ -22,10 +22,10 @@ from typing import Tuple, Dict, List, Optional
 
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
                              minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
-                             idle_timeout=10, worker_suspicious_lifetime=4, scheduler_address: Optional[Tuple[str, int]] = None):
+                             idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[Tuple[str, int]] = None):
     swp = WorkerPool(worker_type,
                      minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
-                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, scheduler_address=scheduler_address)
+                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, priority=priority, scheduler_address=scheduler_address)
     await swp.start()
     return swp
 
@@ -45,7 +45,8 @@ class ProcData:
 class WorkerPool:  # TODO: split base class, make this just one of implementations
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *,
                  minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
-                 idle_timeout=10, worker_suspicious_lifetime=4, scheduler_address: Optional[Tuple[str, int]] = None):
+                 idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE,
+                 scheduler_address: Optional[Tuple[str, int]] = None):
         """
         manages a pool of workers.
         :param worker_type: workers are created of given type
@@ -66,6 +67,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__maximum_total = maximum_total
         self.__worker_type = worker_type
         self.__idle_timeout = idle_timeout  # after this amount of idling worker will be stopped if total count is above minimum
+        self.__worker_priority = priority
         self.__scheduler_address = scheduler_address
 
         # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
@@ -133,6 +135,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         args = [sys.executable, '-m', 'lifeblood.launch',
                 'worker',
                 '--type', self.__worker_type.name,
+                '--priority', self.__worker_priority.name,
                 '--no-loop',
                 '--id', str(self.__next_wid),
                 '--pool-address', f'{self.__my_addr}:{self.__my_port}']
@@ -317,8 +320,10 @@ async def async_main(argv):
                         dest='maximum_total',
                         default=256, type=int,
                         help='no more than this amount of workers will be run locally at the same time (default=256)')
+    parser.add_argument('--priority', choices=tuple(x.name for x in ProcessPriorityAdjustment), default=ProcessPriorityAdjustment.LOWER.name, help='pass to spawned workers: adjust child process priority')
 
     opts = parser.parse_args(argv)
+    opts.priority = [x for x in ProcessPriorityAdjustment if x.name == opts.priority][0]  # there MUST be exactly 1 match
 
     graceful_closer_no_reentry = False
 
