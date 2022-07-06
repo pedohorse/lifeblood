@@ -543,7 +543,7 @@ class Scheduler:
                 # TODO: commented below as it seem to cause race conditions with worker invocation done reporting. NEED CHECKING
                 #if await self.reset_invocations_for_worker(worker_row['id'], con=con):
                 #    await con.commit()
-            else:
+            elif ping_code == WorkerPingReply.BUSY:
                 #workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
                 async with con.execute('SELECT "id" FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
@@ -557,6 +557,8 @@ class Scheduler:
                     # Therefore additional cleanup needed later - still better than lock things or check too hard
 
                 # await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
+            else:
+                raise NotImplementedError(f'not a known ping_code {ping_code}')
 
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
             self.__db_cache['workers_state'][worker_row['id']]['last_seen'] = int(time.time())
