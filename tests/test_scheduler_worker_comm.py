@@ -64,7 +64,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         purge_db()
         sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         ip, port = sched.server_address().split(':')
-        worker = Worker(ip, int(port))
+        worker = Worker(ip, int(port), scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test
 
         await sched.start()
         await worker.start()
