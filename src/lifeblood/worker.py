@@ -64,6 +64,8 @@ class Worker:
                  child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
                  worker_type: WorkerType = WorkerType.STANDARD,
                  singleshot: bool = False,
+                 scheduler_ping_interval: float = 10,
+                 scheduler_ping_miss_threshold: int = 6,
                  worker_id: Optional[int] = None,
                  pool_address: Optional[Tuple[str, int]] = None):
         """
@@ -113,8 +115,8 @@ class Worker:
         self.__stop_lock = threading.Lock()
         self.__start_lock = asyncio.Lock()  # cant use threading lock in async methods - it can yeild out, and deadlock on itself
         self.__where_to_report = None
-        self.__ping_interval = 10
-        self.__ping_missed_threshold = 6
+        self.__ping_interval = scheduler_ping_interval
+        self.__ping_missed_threshold = scheduler_ping_miss_threshold
         self.__ping_missed = 0
         self.__scheduler_addr = (scheduler_addr, scheduler_port)
         self.__scheduler_pinger = None
