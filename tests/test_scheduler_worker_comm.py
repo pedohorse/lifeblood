@@ -68,6 +68,10 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
         await sched.start()
         await worker.start()
+        self.assertTrue(sched.is_started())
+        self.assertTrue(worker.is_started())
+
+        # theses are actually noops
         await asyncio.gather(sched.wait_till_starts(),
                              worker.wait_till_starts())
 
@@ -102,6 +106,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         # if it is - it must be an error
         sttime = time.time()
         state = 0
+        state_enter_time = -1
         sstate = WorkerState.UNKNOWN
         wrun = 0
         wlocked = 0
@@ -153,6 +158,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             if state == 5:
                 if not wlocked:
                     state = 6
+                    state_enter_time = time.time()
                 else:
                     self.assertFalse(wrun)
                     self.assertEqual(WorkerState.IDLE, sstate)
@@ -161,7 +167,8 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 self.assertFalse(wrun)
                 self.assertEqual(WorkerState.IDLE, sstate)
                 self.assertFalse(wlocked)
-                break
+                if time.time() - state_enter_time > 11:  # just wait some random time to ensure nothing changes
+                    break
             await asyncio.sleep(0.0)
 
         sched.stop()
