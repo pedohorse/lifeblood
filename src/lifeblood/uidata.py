@@ -196,7 +196,7 @@ class Parameter(ParameterHierarchyLeaf):
         self.__expression = None
         self.__can_have_expressions = can_have_expression
 
-        self.__re_expand_pattern = re.compile(r'`(.*?)`')
+        self.__re_expand_pattern = re.compile(r'`(.*?)`')  # TODO: add possibility to escape `
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
