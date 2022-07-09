@@ -150,6 +150,7 @@ class BaseNode:
                 self.__logger.warning('this method probably should not be called from the main scheduler thread')
             else:  # we are not in main thread
                 fut.result(60)  # ensure callback is completed before continuing. not sure how much it's needed, but it feels safer
+                # TODO: even though timeout even here is impossible in any sane situation - still we should do something about it
             # and this is a nono: asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     # def _state_changed(self):
