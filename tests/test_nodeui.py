@@ -106,13 +106,25 @@ class BadParamNode2(ParamNode):
         print([x.name() for x in ui.parameters()])
 
 
+class ListParamTypesNode(ParamNode):
+    def __init__(self, name):
+        super(ListParamTypesNode, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_parameter('int_param', None, param_type=NodeParameterType.INT, param_val=12)
+            ui.add_parameter('float_param', None, param_type=NodeParameterType.FLOAT, param_val=2.3)
+            ui.add_parameter('bool_param', None, param_type=NodeParameterType.BOOL, param_val=True)
+            ui.add_parameter('string_param', None, param_type=NodeParameterType.STRING, param_val='wowcat')
+
+
 class UniqueUiParametersCheck(TestCase):
     def test_parameter_name_collision(self):
         self.assertRaises(ParameterNameCollisionError, BadParamNode1, 'name1')
         self.assertRaises(ParameterNameCollisionError, BadParamNode2, 'name2')
 
     def test_basic1(self):
-        p1 = GoodParamNode1('name1')
+        p1 = GoodParamNode1('name1337')
+        self.assertEqual('name1337', p1.name())
         self.assertEqual('13qe', p1.param('abcd').value())
         self.assertEqual(0, p1.param('vigo').value())
         self.assertRaises(ParameterNotFound, p1.param, 'efgh')
@@ -199,9 +211,25 @@ class UniqueUiParametersCheck(TestCase):
                 self.assertRaises(ParameterNotFound, node.param, f'efgh_{i}')
                 self.assertRaises(ParameterNotFound, node.param, f'ijkl_{i}')
 
-
     def test_expression_set_remove(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lolname')
+
+        for param, val, expr, expr_result in ((node.param('int_param'), 23, '2+3*4', 14),
+                                              (node.param('float_param'), -4.21, '2+5/10', 2.5),
+                                              (node.param('bool_param'), True, '2==5', False),
+                                              (node.param('bool_param'), False, '4==4', True),
+                                              (node.param('string_param'), 'asdfghj', '" ".join(("wow","cat"))', 'wow cat')):
+            self.assertFalse(param.has_expression())
+            param.set_value(val)
+            self.assertEqual(val, param.value())
+            param.set_expression(expr)
+            # TODO: should we allow setting value under expression?
+            self.assertTrue(param.has_expression())
+            self.assertEqual(expr_result, param.value())
+            param.remove_expression()
+            self.assertFalse(param.has_expression())
+            self.assertEqual(val, param.value())
+
 
     def test_bad_expression(self):
         raise NotImplementedError()
