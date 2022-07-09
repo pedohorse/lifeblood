@@ -3,27 +3,81 @@
         {
             "tmpid": 0,
             "type": "null",
-            "name": "out cache",
+            "name": "IN CACHE",
             "parameters": {},
             "pos": [
-                3842.950120291692,
-                1830.538625215772
+                5737.888517390577,
+                2254.2668834750607
             ],
             "__dataclass__": "NodeData"
         },
         {
             "tmpid": 1,
-            "type": "null",
-            "name": "IN CACHE",
-            "parameters": {},
+            "type": "split_waiter",
+            "name": "gather framerange",
+            "parameters": {
+                "wait for all": {
+                    "name": "wait for all",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
             "pos": [
-                3843.3175954811804,
-                1495.556552773486
+                5739.624334547519,
+                2669.043414830739
             ],
             "__dataclass__": "NodeData"
         },
         {
             "tmpid": 2,
+            "type": "null",
+            "name": "out cache",
+            "parameters": {},
+            "pos": [
+                5735.159056878232,
+                2811.2755762660986
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 3,
+            "type": "framerange_splitter",
+            "name": "split framerange",
+            "parameters": {
+                "chunk size": {
+                    "name": "chunk size",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 10,
+                    "expr": "task.get('framechunk_size', 10)",
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                5738.443341886087,
+                2384.424183426222
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 4,
             "type": "hip_driver_renderer",
             "name": "hip_driver_renderer Hykap",
             "parameters": {
@@ -259,17 +313,24 @@
                 }
             },
             "pos": [
-                3842.950120291692,
-                1665.1996526156381
+                5739.88302752395,
+                2518.3893962315747
             ],
             "__dataclass__": "NodeData"
         }
     ],
     "connections": [
         {
-            "tmpout": 2,
+            "tmpout": 3,
             "out_name": "main",
-            "tmpin": 0,
+            "tmpin": 4,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 4,
+            "out_name": "main",
+            "tmpin": 1,
             "in_name": "main",
             "__dataclass__": "ConnData"
         },
@@ -277,6 +338,13 @@
             "tmpout": 1,
             "out_name": "main",
             "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "main",
+            "tmpin": 3,
             "in_name": "main",
             "__dataclass__": "ConnData"
         }
