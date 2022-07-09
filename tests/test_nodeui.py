@@ -2,7 +2,9 @@ from unittest import TestCase
 import random
 from itertools import chain
 from lifeblood import basenode
-from lifeblood.uidata import NodeParameterType, ParameterNameCollisionError, ParameterNotFound, ParameterError
+from lifeblood.uidata import NodeUi, NodeParameterType, ParameterNameCollisionError, ParameterNotFound, ParameterError, \
+    ParameterExpressionError, ParameterExpressionCastError, ParameterReadonly, ParameterLocked, LayoutError, \
+    ParameterDefinitionError, NodeUiDefinitionError, ParameterCannotHaveExpressions
 
 from typing import Iterable
 
@@ -64,6 +66,10 @@ class GoodParamNode1(ParamNode):
                 ui.add_parameter('ijkl', None, param_type=NodeParameterType.INT, param_val=-2)
             ui.add_parameter('mnop', None, param_type=NodeParameterType.FLOAT, param_val=9.1)
 
+    @classmethod
+    def type_name(cls) -> str:
+        return 'debug testing type and stuff'
+
 
 class GoodParamNode2(ParamNode):
     def __init__(self, name):
@@ -115,6 +121,28 @@ class ListParamTypesNode(ParamNode):
             ui.add_parameter('float_param', None, param_type=NodeParameterType.FLOAT, param_val=2.3)
             ui.add_parameter('bool_param', None, param_type=NodeParameterType.BOOL, param_val=True)
             ui.add_parameter('string_param', None, param_type=NodeParameterType.STRING, param_val='wowcat')
+
+
+class LockedReadonlyParamsNode(ParamNode):
+    def __init__(self, name):
+        super(LockedReadonlyParamsNode, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_parameter('locked_param', None, param_type=NodeParameterType.INT, param_val=123).set_locked(True)
+            ui.add_parameter('readonly_param', None, param_type=NodeParameterType.INT, param_val=321, readonly=True)
+            ui.add_parameter('noexpr_param', None, param_type=NodeParameterType.INT, param_val=321, can_have_expressions=False)
+            ui.add_parameter('int_param', None, param_type=NodeParameterType.INT, param_val=614)
+
+
+class ParametersWithLimitsNode(ParamNode):
+    def __init__(self, name):
+        super(ParametersWithLimitsNode, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_parameter('int_param', None, param_type=NodeParameterType.INT, param_val=123).set_value_limits(-2, 144)
+            ui.add_parameter('int_param_default_exceeds', None, param_type=NodeParameterType.INT, param_val=155).set_value_limits(-2, 144)
+            ui.add_parameter('float_param', None, param_type=NodeParameterType.FLOAT, param_val=12.3).set_value_limits(-1.5, 43.2)
+            ui.add_parameter('float_param_default_exceeds', None, param_type=NodeParameterType.FLOAT, param_val=-2.1).set_value_limits(-1.5, 43.2)
 
 
 class UniqueUiParametersCheck(TestCase):
@@ -214,70 +242,289 @@ class UniqueUiParametersCheck(TestCase):
     def test_expression_set_remove(self):
         node = ListParamTypesNode('lolname')
 
-        for param, val, expr, expr_result in ((node.param('int_param'), 23, '2+3*4', 14),
-                                              (node.param('float_param'), -4.21, '2+5/10', 2.5),
-                                              (node.param('bool_param'), True, '2==5', False),
-                                              (node.param('bool_param'), False, '4==4', True),
-                                              (node.param('string_param'), 'asdfghj', '" ".join(("wow","cat"))', 'wow cat')):
+        for param, val, expr, expr_result, alt_val in ((node.param('int_param'), 23, '2+3*4', 14, -23),
+                                                      (node.param('float_param'), -4.21, '2+5/10', 2.5, -9.111),
+                                                      (node.param('bool_param'), True, '2==5', False, True),
+                                                      (node.param('bool_param'), False, '4==4', True, False),
+                                                      (node.param('string_param'), 'asdfghj', '" ".join(("wow","cat"))', 'wow cat', 'crocodile')):
             self.assertFalse(param.has_expression())
             param.set_value(val)
             self.assertEqual(val, param.value())
             param.set_expression(expr)
-            # TODO: should we allow setting value under expression?
             self.assertTrue(param.has_expression())
             self.assertEqual(expr_result, param.value())
+
+            # TODO: should we allow setting value under expression? for now we do de-facto
+            param.set_value(alt_val)
+            self.assertEqual(expr_result, param.value())
+
             param.remove_expression()
             self.assertFalse(param.has_expression())
-            self.assertEqual(val, param.value())
-
+            self.assertEqual(alt_val, param.value())
 
     def test_bad_expression(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lolname')
+
+        node.param('int_param').set_expression('bad+wolf')
+        self.assertRaises(ParameterExpressionError, node.param('int_param').value)
 
     def test_expression_bad_return_type_castable(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lolname')
+        for param, expr, casted_val in ((node.param('int_param'), '23.45+12.34+3.4', 39),
+                                        (node.param('int_param'), 'True or False', 1),
+                                        (node.param('int_param'), '"-2"+"4"', -24),
+                                        (node.param('float_param'), '4-10', -6.0),
+                                        (node.param('float_param'), 'False and False or True', 1.0),
+                                        (node.param('float_param'), '"12"+ "." + "33"', 12.33),
+                                        (node.param('bool_param'), '10-10', False),
+                                        (node.param('bool_param'), '10-11', True),
+                                        (node.param('bool_param'), '4.5-4', True),
+                                        (node.param('bool_param'), '44.66/2-22.33', False),
+                                        (node.param('bool_param'), 'True', True),
+                                        (node.param('bool_param'), 'False', False),
+                                        (node.param('string_param'), '3+12*2', '27'),
+                                        (node.param('string_param'), '5.5*3', '16.5'),
+                                        (node.param('string_param'), 'True and 15==(10+5)', 'True'),):
+            param.set_expression(expr)
+            self.assertEqual(casted_val, param.value())
 
     def test_expression_bad_return_type_uncastable(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lolname')
+        for param, expr in ((node.param('int_param'), '"off"+"woof"'),
+                            (node.param('int_param'), '"2.3"'),
+                            (node.param('float_param'), '"oof"')):
+            param.set_expression(expr)
+            self.assertRaises(ParameterExpressionCastError, param.value)
 
     def test_expression_non_expressionable_parameters(self):
-        raise NotImplementedError()
+        node = LockedReadonlyParamsNode('ohno')
+        self.assertRaises(ParameterCannotHaveExpressions, node.param('noexpr_param').set_expression, '1+2+3')
 
     def test_expression_multiparam_value(self):
-        raise NotImplementedError()
+        # currently multiparam cannot have expressions. this may change in the future
+        node = GoodParamNode1('woof')
+        self.assertRaises(ParameterCannotHaveExpressions, node.param('vigo').set_expression, '1+3')
 
     def test_string_expansion(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lename')
+        node.param('string_param').set_value('cat `".".join(("dog", "bark"))` and sleeps')
+        self.assertEqual('cat dog.bark and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value('cat')
+        self.assertEqual('cat', node.param('string_param').value())
+
+        node.param('string_param').set_value('`".".join(("dog", "bark"))`')
+        self.assertEqual('dog.bark', node.param('string_param').value())
+
+        # bad expr
+        node.param('string_param').set_value('`".".join(("dog, "bark"))`')
+        self.assertRaises(ParameterExpressionError, node.param('string_param').value)
 
     def test_string_expansion_escape_backtick(self):
-        raise NotImplementedError()
+        node = ListParamTypesNode('lename')
+        node.param('string_param').set_value(r'cat `".".join(("dog", "ba\`rk"))` and sleeps')
+        self.assertEqual('cat dog.ba`rk and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value(r'cat `".".join(("dog", "ba\`rk"))` and sleeps')
+        self.assertEqual('cat dog.ba`rk and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value(r'cat `".".join(("dog", "bark"))`\` and sleeps')
+        self.assertEqual('cat dog.bark` and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value(r'cat \``".".join(("dog", "bark"))` and sleeps')
+        self.assertEqual('cat `dog.bark and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value(r'cat \``".".join(("dog", "bark"))`\` and sleeps')
+        self.assertEqual('cat `dog.bark` and sleeps', node.param('string_param').value())
+
+        node.param('string_param').set_value(r'c\`at `".".join(("dog", "ba\`rk"))` and sleeps')
+        self.assertEqual('c`at dog.ba`rk and sleeps', node.param('string_param').value())
+        node.param('string_param').set_value(r'cat `".".join(("dog", "ba\`rk"))` and sl\`eeps')
+        self.assertEqual('cat dog.ba`rk and sl`eeps', node.param('string_param').value())
+        node.param('string_param').set_value(r'cat `".".join(("dog", "bark"))` and sl\`eeps')
+        self.assertEqual('cat dog.bark and sl`eeps', node.param('string_param').value())
+
+        # but \` created as result of expansion must stay
+        node.param('string_param').set_value(r'cat `".".join(("dog", "\\" +"\`", "bark"))` and sleeps')
+        self.assertEqual(r'cat dog.\`.bark and sleeps', node.param('string_param').value())
 
     def test_limits(self):
-        raise NotImplementedError()
+        node = ParametersWithLimitsNode('iamnode')
+        self.assertEqual(123, node.param('int_param').value())
+        node.param('int_param').set_value(555)
+        self.assertEqual(144, node.param('int_param').value())
+        node.param('int_param').set_value(-3)
+        self.assertEqual(-2, node.param('int_param').value())
+
+        self.assertEqual(144, node.param('int_param_default_exceeds').value())
+
+        self.assertEqual(12.3, node.param('float_param').value())
+        node.param('float_param').set_value(55.5)
+        self.assertEqual(43.2, node.param('float_param').value())
+        node.param('float_param').set_value(-1.7)
+        self.assertEqual(-1.5, node.param('float_param').value())
+
+        self.assertEqual(-1.5, node.param('float_param_default_exceeds').value())
 
     def test_limits_str(self):
-        raise NotImplementedError()
+        class BadParametersWithLimitsNode1(ParamNode):
+            def __init__(self, name):
+                super(BadParametersWithLimitsNode1, self).__init__(name)
+                ui = self.get_ui()
+                with ui.initializing_interface_lock():
+                    ui.add_parameter('string_param', None, param_type=NodeParameterType.STRING, param_val='boo').set_value_limits('a', 'z')
+
+        class BadParametersWithLimitsNode2(ParamNode):
+            def __init__(self, name):
+                super(BadParametersWithLimitsNode2, self).__init__(name)
+                ui = self.get_ui()
+                with ui.initializing_interface_lock():
+                    ui.add_parameter('string_param', None, param_type=NodeParameterType.STRING, param_val='boo').set_value_limits('a', 'z')
+
+        self.assertRaises(ParameterDefinitionError, BadParametersWithLimitsNode1, 'succ')
+        self.assertRaises(ParameterDefinitionError, BadParametersWithLimitsNode2, 'succ')
 
     def test_expression_limits(self):
-        raise NotImplementedError()
+        node = ParametersWithLimitsNode('iamnode')
+        node.param('int_param').set_expression('123+234')
+        self.assertEqual(144, node.param('int_param').value())
+        node.param('int_param').set_expression('-12-23')
+        self.assertEqual(-2, node.param('int_param').value())
+
+        node.param('float_param').set_expression('12.3+234')
+        self.assertEqual(43.2, node.param('float_param').value())
+        node.param('float_param').set_expression('-12-2.3')
+        self.assertEqual(-1.5, node.param('float_param').value())
 
     def test_readonly(self):
-        raise NotImplementedError()
+        node = LockedReadonlyParamsNode('ohno')
+        self.assertEqual(321, node.param('readonly_param').value())
+        self.assertRaises(ParameterReadonly, node.param('readonly_param').set_value, 666)
+        self.assertRaises(ParameterReadonly, node.param('readonly_param').set_expression, '1+2')
+        node.param('readonly_param').set_locked(True)
+        # after locking still should raise ParameterReadonly, not ParameterLocked
+        self.assertRaises(ParameterReadonly, node.param('readonly_param').set_value, 666)
+        self.assertRaises(ParameterReadonly, node.param('readonly_param').set_expression, '1+2')
 
     def test_locked(self):
-        raise NotImplementedError()
+        node = LockedReadonlyParamsNode('ohno')
+        for _ in range(5):
+            self.assertEqual(123, node.param('locked_param').value())
+            self.assertRaises(ParameterLocked, node.param('locked_param').set_value, 666)
+            self.assertRaises(ParameterLocked, node.param('locked_param').set_expression, '1+2+3')
+            self.assertEqual(123, node.param('locked_param').value())
+            node.param('locked_param').set_locked(False)
+            node.param('locked_param').set_value(666)
+            self.assertEqual(666, node.param('locked_param').value())
+            node.param('locked_param').set_locked(True)
+
+            self.assertEqual(666, node.param('locked_param').value())
+            self.assertRaises(ParameterLocked, node.param('locked_param').set_value, 123)
+            self.assertRaises(ParameterLocked, node.param('locked_param').set_expression, '1+2+3')
+            self.assertEqual(666, node.param('locked_param').value())
+            node.param('locked_param').set_locked(False)
+            node.param('locked_param').set_value(123)
+            self.assertEqual(123, node.param('locked_param').value())
+            node.param('locked_param').set_locked(True)
 
     def test_add_parameter_outside_of_lock(self):
-        raise NotImplementedError()
+        node = LockedReadonlyParamsNode('ohno')
+        ui = node.get_ui()
+        self.assertRaises(NodeUiDefinitionError, ui.add_parameter, 'woofffffff', None, NodeParameterType.INT, -1)
+
+        # TODO: should methods like set_value_limits, add_menu also require lock block?
+        # self.assertRaises(NodeUiDefinitionError, node.param('int_param').set_value_limits, -9999, 9999)
 
     def test_serialization(self):
-        raise NotImplementedError()
+        node1 = GoodParamNode1('src')
+        node1ui = node1.get_ui()
+        node2ui = NodeUi.deserialize(node1ui.serialize())  # type: NodeUi
+
+        self.assertSetEqual(set(x.name() for x in node1ui.parameters()), set(x.name() for x in node2ui.parameters()))
+
+        for param1 in node1ui.parameters():
+            param2 = node2ui.parameter(param1.name())
+            self.assertEqual(param1.value(), param2.value())
+            self.assertEqual(param1.is_locked(), param2.is_locked())
+            self.assertEqual(param1.is_readonly(), param2.is_readonly())
+            self.assertEqual(param1.can_have_expressions(), param2.can_have_expressions())
+            self.assertEqual(param1.value_limits(), param2.value_limits())
+            self.assertEqual(param1.expression(), param2.expression())
 
     def test_parameter_change_callback(self):
-        raise NotImplementedError()
+        class NodeWithParamCallbacks(ParamNode):
+            def __init__(self, name):
+                super(NodeWithParamCallbacks, self).__init__(name)
+                self.callbacks = []
+                ui = self.get_ui()
+                with ui.initializing_interface_lock():
+                    ui.add_parameter('int_param', None, NodeParameterType.INT, 12)
+                    with ui.multigroup_parameter_block('fooface'):
+                        ui.add_parameter('inblock', None, NodeParameterType.STRING, 'bar')
 
-    def test_layout_change_callback(self):
-        raise NotImplementedError()
+            def _ui_changed(self, definition_changed=False):
+                print(f'callback! definition:{definition_changed}')
+                self.callbacks.append(definition_changed)
+
+        node = NodeWithParamCallbacks('foo')
+        self.assertEqual(0, len(node.callbacks))
+        node.param('int_param').set_value(123)
+        self.assertEqual(1, len(node.callbacks))
+        self.assertEqual(False, node.callbacks[-1])
+        ui = node.get_ui()
+        with ui.initializing_interface_lock():
+            ui.add_parameter('float_param', None, NodeParameterType.FLOAT, 3.45)
+        self.assertEqual(1, len(node.callbacks))
+
+        node.param('float_param').set_value(4.56)
+        self.assertEqual(2, len(node.callbacks))
+        self.assertEqual(False, node.callbacks[-1])
+
+        # note - changing multiparam value currently causes 1 value callback,
+        #  but there is a TODO: to change this behaviour: https://trello.com/c/BxwJM9W5/314-nodeui-currently-childadded-childabouttoberemoved-do-not-cause-any-event-propagation-like-definitionchanged-but-i-guess-it-shoul
+        node.param('fooface').set_value(2)
+        self.assertEqual(3, len(node.callbacks))
+        self.assertEqual(False, node.callbacks[-1])
+
+        node.param('inblock_1').set_value('vlad')
+        self.assertEqual(4, len(node.callbacks))
+        self.assertEqual(False, node.callbacks[-1])
+
+        node.param('float_param').set_expression('fee')
+        self.assertEqual(5, len(node.callbacks))
+        self.assertEqual(True, node.callbacks[-1])
+
+        node.param('float_param').set_locked(True)
+        self.assertEqual(6, len(node.callbacks))
+        self.assertEqual(True, node.callbacks[-1])
+
+    # nothing triggers layout change callback outside of initialization currently
+    # def test_layout_change_callback(self):
+    #     raise NotImplementedError()
 
     def test_visibility_condition_triggers_appearance_callback(self):
-        raise NotImplementedError()
+        class NodeWithVisCondCallbacks(ParamNode):
+            def __init__(self, name):
+                super(NodeWithVisCondCallbacks, self).__init__(name)
+                self.callbacks = []
+                ui = self.get_ui()
+                with ui.initializing_interface_lock():
+                    p1 = ui.add_parameter('int_param2', None, NodeParameterType.INT, 12)
+                    p2 = ui.add_parameter('int_param3', None, NodeParameterType.INT, 55)
+                    ui.add_parameter('int_param', None, NodeParameterType.INT, 12).append_visibility_condition(p1, '==', 5) \
+                                                                                  .append_visibility_condition(p2, '<', 30)
+
+        node = NodeWithVisCondCallbacks('foo')
+        self.assertFalse(node.param('int_param').visible())
+        node.param('int_param2').set_value(5)
+        self.assertFalse(node.param('int_param').visible())
+        node.param('int_param3').set_value(25)
+        self.assertTrue(node.param('int_param').visible())
+        node.param('int_param3').set_value(29)
+        self.assertTrue(node.param('int_param').visible())
+        node.param('int_param3').set_value(31)
+        self.assertFalse(node.param('int_param').visible())
+        node.param('int_param3').set_value(1)
+        self.assertTrue(node.param('int_param').visible())
+        node.param('int_param2').set_value(6)
+        self.assertFalse(node.param('int_param').visible())
