@@ -31,7 +31,18 @@ class ParameterExpressionError(Exception):
         return self.__inner_exception
 
 
-class LayoutReadonlyError(Exception):
+class ParameterExpressionCastError(ParameterExpressionError):
+    """
+    represents error with type casting of the expression result
+    """
+    pass
+
+
+class LayoutError(RuntimeError):
+    pass
+
+
+class LayoutReadonlyError(LayoutError):
     pass
 
 
@@ -196,7 +207,8 @@ class Parameter(ParameterHierarchyLeaf):
         self.__expression = None
         self.__can_have_expressions = can_have_expression
 
-        self.__re_expand_pattern = re.compile(r'`(.*?)`')  # TODO: add possibility to escape `
+        self.__re_expand_pattern = re.compile(r'((?<!\\)`.*?(?<!\\)`)')  # TODO: add possibility to escape `
+        self.__re_escape_backticks_pattern = re.compile(r'\\`')
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
@@ -252,21 +264,37 @@ class Parameter(ParameterHierarchyLeaf):
         if self.__expression is not None:
             result = evaluate_expression(self.__expression, context)
             # check type and cast
-            if self.__type == NodeParameterType.INT:
-                result = int(result)
-            elif self.__type == NodeParameterType.FLOAT:
-                result = float(result)
-            elif self.__type == NodeParameterType.STRING and not isinstance(result, str):
-                result = str(result)
-            elif self.__type == NodeParameterType.BOOL:
-                result = bool(result)
+            try:
+                if self.__type == NodeParameterType.INT:
+                    result = int(result)
+                elif self.__type == NodeParameterType.FLOAT:
+                    result = float(result)
+                elif self.__type == NodeParameterType.STRING and not isinstance(result, str):
+                    result = str(result)
+                elif self.__type == NodeParameterType.BOOL:
+                    result = bool(result)
+            except ValueError:
+                raise ParameterExpressionCastError(f'could not cast {result} to {self.__type.name}') from None
+            #check limits
+            if self.__type in (NodeParameterType.INT, NodeParameterType.FLOAT):
+                if self.__hard_borders[0] is not None and result < self.__hard_borders[0]:
+                    result = self.__hard_borders[0]
+                if self.__hard_borders[1] is not None and result > self.__hard_borders[1]:
+                    result = self.__hard_borders[1]
             return result
 
         if self.__type != NodeParameterType.STRING:
             return self.__value
 
         # for string parameters we expand expressions in ``, kinda like bash
-        return self.__re_expand_pattern.sub(lambda m: str(evaluate_expression(m.group(1), context)), self.__value)
+        parts = self.__re_expand_pattern.split(self.__value)
+        for i, part in enumerate(parts):
+            if part.startswith('`'):  # expression
+                parts[i] = str(evaluate_expression(self.__re_escape_backticks_pattern.sub('`', part[1:-1]), context))
+            else:
+                parts[i] = self.__re_escape_backticks_pattern.sub('`', part)
+        return ''.join(parts)
+        # return self.__re_expand_pattern.sub(lambda m: str(evaluate_expression(m.group(1), context)), self.__value)
 
     def set_slider_visualization(self, value_min=DontChange, value_max=DontChange):  # type: (Union[int, float], Union[int, float]) -> Parameter
         """
@@ -276,7 +304,7 @@ class Parameter(ParameterHierarchyLeaf):
         :return: self to be chained
         """
         if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
-            raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
+            raise ParameterDefinitionError('cannot set limits for parameters of types other than INT and FLOAT')
 
         if self.__type == NodeParameterType.INT:
             value_min = int(value_min)
@@ -299,7 +327,7 @@ class Parameter(ParameterHierarchyLeaf):
         :return: self to be chained
         """
         if self.__type not in (NodeParameterType.INT, NodeParameterType.FLOAT):
-            raise RuntimeError('cannot set limits for parameters of types other than INT and FLOAT')
+            raise ParameterDefinitionError('cannot set limits for parameters of types other than INT and FLOAT')
         if value_min == self.DontChange:
             value_min = self.__hard_borders[0]
         elif value_min is not None:
@@ -318,11 +346,15 @@ class Parameter(ParameterHierarchyLeaf):
         assert value_max != self.DontChange
 
         self.__hard_borders = (value_min, value_max)
+        if value_min is not None and self.__value < value_min:
+            self.__value = value_min
+        if value_max is not None and self.__value > value_max:
+            self.__value = value_max
         return self
 
     def set_text_multiline(self, syntax_hint=None):
         if self.__type != NodeParameterType.STRING:
-            raise RuntimeError('multiline can be only set for string parameters')
+            raise ParameterDefinitionError('multiline can be only set for string parameters')
         self.__string_multiline = True
         self.__string_multiline_syntax_hint = syntax_hint
         return self
@@ -361,7 +393,11 @@ class Parameter(ParameterHierarchyLeaf):
         return self.__locked
 
     def set_locked(self, locked: bool):
+        if locked == self.__locked:
+            return
         self.__locked = locked
+        if self.parent() is not None:
+            self.parent()._children_definition_changed([self])
 
     def set_value(self, value: Any):
         if self.__is_readonly:
@@ -489,7 +525,7 @@ class Parameter(ParameterHierarchyLeaf):
         elif otype == NodeParameterType.FLOAT:
             value = float(value)
         elif otype != NodeParameterType.STRING:  # for future
-            raise RuntimeError(f'cannot add visibility condition check based on this type of parameters: {otype}')
+            raise ParameterDefinitionError(f'cannot add visibility condition check based on this type of parameters: {otype}')
         self.__vis_when.append((other_param, condition, value))
         other_param._add_referencing_me(self)
         self.__vis_cache = None
@@ -511,15 +547,15 @@ class Parameter(ParameterHierarchyLeaf):
             menu_items[key] = value
             menu_order.append(key)
             if not isinstance(key, str):
-                raise RuntimeError('menu label type must be string')
+                raise ParameterDefinitionError('menu label type must be string')
             if my_type == NodeParameterType.INT and not isinstance(value, int):
-                raise RuntimeError(f'wrong menu value for int parameter "{self.name()}"')
+                raise ParameterDefinitionError(f'wrong menu value for int parameter "{self.name()}"')
             elif my_type == NodeParameterType.BOOL and not isinstance(value, bool):
-                raise RuntimeError(f'wrong menu value for bool parameter "{self.name()}"')
+                raise ParameterDefinitionError(f'wrong menu value for bool parameter "{self.name()}"')
             elif my_type == NodeParameterType.FLOAT and not isinstance(value, float):
-                raise RuntimeError(f'wrong menu value for float parameter "{self.name()}"')
+                raise ParameterDefinitionError(f'wrong menu value for float parameter "{self.name()}"')
             elif my_type == NodeParameterType.STRING and not isinstance(value, str):
-                raise RuntimeError(f'wrong menu value for string parameter "{self.name()}"')
+                raise ParameterDefinitionError(f'wrong menu value for string parameter "{self.name()}"')
 
         self.__menu_items = menu_items
         self.__menu_items_order = menu_order
@@ -574,6 +610,10 @@ class ParameterError(RuntimeError):
     pass
 
 
+class ParameterDefinitionError(ParameterError):
+    pass
+
+
 class ParameterNotFound(ParameterError):
     pass
 
@@ -592,6 +632,7 @@ class ParameterLocked(ParameterError):
 
 class ParameterCannotHaveExpressions(ParameterError):
     pass
+
 
 class ParametersLayoutBase(ParameterHierarchyItem):
     def __init__(self):
@@ -620,12 +661,12 @@ class ParametersLayoutBase(ParameterHierarchyItem):
 
     def add_parameter(self, new_parameter: Parameter):
         if not self._is_initialize_lock_set():
-            raise RuntimeError('initializing interface not inside initializing_interface_lock')
+            raise LayoutError('initializing interface not inside initializing_interface_lock')
         new_parameter.set_parent(self)
 
     def add_layout(self, new_layout: "ParametersLayoutBase"):
         if not self._is_initialize_lock_set():
-            raise RuntimeError('initializing interface not inside initializing_interface_lock')
+            raise LayoutError('initializing interface not inside initializing_interface_lock')
         new_layout.set_parent(self)
 
     def items(self, recursive=False) -> Iterable["ParameterHierarchyItem"]:
@@ -845,13 +886,13 @@ class MultiGroupLayout(OrderedParametersLayout):
         """
         this function is unavailable cuz of the nature of this layout
         """
-        raise RuntimeError('NO')
+        raise LayoutError('NO')
 
     def add_parameter(self, new_parameter: Parameter):
         """
         this function is unavailable cuz of the nature of this layout
         """
-        raise RuntimeError('NO')
+        raise LayoutError('NO')
 
     def add_template_instance(self):
         self.__count_param.set_value(self.__count_param.value() + 1)
@@ -872,7 +913,7 @@ class MultiGroupLayout(OrderedParametersLayout):
         new_count = self.__count_param.value()
         if self.__last_count < new_count:
             if self.__template is None:
-                raise RuntimeError('template is not set')
+                raise LayoutError('template is not set')
             for _ in range(new_count - self.__last_count):
                 new_layout = deepcopy(self.__template)
                 i = len(self.children()) - 1
@@ -907,14 +948,14 @@ class _SpecialOutputCountChangingLayout(VerticalParametersLayout):
         """
         this function is unavailable cuz of the nature of this layout
         """
-        raise RuntimeError('NO')
+        raise LayoutError('NO')
 
     def add_parameter(self, new_parameter: Parameter):
         """
         this function is unavailable cuz of the nature of this layout
         """
         if len(list(self.parameters())) > 0:
-            raise RuntimeError('NO')
+            raise LayoutError('NO')
         super(_SpecialOutputCountChangingLayout, self).add_parameter(new_parameter)
 
     def _children_value_changed(self, children: Iterable["ParameterHierarchyItem"]):
@@ -937,6 +978,14 @@ class _SpecialOutputCountChangingLayout(VerticalParametersLayout):
             for _ in range(new_num_outputs, num_outputs):
                 self.__my_nodeui._remove_last_output_unsafe()
         self.__my_nodeui._outputs_definition_changed()
+
+
+class NodeUiError(RuntimeError):
+    pass
+
+
+class NodeUiDefinitionError(RuntimeError):
+    pass
 
 
 class NodeUi(ParameterHierarchyItem):
@@ -1072,7 +1121,7 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         return NodeUi._slwrapper(self, parameter_layout_producer)
 
     def add_parameter_to_control_output_count(self, parameter_name: str, parameter_label: str):
@@ -1087,9 +1136,9 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
-            raise RuntimeError('there can only be one parameter to control output count')
+            raise NodeUiDefinitionError('there can only be one parameter to control output count')
         self.__have_output_parameter_set = True
         self.__outputs_names = ('main', 'output1')
 
@@ -1131,7 +1180,7 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         return _slwrapper_multi(self, name)
 
     def current_layout(self):
@@ -1143,7 +1192,7 @@ class NodeUi(ParameterHierarchyItem):
         :return:
         """
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
         if len(self.__groups_stack) != 0:
             layout = self.__groups_stack[-1]
@@ -1159,12 +1208,12 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         return NodeUi._slwrapper(self, CollapsableVerticalGroup, {'group_name': group_name, 'group_label': group_label})
 
     def _add_layout(self, new_layout):
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
         if len(self.__groups_stack) != 0:
             layout = self.__groups_stack[-1]
@@ -1175,7 +1224,7 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         layout = self.__parameter_layout
         if len(self.__groups_stack) != 0:
             layout = self.__groups_stack[-1]
@@ -1188,7 +1237,7 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         if input_name not in self.__inputs_names:
             self.__inputs_names += (input_name,)
 
@@ -1200,9 +1249,9 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
-            raise RuntimeError('cannot add outputs when output count is controlled by a parameter')
+            raise NodeUiDefinitionError('cannot add outputs when output count is controlled by a parameter')
         return self._add_output_unsafe(output_name)
 
     def _remove_last_output_unsafe(self):
@@ -1214,9 +1263,9 @@ class NodeUi(ParameterHierarchyItem):
         if self.__lock_ui_readonly:
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
-            raise RuntimeError('initializing NodeUi interface not inside initializing_interface_lock')
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
         if self.__have_output_parameter_set:
-            raise RuntimeError('cannot add outputs when output count is controlled by a parameter')
+            raise NodeUiDefinitionError('cannot add outputs when output count is controlled by a parameter')
         return self._remove_last_output_unsafe()
 
     def add_output_for_spawned_tasks(self):
