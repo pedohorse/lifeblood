@@ -38,7 +38,7 @@ from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode, TaskGroupArchivedState
 from .config import get_config, create_default_user_config_file
-from .misc import atimeit
+from .misc import atimeit, alocking
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
@@ -2068,6 +2068,7 @@ class Scheduler:
 
     #
     # spawning new task callback
+    @alocking()
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
         """
 
