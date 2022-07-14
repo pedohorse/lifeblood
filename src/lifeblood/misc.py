@@ -3,7 +3,7 @@ import random
 import time
 from .logging import get_logger, logging
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 
 class DummyLock:
@@ -67,9 +67,27 @@ def timeit(threshold=0):
     return _timeit
 
 
-def alocking(lock: asyncio.Lock):
+__alocking_locks = {}
+
+
+def alocking(lock_or_name: Union[asyncio.Lock, str, None] = None):  # TODO: TESTS NEEDED!
     def decorator(func):
         async def _wrapper(*args, **kwargs):
+            nonlocal lock_or_name
+            lock = None
+            if isinstance(lock_or_name, asyncio.Lock):
+                lock = lock_or_name
+            elif lock_or_name is None:
+                lock_or_name = func.__name__
+
+            if isinstance(lock_or_name, str):
+                if lock_or_name not in __alocking_locks:
+                    __alocking_locks[lock_or_name] = asyncio.Lock()
+                lock = __alocking_locks[lock_or_name]
+
+            if lock is None:
+                raise ValueError('lock value bad')
+
             async with lock:
                 return await func(*args, **kwargs)
         return _wrapper
