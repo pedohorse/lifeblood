@@ -42,7 +42,7 @@ from .misc import atimeit, alocking
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
-from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
+from typing import Optional, Any, AnyStr, Tuple, List, Iterable, Union, Dict
 
 SCHEDULER_DB_FORMAT_VERSION = 1
 
@@ -299,14 +299,23 @@ class Scheduler:
             self.__node_objects_locks[node_id] = RWLock(fast=True)  # read about fast on github. the points is if we have awaits inside critical section - it's safe to use fast
         return self.__node_objects_locks[node_id]
 
-    async def get_task_attributes(self, task_id: int):
+    async def get_task_attributes(self, task_id: int) -> Tuple[Dict[str, Any], Optional[EnvironmentResolverArguments]]:
+        """
+        get tasks, atributes and it's enviroment resolver's attributes
+
+        :param task_id:
+        :return:
+        """
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+            async with con.execute('SELECT attributes, environment_resolver_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 res = await cur.fetchone()
             if res is None:
                 raise RuntimeError('task with specified id was not found')
-            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes'])
+            env_res_args = None
+            if res['environment_resolver_data'] is not None:
+                env_res_args = await EnvironmentResolverArguments.deserialize_async(res['environment_resolver_data'])
+            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes']), env_res_args
 
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
