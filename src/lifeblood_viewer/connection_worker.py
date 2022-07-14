@@ -17,6 +17,7 @@ from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.snippets import NodeSnippetData
 from lifeblood.defaults import ui_port
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
@@ -32,7 +33,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
-    task_attribs_fetched = Signal(int, dict, object)
+    task_attribs_fetched = Signal(int, tuple, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
     nodepresets_fetched = Signal(dict)
@@ -267,12 +268,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', task_id))
             rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
             attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
+            rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            env_attrs = None
+            if rcvsize > 0:
+                env_attrs = EnvironmentResolverArguments.deserialize(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.task_attribs_fetched.emit(task_id, attribs, data)
+            self.task_attribs_fetched.emit(task_id, (attribs, env_attrs), data)
 
     @Slot(int)
     def get_task_invocation_job(self, task_id: int):
