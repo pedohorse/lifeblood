@@ -15,6 +15,7 @@ from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 from lifeblood.text import generate_name
 
@@ -579,12 +580,14 @@ class QGraphicsImguiScene(QGraphicsScene):
         node.update_nodeui(nodeui)
 
     @Slot(object, object, object)
-    def _task_attribs_fetched(self, task_id: int, attribs: dict, data: Optional["LongOperationData"] = None):
+    def _task_attribs_fetched(self, task_id: int, all_attribs: Tuple[dict, Optional[EnvironmentResolverArguments]], data: Optional["LongOperationData"] = None):
         task = self.get_task(task_id)
         if task is None:
             logger.warning('attribs fetched, but task not found!')
             return
+        attribs, env_attribs = all_attribs
         task.update_attributes(attribs)
+        task.set_environment_attributes(env_attribs)
         if data is not None:
             data.data = attribs
             self.process_operation(data)
