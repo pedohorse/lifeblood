@@ -54,7 +54,7 @@ class PulseChecker:
                     if self.__miss_reported:
                         self.__logger.info('pulse restored')
                         self.__miss_reported = False
-            except ConnectionError:
+            except (ConnectionError, OSError):
                 self.__misses += 1
                 self.__logger.warning(f'scheduler missed pulse, current miss count: {self.__misses}')
 
