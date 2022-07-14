@@ -10,6 +10,7 @@ from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, Parame
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 from lifeblood.enums import NodeParameterType
 
@@ -322,6 +323,7 @@ class Node(NetworkItemWithUI):
         painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
         painter.setPen(self.__typename_pen)
         painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.__node_type)
+        painter.drawText(headershape.boundingRect(), Qt.AlignLeft | Qt.AlignBottom, f'{len(self.__tasks)}')
 
     def get_input_position(self, name: str = 'main') -> QPointF:
         if self.__inputs is None:
@@ -360,6 +362,7 @@ class Node(NetworkItemWithUI):
         if task in self.__tasks:
             return
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
+        self.update()  # cuz node displays task number - we should redraw
         pos_id = len(self.__tasks)
         if task.node() is None:
             task.set_node(self, *self.get_task_pos(task, pos_id))
@@ -390,6 +393,7 @@ class Node(NetworkItemWithUI):
         self.__tasks = self.__tasks[:-off]
         for x in tasks_to_remove:
             assert x not in self.__tasks
+        self.update()  # cuz node displays task number - we should redraw
 
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
@@ -401,6 +405,7 @@ class Node(NetworkItemWithUI):
             self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks = self.__tasks[:-1]
         assert task_to_remove not in self.__tasks
+        self.update()  # cuz node displays task number - we should redraw
 
     def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
@@ -1011,6 +1016,7 @@ class Task(NetworkItemWithUI):
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
+        self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
         self.__requested_invocs_while_selected = set()
 
         self.__size = 16
@@ -1216,6 +1222,10 @@ class Task(NetworkItemWithUI):
         self.__ui_attributes = attributes
         self.update_ui()
 
+    def set_environment_attributes(self, env_attrs: Optional[EnvironmentResolverArguments]):
+        self.__ui_env_res_attributes = env_attrs
+        self.update_ui()
+
     def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
         """
@@ -1388,6 +1398,22 @@ class Task(NetworkItemWithUI):
         else:
             super(Task, self).mouseReleaseEvent(event)
 
+    @staticmethod
+    def _draw_dict_table(attributes: dict, table_name: str):
+        imgui.columns(2, table_name)
+        imgui.separator()
+        imgui.text('name')
+        imgui.next_column()
+        imgui.text('value')
+        imgui.next_column()
+        imgui.separator()
+        for key, val in attributes.items():
+            imgui.text(key)
+            imgui.next_column()
+            imgui.text(repr(val))
+            imgui.next_column()
+        imgui.columns(1)
+
     #
     # interface
     def draw_imgui_elements(self, drawing_widget):
@@ -1399,24 +1425,19 @@ class Task(NetworkItemWithUI):
         imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
 
         # first draw attributes
-        if self.__ui_attributes.items():
-            imgui.columns(2, 'node_attributes')
-            imgui.separator()
-            imgui.text('name')
-            imgui.next_column()
-            imgui.text('value')
-            imgui.next_column()
-            imgui.separator()
-            for key, val in self.__ui_attributes.items():
-                imgui.text(key)
-                imgui.next_column()
-                imgui.text(repr(val))
-                imgui.next_column()
-            imgui.columns(1)
+        if self.__ui_attributes:
+            self._draw_dict_table(self.__ui_attributes, 'node_task_attributes')
+
+        if self.__ui_env_res_attributes and self.__ui_env_res_attributes.arguiments():
+            imgui.text(f'environment resolver: "{self.__ui_env_res_attributes.name()}"')
+            tab_expanded, _ = imgui.collapsing_header(f'environment resolver attributes##collapsing_node_task_environment_resolver_attributes')
+            if tab_expanded:
+                self._draw_dict_table(self.__ui_env_res_attributes.arguiments(), 'node_task_environment_resolver_attributes')
 
         # now draw log
         if self.__log is None:
             return
+        imgui.text('Logs:')
         for node_id, invocs in self.__log.items():
             node_expanded, _ = imgui.collapsing_header(f'node {node_id}')
             if not node_expanded:  # or invocs is None:
