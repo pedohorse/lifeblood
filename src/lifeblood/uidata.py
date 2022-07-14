@@ -180,7 +180,7 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
     try:
         return eval(expression,
-                    {'os': os, 'pathlib': pathlib, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
+                    {'os': os, 'pathlib': pathlib, 'Path': pathlib.Path, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
                     context.locals() if context is not None else {})
     except Exception as e:
         raise ParameterExpressionError(e) from None
@@ -487,7 +487,9 @@ class Parameter(ParameterHierarchyLeaf):
                         or op == '>' and other_param.value() <= value \
                         or op == '>=' and other_param.value() < value \
                         or op == '<' and other_param.value() >= value \
-                        or op == '<=' and other_param.value() > value:
+                        or op == '<=' and other_param.value() > value \
+                        or op == 'in' and other_param.value() not in value \
+                        or op == 'not in' and other_param.value() in value:
                     self.__vis_cache = False
                     return False
         self.__vis_cache = True
@@ -506,7 +508,7 @@ class Parameter(ParameterHierarchyLeaf):
         assert other_parameter in self.__params_referencing_me
         self.__params_referencing_me.remove(other_parameter)
 
-    def append_visibility_condition(self, other_param: "Parameter", condition: str, value) -> "Parameter":
+    def append_visibility_condition(self, other_param: "Parameter", condition: str, value: Union[bool, int, float, str, tuple]) -> "Parameter":
         """
         condition currently can only be a simplest
         :param other_param:
@@ -514,17 +516,28 @@ class Parameter(ParameterHierarchyLeaf):
         :param value:
         :return: self to allow easy chaining
         """
-
-        assert condition in ('==', '!=', '>=', '<=', '<', '>')
+        allowed_conditions = ('==', '!=', '>=', '<=', '<', '>', 'in', 'not in')
+        if condition not in allowed_conditions:
+            raise ParameterDefinitionError(f'condition must be one of: {", ".join(x for x in allowed_conditions)}')
+        if condition in ('in', 'not in') and not isinstance(value, tuple):
+            raise ParameterDefinitionError('for in/not in conditions value must be a tuple of possible values')
+        elif condition not in ('in', 'not in') and isinstance(value, tuple):
+            raise ParameterDefinitionError('value can be tuple only for in/not in conditions')
 
         otype = other_param.type()
         if otype == NodeParameterType.INT:
-            value = int(value)
+            if not isinstance(value, tuple):
+                value = int(value)
         elif otype == NodeParameterType.BOOL:
-            value = bool(value)
+            if not isinstance(value, tuple):
+                value = bool(value)
         elif otype == NodeParameterType.FLOAT:
-            value = float(value)
-        elif otype != NodeParameterType.STRING:  # for future
+            if not isinstance(value, tuple):
+                value = float(value)
+        elif otype == NodeParameterType.STRING:
+            if not isinstance(value, tuple):
+                value = str(value)
+        else:  # for future
             raise ParameterDefinitionError(f'cannot add visibility condition check based on this type of parameters: {otype}')
         self.__vis_when.append((other_param, condition, value))
         other_param._add_referencing_me(self)
