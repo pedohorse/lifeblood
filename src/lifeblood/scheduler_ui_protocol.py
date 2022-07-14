@@ -9,6 +9,7 @@ from . import pluginloader
 from .net_classes import NodeTypeMetadata
 from .taskspawn import NewTask
 from .snippets import NodeSnippetDataPlaceholder
+from .environment_resolver import EnvironmentResolverArguments
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -82,10 +83,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_get_task_attribs():  # elif command == b'gettaskattribs':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            attribs = await self.__scheduler.get_task_attributes(task_id)
-            data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
-            writer.write(struct.pack('>Q', len(data)))
-            writer.write(data)
+            attribs, env_attribs = await self.__scheduler.get_task_attributes(task_id)
+
+            data_attirbs: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
+            data_env: bytes = b''
+            if env_attribs is not None:
+                data_env: bytes = await EnvironmentResolverArguments.serialize_async(env_attribs)
+            writer.write(struct.pack('>Q', len(data_attirbs)))
+            writer.write(data_attirbs)
+            writer.write(struct.pack('>Q', len(data_env)))
+            writer.write(data_env)
 
         async def comm_get_task_invocation():  # elif command == b'gettaskinvoc':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -209,7 +216,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).set_expression, expression)
                     # node.param(param_name).set_expression(expression)
                 else:
-                    node.param(param_name).remove_expression()
+                    await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).remove_expression)
             writer.write(b'\1')
 
         async def comm_apply_node_settings():
