@@ -1226,6 +1226,9 @@ class Task(NetworkItemWithUI):
         self.__ui_env_res_attributes = env_attrs
         self.update_ui()
 
+    def environment_attributes(self) -> Optional[EnvironmentResolverArguments]:
+        return self.__ui_env_res_attributes
+
     def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
         """
