@@ -1309,7 +1309,7 @@ class Scheduler:
             if task.invocation_id() in self.__db_cache['invocations']:
                 del self.__db_cache['invocations'][task.invocation_id()]
 
-            if task.finished_needs_retry():  # TODO: max retry count!
+            if task.finished_needs_retry():  # max retry count will be checked by task processor
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
             elif task.finished_with_error():
@@ -1938,7 +1938,7 @@ class Scheduler:
                 for group in task_groups:
                     # _dbg = time.perf_counter()
                     async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
-                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
+                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
                                            'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
