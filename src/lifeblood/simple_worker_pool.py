@@ -60,6 +60,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__pool_task = None
         self.__worker_server: Optional[asyncio.AbstractServer] = None
         self.__stop_event = asyncio.Event()
+        self.__server_closer_waiter = None
         self.__poke_event = asyncio.Event()
         self.__logger = get_logger(self.__class__.__name__.lower())
         self.__ensure_minimum_total = minimal_total_to_ensure
@@ -108,10 +109,15 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__logger.debug(f'worker pool protocol listening on {self.__my_port}')
 
     def stop(self):
+        async def _server_closer():
+            await self.__pool_task  # ensure local manager is stopped before closing server. here it will ensure all workers are terminated
+            self.__worker_server.close()
+            await self.__worker_server.wait_closed()
+
         if self.__stopped:
             return
-        self.__worker_server.close()
-        self.__stop_event.set()
+        self.__stop_event.set()  # stops local_worker_pool_manager
+        self.__server_closer_waiter = asyncio.create_task(_server_closer())  # server will be closed here
         self.__pulse_checker.stop()
         self.__stopped = True
 
@@ -124,6 +130,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         await self.__pool_task
         await self.__worker_server.wait_closed()
         await self.__pulse_checker
+        await self.__server_closer_waiter
 
     async def add_worker(self):
         if self.__stopped:
