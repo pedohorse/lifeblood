@@ -1582,6 +1582,9 @@ class Scheduler:
         self.__logger.debug(f'finished worker reported stopped: {addr}')
 
     #
+    # protocol related commands
+    #
+    #
     # cancel invocation
     async def cancel_invocation(self, invocation_id: str):
         self.__logger.debug(f'canceling invocation {invocation_id}')
@@ -1801,6 +1804,16 @@ class Scheduler:
                     del attributes[name]
             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
                                                                                         task_id))
+            await con.commit()
+
+    #
+    # set environment resolver
+    async def set_task_environment_resolver_arguments(self, task_id: int, env_res: Optional[EnvironmentResolverArguments]):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('UPDATE tasks SET "environment_resolver_data" = ? WHERE "id" = ?',
+                              (await env_res.serialize_async() if env_res is not None else None,
+                               task_id))
             await con.commit()
 
     #
