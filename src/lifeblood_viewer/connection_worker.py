@@ -818,3 +818,28 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problem in network operations')
+
+    @Slot()
+    def set_environment_resolver_arguments(self, task_id: int, env_args: Optional[EnvironmentResolverArguments]):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        try:
+            self.__conn.sendall(b'settaskenvresolverargs\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+            if env_args is None:
+                self.__conn.sendall(struct.pack('>Q', 0))
+            else:
+                data = env_args.serialize()
+                self.__conn.sendall(struct.pack('>Q', len(data)))
+                self.__conn.sendall(data)
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problem in network operations')
+
+    @Slot()
+    def unset_environment_resolver_arguments(self, task_id: int):
+        return self.set_environment_resolver_arguments(task_id, None)

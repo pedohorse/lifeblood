@@ -216,6 +216,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
     _signal_set_skip_dead = Signal(bool)
     _signal_set_skip_archived_groups = Signal(bool)
+    _signal_set_environment_resolver_arguments = Signal(int, EnvironmentResolverArguments)
+    _signal_unset_environment_resolver_arguments = Signal(int)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     nodepresets_updated = Signal(dict)
@@ -302,6 +304,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
         self._signal_set_skip_dead.connect(self.__ui_connection_worker.set_skip_dead)
         self._signal_set_skip_archived_groups.connect(self.__ui_connection_worker.set_skip_archived_groups)
+        self._signal_set_environment_resolver_arguments.connect(self.__ui_connection_worker.set_environment_resolver_arguments)
+        self._signal_unset_environment_resolver_arguments.connect(self.__ui_connection_worker.unset_environment_resolver_arguments)
 
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -405,6 +409,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def set_skip_archived_groups(self, do_skip: bool) -> None:
         self._signal_set_skip_archived_groups.emit(do_skip)
+
+    def request_set_environment_resolver_arguments(self, task_id, env_args):
+        self._signal_set_environment_resolver_arguments.emit(task_id, env_args)
+
+    def request_unset_environment_resolver_arguments(self, task_id):
+        self._signal_unset_environment_resolver_arguments.emit(task_id)
 
     def skip_dead(self) -> bool:
         return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
@@ -1418,13 +1428,31 @@ class NodeEditor(QGraphicsView, Shortcutable):
         wgt.show()
 
     def _popup_modify_task_callback(self, task_id, wgt: CreateTaskDialog):
-        name, groups, changes, deletes = wgt.get_task_changes()
+        name, groups, changes, deletes, resolver_name, res_changed, res_deletes = wgt.get_task_changes()
         if len(changes) > 0 or len(deletes) > 0:
             self.__scene.request_update_task_attributes(task_id, changes, deletes)
         if name is not None:
             self.__scene.request_rename_task(task_id, name)
         if groups is not None:
             self.__scene.request_set_task_groups(task_id, set(groups))
+
+        if resolver_name is not None or res_changed or res_deletes:
+            if resolver_name == '':
+                self.__scene.request_unset_environment_resolver_arguments(task_id)
+            else:
+                task = self.__scene.get_task(task_id)
+                env_args = task.environment_attributes() or EnvironmentResolverArguments()
+                args = dict(env_args.arguiments())
+                if res_changed:
+                    args.update(res_changed)
+                for name in res_deletes:
+                    del args[name]
+                env_args = EnvironmentResolverArguments(resolver_name or env_args.name(), args)
+                self.__scene.request_set_environment_resolver_arguments(task_id, env_args)
+
+        # TODO: this works only because connection worker CURRENTLY executes requests sequentially
+        #  so first request to update task goes through, then request to update attributes.
+        #  if connection worker is improoved to be multithreaded - this has to be enforced with smth like longops
         self.__scene.request_attributes(task_id)  # request updated task from scheduler
 
     def _popup_save_settings_dialog(self, node: Node):
