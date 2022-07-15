@@ -1426,6 +1426,7 @@ class Task(NetworkItemWithUI):
         imgui.text(f'parent id: {self.__raw_data.get("parent_id", None)}')
         imgui.text(f'children count: {self.__raw_data.get("children_count", None)}')
         imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
+        imgui.text(f'invocation attempts: {self.__raw_data.get("work_data_invocation_attempt", 0)}')
 
         # first draw attributes
         if self.__ui_attributes:
