@@ -374,6 +374,17 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
             ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
             writer.write(struct.pack('>I', ret.value))
+
+        #
+        async def set_task_environment_resolver_arguments():
+            task_id, data_size = struct.unpack('>QQ', await reader.readexactly(16))
+            if data_size == 0:
+                env_res = None
+            else:
+                env_res = await EnvironmentResolverArguments.deserialize_async(await reader.readexactly(data_size))
+            await self.__scheduler.set_task_environment_resolver_arguments(task_id, env_res)
+            writer.write(b'\1')
+
         #
         #
         commands = {b'getfullstate': comm_get_full_state,
@@ -409,7 +420,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'tsetname': comm_task_set_name,
                     b'tsetgroups': comm_task_set_groups,
                     b'tupdateattribs': comm_task_update_attribs,
-                    b'addtask': comm_add_task}
+                    b'addtask': comm_add_task,
+                    b'settaskenvresolverargs': set_task_environment_resolver_arguments}
         #
         # connection callback
         #
