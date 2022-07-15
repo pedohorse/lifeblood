@@ -150,6 +150,7 @@ class Scheduler:
         ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
         ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
         self.__stop_event = asyncio.Event()
+        self.__server_closing_task = None
         self.__wakeup_event = asyncio.Event()
         self.__task_processor_kick_event = asyncio.Event()
         self.__wakeup_event.set()
@@ -333,6 +334,12 @@ class Scheduler:
         return await InvocationJob.deserialize_async(data)
 
     def stop(self):
+        async def _server_closer():
+            await self.__worker_pool.wait_till_stops()
+            if self.__server is not None:
+                self.__server.close()
+                await self.__server.wait_closed()
+
         if self.__stop_event.is_set():
             self.__logger.error('cannot double stop!')
             return  # no double stopping
@@ -340,14 +347,13 @@ class Scheduler:
             self.__logger.error('cannot stop what is not started!')
             return
         self.__logger.info('STOPPING SCHEDULER')
-        self.__stop_event.set()
-        if self.__server is not None:
-            self.__server.close()
+        self.__stop_event.set()  # this will stop things including task_processor
+        self.__worker_pool.stop()
+        self.__server_closing_task = asyncio.create_task(_server_closer())  # we ensure worker pool stops BEFORE server, so workers have chance to report back
         if self.__ui_server is not None:
             self.__ui_server.close()
-        self.__worker_pool.stop()
 
-    def _stop_event_wait(self):
+    def _stop_event_wait(self):  # TODO: this is currently being used by ui proto to stop long connections, but not used in task proto, but what if it'll also get long living connections?
         return self.__stop_event.wait()
 
     async def start(self):
@@ -395,6 +401,7 @@ class Scheduler:
         await self.__started_event.wait()
         assert self.__all_components is not None
         await self.__all_components
+        await self.__server_closing_task
 
     def is_started(self):
         return self.__started_event.is_set()
