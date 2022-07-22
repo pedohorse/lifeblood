@@ -65,6 +65,7 @@ class ConnectionPool:
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
+        get_logger('shared_aiosqlite_connection').debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
             entry = self.connection_cache[key]
             if entry.count > 0:
