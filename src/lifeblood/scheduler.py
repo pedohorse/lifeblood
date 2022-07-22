@@ -17,6 +17,7 @@ from aiorwlock import RWLock
 from contextlib import asynccontextmanager
 import signal
 import threading  # for bugfix
+from concurrent.futures import ThreadPoolExecutor
 
 from . import logging
 from . import paths
@@ -732,7 +733,7 @@ class Scheduler:
             loop = asyncio.get_event_loop()
             try:
                 async with self.get_node_lock_by_id(task_row['node_id']).reader_lock:
-                    process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
+                    process_result: ProcessingResult = await loop.run_in_executor(awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
                                         #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -947,6 +948,7 @@ class Scheduler:
                         await self.__update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
                     await submit_transaction.commit()
 
+        awaiter_executor = ThreadPoolExecutor()  # TODO: max_workers= set from config
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self.__stop_event.wait())
@@ -1057,11 +1059,13 @@ class Scheduler:
                     # waiting to be processed
                     if task_state == TaskState.WAITING:
                         awaiters = []
+                        set_to_stuff = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.ERROR.value, task_row['id']))
+                                set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
                                 # note that ready_to_process_task is ran not inside the read lock
@@ -1071,36 +1075,45 @@ class Scheduler:
                                 if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
                                     continue
 
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.GENERATING.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.GENERATING.value, task_row['id']))
+                                set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
-                        await con.commit()
+                        if set_to_stuff:
+                            await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
+                            await con.commit()
+                        self.__logger.debug('loop done, creating tasks')
                         for coro in awaiters:
                             tasks_to_wait.add(asyncio.create_task(coro))
                     #
                     # waiting to be post processed
                     elif task_state == TaskState.POST_WAITING:
                         awaiters = []
+                        set_to_stuff = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.ERROR.value, task_row['id']))
+                                set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
                                 if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                     continue
 
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.POST_GENERATING.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.POST_GENERATING.value, task_row['id']))
+                                set_to_stuff.append((TaskState.POST_GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
-                        await con.commit()
+                        if set_to_stuff:
+                            await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
+                            await con.commit()
                         for coro in awaiters:
                             tasks_to_wait.add(asyncio.create_task(coro))  # note - dont change to run in executors in threads - there are things here like asyncio locks that RELY ON BEING IN SAME THREAD
                     #
@@ -1232,7 +1245,11 @@ class Scheduler:
                 else:
                     self.wake()
 
-            self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
+            processing_time = time.perf_counter() - _debug_con
+            if processing_time > 1.0:
+                self.__logger.info(f'processing run in {processing_time}')
+            else:
+                self.__logger.debug(f'processing run in {processing_time}')
 
             # and wait for a bit
             if wakeup_task is not None:
