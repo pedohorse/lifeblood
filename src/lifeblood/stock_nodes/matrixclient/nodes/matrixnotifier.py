@@ -65,6 +65,7 @@ class MatrixNotifier(BaseNode):
                 time.sleep(2 ** (i - 1))
             print(f'attempt {i+1}...')
             proc = subprocess.Popen([sys.executable, self.my_plugin().package_data() / 'matrixclient.pyz',
+                                     'send',
                                      context.param_value('server'),
                                      context.param_value('token'),
                                      context.param_value('room')], stdin=subprocess.PIPE)
