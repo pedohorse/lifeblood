@@ -161,5 +161,8 @@ class SharedLazyAiosqliteConnection:
         if callback is not None:
             entry.add_close_callback_if_not_in(callback)
 
+    async def rollback(self):
+        raise RuntimeError('cannot rollback on shared connection')
+
     def __getattr__(self, item):
         return getattr(self.__con, item)
