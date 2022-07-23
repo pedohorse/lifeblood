@@ -598,6 +598,10 @@ class Scheduler:
         if into < 1:
             raise ValueError('cant split into less than 1 part')
 
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
+        # even first selects are only safe to do within a transaction
+
         async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
             task_row = await cur.fetchone()
         new_split_level = task_row['split_level'] + 1
@@ -762,11 +766,17 @@ class Scheduler:
                 #con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
                 #print(f'up till block: {time.perf_counter() - _blo}')
+
+                if not con.in_transaction:
+                    await con.execute('BEGIN IMMEDIATE')
+                    assert con.in_transaction
                 if process_result.output_name:
                     await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                       (process_result.output_name, task_id))
                 #_blo = time.perf_counter()
                 #_bla1 = time.perf_counter()
+
+                # note: this may be not obvious, but ALL branches of the next if result in implicit transaction start
                 if process_result.do_kill_task:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.DEAD.value, task_id))
@@ -1055,6 +1065,7 @@ class Scheduler:
                     total_processed += len(all_task_rows)
 
                     self.__logger.debug(f'total {task_state.name}: {len(all_task_rows)}')
+                    # TODO: the problem might occur below when there are thousands of processing tasks - it may take some time before implicit transaction lock is given to task_processor
                     #
                     # waiting to be processed
                     if task_state == TaskState.WAITING:
