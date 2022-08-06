@@ -44,7 +44,8 @@ def main(argv):
             args.message = input_stream.read()
         r.send_text(args.message)
     else:
-        raise NotImplementedError(f'unknown command {args.command}')
+        parser.print_help()
+        parser.error('command need to be provided')
 
 
 if __name__ == '__main__':
