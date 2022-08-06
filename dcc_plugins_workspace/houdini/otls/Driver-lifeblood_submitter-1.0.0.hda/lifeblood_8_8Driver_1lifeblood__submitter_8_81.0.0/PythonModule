@@ -43,8 +43,6 @@ def submit(node):
         env_args[node.evalParm('env_arg_name_%d' % i)] = node.evalParm('env_arg_val_%d' % i)
     task.set_environment_resolver(env_name, env_args)
     
-    task.set_attribute('global_scratch_location', node.parm('netscratchpath').evalAsString())
-    
     for i in range(node.parm('attribs').evalAsInt()):
         if not node.parm('enable_%d' % i).evalAsInt():
             continue

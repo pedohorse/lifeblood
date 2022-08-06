@@ -123,14 +123,6 @@
         range   { 0! 100 }
         parmtag { "script_callback_language" "python" }
     }
-    parm {
-        name    "netscratchpath"
-        label   "global scratch location"
-        type    string
-        default { "" }
-        help    "it just sets additional attribute called global_scratch_location"
-        parmtag { "script_callback_language" "python" }
-    }
     group {
         name    "folder0"
         label   "Attributes"
