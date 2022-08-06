@@ -40,7 +40,7 @@ class CopyHipFile(BaseNodeWithTaskRequirements):
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
             ui.add_parameter('on workers', 'submit to workers', NodeParameterType.BOOL, False)
             ui.add_parameter('hip path', 'source hip path', NodeParameterType.STRING, "`task['hipfile']`")
-            ui.add_parameter('dst hip path', 'dest hip path', NodeParameterType.STRING, "`task['global_scratch_location']`/`node.name`")
+            ui.add_parameter('dst hip path', 'dest hip path', NodeParameterType.STRING, "`config['global_scratch_location']`/`node.name`")
             ui.add_parameter('append unique hipname', 'append unique temporary hip name to destination', NodeParameterType.BOOL, True)
             with ui.parameters_on_same_line_block():
                 mask_hip = ui.add_parameter('save orig', 'save original hip path', NodeParameterType.BOOL, False)
