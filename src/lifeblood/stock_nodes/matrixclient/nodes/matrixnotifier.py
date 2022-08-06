@@ -36,7 +36,7 @@ class MatrixNotifier(BaseNode):
             ui.add_parameter('retries', 'retries', NodeParameterType.INT, 0).set_value_limits(value_min=0)
             ui.add_parameter('fail on error', 'fail task on notification sending error', NodeParameterType.BOOL, True)
             with ui.collapsable_group_block('custom server block', 'custom server'):
-                ui.add_parameter('server', 'matrix server', NodeParameterType.STRING, 'https://matrix.org')
+                ui.add_parameter('server', 'matrix server', NodeParameterType.STRING, '`config.get("server", "https://matrix.org")`')
             ui.add_parameter('message', 'message', NodeParameterType.STRING, '').set_text_multiline()
 
     @classmethod
