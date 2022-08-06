@@ -3,6 +3,7 @@ from pathlib import Path
 import copy
 import toml
 import asyncio
+import tempfile
 from threading import Lock
 from . import paths
 
@@ -57,6 +58,10 @@ def create_default_user_config_file(subname: str, default_config: Union[str, dic
             f.write(default_config)
         else:
             toml.dump(default_config, f, encoder=toml_encoder)
+
+
+def get_local_scratch_path():
+    return os.path.join(tempfile.gettempdir(), 'lifeblood', 'shared')
 
 
 class Config:
