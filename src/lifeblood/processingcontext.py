@@ -45,10 +45,13 @@ class ProcessingContext:
     class ConfigWrapper:
         def __init__(self, node_type_id):
             self.__config = get_config('scheduler.nodes')
+            self.__scheduler_globals = dict(get_config('scheduler').get_option_noasync('scheduler.globals', {}))
             self.__nodetypeid = node_type_id
 
         def get(self, key, default=None):
-            return self.__config.get_option_noasync(f'{self.__nodetypeid}.{key}', default)
+            return self.__config.get_option_noasync(f'{self.__nodetypeid}.{key}',
+                                                    self.__scheduler_globals.get(key,
+                                                                                 default))
 
         def __getitem__(self, item):
             return self.get(item)
