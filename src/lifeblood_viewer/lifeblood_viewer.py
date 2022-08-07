@@ -92,8 +92,8 @@ class GroupsModel(QAbstractItemModel):
 
 class GroupsView(QTreeView):
     selection_changed = Signal(set)
-    group_pause_state_change_requested = Signal(str, bool)
-    task_group_archived_state_change_requested = Signal(str, TaskGroupArchivedState)
+    group_pause_state_change_requested = Signal(list, bool)
+    task_group_archived_state_change_requested = Signal(list, TaskGroupArchivedState)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -114,16 +114,19 @@ class GroupsView(QTreeView):
         if not index.isValid():
             return
 
-        group = index.siblingAtColumn(0).data(Qt.DisplayRole)
+        if len(self.selectedIndexes()) == 0:
+            groups = [index.siblingAtColumn(0).data(Qt.DisplayRole)]
+        else:
+            groups = list({x.siblingAtColumn(0).data(Qt.DisplayRole) for x in self.selectedIndexes()})
         event.accept()
         menu = QMenu(parent=self)
-        menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
-        menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
+        menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, True))
+        menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, False))
         menu.addSeparator()
         if model.sourceModel().is_archived(index):
-            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.NOT_ARCHIVED))
+            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.NOT_ARCHIVED))
         else:
-            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
+            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
     def setModel(self, model):
