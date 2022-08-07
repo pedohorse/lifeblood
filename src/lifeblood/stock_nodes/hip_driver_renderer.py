@@ -188,16 +188,17 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ##
 
             script += \
-                f'for frame in {repr(frames)}:\n' \
+                f'for i, frame in enumerate({repr(frames)}):\n' \
                 f'    hou.setFrame(frame)\n' \
-                f'    skipped = False\n'
+                f'    skipped = False\n' \
+                f'    print("ALF_PROGRESS {{}}%".format(int(i*100.0/{len(frames)})))\n'
             if context.param_value('skip if exists'):
                 script += '    skipped = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
 
             script += f'    if skipped:\n' \
-                      f'        print("output file already exists, skipping frame %d" % frame)\n' \
+                      f'        print("output file already exists, skipping frame {{}}".format(frame))\n' \
                       f'    else:\n' \
-                      f'        print("rendering frame %d" % frame)\n' \
+                      f'        print("rendering frame {{}}".format(frame))\n' \
                       f'        node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n'
             if spawnlines is not None:
                 script += f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
