@@ -665,7 +665,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     # task control things
     @Slot()
-    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
+    def set_tasks_paused(self, task_ids_or_group: Union[List[int], int, str], paused: bool):
         if len(task_ids_or_group) == 0:
             return
         if not self.ensure_connected():
@@ -678,6 +678,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>?', paused))
                 self._send_string(task_ids_or_group)
             else:
+                if isinstance(task_ids_or_group, int):
+                    task_ids_or_group = [task_ids_or_group]
                 numtasks = len(task_ids_or_group)
                 if numtasks == 0:
                     return

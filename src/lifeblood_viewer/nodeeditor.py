@@ -205,7 +205,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_add_node_connection_requested = Signal(int, str, int, str)
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
-    _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
+    _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], int, str]
     _signal_set_task_group_state_requested = Signal(str, TaskGroupArchivedState)
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
@@ -380,11 +380,16 @@ class QGraphicsImguiScene(QGraphicsScene):
     def set_task_state(self, task_ids: List[int], state: TaskState):
         self._signal_set_task_state.emit(task_ids, state)
 
-    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
-        self._signal_set_tasks_paused.emit(task_ids_or_group, paused)
+    def set_tasks_paused(self, task_ids_or_groups: List[Union[int, str]], paused: bool):
+        if all(isinstance(x, int) for x in task_ids_or_groups):
+            self._signal_set_tasks_paused.emit(task_ids_or_groups, paused)
+        else:
+            for tid_or_group in task_ids_or_groups:
+                self._signal_set_tasks_paused.emit(tid_or_group, paused)
 
-    def set_task_group_archived_state(self, group_name: str, state: TaskGroupArchivedState):
-        self._signal_set_task_group_state_requested.emit(group_name, state)
+    def set_task_group_archived_state(self, group_names: List[str], state: TaskGroupArchivedState):
+        for group_name in group_names:
+            self._signal_set_task_group_state_requested.emit(group_name, state)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
