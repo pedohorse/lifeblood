@@ -4,6 +4,7 @@ this module should be kept minimal, with only standard modules and maximum compa
 """
 from __future__ import print_function
 import os
+import errno
 import pickle
 import threading
 import socket
@@ -140,3 +141,47 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
     else:
         thread = threading.Thread(target=_send)
         thread.start()  # and not care
+
+
+def get_host_ip():
+    """
+    returns the ip address of the host running the task.
+    if host has multiple interfaces - the one that can connect to the scheduler will be chosen
+
+    :return:
+    """
+    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+    addr, sport = addrport.rsplit(':', 1)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((addr, 1))
+        myip = s.getsockname()[0]
+    except Exception:
+        myip = '127.0.0.1'
+    finally:
+        s.close()
+    return myip
+
+
+def get_free_tcp_port(ip, starting_at=20001):
+    """
+    returns the next openable port starting at starting_at on the given interface
+    NOTE: that port is not reserved, so by the time you try to open it again after this function
+    it may be already taken
+
+    :param ip:
+    :param starting_at:
+    :return:
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    for starting_at in range(starting_at, starting_at + 2000):  # big barely sane number of tries, but not infinite
+        try:
+            s.bind((ip, starting_at))
+            s.close()
+            break
+        except OSError as e:
+            if e.errno == errno.EADDRINUSE:
+                continue
+            raise
+    return starting_at
