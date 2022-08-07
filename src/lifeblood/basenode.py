@@ -366,7 +366,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
             # preferred
             pref_cpu_count = context.param_value('worker cpu cost preferred')
-            pref_mem_bytes = context.param_value('worker mem cost preferred')
+            pref_mem_bytes = context.param_value('worker mem cost preferred') * 10**9
             if pref_cpu_count > 0:
                 reqs.set_preferred_cpu_count(pref_cpu_count)
             if pref_mem_bytes > 0:
