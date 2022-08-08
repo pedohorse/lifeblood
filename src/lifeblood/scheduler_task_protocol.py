@@ -54,9 +54,10 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     # when worker pings scheduler - scheduler returns the state it thinks the worker is in
                     addr = await read_string()
                     wid = await self.__scheduler.worker_id_from_address(addr)
-                    state = await self.__scheduler.get_worker_state(wid)
-                    # TODO: process case when worker keeps sending stuff, but scheduler doesn't now it's wid (after scheduler restart for example)
-                    #  in this case currently exception will be raised, and comm will not be completed
+                    if wid is None:
+                        state = WorkerState.UNKNOWN
+                    else:
+                        state = await self.__scheduler.get_worker_state(wid)
                     writer.write(struct.pack('>I', state.value))
                 elif command == b'pulse':
                     writer.write(b'\1')
