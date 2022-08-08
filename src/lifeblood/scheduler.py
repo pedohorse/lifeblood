@@ -1,6 +1,6 @@
 import sys
 import os
-import pathlib
+from pathlib import Path
 import traceback
 import time
 from datetime import datetime
@@ -9,7 +9,6 @@ import sqlite3
 import itertools
 import random  # for db id generation
 import struct
-from enum import Enum
 import asyncio
 import aiosqlite
 import aiofiles
@@ -133,11 +132,11 @@ class Scheduler:
         ##
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
-        self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
+        self.__external_log_location: Optional[Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
         if self.__use_external_log and not self.__external_log_location:
             raise SchedulerConfigurationError('if store_logs_externally is set - store_logs_externally_location must be set too')
         if self.__use_external_log:
-            external_log_path = pathlib.Path(self.__use_external_log)
+            external_log_path = Path(self.__use_external_log)
             if external_log_path.exists() and external_log_path.is_file():
                 external_log_path.unlink()
             if not external_log_path.exists():
@@ -1603,6 +1602,10 @@ class Scheduler:
             await con.execute('BEGIN IMMEDIATE')
             async with con.execute('SELECT id, hwid from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
+            if worker_row is None:
+                self.__logger.warning(f'unregistered worker reported "stopped": {addr}, ignoring')
+                await con.rollback()
+                return
             wid = worker_row['id']
             hwid = worker_row['hwid']
             # print(wid)
@@ -2376,9 +2379,11 @@ async def main_async(db_path=None):
 
 def main(argv):
     import argparse
+    import tempfile
+
     parser = argparse.ArgumentParser('lifeblood scheduler')
     parser.add_argument('--db-path', help='path to sqlite database to use')
-    parser.add_argument('--memorydb', action='store_true', help='start with in-memory empty database, instead of with database in a file')
+    parser.add_argument('--ephemeral', action='store_true', help='start with an empty one time use database, that is placed into shared memory IF POSSIBLE')
     parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
     opts = parser.parse_args(argv)
 
@@ -2386,17 +2391,36 @@ def main(argv):
     create_default_user_config_file('scheduler', default_config)
 
     config = get_config('scheduler')
-    persistent_con = None
-    if opts.memorydb:
-        if opts.db_path is not None:
-            parser.error('only one of --db-path or --memorydb must be provided, not both')
-        db_path = 'file:memorydb?mode=memory&cache=shared'
-        persistent_con = sqlite3.connect(db_path)  # a connection to memory db must be held, otherwise it will be deleted when all connections are closed
-    elif opts.db_path is not None:
+    if opts.db_path is not None:
         db_path = opts.db_path
     else:
         db_path = config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
+
     global_logger = logging.get_logger('scheduler')
+
+    fd = None
+    if opts.ephemeral:
+        if opts.db_path is not None:
+            parser.error('only one of --db-path or --ephemeral must be provided, not both')
+        # 'file:memorydb?mode=memory&cache=shared'
+        # this does not work ^ cuz shared cache means that all runs on the *same connection*
+        # and when there is a transaction conflict on the same connection - we get instalocked (SQLITE_LOCKED)
+        # and there is no way to emulate normal DB in memory but with shared cache
+
+        # look for shm (UNIX only)
+        shm_path = Path('/dev/shm')
+        lb_shm_path = None
+        if shm_path.exists():
+            lb_shm_path = shm_path/f'u{os.getuid()}-lifeblood'
+            try:
+                lb_shm_path.mkdir(exist_ok=True)
+            except Exception as e:
+                lb_shm_path = None
+        else:
+            global_logger.warning('/dev/shm is not supported by OS, creating ephemeral database in temp dir')
+
+        fd, db_path = tempfile.mkstemp(dir=lb_shm_path, prefix='shedb-')
+
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
     try:
@@ -2405,9 +2429,10 @@ def main(argv):
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')
     finally:
-        if persistent_con is not None:
-            persistent_con.close()
-
+        if opts.ephemeral:
+            assert fd is not None
+            os.close(fd)
+            os.unlink(db_path)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
