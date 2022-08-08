@@ -1585,7 +1585,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 # if text input is always focused - selectable items do not work
                 imgui.set_keyboard_focus_here(-1)
             if changed:
+                # reset selected item if filter line changed
                 self.__menu_popup_selection_id = 0
+                self.__menu_popup_selection_name = ()
             item_number = 0
             max_items = 32
             for (entity_type, entity_type_label, package), (type_name, type_meta) in chain(zip(repeat(('node', None, None)), self.__node_types.items()),
