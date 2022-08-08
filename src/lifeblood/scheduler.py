@@ -103,7 +103,10 @@ class Scheduler:
         if db_file_path is None:
             config = get_config('scheduler')
             db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
-        db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+        if not db_file_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
+            db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+
+        self.__logger.debug(f'starting scheduler with database: {db_file_path}')
         #
         # ensure database is initialized
         with sqlite3.connect(db_file_path) as con:
@@ -2375,6 +2378,7 @@ def main(argv):
     import argparse
     parser = argparse.ArgumentParser('lifeblood scheduler')
     parser.add_argument('--db-path', help='path to sqlite database to use')
+    parser.add_argument('--memorydb', action='store_true', help='start with in-memory empty database, instead of with database in a file')
     parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
     opts = parser.parse_args(argv)
 
@@ -2382,7 +2386,16 @@ def main(argv):
     create_default_user_config_file('scheduler', default_config)
 
     config = get_config('scheduler')
-    db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
+    persistent_con = None
+    if opts.memorydb:
+        if opts.db_path is not None:
+            parser.error('only one of --db-path or --memorydb must be provided, not both')
+        db_path = 'file:memorydb?mode=memory&cache=shared'
+        persistent_con = sqlite3.connect(db_path)  # a connection to memory db must be held, otherwise it will be deleted when all connections are closed
+    elif opts.db_path is not None:
+        db_path = opts.db_path
+    else:
+        db_path = config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
     global_logger = logging.get_logger('scheduler')
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
@@ -2391,6 +2404,9 @@ def main(argv):
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')
+    finally:
+        if persistent_con is not None:
+            persistent_con.close()
 
 
 if __name__ == '__main__':
