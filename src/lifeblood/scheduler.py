@@ -2415,6 +2415,7 @@ def main(argv):
             try:
                 lb_shm_path.mkdir(exist_ok=True)
             except Exception as e:
+                global_logger.warning('/dev/shm is not accessible (permission issues?), creating ephemeral database in temp dir')
                 lb_shm_path = None
         else:
             global_logger.warning('/dev/shm is not supported by OS, creating ephemeral database in temp dir')
