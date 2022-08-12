@@ -2017,7 +2017,7 @@ class Scheduler:
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
                                    'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
-                                   'LEFT JOIN worker_groups ON workers."id" == worker_groups.worker_id '
+                                   'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
                                    'LEFT JOIN resources ON workers.hwid == resources.hwid '
                                    'GROUP BY workers."id"') as cur:
                 all_workers = tuple({**dict(x),

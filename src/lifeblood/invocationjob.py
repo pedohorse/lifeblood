@@ -158,7 +158,7 @@ class InvocationRequirements:
 
             def _morph(s: str):
                 return re.sub(r'(?<!\\)\?', '_', re.sub(r'(?<!\\)\*', '%', s.replace('%', r'\%').replace('_', r'\_')))
-            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
+            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_hwid" == workers."hwid" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
 
     def to_dict(self, resources_only: bool = False) -> dict:
@@ -253,13 +253,13 @@ class InvocationJob:
     def set_requirements(self, requirements: InvocationRequirements):
         self.__requirements = requirements
 
-    def priority(self):
+    def priority(self) -> float:
         return self.__priority
 
     def set_priority(self, priority: float):
         self.__priority = priority
 
-    def environment_resolver_arguments(self):
+    def environment_resolver_arguments(self):  # type: () -> Optional[EnvironmentResolverArguments]
         return self.__envres_args
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
