@@ -3,6 +3,7 @@ import aiofiles
 from enum import Enum
 import struct
 from .exceptions import NotEnoughResources
+from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
 from . import nethelpers
@@ -101,8 +102,11 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     except AlreadyRunning:
                         self.__logger.debug('BUSY. rejecting task')
                         writer.write(bytes([TaskScheduleStatus.BUSY.value]))
+                    except ResolutionImpossibleError:
+                        self.__logger.info('Worker failed to resolve required environment. rejecting task')
+                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except NotEnoughResources:
-                        self.__logger.debug('Not enough resources. rejecting task')
+                        self.__logger.warning('Not enough resources (this is unusual error - scheduler should know our resources). rejecting task')
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except Exception as e:
                         self.__logger.exception('no, cuz %s', e)

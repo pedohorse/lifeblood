@@ -427,12 +427,19 @@ class Worker:
             else:
                 args = task.args()
 
-            if task.environment_resolver_arguments() is None:
-                config = get_config('worker')
-                env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
-                    .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
-            else:
-                env = task.environment_resolver_arguments().get_environment()
+            try:
+                if task.environment_resolver_arguments() is None:
+                    config = get_config('worker')
+                    env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
+                        .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
+                else:
+                    env = task.environment_resolver_arguments().get_environment()
+            except environment_resolver.ResolutionImpossibleError as e:
+                self.__logger.error(f'cannot run the task: Unable to resolve environment: {str(e)}')
+                raise
+
+            # TODO: resolver args get_environment() acually does resolution so should be renamed to like resolve_environment()
+            #  Environment's resolve() actually just expands and merges everything, so naming it "resolve" is misleading next to EnvironmentResolver
 
             env = task.env().resolve(env)
 
