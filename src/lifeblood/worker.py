@@ -399,7 +399,6 @@ class Worker:
 
             # prepare logging
             self.__logger.info(f'running task {task}')
-            logbasedir = os.path.dirname(self.get_log_filepath('output', task.invocation_id()))
 
             # save external files
             self.__extra_files_base_dir = None
@@ -448,12 +447,12 @@ class Worker:
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = report_to
             for aname, aval in task.attributes().items():
-                env['LBATTR_%s' % aname] = str(aval)
-            env['LBATTRS_JSON'] = json.dumps(dict(task.attributes()))
+                if aname.startswith('_'):  # skip attributes starting with _
+                    continue
+                env[f'LBATTR_{aname}'] = str(aval)
+            # env['LBATTRS_JSON'] = json.dumps(dict(task.attributes()))
             if self.__extra_files_base_dir is not None:
                 env['LB_EF_ROOT'] = self.__extra_files_base_dir
-            if not os.path.exists(logbasedir):
-                os.makedirs(logbasedir)
             try:
                 #with open(self.get_log_filepath('output', task.invocation_id()), 'a') as stdout:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
@@ -481,9 +480,12 @@ class Worker:
 
     # callback awaiter
     async def _awaiter(self):
-        async with aiofiles.open(self.get_log_filepath('output', self.__running_task.invocation_id()), 'wb') as stdout:
-            async with aiofiles.open(self.get_log_filepath('error', self.__running_task.invocation_id()), 'wb') as stderr:
-
+        stdout_path = self.get_log_filepath('output', self.__running_task.invocation_id())
+        stderr_path = self.get_log_filepath('error', self.__running_task.invocation_id())
+        os.makedirs(os.path.dirname(stdout_path), exist_ok=True)
+        os.makedirs(os.path.dirname(stderr_path), exist_ok=True)
+        async with aiofiles.open(stdout_path, 'wb') as stdout:
+            async with aiofiles.open(stderr_path, 'wb') as stderr:
                 async def _flush():
                     await asyncio.sleep(1)  # ensure to flush every 1 second
                     await stdout.flush()
@@ -614,7 +616,6 @@ class Worker:
                 self.__logger.exception(f'could not report cuz of {e}')
             except:
                 self.__logger.exception('could not report cuz i have no idea')
-
 
             self.__where_to_report = None
             self.__running_task = None
