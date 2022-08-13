@@ -98,6 +98,7 @@ class Worker:
         self.__logger.info(f'using {self.log_root_path} for logs')
 
         self.__status = {}
+        self.__scheduler_db_uid: int = 0  # unsigned 64bit int
         self.__running_process: Optional[asyncio.subprocess.Process] = None
         self.__running_process_start_time: float = 0
         self.__running_task: Optional[InvocationJob] = None
@@ -196,7 +197,7 @@ class Worker:
             # now report our address to the scheduler
             try:
                 async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    await client.say_hello(addr, self.__worker_type, self.__my_resources)
+                    self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources)
             except ConnectionError as e:
                 self.__logger.error('error connecting to scheduler during start')
                 abort_start = True
@@ -274,9 +275,9 @@ class Worker:
 
     def get_log_filepath(self, level, invocation_id: int = None):  # TODO: think of a better, more generator-style way of returning logs
         if self.__running_task is None and invocation_id is None:
-            return os.path.join(self.log_root_path, 'common', level)
+            return os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'common', level)
         else:
-            return os.path.join(self.log_root_path, 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
+            return os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
 
     # This number of methods are related to message exchange mechanism between local workers
     # it was used to exchange resource usage information, but is not used anymore
@@ -670,7 +671,7 @@ class Worker:
                         self.__logger.debug('cancelling task')
                         await self.cancel_task()
                         self.__logger.debug('saying hello')
-                        await client.say_hello(addr, self.__worker_type, self.__my_resources)
+                        self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources)
                         self.__logger.debug('reintroduce done')
                     break
                 except Exception:
