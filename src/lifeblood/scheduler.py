@@ -51,7 +51,17 @@ SCHEDULER_DB_FORMAT_VERSION = 1
 
 
 class Scheduler:
-    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1):
+    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1,
+                 server_addr: Optional[Tuple[str, int]] = None, server_ui_addr: Optional[Tuple[str, int]] = None):
+        """
+        TODO: add a docstring
+
+        :param db_file_path:
+        :param do_broadcasting:
+        :param helpers_minimal_idle_to_ensure:
+        :param server_addr:
+        :param server_ui_addr:
+        """
         self.__logger = logging.get_logger('scheduler')
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         self.__logger.info('loading core plugins')
@@ -148,10 +158,16 @@ class Scheduler:
                            'workers_state': {},
                            'invocations': {}}
 
-        server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-        server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
-        ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
-        ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
+        if server_addr is None:
+            server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
+            server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
+        else:
+            server_ip, server_port = server_addr
+        if server_ui_addr is None:
+            ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
+            ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
+        else:
+            ui_ip, ui_port = server_ui_addr
         self.__stop_event = asyncio.Event()
         self.__server_closing_task = None
         self.__wakeup_event = asyncio.Event()
