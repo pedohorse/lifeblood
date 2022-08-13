@@ -84,7 +84,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
                     worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
                     await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
-                    writer.write(b'\1')
+                    writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
                 elif command == b'bye':
                     # worker reports he's quitting
                     addr = await read_string()
@@ -238,8 +238,8 @@ class SchedulerTaskClient:
         self.__writer.write(struct.pack('>Q', len(resdata)))
         self.__writer.write(resdata)
         await self.__writer.drain()
-        # we DO need a reply to ensure proper sequence of events
-        assert await self.__reader.readexactly(1) == b'\1'
+        # as return we get the database's unique id to distinguish it from others
+        return struct.unpack('>Q', await self.__reader.readexactly(8))[0]
 
     async def say_bye(self, address_of_worker: str):
         await self._ensure_conn_open()
