@@ -375,7 +375,7 @@ class InvocationJob:
         self.__envres_args = args
 
     def __repr__(self):
-        return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
+        return f'InvocationJob: {self.__invocation_id}, {repr(self.__args)} {repr(self.__env)}'
 
     @classmethod
     def deserialize(cls, data: bytes) -> "InvocationJob":
