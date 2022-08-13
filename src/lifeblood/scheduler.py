@@ -207,7 +207,7 @@ class Scheduler:
         """
         unique id that was generated on creation for the DB currently in use
 
-        :return: 64 bit signed int
+        :return: 64 bit unsigned int
         """
         return self.__db_uid
 
