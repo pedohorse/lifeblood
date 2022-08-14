@@ -40,27 +40,32 @@ def send_stop_signal_to_worker(process):
         return process.send_signal(signal.SIGTERM)
 
 
-async def create_process(args, env) -> asyncio.subprocess.Process:
+async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=subprocess.PIPE) -> asyncio.subprocess.Process:
     """
-    helper function mainly for worker to spawn a new process with a new process group
+    helper function mainly for worker to spawn a new process with a new process group.
+    NOTE: process is created with stdout, stderr set to PIPE by default! careful not to deadlock!
 
-    :param args:
-    :param env:
+    all arguments are passed (almost) directly to Popen
+
+    :param args: arguments to run
+    :param env: dict of environment variables
+    :param stdout: same as in Popen
+    :param stderr: same as in Popen
     :return:
     """
     if oh_no_its_windows:
         return await asyncio.create_subprocess_exec(
             *args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
             env=env,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # this is cuz win "bReAk eVeNt" can only be sent to process group
         )
     else:
         return await asyncio.create_subprocess_exec(
             *args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
             env=env,
             restore_signals=True,
             start_new_session=True
@@ -122,8 +127,10 @@ async def kill_process_tree_posix(process: asyncio.subprocess.Process, graceful_
                     pass
     # just to finish off all stray processes
     try:
+        __logger.debug(f'sending SIGKILL to process group {process.pid}')
         os.killpg(process.pid, signal.SIGKILL)
     except OSError:
+        __logger.warning('failed to send SIGKILL to group')
         pass
     return await process.wait()
 
