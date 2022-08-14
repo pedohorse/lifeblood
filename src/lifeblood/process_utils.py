@@ -15,6 +15,7 @@ oh_no_its_windows = platform.system() == 'Windows'
 if oh_no_its_windows:
     import random
     import string
+    import tempfile
     from win32job import CreateJobObject, TerminateJobObject
 
 
@@ -72,14 +73,24 @@ sys.exit(subprocess.Popen({args}, env={env}).wait())
 '''
         job_name = ''.join(random.choice(string.ascii_letters) for _ in range(64))  # we HOPE there's no name collision
         job = CreateJobObject(None, job_name)
+
+        # wrapper code may be too big for windows's ARGMAX limitations... so we'd better save it to a file
+        fd, filepath = tempfile.mkstemp('_lnchr.py')
+        with open(filepath, 'w') as f:
+            f.write(wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)))
+
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, '-c', wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)),
+            sys.executable, filepath,
             stdout=stdout,
             stderr=stderr,
             env=None,  # we need to execute it in our env, so that win32job module is available there
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # this is cuz win "bReAk eVeNt" can only be sent to process group
         )
         proc._win32_job_object = job
+
+        os.close(fd)
+        os.unlink(filepath)
+
         return proc
     else:
         return await asyncio.create_subprocess_exec(
