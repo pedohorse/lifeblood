@@ -1432,11 +1432,11 @@ class Task(NetworkItemWithUI):
         if self.__ui_attributes:
             self._draw_dict_table(self.__ui_attributes, 'node_task_attributes')
 
-        if self.__ui_env_res_attributes and self.__ui_env_res_attributes.arguiments():
+        if self.__ui_env_res_attributes and self.__ui_env_res_attributes.arguments():
             tab_expanded, _ = imgui.collapsing_header(f'environment resolver attributes##collapsing_node_task_environment_resolver_attributes')
             if tab_expanded:
                 imgui.text(f'environment resolver: "{self.__ui_env_res_attributes.name()}"')
-                self._draw_dict_table(self.__ui_env_res_attributes.arguiments(), 'node_task_environment_resolver_attributes')
+                self._draw_dict_table(self.__ui_env_res_attributes.arguments(), 'node_task_environment_resolver_attributes')
 
         # now draw log
         if self.__log is None:

@@ -154,7 +154,7 @@ class CreateTaskDialog(QDialog):
         envreslayout.addWidget(self.__env_resolver_name_edit)
         self.__main_layout.addLayout(envreslayout)
 
-        self.__resolver_arguments = AttributeEditorWidget(init_attributes=task.environment_attributes().arguiments() if task and task.environment_attributes() else None)
+        self.__resolver_arguments = AttributeEditorWidget(init_attributes=task.environment_attributes().arguments() if task and task.environment_attributes() else None)
         self.__main_layout.addWidget(self.__resolver_arguments)
 
         accept_layout = QHBoxLayout()

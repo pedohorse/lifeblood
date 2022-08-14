@@ -66,7 +66,7 @@ class EnvironmentResolverArguments:
     def name(self):
         return self.__resolver_name
 
-    def arguiments(self):
+    def arguments(self):
         return MappingProxyType(self.__args)
 
     def add_argument(self, name: str, value):
@@ -79,7 +79,7 @@ class EnvironmentResolverArguments:
         return get_resolver(self.__resolver_name)
 
     def get_environment(self) -> "invocationjob.Environment":
-        return get_resolver(self.name()).get_environment(self.arguiments())
+        return get_resolver(self.name()).get_environment(self.arguments())
 
     def serialize(self) -> bytes:
         return json.dumps(self.__dict__).encode('utf-8')

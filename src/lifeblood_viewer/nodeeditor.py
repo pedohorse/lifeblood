@@ -1447,7 +1447,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             else:
                 task = self.__scene.get_task(task_id)
                 env_args = task.environment_attributes() or EnvironmentResolverArguments()
-                args = dict(env_args.arguiments())
+                args = dict(env_args.arguments())
                 if res_changed:
                     args.update(res_changed)
                 for name in res_deletes:
