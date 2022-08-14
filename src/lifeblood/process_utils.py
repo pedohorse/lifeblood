@@ -63,11 +63,8 @@ async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=s
         wrapper_code = '''
 import sys
 import subprocess
-from win32job import (
-        AssignProcessToJobObject,
-        CreateJobObject,
-        GetCurrentProcess,
-    )
+from win32job import AssignProcessToJobObject, CreateJobObject 
+from win32api import GetCurrentProcess
 
 job = CreateJobObject(None, {job_name})
 AssignProcessToJobObject(job, GetCurrentProcess())
