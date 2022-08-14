@@ -61,6 +61,22 @@ async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=s
     :return:
     """
     if oh_no_its_windows:
+        class _HandleWrapper:
+            """
+            helper class that will delete temporary file when object is GCed
+            """
+            def __init__(self, fd, path):
+                self.__fd = fd
+                self.__path = path
+                self.__logger = get_logger('win32_handle_wrapper')
+
+            def __del__(self):
+                try:
+                    os.close(self.__fd)
+                    os.unlink(self.__path)
+                except Exception:
+                    self.__logger.warning(f'failed to cleanup wrapped handle to: {self.__path}')
+
         wrapper_code = '''
 import sys
 import subprocess
@@ -87,9 +103,7 @@ sys.exit(subprocess.Popen({args}, env={env}).wait())
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # this is cuz win "bReAk eVeNt" can only be sent to process group
         )
         proc._win32_job_object = job
-
-        os.close(fd)
-        os.unlink(filepath)
+        proc._win32_handlewrapper = _HandleWrapper(fd, filepath)  # now when process object is deleted - temp file will eventually be cleaned by gc
 
         return proc
     else:
