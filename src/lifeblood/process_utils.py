@@ -147,6 +147,7 @@ async def kill_process_tree_posix(process: asyncio.subprocess.Process, graceful_
                     proc.kill()
                 except psutil.NoSuchProcess:
                     pass
+                
     # just to finish off all stray processes
     try:
         __logger.debug(f'sending SIGKILL to process group {process.pid}')
