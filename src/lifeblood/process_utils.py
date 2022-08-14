@@ -11,6 +11,11 @@ __logger = get_logger('process management')
 
 oh_no_its_windows = platform.system() == 'Windows'
 
+if oh_no_its_windows:
+    import random
+    import string
+    from win32job import CreateJobObject, TerminateJobObject
+
 
 async def create_worker_process(args):
     """
@@ -54,13 +59,30 @@ async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=s
     :return:
     """
     if oh_no_its_windows:
-        return await asyncio.create_subprocess_exec(
-            *args,
+        wrapper_code = '''
+import sys
+import subprocess
+from win32job import (
+        AssignProcessToJobObject,
+        CreateJobObject,
+        GetCurrentProcess,
+    )
+
+job = CreateJobObject(None, {job_name})
+AssignProcessToJobObject(job, GetCurrentProcess())
+sys.exit(subprocess.Popen({args}, env={env}).wait())
+'''
+        job_name = ''.join(random.choice(string.ascii_letters) for _ in range(64))  # we HOPE there's no name collision
+        job = CreateJobObject(None, job_name)
+        proc = await asyncio.create_subprocess_exec(
+            wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)),
             stdout=stdout,
             stderr=stderr,
-            env=env,
+            env=None,  # we need to execute it in our env, so that win32job module is available there
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # this is cuz win "bReAk eVeNt" can only be sent to process group
         )
+        proc._win32_job_object = job
+        return proc
     else:
         return await asyncio.create_subprocess_exec(
             *args,
@@ -153,8 +175,17 @@ async def kill_process_tree_windows(process: asyncio.subprocess.Process, gracefu
     except psutil.NoSuchProcess:
         __logger.warning(f'cannot find process with pid {process.pid}. Assuming it finished. retcode={process.returncode}')
 
-    # this will actually act as SIGTERM to a pg, so here processes will have time to respond
-    process.send_signal(signal.CTRL_BREAK_EVENT)
+    if hasattr(process, '_win32_job_object'):
+        __logger.debug('terminating job object')
+        TerminateJobObject(process._win32_job_object, 1)
+        process._win32_job_object.close()
+    else:
+        __logger.warning('Failed to terminate the Job object. Trying to send BREAK event...')
+        # this will actually act as SIGTERM to a pg, so here processes will have time to respond
+        try:
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        except psutil.NoSuchProcess:
+            __logger.warning('Failed to send BREAK event to process group! there might be wild processes still running!')
 
     # give them time to gracefully close
     poll_time = 0.5
