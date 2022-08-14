@@ -1,3 +1,4 @@
+import sys
 import os
 import asyncio
 import platform
@@ -75,7 +76,7 @@ sys.exit(subprocess.Popen({args}, env={env}).wait())
         job_name = ''.join(random.choice(string.ascii_letters) for _ in range(64))  # we HOPE there's no name collision
         job = CreateJobObject(None, job_name)
         proc = await asyncio.create_subprocess_exec(
-            wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)),
+            sys.executable, '-c', wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)),
             stdout=stdout,
             stderr=stderr,
             env=None,  # we need to execute it in our env, so that win32job module is available there
