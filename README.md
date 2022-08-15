@@ -28,4 +28,4 @@ This system overview should be very familiar to anyone who saw at least one rend
 - be integrateable (to some extent) with existing farm managers
 
 ## UNDER DEVELOPMENT
-[task tracking in trello](https://trello.com/b/sSbc8u6M/lifeblood)
+
