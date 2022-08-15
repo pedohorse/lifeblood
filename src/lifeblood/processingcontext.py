@@ -3,8 +3,9 @@ from types import MappingProxyType
 import re
 
 from .config import get_config
+from .environment_resolver import EnvironmentResolverArguments
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -63,6 +64,7 @@ class ProcessingContext:
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
         self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
         sanitized_name = re.sub(r'\W', lambda m: f'x{ord(m.group(0))}', node.type_name())
+        self.__env_args = EnvironmentResolverArguments.deserialize(task_dict['environment_resolver_data']) if task_dict['environment_resolver_data'] is not None else None
         self.__conf_wrapper = ProcessingContext.ConfigWrapper(sanitized_name)
         self.__node = node
 
@@ -94,6 +96,9 @@ class ProcessingContext:
 
     def task_attributes(self) -> MappingProxyType:
         return MappingProxyType(self.__task_attributes)
+
+    def task_environment_resolver_arguments(self) -> Optional[EnvironmentResolverArguments]:
+        return self.__env_args
 
     def task_field(self, field_name: str, default_value=None):
         return self.__task_dict.get(field_name, default_value)

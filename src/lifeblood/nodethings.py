@@ -2,6 +2,7 @@ import json
 
 from .invocationjob import InvocationJob
 from .taskspawn import TaskSpawn
+from .environment_resolver import EnvironmentResolverArguments
 
 from typing import List, Dict, Any, Optional
 
@@ -20,6 +21,7 @@ class ProcessingResult:
         self.split_attributes_to_set: Optional[Dict[str, Any]] = {}
         self.output_name: str = node_output_name
         self._split_attribs = None
+        self._environment_resolver_arguments: Optional[EnvironmentResolverArguments] = None
 
     def set_node_output_name(self, newname: str):
         self.output_name = newname
@@ -42,6 +44,9 @@ class ProcessingResult:
 
     def remove_attribute(self, key: str):
         self.attributes_to_set[key] = None
+
+    def set_environment_resolver_arguments(self, args: EnvironmentResolverArguments):
+        self._environment_resolver_arguments = args
 
     def add_spawned_task(self, spawn: TaskSpawn):
         if self.spawn_list is None:

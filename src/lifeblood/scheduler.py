@@ -869,8 +869,15 @@ class Scheduler:
                     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                     await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                       (result_serialized, task_id))
+
+                # process environment resolver arguments if provided
+                if (envargs := process_result._environment_resolver_arguments) is not None:
+                    await con.execute('UPDATE tasks SET environment_resolver_data = ? WHERE "id" = ?',
+                                      (await envargs.serialize_async(), task_id))
+
                 #print(f'attset: {time.perf_counter() - _bla1}')
                 #_bla1 = time.perf_counter()
+                # spawning new tasks after all attributes were set, so children inherit
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
