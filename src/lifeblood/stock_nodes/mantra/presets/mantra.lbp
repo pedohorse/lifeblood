@@ -131,7 +131,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "`task['global_scratch_location']`/`node.name`/`task.name`_`task.id`/ifds/`node.name`.$F4.ifd.sc",
+                    "uvalue": "`config['global_scratch_location']`/`node.name`/`task.name`_`task.id`/ifds/`node.name`.$F4.ifd.sc",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
