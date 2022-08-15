@@ -66,6 +66,9 @@ class EnvironmentResolverArguments:
     def name(self):
         return self.__resolver_name
 
+    def set_name(self, name: str):
+        self.__resolver_name = name
+
     def arguments(self):
         return MappingProxyType(self.__args)
 
