@@ -122,6 +122,8 @@ class Node(NetworkItemWithUI):
         self.__ui_widget: Optional[nodeeditor.NodeEditor] = None
         self.__ui_grabbed_conn = None
 
+        self.__ui_selected_tab = 0
+
         # prepare default drawing tools
         self.__borderpen= QPen(QColor(96, 96, 96, 255))
         self.__borderpen_selected = QPen(QColor(144, 144, 144, 255))
@@ -588,10 +590,19 @@ class Node(NetworkItemWithUI):
     # main dude
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
-        if imgui.collapsing_header(f'description##{self.__node_type}', None)[0]:
+
+        if imgui.selectable(f'parameters##{self.__name}', self.__ui_selected_tab == 0, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+            self.__ui_selected_tab = 0
+        imgui.same_line()
+        if imgui.selectable(f'description##{self.__name}', self.__ui_selected_tab == 1, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+            self.__ui_selected_tab = 1
+        imgui.separator()
+
+        if self.__ui_selected_tab == 0:
+            if self.__nodeui is not None:
+                self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
+        elif self.__ui_selected_tab == 1:
             imgui.text(self.scene().node_types()[self.__node_type].description if self.__node_type in self.scene().node_types() else 'error')
-        if self.__nodeui is not None:
-            self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
