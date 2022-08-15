@@ -30,9 +30,10 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
         super(EnvironmentResolverArgumentsSetter, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.add_parameter('mode', 'mode', NodeParameterType.STRING, 'set')\
-                .add_menu((('set', 'set'),))
-            ui.add_parameter('resolver name', 'resolver', NodeParameterType.STRING, 'StandardEnvironmentResolver')
+            mode_param = ui.add_parameter('mode', 'mode', NodeParameterType.STRING, 'modify')\
+                                .add_menu((('Set', 'set'),
+                                           ('Modify', 'modify')))
+            ui.add_parameter('resolver name', 'resolver', NodeParameterType.STRING, '')
             with ui.multigroup_parameter_block('arguments'):
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('arg name', '<name', NodeParameterType.STRING, 'arg name')
@@ -46,6 +47,11 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
                     ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
                     ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
+            
+            with ui.multigroup_parameter_block('arguments to delete'):
+                ui.add_parameter('arg name to delete', 'argument to delete', NodeParameterType.STRING, '')
+
+            ui.parameter('arguments to delete').append_visibility_condition(mode_param, '==', 'modify')
 
         # now initialize default values
         ui.parameter('arguments').set_value(1)
@@ -54,10 +60,14 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
         ui.parameter('svalue_0').set_value('someusername')
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
-        resolver_name = context.param_value('resolver name')
+        resolver_name = context.param_value('resolver name').strip()
         arguments = {}
         for i in range(context.param_value('arguments')):
-            name = context.param_value(f'arg name_{i}')
+            # we are being sane with names, though name can technically be any unicode string
+            name = context.param_value(f'arg name_{i}').strip()
+            if name == '':
+                continue
+
             argtype = context.param_value(f'type_{i}')
             if argtype == NodeParameterType.INT.value:
                 val = context.param_value(f'ivalue_{i}')
@@ -71,7 +81,27 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
                 raise ProcessingError(f'unknown argument type: {argtype}')
             arguments[name] = val
 
+        if context.param_value('mode') == 'set':
+            res = ProcessingResult()
+            res.set_environment_resolver_arguments(EnvironmentResolverArguments(resolver_name, arguments))
+
+            return res
+
+        # else mode is modify (no other modes exist)
+        env_arguments = context.task_environment_resolver_arguments()
+        if resolver_name != '':
+            env_arguments.set_name(resolver_name)
+        for arg, val in arguments.items():
+            env_arguments.add_argument(arg, val)
+
+        for i in range(context.param_value('arguments to delete')):
+            name = context.param_value(f'arg name to delete_{i}').strip()
+            if name == '':
+                continue
+            env_arguments.remove_argument(name)
+
         res = ProcessingResult()
-        res.set_environment_resolver_arguments(EnvironmentResolverArguments(resolver_name, arguments))
+        res.set_environment_resolver_arguments(env_arguments)
 
         return res
+
