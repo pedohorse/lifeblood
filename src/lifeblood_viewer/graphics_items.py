@@ -6,7 +6,7 @@ from datetime import timedelta
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
-from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
+from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
@@ -558,6 +558,8 @@ class Node(NetworkItemWithUI):
                 # same here.
                 self.scene().send_node_parameter_expression_change(self.get_id(), item)
 
+        elif isinstance(item, Separator):
+            imgui.separator()
         elif isinstance(item, OneLineParametersLayout):
             first_time = True
             for child in item.items(recursive=False):

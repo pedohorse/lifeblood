@@ -186,6 +186,10 @@ def evaluate_expression(expression, context: Optional[ProcessingContext]):
         raise ParameterExpressionError(e) from None
 
 
+class Separator(ParameterHierarchyLeaf):
+    pass
+
+
 class Parameter(ParameterHierarchyLeaf):
 
     class DontChange:
@@ -673,9 +677,12 @@ class ParametersLayoutBase(ParameterHierarchyItem):
         return self.__block_ui_callbacks
 
     def add_parameter(self, new_parameter: Parameter):
+        self.add_generic_leaf(new_parameter)
+
+    def add_generic_leaf(self, item: ParameterHierarchyLeaf):
         if not self._is_initialize_lock_set():
             raise LayoutError('initializing interface not inside initializing_interface_lock')
-        new_parameter.set_parent(self)
+        item.set_parent(self)
 
     def add_layout(self, new_layout: "ParametersLayoutBase"):
         if not self._is_initialize_lock_set():
@@ -1245,6 +1252,19 @@ class NodeUi(ParameterHierarchyItem):
             newparam = Parameter(param_name, param_label, param_type, param_val, can_have_expressions, readonly)
             layout.add_parameter(newparam)
         return newparam
+
+    def add_separator(self):
+        if self.__lock_ui_readonly:
+            raise LayoutReadonlyError()
+        if not self.__block_ui_callbacks:
+            raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
+        layout = self.__parameter_layout
+        if len(self.__groups_stack) != 0:
+            layout = self.__groups_stack[-1]
+        with layout.initializing_interface_lock():
+            newsep = Separator()
+            layout.add_generic_leaf(newsep)
+        return newsep
 
     def add_input(self, input_name):
         if self.__lock_ui_readonly:
