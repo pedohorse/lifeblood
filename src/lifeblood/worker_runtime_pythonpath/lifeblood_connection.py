@@ -97,6 +97,10 @@ class TaskSpawn:
         return pickle.dumps(self)
 
 
+_threads_to_wait = []
+_threads_to_wait_lock = threading.Lock()
+
+
 def create_task(name, attributes, blocking=False):
     invocation_id = int(os.environ['LIFEBLOOD_RUNTIME_IID'])
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
@@ -114,10 +118,14 @@ def create_task(name, attributes, blocking=False):
         res = sock.recv(4)  # 4 should be small enough to ensure receiving in one call
         # ignore result?
 
+        if not blocking:
+            _clear_me_from_threads_to_wait()
+
     if blocking:
         _send()
     else:
         thread = threading.Thread(target=_send)
+        _threads_to_wait.append(thread)
         thread.start()  # and not care
 
 
@@ -134,13 +142,44 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         sock.sendall(updata)
         sock.recv(1)  # recv confirmation
 
+        if not blocking:
+            _clear_me_from_threads_to_wait()
+
     task_id = int(os.environ['LIFEBLOOD_RUNTIME_TID'])
 
     if blocking:
         _send()
     else:
         thread = threading.Thread(target=_send)
+        with _threads_to_wait_lock:
+            _threads_to_wait.append(thread)
         thread.start()  # and not care
+
+
+def _clear_me_from_threads_to_wait():
+    with _threads_to_wait_lock:
+        me = threading.current_thread()
+        try:
+            _threads_to_wait.remove(me)
+        except ValueError:  # not in the list
+            pass
+
+
+def wait_for_all_async_operations():
+    """
+    The python program will not end until all non-daemon threads are done.
+    So skipping explicit wait for most of the operations is fine
+
+    But sometimes you might need to wait for all current async operations to finish
+    and for that you can use this function
+
+    :return:
+    """
+    global _threads_to_wait
+    with _threads_to_wait_lock:
+        for thread in _threads_to_wait:
+            thread.join()
+        _threads_to_wait.clear()
 
 
 def get_host_ip():
