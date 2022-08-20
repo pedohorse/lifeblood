@@ -5,9 +5,12 @@ https://raw.githubusercontent.com/pedohorse/lifeblood/master/icon/lifeblood.svg
 ![](icon/lifeblood_cleaned.svg)
 
 ## Lifeblood
-is a task/job management software package  
+Lifeblood is a task/job management software package  
+currently it aims for smaller teams, farms or even individual setups, but with scaling  always in mind.
 
-In terms of CG industry it's a mini render farm manager
+In terms of CG industry it's a mini render farm manager, but actually it's more than that,  
+It is a universal task automation tool.  
+Rendering, simulating, caching - are all just tasks that can be automated.
 
 it consists of **scheduler**, **workers** and **viewers**
 
@@ -20,10 +23,17 @@ This system overview should be very familiar to anyone who saw at least one rend
 ### Features:
 - instantly and easily deployable
 - easy scaling in mind
-- dynamic worker resources management
-- aim for smaller farms or even individual setups
+- dynamic slots, worker resources management
+- support for environment wrappers (allow you to integrate with existing packaging systems like rez)
+
+### Features To Be Done:
+- arbitrary resource requirements
+- arbitrary token counting (for license management for example)
+- worker capabilities (automatic versioned worker "groups")
+- rez environment resolver
+- cgroups environment resolver
   
-### TBD:
+### Even Further Future Features
 - easy cloud deployment
 - be integrateable (to some extent) with existing farm managers
 
