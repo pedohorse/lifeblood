@@ -1608,7 +1608,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
                         self.__menu_popup_selection_id = item_number
-                        self.__menu_popup_selection_name = (package, type_name, entity_type)
+                        self.__menu_popup_selection_name = (package, type_name, label, entity_type)
                     item_number += 1
                     if item_number > max_items:
                         break
@@ -1636,9 +1636,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 # else:
                 #     self.__node_type_input = ''
                 if self.__menu_popup_selection_name:
-                    package, entity_name, entity_type = self.__menu_popup_selection_name
+                    package, entity_name, label, entity_type = self.__menu_popup_selection_name
                     if entity_type == 'node':
-                        self.__scene.request_create_node(entity_name, f'{entity_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                        self.__scene.request_create_node(entity_name, f'{label} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
                     elif entity_type == 'vpreset':
                         self.__scene.nodes_from_snippet(self.__viewer_presets[entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
                     elif entity_type == 'spreset':
