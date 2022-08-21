@@ -20,7 +20,7 @@ class AlicevisionCameraInit(AlicevisionBaseNode):
             ui.add_separator()
             ui.add_parameter('useInternalWhiteBalance', 'Use Internal White Balance', NodeParameterType.BOOL, True)
             ui.add_parameter('defaultFieldOfView', 'Default Field of View', NodeParameterType.FLOAT, 45)
-            ui.add_parameter('sensorDatabase', 'Sensor Database', NodeParameterType.STRING, 'aliceVision/share/aliceVision/cameraSensors.db')
+            ui.add_parameter('sensorDatabase', 'Sensor Database', NodeParameterType.STRING, '../../aliceVision/share/aliceVision/cameraSensors.db')
 
     @classmethod
     def label(cls) -> str:
@@ -47,10 +47,6 @@ class AlicevisionCameraInit(AlicevisionBaseNode):
             raise ProcessingError('output path must be absolute and not empty')
 
         sensor_db_path = context.param_value('sensorDatabase').strip()
-        if sensor_db_path != '':
-            sensor_db_path = Path(sensor_db_path)
-            if not sensor_db_path.is_absolute():
-                sensor_db_path = self.alicevision_root() / sensor_db_path
 
         output.parent.mkdir(parents=True, exist_ok=True)  # TODO: move this to worker
 
