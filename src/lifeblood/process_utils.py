@@ -18,6 +18,8 @@ if oh_no_its_windows:
     import tempfile
     from win32job import CreateJobObject, TerminateJobObject
 
+from typing import Optional
+
 
 async def create_worker_process(args):
     """
@@ -47,7 +49,7 @@ def send_stop_signal_to_worker(process):
         return process.send_signal(signal.SIGTERM)
 
 
-async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=subprocess.PIPE) -> asyncio.subprocess.Process:
+async def create_process(args: list, env: dict, cwd: Optional[str] = None, stdout=subprocess.PIPE, stderr=subprocess.PIPE) -> asyncio.subprocess.Process:
     """
     helper function mainly for worker to spawn a new process with a new process group.
     NOTE: process is created with stdout, stderr set to PIPE by default! careful not to deadlock!
@@ -56,6 +58,7 @@ async def create_process(args: list, env: dict, stdout=subprocess.PIPE, stderr=s
 
     :param args: arguments to run
     :param env: dict of environment variables
+    :param cwd: current working directory to be set for the new process
     :param stdout: same as in Popen
     :param stderr: same as in Popen
     :return:
@@ -85,7 +88,7 @@ from win32api import GetCurrentProcess
 
 job = CreateJobObject(None, {job_name})
 AssignProcessToJobObject(job, GetCurrentProcess())
-sys.exit(subprocess.Popen({args}, env={env}).wait())
+sys.exit(subprocess.Popen({args}, env={env}, cwd={cwd}).wait())
 '''
         job_name = ''.join(random.choice(string.ascii_letters) for _ in range(64))  # we HOPE there's no name collision
         job = CreateJobObject(None, job_name)
@@ -93,12 +96,13 @@ sys.exit(subprocess.Popen({args}, env={env}).wait())
         # wrapper code may be too big for windows's ARGMAX limitations... so we'd better save it to a file
         fd, filepath = tempfile.mkstemp('_lnchr.py')
         with open(filepath, 'w') as f:
-            f.write(wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env)))
+            f.write(wrapper_code.format(job_name=repr(job_name), args=repr(args), env=repr(env), cwd=repr(cwd)))
 
         proc = await asyncio.create_subprocess_exec(
             sys.executable, filepath,
             stdout=stdout,
             stderr=stderr,
+            cwd=cwd,
             env=None,  # we need to execute it in our env, so that win32job module is available there
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # this is cuz win "bReAk eVeNt" can only be sent to process group
         )
@@ -111,6 +115,7 @@ sys.exit(subprocess.Popen({args}, env={env}).wait())
             *args,
             stdout=stdout,
             stderr=stderr,
+            cwd=cwd,
             env=env,
             restore_signals=True,
             start_new_session=True
