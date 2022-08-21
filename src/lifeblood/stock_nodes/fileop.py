@@ -25,6 +25,7 @@ class FileOperations(BaseNode):
                     ui.add_parameter('path', 'do', NodeParameterType.STRING, '')
                     opparam = ui.add_parameter('op', 'operation', NodeParameterType.STRING, 'nop') \
                         .add_menu((('nothing', 'nop'),
+                                   ('list files', 'ls'),
                                    ('create', 'touch'),
                                    ('create dir', 'mkdir'),
                                    ('create base dir', 'mkdirbase'),
@@ -33,6 +34,8 @@ class FileOperations(BaseNode):
                                    ('move', 'mv')))
                     ui.add_parameter('other path', 'to here', NodeParameterType.STRING, '') \
                         .append_visibility_condition(opparam, 'in', ('cp', 'mv'))
+                    ui.add_parameter('op res', 'save as this attribute', NodeParameterType.STRING, 'files') \
+                        .append_visibility_condition(opparam, '==', 'ls')
 
     @classmethod
     def label(cls) -> str:
@@ -49,7 +52,7 @@ class FileOperations(BaseNode):
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         item_count = context.param_value('item count')
         if context.param_value('on workers'):
-            scriptlines = []
+            scriptlines = []  # init with no lines, so later easier to check if nothing was added to them
             for i in range(item_count):
                 path = os.path.realpath(context.param_value(f'path_{i}'))
                 op = context.param_value(f'op_{i}')
@@ -63,6 +66,11 @@ class FileOperations(BaseNode):
                          f'    pass'])
                 elif op == 'mkdir':
                     scriptlines.append(f'os.makedirs({repr(path)}, exist_ok=True)')
+                elif op == 'ls':
+                    res_attr_name = context.param_value(f"op res_{i}").strip()
+                    if res_attr_name == '':
+                        raise ProcessingError('resulting attribute name cannot be empty')
+                    scriptlines.append(f'attribs_to_set[{repr(res_attr_name)}] = os.listdir({repr(path)}, exist_ok=True)')
                 elif op == 'mkdirbase':
                     scriptlines.append(f'os.makedirs(os.path.dirname({repr(path)}, exist_ok=True)')
                 elif op in ('cp', 'mv', 'rm'):
@@ -89,7 +97,14 @@ class FileOperations(BaseNode):
                     raise ProcessingError(f'unknown operation: "{op}"')
             if len(scriptlines) == 0:
                 return ProcessingResult()
-            scriptlines = ['import os', 'import shutil'] + scriptlines
+            scriptlines = ['import os',
+                           'import shutil',
+                           'import lifeblood_connection',
+                           'attribs_to_set = {}'
+                           ] + scriptlines + \
+                          ['if attribs_to_set:',
+                           '    lifeblood_connection.set_attributes(attribs_to_set, blocking=True)'
+                           ]
 
             job = InvocationJob(['python', ':/script.py'])
             job.set_extra_file('script.py', '\n'.join(scriptlines))
