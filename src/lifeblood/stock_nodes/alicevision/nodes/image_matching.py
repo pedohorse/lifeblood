@@ -26,7 +26,7 @@ class AlicevisionImageMatching(AlicevisionBaseNode):
                            ('Exhaustive', 'Exhaustive'),
                            ('Frustum', 'Frustum'),
                            ('Frustum or Vocabulary Tree', 'FrustumOrVocabularyTree')))
-            ui.add_parameter('tree', 'Vocabulary Tree', NodeParameterType.STRING, 'aliceVision/share/aliceVision/vlfeat_K80L3.SIFT.tree')
+            ui.add_parameter('tree', 'Vocabulary Tree', NodeParameterType.STRING, '../../aliceVision/share/aliceVision/vlfeat_K80L3.SIFT.tree')
             ui.add_parameter('minNbImages', 'minNbImages', NodeParameterType.INT, 200)
             ui.add_parameter('maxDescriptors', 'maxDescriptors', NodeParameterType.INT, 500)
             ui.add_parameter('nbMatches', 'nbMatches', NodeParameterType.INT, 50)
@@ -51,8 +51,6 @@ class AlicevisionImageMatching(AlicevisionBaseNode):
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         tree_path = Path(context.param_value('tree'))
         output = Path(context.param_value('output').strip())
-        if not tree_path.is_absolute():
-            tree_path = self.alicevision_root() / tree_path
         if not output.is_absolute():
             raise ProcessingError('output path must be absolute and not empty')
 
