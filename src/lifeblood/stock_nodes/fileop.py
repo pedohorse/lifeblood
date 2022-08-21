@@ -70,7 +70,7 @@ class FileOperations(BaseNode):
                     res_attr_name = context.param_value(f"op res_{i}").strip()
                     if res_attr_name == '':
                         raise ProcessingError('resulting attribute name cannot be empty')
-                    scriptlines.append(f'attribs_to_set[{repr(res_attr_name)}] = os.listdir({repr(path)}, exist_ok=True)')
+                    scriptlines.append(f'attribs_to_set[{repr(res_attr_name)}] = os.listdir({repr(path)})')
                 elif op == 'mkdirbase':
                     scriptlines.append(f'os.makedirs(os.path.dirname({repr(path)}, exist_ok=True)')
                 elif op in ('cp', 'mv', 'rm'):
@@ -110,6 +110,7 @@ class FileOperations(BaseNode):
             job.set_extra_file('script.py', '\n'.join(scriptlines))
             return ProcessingResult(job)
         else:
+            result = ProcessingResult()
             for i in range(item_count):
                 path = os.path.realpath(context.param_value(f'path_{i}'))
                 op = context.param_value(f'op_{i}')
@@ -122,6 +123,11 @@ class FileOperations(BaseNode):
                         pass
                 elif op == 'mkdir':
                     os.makedirs(path, exist_ok=True)
+                elif op == 'ls':
+                    res_attr_name = context.param_value(f"op res_{i}").strip()
+                    if res_attr_name == '':
+                        raise ProcessingError('resulting attribute name cannot be empty')
+                    result.set_attribute(res_attr_name, list(os.listdir(path)))
                 elif op == 'mkdirbase':
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                 elif op == 'rm':
@@ -139,7 +145,7 @@ class FileOperations(BaseNode):
                         delete_path(path)
                 else:
                     raise ProcessingError(f'unknown operation: "{op}"')
-        return ProcessingResult()
+            return result
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         return ProcessingResult()
