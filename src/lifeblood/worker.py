@@ -459,7 +459,12 @@ class Worker:
                 #    with open(self.get_log_filepath('error', task.invocation_id()), 'a') as stderr:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process_start_time = time.time()
-                self.__running_process: asyncio.subprocess.Process = await create_process(args, env)
+
+                bin_path = shutil.which(args[0])
+                if bin_path is None:
+                    raise RuntimeError(f'"args[0]" was not found. Check environment resolver arguments and system setup')
+
+                self.__running_process: asyncio.subprocess.Process = await create_process(args, env, os.path.dirname(bin_path))
             except Exception as e:
                 self.__logger.exception('task creation failed with error: %s' % (repr(e),))
                 raise
