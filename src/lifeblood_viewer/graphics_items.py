@@ -1457,15 +1457,20 @@ class Task(NetworkItemWithUI):
             return
         imgui.text('Logs:')
         for node_id, invocs in self.__log.items():
-            node_expanded, _ = imgui.collapsing_header(f'node {node_id}')
+            node: Node = self.scene().get_node(node_id)
+            if node is not None:
+                node_name: str = node.node_name()
+            node_expanded, _ = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
             if not node_expanded:  # or invocs is None:
                 continue
             for invoc_id, invoc in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
+                imgui.indent(10)
                 invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
                                                             (f', worker {invoc["worker_id"]}' if invoc.get('worker_id') is not None else '') +
                                                             (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else ''))
                 if not invoc_expanded:
+                    imgui.unindent(10)
                     continue
                 if invoc_id not in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.add(invoc_id)
@@ -1488,6 +1493,7 @@ class Task(NetworkItemWithUI):
                             logger.debug('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
                                 self.__requested_invocs_while_selected.remove(invoc_id)
+                imgui.unindent(10)
 
 
 class SnapPoint:
