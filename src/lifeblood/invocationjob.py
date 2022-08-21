@@ -237,7 +237,7 @@ class InvocationJob:
 
         self.__requirements = requirements or InvocationRequirements()
         self.__priority = 0.0
-        self.__envres_args = None # environment_wrapper_arguments
+        self.__envres_args = None  # environment_wrapper_arguments
 
         self.__exitcode = None
         self.__running_time = None
