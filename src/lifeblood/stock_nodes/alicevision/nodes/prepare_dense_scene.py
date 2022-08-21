@@ -15,7 +15,7 @@ class AlicevisionPrepareDenseScene(AlicevisionBaseNode):
         super(AlicevisionPrepareDenseScene, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.add_parameter('input', 'Input Images Directory', NodeParameterType.STRING, "`task['av_structure_from_motion']`")
+            ui.add_parameter('input', 'Structure From Motion', NodeParameterType.STRING, "`task['av_structure_from_motion']`")
             ui.add_parameter('output', 'Output Image Folder', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/PrepareDenseScene")
             # ui.add_parameter('', 'Output Undistorted Images', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/StructureFromMotion/sfm.abc")
 
@@ -48,4 +48,12 @@ class AlicevisionPrepareDenseScene(AlicevisionBaseNode):
         output.mkdir(parents=True, exist_ok=True)
 
         args = ['aliceVision_prepareDenseScene', '--verboseLevel', 'info']
-        args += ['--input']
+        args += ['--input', context.param_value('input').strip()]
+        for param_name in ('rangeStart', 'rangeSize'):
+            args += [f'--{param_name}', context.param_value(param_name)]
+        args += ['--output', output]
+
+        job = InvocationJob([str(x) for x in args])
+        res = ProcessingResult(job)
+        res.set_attribute('av_prepare_dense', str(output))
+        return res
