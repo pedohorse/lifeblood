@@ -20,7 +20,7 @@ from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .net_classes import WorkerResources
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
-from .exceptions import NotEnoughResources
+from .exceptions import NotEnoughResources, ProcessInitializationError
 from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
@@ -462,7 +462,7 @@ class Worker:
 
                 bin_path = shutil.which(args[0], path=env.get('PATH'))
                 if bin_path is None:
-                    raise RuntimeError(f'"{args[0]}" was not found. Check environment resolver arguments and system setup')
+                    raise ProcessInitializationError(f'"{args[0]}" was not found. Check environment resolver arguments and system setup')
 
                 self.__running_process: asyncio.subprocess.Process = await create_process(args, env, os.path.dirname(bin_path))
             except Exception as e:

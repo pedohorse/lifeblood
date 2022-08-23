@@ -13,3 +13,7 @@ class NodeNotReadyToProcess(Exception):
 
 class NotEnoughResources(RuntimeError):
     pass
+
+
+class ProcessInitializationError(RuntimeError):
+    pass
