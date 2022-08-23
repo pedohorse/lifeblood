@@ -18,7 +18,7 @@ class AlicevisionStructureFromMotion(AlicevisionBaseNode):
             ui.add_parameter('input', 'Input Images Directory', NodeParameterType.STRING, "`task['av_camera_sfm']`")
             ui.add_parameter('featuresFolders', 'Features Dir', NodeParameterType.STRING, "`task['av_features_dir']`")  # TODO: this seem to be an array of dirs, so add support
             ui.add_parameter('matchesFolders', 'Matches Dir', NodeParameterType.STRING, "`task['av_feature_matches']`")  # TODO: this seem to be an array of dirs, so add support
-            ui.add_parameter('output', 'Output Feature Matching Dir', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/StructureFromMotion/sfm.abc")
+            ui.add_parameter('output', 'Output Structure From Motion', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/StructureFromMotion/sfm.abc")
             ui.add_parameter('outputViewsAndPoses', 'Output Views And Poses', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/StructureFromMotion/cameras.sfm")
             ui.add_parameter('extraInfoFolder', 'Output Folder', NodeParameterType.STRING, "`config['global_scratch_location']`/alicevision/`task['uuid']`/StructureFromMotion")
             ui.add_separator()
