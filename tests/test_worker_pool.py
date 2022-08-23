@@ -99,7 +99,8 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         swp.set_maximum_workers(maxt)
         for i in range(maxt+5):
             await swp.add_worker()
-            await asyncio.sleep(rnd.uniform(0, 1))
+            await asyncio.sleep(rnd.uniform(0.2, 1))
+            # NOTE: there is NO real guarantee that pool had enough time to spawn a worker, we just rely on sane conditions here
             workers = swp.list_workers()
             self.assertEqual(min(i + 1, maxt), len(workers))
         swp.stop()
