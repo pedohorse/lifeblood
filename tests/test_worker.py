@@ -52,18 +52,22 @@ class WorkerRunTest(RunningSchedulerTests):
         expected_args = ['arg0', '-1', 'ass']
         job = InvocationJob(expected_args, env=expected_env, invocation_id=1123)
         job._set_task_attributes({'test1': 42, 'TesT2': 'food', '_bad': 2.3, '__bbad': 'no'})
-        with mock.patch('lifeblood.worker.create_process') as m:
+        with mock.patch('lifeblood.worker.create_process') as m,\
+                mock.patch('shutil.which') as sw:
+            sw.return_value = os.path.join(os.getcwd(), 'arg0')
             m.side_effect = Moxecption('expected exception')
             try:
                 await worker.run_task(job, '')
             except Moxecption:
                 pass
             m.assert_called()
-            test_args, test_env = m.call_args[0]
+            test_args, test_env, test_cwd = m.call_args[0]
         print(test_args)
         print(test_env)
+        print(test_cwd)
         self.assertListEqual(expected_args, test_args)
         self.assertEqual(test_env, {**test_env, **expected_env.resolve()})
+        self.assertEqual(os.getcwd(), test_cwd)
 
         # test that task's attributes were set to env correctly
         self.assertIn('LBATTR_test1', test_env)
