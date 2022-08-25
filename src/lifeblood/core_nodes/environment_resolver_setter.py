@@ -33,8 +33,11 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
             mode_param = ui.add_parameter('mode', 'mode', NodeParameterType.STRING, 'modify')\
                                 .add_menu((('Set', 'set'),
                                            ('Modify', 'modify')))
-            ui.add_parameter('resolver name', 'resolver', NodeParameterType.STRING, '')
-            with ui.multigroup_parameter_block('arguments'):
+            with ui.parameters_on_same_line_block():
+                ui.add_parameter('set resolver name', 'set resolver', NodeParameterType.BOOL, False).append_visibility_condition(mode_param, '==', 'modify')
+                ui.add_parameter('resolver name', 'resolver', NodeParameterType.STRING, '')
+            ui.add_separator()
+            with ui.multigroup_parameter_block('arguments', 'arguments to set'):
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('arg name', '<name', NodeParameterType.STRING, 'arg name')
                     type_param = ui.add_parameter('type', 'value>', NodeParameterType.INT, 0)
@@ -47,8 +50,9 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
                     ui.add_parameter('fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
                     ui.add_parameter('bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
-            
-            with ui.multigroup_parameter_block('arguments to delete'):
+
+            ui.add_separator()
+            with ui.multigroup_parameter_block('arguments to delete', 'arguments to delete'):
                 ui.add_parameter('arg name to delete', 'argument to delete', NodeParameterType.STRING, '')
 
             ui.parameter('arguments to delete').append_visibility_condition(mode_param, '==', 'modify')
@@ -86,10 +90,13 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
             res.set_environment_resolver_arguments(EnvironmentResolverArguments(resolver_name, arguments))
 
             return res
+        else:  # mode is modify
+            if not context.param_value('set resolver name'):
+                resolver_name = None
 
         # else mode is modify (no other modes exist)
         env_arguments = context.task_environment_resolver_arguments()
-        if resolver_name != '':
+        if resolver_name is not None:
             env_arguments.set_name(resolver_name)
         for arg, val in arguments.items():
             env_arguments.add_argument(arg, val)
