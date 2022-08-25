@@ -892,10 +892,12 @@ class MultiGroupLayout(OrderedParametersLayout):
     this group can dynamically spawn more parameters according to it's template
     spawning more parameters does NOT count as definition change
     """
-    def __init__(self, name):
+    def __init__(self, name, label=None):
         super(MultiGroupLayout, self).__init__()
         self.__template: Union[ParametersLayoutBase, Parameter, None] = None
-        self.__count_param = Parameter(name, 'count', NodeParameterType.INT, 0, can_have_expression=False)
+        if label is None:
+            label = 'count'
+        self.__count_param = Parameter(name, label, NodeParameterType.INT, 0, can_have_expression=False)
         self.__count_param.set_parent(self)
         self.__last_count = 0
 
@@ -1169,7 +1171,7 @@ class NodeUi(ParameterHierarchyItem):
             assert len(list(layout.parameters())) == 1, f'oh no, {len(list(layout.parameters()))}'
         return layout.parameter(parameter_name)
 
-    def multigroup_parameter_block(self, name: str):
+    def multigroup_parameter_block(self, name: str, label: Optional[str] = None):
         """
         use it in with statement
         creates a block like multiparameter block in houdini
@@ -1177,10 +1179,11 @@ class NodeUi(ParameterHierarchyItem):
         :return:
         """
         class _slwrapper_multi:
-            def __init__(self, ui: "NodeUi", name: str):
+            def __init__(self, ui: "NodeUi", name: str, label: Optional[str] = None):
                 self.__ui = ui
                 self.__new_layout = None
                 self.__name = name
+                self.__label = label
 
             def __enter__(self):
                 self.__new_layout = VerticalParametersLayout()
@@ -1189,7 +1192,7 @@ class NodeUi(ParameterHierarchyItem):
             def __exit__(self, exc_type, exc_val, exc_tb):
                 assert self.__ui._NodeUi__groups_stack.pop() == self.__new_layout
                 with self.__ui._NodeUi__parameter_layout.initializing_interface_lock():
-                    multi_layout = MultiGroupLayout(self.__name)
+                    multi_layout = MultiGroupLayout(self.__name, self.__label)
                     with multi_layout.initializing_interface_lock():
                         multi_layout.set_spawning_template(self.__new_layout)
                     self.__ui._add_layout(multi_layout)
@@ -1201,7 +1204,7 @@ class NodeUi(ParameterHierarchyItem):
             raise LayoutReadonlyError()
         if not self.__block_ui_callbacks:
             raise NodeUiDefinitionError('initializing NodeUi interface not inside initializing_interface_lock')
-        return _slwrapper_multi(self, name)
+        return _slwrapper_multi(self, name, label)
 
     def current_layout(self):
         """
