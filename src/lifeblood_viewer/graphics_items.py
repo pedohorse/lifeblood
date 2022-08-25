@@ -577,7 +577,9 @@ class Node(NetworkItemWithUI):
             if expanded:
                 for child in item.items(recursive=False):
                     h, w = item.relative_size_for_child(child)
+                    imgui.indent(5)
                     self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
+                    imgui.unindent(5)
                 imgui.separator()
         elif isinstance(item, ParametersLayoutBase):
             for child in item.items(recursive=False):
