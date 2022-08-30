@@ -105,7 +105,8 @@ class EnvironmentResolverArgumentsSetter(BaseNode):
             name = context.param_value(f'arg name to delete_{i}').strip()
             if name == '':
                 continue
-            env_arguments.remove_argument(name)
+            if name in env_arguments.arguments():
+                env_arguments.remove_argument(name)
 
         res = ProcessingResult()
         res.set_environment_resolver_arguments(env_arguments)
