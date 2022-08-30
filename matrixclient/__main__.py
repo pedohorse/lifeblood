@@ -1,4 +1,6 @@
 import sys
+import os
+import mimetypes
 import io
 import argparse
 from matrix_client.client import MatrixClient
@@ -13,6 +15,7 @@ def main(argv):
     com_send.add_argument('token', help='matrix session token')
     com_send.add_argument('room', help='matrix room id')
     com_send.add_argument('message', nargs='?', help='message to send')
+    com_send.add_argument('--message-is-file', action='store_true', help='treat message as file path to upload')
 
     com_login = commands.add_parser('login', help='login and get a token to use with other commands')
     com_login.add_argument('server', help='server to use')
@@ -39,10 +42,25 @@ def main(argv):
         if args.room not in c.rooms:
             c.join_room(args.room)
         r = c.rooms[args.room]
-        if args.message is None:
-            input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='UTF-8')
-            args.message = input_stream.read()
-        r.send_text(args.message)
+        if args.message_is_file:
+            filepath = args.message
+            if not os.path.exists(filepath):
+                parser.error('file does not exist')
+            filename = os.path.basename(filepath)
+            mimetype = mimetypes.guess_type(filepath)[0] or ''
+            with open(filepath, 'rb') as f:
+                uri = c.upload(f.read(), mimetype, filename)
+                if '/' in mimetype and mimetype.split('/', 1)[0] == 'image' or mimetype == 'image':
+                    r.send_image(uri, filename)
+                elif '/' in mimetype and mimetype.split('/', 1)[0] == 'video' or mimetype == 'video':
+                    r.send_video(uri, filename)
+                else:
+                    r.send_file(uri, filename)
+        else:
+            if args.message is None:
+                input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='UTF-8')
+                args.message = input_stream.read()
+            r.send_text(args.message)
     else:
         parser.print_help()
         parser.error('command need to be provided')
