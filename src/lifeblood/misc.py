@@ -1,6 +1,9 @@
+import os
 import asyncio
 import random
+import uuid
 import time
+import psutil
 from .logging import get_logger, logging
 
 from typing import List, Optional, Union
@@ -92,3 +95,39 @@ def alocking(lock_or_name: Union[asyncio.Lock, str, None] = None):  # TODO: TEST
                 return await func(*args, **kwargs)
         return _wrapper
     return decorator
+
+
+__stashed_machine_uuid = None
+
+
+def get_unique_machine_id() -> int:
+    """
+    get a unique machine id (or something as close as possible)
+
+    To work well with sqlite, id must be truncated to 64 bit
+
+    :return: 64 bit integer
+    """
+    global __stashed_machine_uuid
+    if __stashed_machine_uuid is None:
+        midpaths = ['/etc/machine-id', '/var/lib/dbus/machine-id']
+        for midpath in midpaths:
+            if os.path.exists(midpath) and os.access(midpath, os.R_OK):
+                with open(midpath, 'r') as f:
+                    __stashed_machine_uuid = int(f.read(), base=16)
+                break
+        else:
+            try:
+                ia_pairs = sorted([(i, a) for i, a in psutil.net_if_addrs().items()], key=lambda x: x[0])  # to be more predictable in order
+                for _, addrlist in ia_pairs:
+                    for addr in addrlist:
+                        if addr.family != psutil.AF_LINK or addr.address == '00:00:00:00:00:00':
+                            continue
+                        __stashed_machine_uuid = int(''.join(addr.address.split(':')), base=16)
+            except Exception as e:
+                logging.getLogger('get_unique_machine_id').warning('failed to get any MAC address')
+            if __stashed_machine_uuid is None:
+                __stashed_machine_uuid = uuid.getnode()  # this is not very reliable.
+
+        __stashed_machine_uuid &= (1 << 64) - 1  # notice, we can do that cuz python!
+    return __stashed_machine_uuid
