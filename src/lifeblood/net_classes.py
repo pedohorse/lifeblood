@@ -2,6 +2,8 @@ import uuid
 import psutil
 import pickle
 import copy
+from .misc import get_unique_machine_id
+
 from typing import TYPE_CHECKING, Type
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -26,7 +28,7 @@ class WorkerResources:
 
         NOTE: because of float resource rounding - it's not safe to rely on consistency of summing/subtracting a lot of resources
         """
-        self.hwid = uuid.getnode()
+        self.hwid = get_unique_machine_id()
         self.cpu_count = psutil.cpu_count()  # note, cpu/gpu count can be float by design, but we don't like "almost" round float values
         self.cpu_mem = psutil.virtual_memory().total
         self.gpu_count = 0  # TODO: implement this
