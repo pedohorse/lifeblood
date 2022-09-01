@@ -5,6 +5,9 @@ from lifeblood.enums import NodeParameterType
 from typing import Iterable
 import subprocess
 import time
+import json
+import tempfile
+import shutil
 
 
 description = \
@@ -84,12 +87,13 @@ class MatrixNotifier(BaseNode):
             if context.param_value('fail on error'):
                 raise ProcessingError('failed to send notification')
         if context.param_value('do attach'):
+            filepath = context.param_value('attachment')
+            if not os.path.exists(filepath):
+                raise ProcessingError('attachment file does not exist')
+
             for i in range(retries):
                 if i > 0:
                     time.sleep(2 ** (i - 1))
-                filepath = context.param_value('attachment')
-                if not os.path.exists(filepath):
-                    raise ProcessingError('attachment file does not exist')
                 print(f'attempt {i + 1}...')
                 proc = subprocess.Popen([sys.executable, self.my_plugin().package_data() / 'matrixclient.pyz',
                                          'send',
@@ -108,3 +112,4 @@ class MatrixNotifier(BaseNode):
                 if context.param_value('fail on error'):
                     raise ProcessingError('failed to send attachment')
         return ProcessingResult()
+

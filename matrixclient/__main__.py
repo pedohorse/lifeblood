@@ -3,7 +3,32 @@ import os
 import mimetypes
 import io
 import argparse
+import shutil
+import subprocess
+import json
+import tempfile
 from matrix_client.client import MatrixClient
+
+
+def _generate_preview_and_metadata(filepath):
+    if shutil.which('ffprobe') is None or shutil.which('ffmpeg') is None:
+        return None, None, None
+
+    p = subprocess.Popen(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate,duration',
+                                  '-of', 'json=c=1',
+                                  filepath], stdout=subprocess.PIPE, text=True)
+    output, _ = p.communicate()
+    retcode = p.poll()
+    if retcode != 0:
+        return None, None, None
+
+    data = json.loads(output)
+    data = data['streams'][0]
+
+    fd, path = tempfile.mkstemp('.jpg', 'preview')
+    subprocess.Popen(['ffmpeg', '-i', filepath, '-frames:v', '1', '-q:v', '2', '-y', path]).wait()
+
+    return data, fd, path
 
 
 def main(argv):
@@ -50,12 +75,23 @@ def main(argv):
             mimetype = mimetypes.guess_type(filepath)[0] or ''
             with open(filepath, 'rb') as f:
                 uri = c.upload(f.read(), mimetype, filename)
-                if '/' in mimetype and mimetype.split('/', 1)[0] == 'image' or mimetype == 'image':
-                    r.send_image(uri, filename)
-                elif '/' in mimetype and mimetype.split('/', 1)[0] == 'video' or mimetype == 'video':
-                    r.send_video(uri, filename)
-                else:
-                    r.send_file(uri, filename)
+            if '/' in mimetype and mimetype.split('/', 1)[0] == 'image' or mimetype == 'image':
+                r.send_image(uri, filename)
+            elif '/' in mimetype and mimetype.split('/', 1)[0] == 'video' or mimetype == 'video':
+                metadata, fd, preview_path = _generate_preview_and_metadata(filepath)
+                extra_args = {}
+                if metadata is not None:
+                    if 'width' in metadata:
+                        extra_args['w'] = metadata['width']
+                    if 'height' in metadata:
+                        extra_args['h'] = metadata['height']
+
+                    with open(preview_path, 'rb') as f:
+                        thumbnail_mxc = c.upload(f.read(), 'image/jpeg', preview_path)
+                    extra_args['thumbnail_url'] = thumbnail_mxc
+                r.send_video(uri, filename, **extra_args)
+            else:
+                r.send_file(uri, filename)
         else:
             if args.message is None:
                 input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='UTF-8')
