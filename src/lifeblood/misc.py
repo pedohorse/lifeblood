@@ -129,5 +129,5 @@ def get_unique_machine_id() -> int:
             if __stashed_machine_uuid is None:
                 __stashed_machine_uuid = uuid.getnode()  # this is not very reliable.
 
-        __stashed_machine_uuid &= (1 << 64) - 1  # notice, we can do that cuz python!
+        __stashed_machine_uuid &= (1 << 63) - 1  # sqlite eats signed 64b integers, so we leave single bit. though we could still cast and use it...
     return __stashed_machine_uuid
