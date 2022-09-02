@@ -124,6 +124,9 @@ def get_unique_machine_id() -> int:
                         if addr.family != psutil.AF_LINK or addr.address == '00:00:00:00:00:00':
                             continue
                         __stashed_machine_uuid = int(''.join(addr.address.split(':')), base=16)
+                        break
+                    if __stashed_machine_uuid is not None:
+                        break
             except Exception as e:
                 logging.getLogger('get_unique_machine_id').warning('failed to get any MAC address')
             if __stashed_machine_uuid is None:
