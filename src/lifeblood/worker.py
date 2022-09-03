@@ -850,11 +850,12 @@ async def main_async(worker_type=WorkerType.STANDARD,
             if noloop:
                 break
 
-    if win_signal_waiting_task is not None:
+    if win_signal_waiting_task is not None:  # this happens only on windows
         if not win_signal_waiting_task.done():
             win_signal_waiting_task.cancel()
-    asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)  # this seem to fix the bad signal fd error
-    asyncio.get_event_loop().remove_signal_handler(signal.SIGTERM)  # my guess what happens is that loop closes, but signal handlers remain if not unsed
+    else:
+        asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)  # this seem to fix the bad signal fd error
+        asyncio.get_event_loop().remove_signal_handler(signal.SIGTERM)  # my guess what happens is that loop closes, but signal handlers remain if not unsed
 
 
 default_config = '''
