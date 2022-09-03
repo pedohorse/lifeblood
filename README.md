@@ -1,8 +1,8 @@
 |master|dev|
 |---|---|
-|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
-https://raw.githubusercontent.com/pedohorse/lifeblood/master/icon/lifeblood.svg
-![](icon/lifeblood_cleaned.svg)
+|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|
+
+![](icon/lifeblood.svg)
 
 ## Lifeblood
 Lifeblood is a task/job management software package  
