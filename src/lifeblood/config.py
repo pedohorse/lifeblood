@@ -79,6 +79,7 @@ class Config:
 
         self.__sources: List["Path"] = []
 
+        self.__stuff = {}
         if config_path.exists():
             try:
                 with open(config_path, 'r') as f:
@@ -87,8 +88,6 @@ class Config:
                 self.__logger.error(f'failed to load primary config file {config_path}, skipping')
             else:
                 self.__sources.append(config_path)
-        else:
-            self.__stuff = {}
 
         if configd_path.exists() and configd_path.is_dir():
             for subconfig_path in configd_path.iterdir():
