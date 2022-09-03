@@ -24,6 +24,8 @@ class StandardEnvResTest(unittest.TestCase):
     def tearDownClass(cls) -> None:
         if cls._stash is not None:
             os.environ['LIFEBLOOD_CONFIG_LOCATION'] = cls._stash
+        else:
+            del os.environ['LIFEBLOOD_CONFIG_LOCATION']
 
         if os.path.exists(cls.config_base_path):
             shutil.rmtree(cls.config_base_path)
