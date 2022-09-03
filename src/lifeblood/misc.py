@@ -109,6 +109,8 @@ def get_unique_machine_id() -> int:
     :return: 64 bit integer
     """
     global __stashed_machine_uuid
+    logger = get_logger('get_unique_machine_id')
+
     if __stashed_machine_uuid is None:
         midpaths = ['/etc/machine-id', '/var/lib/dbus/machine-id']
         for midpath in midpaths:
@@ -123,12 +125,13 @@ def get_unique_machine_id() -> int:
                     for addr in addrlist:
                         if addr.family != psutil.AF_LINK or addr.address == '00:00:00:00:00:00':
                             continue
+                        logger.debug(f'trying address: "{addr.address}"')
                         __stashed_machine_uuid = int(''.join(addr.address.split(':')), base=16)
                         break
                     if __stashed_machine_uuid is not None:
                         break
             except Exception as e:
-                logging.getLogger('get_unique_machine_id').warning('failed to get any MAC address')
+                logger.warning(f'failed to get any MAC address, because of {repr(e)}: {str(e)}')
             if __stashed_machine_uuid is None:
                 __stashed_machine_uuid = uuid.getnode()  # this is not very reliable.
 
