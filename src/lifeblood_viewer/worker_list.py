@@ -5,10 +5,10 @@ from lifeblood.text import nice_memory_formatting
 from .connection_worker import SchedulerConnectionWorker
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView
-from PySide2.QtCore import Slot, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
 from PySide2.QtGui import QColor
 
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 
 class WorkerListWidget(QWidget):
@@ -43,6 +43,8 @@ class WorkerModel(QAbstractTableModel):
     __cols_with_totals = {'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem'}
     __mem_cols = {'cpu_mem', 'gpu_mem'}
     SORT_ROLE = Qt.UserRole + 0
+
+    group_update_requested = Signal(object, list)  # not int, cuz int in PySide is signed 32bit only
 
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerModel, self).__init__(parent)
@@ -83,7 +85,7 @@ class WorkerModel(QAbstractTableModel):
 
         if not index.isValid():
             return None
-        if role not in (Qt.DisplayRole, Qt.BackgroundRole, self.SORT_ROLE):
+        if role not in (Qt.DisplayRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
             return None
         row = index.row()
         col = index.column()
@@ -121,16 +123,48 @@ class WorkerModel(QAbstractTableModel):
 
         return raw_data
 
+    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+        flags = super(WorkerModel, self).flags(index)
+        if self.__cols_order[index.column()] == 'groups':
+            flags |= Qt.ItemIsEditable
+        return flags
+
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.DisplayRole) -> bool:
+        print(f'!setting {role}')
+        if not index.isValid():
+            return False
+        if role not in (Qt.DisplayRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
+            return False
+        row = index.row()
+        col = index.column()
+        col_name = self.__cols_order[col]
+        hwid = self.__workers[self.__order[row]]['hwid']
+        print(f'setting for {hwid}')
+        if isinstance(value, str):
+            groups = [x.strip() for x in value.split(',')]
+        elif isinstance(value, (list, tuple)):
+            groups = value
+        else:
+            raise NotImplementedError()
+        if col_name == 'groups':  # need to signal that group change was requested
+            self.group_update_requested.emit(hwid, groups)
+        return True
+
     @Slot(object)
     def full_update(self, uidata: UiData):
-        new_workers = {x['last_address']: x for x in uidata.workers()}
+        new_workers = {x['last_address']: x for x in uidata.workers()}  # TODO: maybe use id instead of last_address?
         new_keys = set(new_workers.keys())
         old_keys = set(self.__workers.keys())
 
         # update
-        for key in old_keys.intersection(new_keys):
-            self.__workers[key].update(new_workers[key])
-            self.dataChanged.emit(self.index(self.__inv_order[key], 0), self.index(self.__inv_order[key], self.columnCount() - 1))
+        for worker_key in old_keys.intersection(new_keys):
+            # self.__workers[wroker_key].update(new_workers[worker_key])
+            for key, value in new_workers[worker_key].items():
+                if self.__workers[worker_key].get(key) != value:
+                    self.__workers[worker_key][key] = value
+                    colindex = self.__colname_to_index.get(key)
+                    if colindex is not None:
+                        self.dataChanged.emit(self.index(self.__inv_order[worker_key], colindex), self.index(self.__inv_order[worker_key], colindex))
 
         # insert
         to_insert = new_keys - old_keys
@@ -158,6 +192,7 @@ class WorkerModel(QAbstractTableModel):
 
     def start(self):
         self.__scheduler_worker.full_update.connect(self.full_update)
+        self.group_update_requested.connect(self.__scheduler_worker.set_worker_groups)
 
     def stop(self):
         self.__scheduler_worker.disconnect(self)
