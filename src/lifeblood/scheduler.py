@@ -1971,6 +1971,23 @@ class Scheduler:
             await con.commit()
 
     #
+    # set worker groups
+    async def set_worker_groups(self, worker_hwid: int, groups: List[str]):
+        groups = set(groups)
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            await con.execute('BEGIN IMMEDIATE')  # start transaction straight away
+            async with con.execute('SELECT "group" FROM worker_groups WHERE worker_hwid == ?', (worker_hwid,)) as cur:
+                existing_groups = set(x[0] for x in await cur.fetchall())
+            to_delete = existing_groups - groups
+            to_add = groups - existing_groups
+            if len(to_delete):
+                await con.execute(f'DELETE FROM worker_groups WHERE worker_hwid == ? AND "group" IN ({",".join(("?",)*len(to_delete))})', (worker_hwid, *to_delete))
+            if len(to_add):
+                await con.executemany(f'INSERT INTO worker_groups (worker_hwid, "group") VALUES (?, ?)',
+                                      ((worker_hwid, x) for x in to_add))
+            await con.commit()
+
+    #
     # stuff
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True):
@@ -2036,6 +2053,7 @@ class Scheduler:
                                    'total_gpu_count, '
                                    'gpu_mem, '
                                    'total_gpu_mem, '
+                                   'workers."hwid", '
                                    'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
