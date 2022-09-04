@@ -141,7 +141,7 @@ class WorkerModel(QAbstractTableModel):
         hwid = self.__workers[self.__order[row]]['hwid']
         print(f'setting for {hwid}')
         if isinstance(value, str):
-            groups = [x.strip() for x in value.split(',')]
+            groups = [y for y in (x.strip() for x in value.split(',')) if y != '']
         elif isinstance(value, (list, tuple)):
             groups = value
         else:
