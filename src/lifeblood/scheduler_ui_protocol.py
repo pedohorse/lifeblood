@@ -386,6 +386,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(b'\1')
 
         #
+        async def set_worker_groups():
+            hwid, groups_count = struct.unpack('>QQ', await reader.readexactly(16))
+            groups = []
+            for i in range(groups_count):
+                groups.append(await read_string())
+
+            await self.__scheduler.set_worker_groups(hwid, groups)
+            writer.write(b'\1')
+
+        #
         #
         commands = {b'getfullstate': comm_get_full_state,
                     b'getinvocmeta': comm_get_invoc_meta,
@@ -421,7 +431,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'tsetgroups': comm_task_set_groups,
                     b'tupdateattribs': comm_task_update_attribs,
                     b'addtask': comm_add_task,
-                    b'settaskenvresolverargs': set_task_environment_resolver_arguments}
+                    b'settaskenvresolverargs': set_task_environment_resolver_arguments,
+                    b'setworkergroups': set_worker_groups}
         #
         # connection callback
         #
