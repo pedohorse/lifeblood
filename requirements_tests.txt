@@ -1,7 +1,6 @@
 aiofiles~=0.8
 aiosqlite~=0.17
 aiorwlock~=1.3
-certifi~=2020.12
 lz4~=4.0
 psutil~=5.8
 pywin32==304; platform_system=='Windows'
