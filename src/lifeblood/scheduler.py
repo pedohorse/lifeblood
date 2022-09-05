@@ -1688,6 +1688,18 @@ class Scheduler:
 
     #
     #
+    async def cancel_invocation_for_worker(self, worker_id: int):
+        self.__logger.debug(f'canceling invocation for worker {worker_id}')
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id" FROM "invocations" WHERE "worker_id" == ? AND state == ?', (worker_id, InvocationState.IN_PROGRESS.value)) as cur:
+                invoc = await cur.fetchone()
+        if invoc is None:
+            return
+        return await self.cancel_invocation(invoc['id'])
+
+    #
+    #
     async def force_set_node_task(self, task_id: int, node_id: int):
         self.__logger.debug(f'forcing task {task_id} to node {node_id}')
         try:
