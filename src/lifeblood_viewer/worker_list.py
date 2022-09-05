@@ -4,8 +4,8 @@ from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from .connection_worker import SchedulerConnectionWorker
 
-from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView
-from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
+from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView, QMenu
+from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QPoint
 from PySide2.QtGui import QColor
 
 from typing import Optional, Dict, List, Any
@@ -35,8 +35,27 @@ class WorkerListWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.addWidget(self.__worker_list)
 
+        self.__worker_list.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        # connec
+        self.__worker_list.customContextMenuRequested.connect(self.show_context_menu)
+
     def stop(self):
         self.__worker_model.stop()
+
+    def show_context_menu(self, pos: QPoint):
+        print('KLUAJHFKLJASHF')
+        gpos = self.__worker_list.mapToGlobal(pos)
+        index = self.__sort_model.mapToSource(self.__worker_list.indexAt(pos))
+        if not index.isValid():
+            print('oh no:(')
+            return
+        menu = QMenu(self)
+
+        menu.addAction('select currently running task').setEnabled(False)
+        menu.addAction('stop currently running invocation', lambda: self.__worker_model.cancel_running_invocations(index))
+        menu.aboutToHide.connect(menu.deleteLater)
+        menu.popup(gpos)
 
 
 class WorkerModel(QAbstractTableModel):
@@ -45,6 +64,7 @@ class WorkerModel(QAbstractTableModel):
     SORT_ROLE = Qt.UserRole + 0
 
     group_update_requested = Signal(object, list)  # not int, cuz int in PySide is signed 32bit only
+    cancel_invocation_for_worker = Signal(object)  # same about not int
 
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerModel, self).__init__(parent)
@@ -150,6 +170,13 @@ class WorkerModel(QAbstractTableModel):
             self.group_update_requested.emit(hwid, groups)
         return True
 
+    def cancel_running_invocations(self, index: QModelIndex):
+        if not index.isValid():
+            return
+        row = index.row()
+        wid = self.__workers[self.__order[row]]['id']
+        self.cancel_invocation_for_worker.emit(wid)
+
     @Slot(object)
     def full_update(self, uidata: UiData):
         new_workers = {x['last_address']: x for x in uidata.workers()}  # TODO: maybe use id instead of last_address?
@@ -193,6 +220,7 @@ class WorkerModel(QAbstractTableModel):
     def start(self):
         self.__scheduler_worker.full_update.connect(self.full_update)
         self.group_update_requested.connect(self.__scheduler_worker.set_worker_groups)
+        self.cancel_invocation_for_worker.connect(self.__scheduler_worker.cancel_task_for_worker)
 
     def stop(self):
         self.__scheduler_worker.disconnect(self)
