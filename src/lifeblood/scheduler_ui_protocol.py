@@ -332,6 +332,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             await self.__scheduler.cancel_invocation_for_task(task_id)
             writer.write(b'\1')
 
+        async def worker_task_cancel():  # workertaskcancel  # cancel invocation for worker
+            worker_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.cancel_invocation_for_worker(worker_id)
+            writer.write(b'\1')
+
         async def comm_task_set_node():  # elif command == b'tsetnode':  # set task node
             task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
             await self.__scheduler.force_set_node_task(task_id, node_id)
@@ -425,6 +430,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'tpausegrp': comm_pause_task_group,
                     b'tarchivegrp': comm_archive_task_group,
                     b'tcancel': comm_task_cancel,
+                    b'workertaskcancel': worker_task_cancel,
                     b'tsetnode': comm_task_set_node,
                     b'tcstate': comm_task_change_state,
                     b'tsetname': comm_task_set_name,
