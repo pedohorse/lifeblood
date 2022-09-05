@@ -805,6 +805,20 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except Exception:
             logger.exception('problems in network operations')
 
+    @Slot(object)
+    def cancel_task_for_worker(self, worker_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'workertaskcancel\n')
+            self.__conn.sendall(struct.pack('>Q', worker_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
     @Slot()
     def add_task(self, new_task: NewTask):
         if not self.ensure_connected():
