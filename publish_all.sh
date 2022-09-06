@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 cd pkg_lifeblood
-./build_pypi.sh && ./upload_pypi.sh $1
+./build_pypi.sh && ./upload_pypi.sh $1 $2
 pubd1=$?
 tmp=$(ls dist/lifeblood-*.tar.gz)
 tmp=${tmp%.tar.gz}
@@ -9,7 +9,7 @@ ver1=${tmp##*-}
 cd ..
 
 cd pkg_lifeblood_viewer
-./build_pypi.sh && ./upload_pypi.sh $1
+./build_pypi.sh && ./upload_pypi.sh $1 $2
 pubd2=$?
 tmp=$(ls dist/lifeblood-*.tar.gz)
 tmp=${tmp%.tar.gz}
