@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 class WorkerPoolProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, worker_pool: "WorkerPool", limit=2 ** 16, logger=None):
         self.__logger = logger or get_logger(self.__class__.__name__.lower())
-        self.__logger.setLevel('DEBUG')
         self.__timeout = 60
         self.__worker_pool = worker_pool
         self.__reader = asyncio.StreamReader(limit=limit)
