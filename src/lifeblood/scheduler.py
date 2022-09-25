@@ -18,6 +18,7 @@ import signal
 import threading  # for bugfix
 from concurrent.futures import ThreadPoolExecutor
 
+from .data_manager import DataManager
 from . import logging
 from . import paths
 from .db_misc import sql_init_script
@@ -44,7 +45,6 @@ from .defaults import scheduler_port as default_scheduler_port, ui_port as defau
 
 from typing import Optional, Any, AnyStr, Tuple, List, Iterable, Union, Dict
 
-SCHEDULER_DB_FORMAT_VERSION = 1
 
 # import tracemalloc
 # tracemalloc.start()
@@ -116,29 +116,7 @@ class Scheduler:
             db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
 
         self.__logger.debug(f'starting scheduler with database: {db_file_path}')
-        #
-        # ensure database is initialized
-        with sqlite3.connect(db_file_path) as con:
-            con.executescript(sql_init_script)
-        with sqlite3.connect(db_file_path) as con:
-            con.row_factory = sqlite3.Row
-            cur = con.execute('SELECT * FROM lifeblood_metadata')
-            metadata = cur.fetchone()  # there should be exactly one single row.
-            cur.close()
-            if metadata is None:  # if there's no - the DB has not been initialized yet
-                # we need 64bit signed id to save into db
-                db_uid = random.getrandbits(64)  # this is actual db_uid
-                db_uid_signed = struct.unpack('>q', struct.pack('>Q', db_uid))[0]  # this one goes to db
-                con.execute('INSERT INTO lifeblood_metadata ("version", "component", "unique_db_id")'
-                            'VALUES (?, ?, ?)', (SCHEDULER_DB_FORMAT_VERSION, 'scheduler', db_uid_signed))
-                con.commit()
-                # reget metadata
-                cur = con.execute('SELECT * FROM lifeblood_metadata')
-                metadata = cur.fetchone()  # there should be exactly one single row.
-                cur.close()
-            self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
-
-        self.db_path = db_file_path
+        self.__data_manager = DataManager(db_file_path)
         ##
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
@@ -250,13 +228,7 @@ class Scheduler:
         return self.__mode
 
     async def get_node_type_and_name_by_id(self, node_id: int) -> (str, str):
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT "type", "name" FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
-                node_row = await nodecur.fetchone()
-        if node_row is None:
-            raise RuntimeError(f'node with given id {node_id} does not exist')
-        return node_row['type'], node_row['name']
+        return await self.__data_manager.get_node_type_and_name_by_id(node_id)
 
     @asynccontextmanager
     async def node_object_by_id_for_reading(self, node_id: int):
@@ -280,29 +252,21 @@ class Scheduler:
         """
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
-                node_row = await nodecur.fetchone()
-            if node_row is None:
-                raise RuntimeError('node id is invalid')
 
-            node_type = node_row['type']
-            if node_type not in pluginloader.plugins:
-                raise RuntimeError('node type is unsupported')
+        node_name, node_type, node_data = await self.__data_manager.get_node_object_data_by_id(node_id)
 
-            if node_row['node_object'] is not None:
-                self.__node_objects[node_id] = await BaseNode.deserialize_async(node_row['node_object'], self, node_id)
-                return self.__node_objects[node_id]
+        if node_type not in pluginloader.plugins:
+            raise RuntimeError('node type is unsupported')
 
-            #newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
-            newnode: BaseNode = pluginloader.create_node(node_type, node_row['name'], self, node_id)
-            self.__node_objects[node_id] = newnode
-            await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
-                              (await newnode.serialize_async(), node_id))
-            await con.commit()
+        if node_data is not None:
+            self.__node_objects[node_id] = await BaseNode.deserialize_async(node_data, self, node_id)
+            return self.__node_objects[node_id]
 
-            return newnode
+        newnode: BaseNode = pluginloader.create_node(node_type, node_name, self, node_id)
+        self.__node_objects[node_id] = newnode
+        await self.__data_manager.set_node_object_data(node_id, node_data=await newnode.serialize_async())
+
+        return newnode
 
     def get_node_lock_by_id(self, node_id: int) -> RWLock:
         """
@@ -326,25 +290,10 @@ class Scheduler:
         :param task_id:
         :return:
         """
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT attributes, environment_resolver_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
-                res = await cur.fetchone()
-            if res is None:
-                raise RuntimeError('task with specified id was not found')
-            env_res_args = None
-            if res['environment_resolver_data'] is not None:
-                env_res_args = await EnvironmentResolverArguments.deserialize_async(res['environment_resolver_data'])
-            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes']), env_res_args
+        return await self.__data_manager.get_task_attributes(task_id)
 
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT work_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
-                res = await cur.fetchone()
-            if res is None:
-                raise RuntimeError('task with specified id was not found')
-            return res[0]
+        return await self.__data_manager.get_task_invocation_serialized(task_id)
 
     async def get_task_invocation(self, task_id: int):
         data = await self.get_task_invocation_serialized(task_id)
