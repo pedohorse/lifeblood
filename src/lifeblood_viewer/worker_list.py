@@ -2,7 +2,10 @@ from datetime import datetime
 from lifeblood.uidata import UiData
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
+from lifeblood.logging import get_logger
+from lifeblood.misc import timeit
 from .connection_worker import SchedulerConnectionWorker
+from .utils import performance_measurer
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView, QMenu
 from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QPoint
@@ -68,6 +71,7 @@ class WorkerModel(QAbstractTableModel):
 
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerModel, self).__init__(parent)
+        self.__logger = get_logger('viewer.worker_model')
         self.__scheduler_worker = worker
         self.__workers: Dict[str, dict] = {}  # address is the key
         self.__order: List[str] = []
@@ -179,43 +183,70 @@ class WorkerModel(QAbstractTableModel):
 
     @Slot(object)
     def full_update(self, uidata: UiData):
-        new_workers = {x['last_address']: x for x in uidata.workers()}  # TODO: maybe use id instead of last_address?
-        new_keys = set(new_workers.keys())
-        old_keys = set(self.__workers.keys())
+        with performance_measurer() as pm:
+            new_workers = {x['last_address']: x for x in uidata.workers()}  # TODO: maybe use id instead of last_address?
+            new_keys = set(new_workers.keys())
+            old_keys = set(self.__workers.keys())
+        _perf_preinit = pm.elapsed()
 
         # update
-        for worker_key in old_keys.intersection(new_keys):
-            # self.__workers[wroker_key].update(new_workers[worker_key])
-            for key, value in new_workers[worker_key].items():
-                if self.__workers[worker_key].get(key) != value:
-                    self.__workers[worker_key][key] = value
-                    colindex = self.__colname_to_index.get(key)
-                    if colindex is not None:
-                        self.dataChanged.emit(self.index(self.__inv_order[worker_key], colindex), self.index(self.__inv_order[worker_key], colindex))
+        _perf_signals = 0
+        with performance_measurer() as pm:
+            minrow, maxrow = self.rowCount(), -1
+            for worker_key in old_keys.intersection(new_keys):
+                # self.__workers[wroker_key].update(new_workers[worker_key])
+                for key, value in new_workers[worker_key].items():
+                    if self.__workers[worker_key].get(key) != value:
+                        self.__workers[worker_key][key] = value
+                        row = self.__inv_order[worker_key]
+                        if minrow > row:
+                            minrow = row
+                        if maxrow < row:
+                            maxrow = row
+                        # colindex = self.__colname_to_index.get(key)
+                        # with performance_measurer() as pm1:
+                        #     if colindex is not None:
+                        #         self.dataChanged.emit(self.index(self.__inv_order[worker_key], colindex), self.index(self.__inv_order[worker_key], colindex))
+                        # _perf_signals += pm1.elapsed()
+            if minrow > -1:
+                # individual emits were VERY slow, even emiting once for ALL data is significantly faster, so we do this.
+                self.dataChanged.emit(self.index(minrow, 0), self.index(maxrow, self.columnCount()-1))  # TODO: this is very crude method of minimizing emit calls. IMPROVE
+        _perf_update = pm.elapsed()
 
         # insert
-        to_insert = new_keys - old_keys
-        if len(to_insert) > 0:
-            self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(to_insert) - 1)
-            for key in to_insert:
-                assert key not in self.__workers
-                assert key not in self.__inv_order
-                self.__workers[key] = new_workers[key]
-                self.__inv_order[key] = len(self.__order)
-                self.__order.append(key)
-            self.endInsertRows()
+        with performance_measurer() as pm:
+            to_insert = new_keys - old_keys
+            if len(to_insert) > 0:
+                self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(to_insert) - 1)
+                for key in to_insert:
+                    assert key not in self.__workers
+                    assert key not in self.__inv_order
+                    self.__workers[key] = new_workers[key]
+                    self.__inv_order[key] = len(self.__order)
+                    self.__order.append(key)
+                self.endInsertRows()
+        _perf_insert = pm.elapsed()
 
         # remove
-        to_remove = old_keys - new_keys
-        if len(to_remove) > 0:
-            for key in to_remove:
-                assert key in self.__workers
-                assert key in self.__inv_order
-                self.beginRemoveRows(QModelIndex(), self.__inv_order[key], self.__inv_order[key])
-                del self.__workers[key]
-                self.__order.remove(key)
-                self.__inv_order = {x: i for i, x in enumerate(self.__order)}
-                self.endRemoveRows()
+        with performance_measurer() as pm:
+            to_remove = old_keys - new_keys
+            if len(to_remove) > 0:
+                for key in to_remove:
+                    assert key in self.__workers
+                    assert key in self.__inv_order
+                    self.beginRemoveRows(QModelIndex(), self.__inv_order[key], self.__inv_order[key])
+                    del self.__workers[key]
+                    self.__order.remove(key)
+                    self.__inv_order = {x: i for i, x in enumerate(self.__order)}
+                    self.endRemoveRows()
+        _perf_remove = pm.elapsed()
+
+        self.__logger.debug(f'update performed:\n'
+                            f'{_perf_preinit:04f}:\tpreinit\n'
+                            f'{_perf_update:04f}:\tupdate\n'
+                            f'{_perf_signals:04f}:\tsignals\n'
+                            f'{_perf_insert:04f}:\tinsert\n'
+                            f'{_perf_remove:04f}:\tremove')
 
     def start(self):
         self.__scheduler_worker.full_update.connect(self.full_update)
