@@ -1185,7 +1185,7 @@ class Scheduler:
                                 self.__logger.debug('submitter selecting worker')
                                 async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
                                                        f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
+                                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
                                     worker = await worcur.fetchone()
                             except aiosqlite.Error as e:
                                 await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
