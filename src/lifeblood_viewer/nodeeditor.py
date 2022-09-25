@@ -6,6 +6,8 @@ from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from .db_misc import sql_init_script_nodes
+from .utils import performance_measurer
+from lifeblood.misc import timeit
 from lifeblood.uidata import UiData, NodeUi, Parameter
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -456,6 +458,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
 
+    @timeit(0.05)
     @Slot(object)
     def full_update(self, uidata: UiData):
         # logger.debug('full_update')
@@ -479,104 +482,133 @@ class QGraphicsImguiScene(QGraphicsScene):
         existing_node_ids: Dict[int, Node] = {}
         existing_conn_ids: Dict[int, NodeConnection] = {}
         existing_task_ids: Dict[int, Task] = {}
-        for item in self.items():
-            if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
-                if item.get_id() not in uidata.nodes() or item.node_type() != uidata.nodes()[item.get_id()]['type']:
-                    to_del.append(item)
-                    continue
-                existing_node_ids[item.get_id()] = item
-                # TODO: update all kind of attribs here, for now we just don't have any
-            elif isinstance(item, NodeConnection):
-                if item.get_id() not in uidata.connections():
-                    to_del.append(item)
-                    continue
-                existing_conn_ids[item.get_id()] = item
-                # TODO: update all kind of attribs here, for now we just don't have any
-            elif isinstance(item, Task):
-                if item.get_id() not in uidata.tasks():
-                    to_del.append(item)
-                    if item.node() is not None:
-                        if not item.node() in to_del_tasks:
-                            to_del_tasks[item.node()] = []
-                        to_del_tasks[item.node()].append(item)
-                    continue
-                existing_task_ids[item.get_id()] = item
+        with performance_measurer() as pm:
+            for item in self.items():
+                if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
+                    if item.get_id() not in uidata.nodes() or item.node_type() != uidata.nodes()[item.get_id()]['type']:
+                        to_del.append(item)
+                        continue
+                    existing_node_ids[item.get_id()] = item
+                    # TODO: update all kind of attribs here, for now we just don't have any
+                elif isinstance(item, NodeConnection):
+                    if item.get_id() not in uidata.connections():
+                        to_del.append(item)
+                        continue
+                    existing_conn_ids[item.get_id()] = item
+                    # TODO: update all kind of attribs here, for now we just don't have any
+                elif isinstance(item, Task):
+                    if item.get_id() not in uidata.tasks():
+                        to_del.append(item)
+                        if item.node() is not None:
+                            if not item.node() in to_del_tasks:
+                                to_del_tasks[item.node()] = []
+                            to_del_tasks[item.node()].append(item)
+                        continue
+                    existing_task_ids[item.get_id()] = item
+        _perf_item_classify = pm.elapsed()
 
         # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
-        for node, tasks in to_del_tasks.items():
-            node.remove_tasks(tasks)
-        for item in to_del:
-            self.removeItem(item)
+        with performance_measurer() as pm:
+            for node, tasks in to_del_tasks.items():
+                node.remove_tasks(tasks)
+        _perf_remove_tasks = pm.elapsed()
+        with performance_measurer() as pm:
+            for item in to_del:
+                self.removeItem(item)
+        _perf_remove_items = pm.elapsed()
         # removing items might cascade things, like removing node will remove connections to that node
         # so now we need to recheck existing items validity
         # though not consistent scene states should not come in uidata at all
-        for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
-            for item_id, item in tuple(existings.items()):
-                if item.scene() != self:
-                    del existings[item_id]
+        with performance_measurer() as pm:
+            for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
+                for item_id, item in tuple(existings.items()):
+                    if item.scene() != self:
+                        del existings[item_id]
+        _perf_revalidate = pm.elapsed()
 
         nodes_to_layout = []
-        for id, newdata in uidata.nodes().items():
-            if id in existing_node_ids:
-                existing_node_ids[id].set_name(newdata['name'])
-                continue
-            new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
-            try:
-                new_node.setPos(*self.node_position(id))
-            except ValueError:
-                nodes_to_layout.append(new_node)
-            existing_node_ids[id] = new_node
-            self.addItem(new_node)
+        with performance_measurer() as pm:
+            for id, newdata in uidata.nodes().items():
+                if id in existing_node_ids:
+                    existing_node_ids[id].set_name(newdata['name'])
+                    continue
+                new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
+                try:
+                    new_node.setPos(*self.node_position(id))
+                except ValueError:
+                    nodes_to_layout.append(new_node)
+                existing_node_ids[id] = new_node
+                self.addItem(new_node)
+        _perf_create_nodes = pm.elapsed()
 
-        for id, newdata in uidata.connections().items():
-            if id in existing_conn_ids:
-                # ensure connections
-                innode, inname = existing_conn_ids[id].input()
-                outnode, outname = existing_conn_ids[id].output()
-                if innode.get_id() != newdata['node_id_in'] or inname != newdata['in_name']:
-                    existing_conn_ids[id].set_input(existing_node_ids[newdata['node_id_in']], newdata['in_name'])
-                    existing_conn_ids[id].update()
-                if outnode.get_id() != newdata['node_id_out'] or outname != newdata['out_name']:
-                    existing_conn_ids[id].set_output(existing_node_ids[newdata['node_id_out']], newdata['out_name'])
-                    existing_conn_ids[id].update()
-                continue
-            new_conn = NodeConnection(id, existing_node_ids[newdata['node_id_out']],
-                                      existing_node_ids[newdata['node_id_in']],
-                                      newdata['out_name'], newdata['in_name'])
-            existing_conn_ids[id] = new_conn
-            self.addItem(new_conn)
+        with performance_measurer() as pm:
+            for id, newdata in uidata.connections().items():
+                if id in existing_conn_ids:
+                    # ensure connections
+                    innode, inname = existing_conn_ids[id].input()
+                    outnode, outname = existing_conn_ids[id].output()
+                    if innode.get_id() != newdata['node_id_in'] or inname != newdata['in_name']:
+                        existing_conn_ids[id].set_input(existing_node_ids[newdata['node_id_in']], newdata['in_name'])
+                        existing_conn_ids[id].update()
+                    if outnode.get_id() != newdata['node_id_out'] or outname != newdata['out_name']:
+                        existing_conn_ids[id].set_output(existing_node_ids[newdata['node_id_out']], newdata['out_name'])
+                        existing_conn_ids[id].update()
+                    continue
+                new_conn = NodeConnection(id, existing_node_ids[newdata['node_id_out']],
+                                          existing_node_ids[newdata['node_id_in']],
+                                          newdata['out_name'], newdata['in_name'])
+                existing_conn_ids[id] = new_conn
+                self.addItem(new_conn)
+        _perf_create_connections = pm.elapsed()
 
-        for id, newdata in uidata.tasks().items():
-            if id not in existing_task_ids:
-                new_task = Task(id, newdata['name'] or '<noname>', newdata['groups'])
-                existing_task_ids[id] = new_task
-                if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
-                    origin_task = existing_task_ids[newdata['origin_task_id']]
-                    new_task.setPos(origin_task.scenePos())
-                elif newdata['parent_id'] is not None and newdata['parent_id'] in existing_task_ids:
-                    origin_task = existing_task_ids[newdata['parent_id']]
-                    new_task.setPos(origin_task.scenePos())
-                self.addItem(new_task)
-            task = existing_task_ids[id]
-            task.set_name(newdata['name'])
-            task.set_groups(set(newdata['groups']))
-            #print(f'setting {task.get_id()} to {newdata["node_id"]}')
-            existing_node_ids[newdata['node_id']].add_task(task)
-            task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
-            task.set_state_details(newdata['state_details'])  # TODO: maybe instead of 3 calls do it with one, so task parses it's own raw data?
-            task.set_raw_data(newdata)
-            if newdata['progress'] is not None:
-                task.set_progress(newdata['progress'])
-            task.set_groups(newdata['groups'])
-            # new_task_groups.update(task.groups())
+        with performance_measurer() as pm:
+            for id, newdata in uidata.tasks().items():
+                if id not in existing_task_ids:
+                    new_task = Task(id, newdata['name'] or '<noname>', newdata['groups'])
+                    existing_task_ids[id] = new_task
+                    if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
+                        origin_task = existing_task_ids[newdata['origin_task_id']]
+                        new_task.setPos(origin_task.scenePos())
+                    elif newdata['parent_id'] is not None and newdata['parent_id'] in existing_task_ids:
+                        origin_task = existing_task_ids[newdata['parent_id']]
+                        new_task.setPos(origin_task.scenePos())
+                    self.addItem(new_task)
+                task = existing_task_ids[id]
+                task.set_name(newdata['name'])
+                task.set_groups(set(newdata['groups']))
+                #print(f'setting {task.get_id()} to {newdata["node_id"]}')
+                existing_node_ids[newdata['node_id']].add_task(task)
+                task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
+                task.set_state_details(newdata['state_details'])  # TODO: maybe instead of 3 calls do it with one, so task parses it's own raw data?
+                task.set_raw_data(newdata)
+                if newdata['progress'] is not None:
+                    task.set_progress(newdata['progress'])
+                task.set_groups(newdata['groups'])
+                # new_task_groups.update(task.groups())
+        _perf_create_tasks = pm.elapsed()
 
         # now layout nodes that need it
-        if nodes_to_layout:
-            self.layout_nodes(nodes_to_layout)
+        with performance_measurer() as pm:
+            if nodes_to_layout:
+                self.layout_nodes(nodes_to_layout)
+        _perf_layout = pm.elapsed()
 
-        if self.__all_task_groups != uidata.task_groups():
-            self.__all_task_groups = uidata.task_groups()
-            self.task_groups_updated.emit(uidata.task_groups())
+        with performance_measurer() as pm:
+            if self.__all_task_groups != uidata.task_groups():
+                self.__all_task_groups = uidata.task_groups()
+                self.task_groups_updated.emit(uidata.task_groups())
+        _perf_task_groups_update = pm.elapsed()
+
+        logger.debug(f'update performed:\n'
+                     f'{_perf_item_classify:.04f}:\tclassify\n'
+                     f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
+                     f'{_perf_remove_items:.04f}:\tremove items\n'
+                     f'{_perf_revalidate:.04f}:\trevalidate\n'
+                     f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
+                     f'{_perf_create_connections:.04f}:\tcreate connections\n'
+                     f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
+                     f'{_perf_layout:.04f}:\tlayout\n'
+                     f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):
@@ -1533,6 +1565,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     def _get_clipboard(self) -> str:
         return QApplication.clipboard().text()
+
+    @timeit(0.05)
+    def drawItems(self, *args, **kwargs):
+        return super(NodeEditor, self).drawItems(*args, **kwargs)
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         painter.beginNativePainting()
