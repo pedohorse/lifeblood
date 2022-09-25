@@ -1,6 +1,7 @@
 import asyncio
 import aiosqlite
 from typing import Optional, Dict, List, Callable
+from .config import get_config
 from .logging import get_logger
 from dataclasses import dataclass
 
@@ -58,10 +59,13 @@ class ConnectionPoolEntry:
 
 
 class ConnectionPool:
+    default_period = get_config('scheduler').get_option_noasync('shared_connection.keep_open_period', 0.0125)
+    get_logger('lazy_connection_pool').debug(f'using default open period: {default_period}')
+
     def __init__(self):
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
         self.pool_lock = asyncio.Lock()
-        self.keep_open_period = 0.125
+        self.keep_open_period = self.default_period
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
