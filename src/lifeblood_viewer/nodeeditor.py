@@ -482,6 +482,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         existing_node_ids: Dict[int, Node] = {}
         existing_conn_ids: Dict[int, NodeConnection] = {}
         existing_task_ids: Dict[int, Task] = {}
+        _perf_total = 0.0
         with performance_measurer() as pm:
             for item in self.items():
                 if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
@@ -506,16 +507,19 @@ class QGraphicsImguiScene(QGraphicsScene):
                         continue
                     existing_task_ids[item.get_id()] = item
         _perf_item_classify = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
         with performance_measurer() as pm:
             for node, tasks in to_del_tasks.items():
                 node.remove_tasks(tasks)
         _perf_remove_tasks = pm.elapsed()
+        _perf_total += pm.elapsed()
         with performance_measurer() as pm:
             for item in to_del:
                 self.removeItem(item)
         _perf_remove_items = pm.elapsed()
+        _perf_total += pm.elapsed()
         # removing items might cascade things, like removing node will remove connections to that node
         # so now we need to recheck existing items validity
         # though not consistent scene states should not come in uidata at all
@@ -525,6 +529,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                     if item.scene() != self:
                         del existings[item_id]
         _perf_revalidate = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         nodes_to_layout = []
         with performance_measurer() as pm:
@@ -540,6 +545,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 existing_node_ids[id] = new_node
                 self.addItem(new_node)
         _perf_create_nodes = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         with performance_measurer() as pm:
             for id, newdata in uidata.connections().items():
@@ -560,6 +566,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 existing_conn_ids[id] = new_conn
                 self.addItem(new_conn)
         _perf_create_connections = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         with performance_measurer() as pm:
             for id, newdata in uidata.tasks().items():
@@ -586,29 +593,33 @@ class QGraphicsImguiScene(QGraphicsScene):
                 task.set_groups(newdata['groups'])
                 # new_task_groups.update(task.groups())
         _perf_create_tasks = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         # now layout nodes that need it
         with performance_measurer() as pm:
             if nodes_to_layout:
                 self.layout_nodes(nodes_to_layout)
         _perf_layout = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         with performance_measurer() as pm:
             if self.__all_task_groups != uidata.task_groups():
                 self.__all_task_groups = uidata.task_groups()
                 self.task_groups_updated.emit(uidata.task_groups())
         _perf_task_groups_update = pm.elapsed()
+        _perf_total += pm.elapsed()
 
-        logger.debug(f'update performed:\n'
-                     f'{_perf_item_classify:.04f}:\tclassify\n'
-                     f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
-                     f'{_perf_remove_items:.04f}:\tremove items\n'
-                     f'{_perf_revalidate:.04f}:\trevalidate\n'
-                     f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
-                     f'{_perf_create_connections:.04f}:\tcreate connections\n'
-                     f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
-                     f'{_perf_layout:.04f}:\tlayout\n'
-                     f'{_perf_task_groups_update:.04f}:\ttask group update')
+        if _perf_total > 0.04:  # arbitrary threshold ~ 1/25 of a sec
+            logger.debug(f'update performed:\n'
+                         f'{_perf_item_classify:.04f}:\tclassify\n'
+                         f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
+                         f'{_perf_remove_items:.04f}:\tremove items\n'
+                         f'{_perf_revalidate:.04f}:\trevalidate\n'
+                         f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
+                         f'{_perf_create_connections:.04f}:\tcreate connections\n'
+                         f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
+                         f'{_perf_layout:.04f}:\tlayout\n'
+                         f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):

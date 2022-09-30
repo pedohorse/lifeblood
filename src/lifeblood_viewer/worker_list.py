@@ -241,12 +241,13 @@ class WorkerModel(QAbstractTableModel):
                     self.endRemoveRows()
         _perf_remove = pm.elapsed()
 
-        self.__logger.debug(f'update performed:\n'
-                            f'{_perf_preinit:04f}:\tpreinit\n'
-                            f'{_perf_update:04f}:\tupdate\n'
-                            f'{_perf_signals:04f}:\tsignals\n'
-                            f'{_perf_insert:04f}:\tinsert\n'
-                            f'{_perf_remove:04f}:\tremove')
+        if _perf_preinit + _perf_update + _perf_signals + _perf_insert + _perf_remove > 0.04:  # arbitrary threshold ~ 1/25 of a sec
+            self.__logger.debug(f'update performed:\n'
+                                f'{_perf_preinit:04f}:\tpreinit\n'
+                                f'{_perf_update:04f}:\tupdate\n'
+                                f'{_perf_signals:04f}:\tsignals\n'
+                                f'{_perf_insert:04f}:\tinsert\n'
+                                f'{_perf_remove:04f}:\tremove')
 
     def start(self):
         self.__scheduler_worker.full_update.connect(self.full_update)
