@@ -1,0 +1,733 @@
+{
+    "nodes": [
+        {
+            "tmpid": 0,
+            "type": "hip_ass_generator",
+            "name": "generate ass files",
+            "parameters": {
+                "priority adjustment": {
+                    "name": "priority adjustment",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5649999976158142,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost": {
+                    "name": "worker cpu cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 2.0,
+                    "expr": "task['requirements']['cpu']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost preferred": {
+                    "name": "worker cpu cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 4.0,
+                    "expr": "task['requirements']['cpu']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost": {
+                    "name": "worker mem cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 2.0,
+                    "expr": "task['requirements']['cmem']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost preferred": {
+                    "name": "worker mem cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements']['cmem']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker groups": {
+                    "name": "worker groups",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker type": {
+                    "name": "worker type",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "hip path": {
+                    "name": "hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipfile']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask as different hip": {
+                    "name": "mask as different hip",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask hip path": {
+                    "name": "mask hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task.get('hipfile_orig', task['hipfile'])`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "driver path": {
+                    "name": "driver path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipdriver']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to context": {
+                    "name": "attrs to context",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "ass file path": {
+                    "name": "ass file path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`config['global_scratch_location']`/`node.name`/`task.name`_`task.id`/ass/`node.name`.$F4.ass",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "skip if exists": {
+                    "name": "skip if exists",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "gen for skipped": {
+                    "name": "gen for skipped",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs": {
+                    "name": "attrs",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "requirements_mantra",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4580.303530900657,
+                1786.2739305753025
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 1,
+            "type": "split_waiter",
+            "name": "wait for all split parts",
+            "parameters": {
+                "wait for all": {
+                    "name": "wait for all",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "src_attr_name_0": {
+                    "name": "src_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "images",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_type_0": {
+                    "name": "transfer_type_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "extend",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "dst_attr_name_0": {
+                    "name": "dst_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "images",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "sort_by_0": {
+                    "name": "sort_by_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "frames",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "reversed_0": {
+                    "name": "reversed_0",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4583.981089337652,
+                2560.5255375361307
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 2,
+            "type": "null",
+            "name": "out arnold",
+            "parameters": {},
+            "pos": [
+                4585.264515235215,
+                2704.2892083839133
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 3,
+            "type": "parent_children_waiter",
+            "name": "wait for children",
+            "parameters": {
+                "recursive": {
+                    "name": "recursive",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "src_attr_name_0": {
+                    "name": "src_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "file",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_type_0": {
+                    "name": "transfer_type_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "extend",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "dst_attr_name_0": {
+                    "name": "dst_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "images",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "sort_by_0": {
+                    "name": "sort_by_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "frames",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "reversed_0": {
+                    "name": "reversed_0",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4581.638451503372,
+                2414.014892015606
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 4,
+            "type": "framerange_splitter",
+            "name": "split framerange",
+            "parameters": {
+                "chunk size": {
+                    "name": "chunk size",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 10,
+                    "expr": "task.get('framechunk_size', 10)",
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4581.996971985054,
+                1642.9750451563123
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 5,
+            "type": "null",
+            "name": "IN ARNOLD",
+            "parameters": {},
+            "pos": [
+                4582.124925071043,
+                1504.4279029767154
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 6,
+            "type": "arnold",
+            "name": "arnold render ass",
+            "parameters": {
+                "priority adjustment": {
+                    "name": "priority adjustment",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost": {
+                    "name": "worker cpu cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 2.0,
+                    "expr": "task['requirements_mantra']['cpu']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost preferred": {
+                    "name": "worker cpu cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 4.0,
+                    "expr": "task['requirements_mantra']['cpu']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost": {
+                    "name": "worker mem cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements_mantra']['cmem']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost preferred": {
+                    "name": "worker mem cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements_mantra']['cmem']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker groups": {
+                    "name": "worker groups",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker type": {
+                    "name": "worker type",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "ass path": {
+                    "name": "ass path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['file']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "image path": {
+                    "name": "image path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['outimage']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "skip if exists": {
+                    "name": "skip if exists",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4705.150219959042,
+                2096.180477567481
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 7,
+            "type": "set_attrib",
+            "name": "save ass file path for deletion",
+            "parameters": {
+                "attr_count": {
+                    "name": "attr_count",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "name_0": {
+                    "name": "name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "assfile",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "type_0": {
+                    "name": "type_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 3,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "svalue_0": {
+                    "name": "svalue_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['file']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "ivalue_0": {
+                    "name": "ivalue_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "fvalue_0": {
+                    "name": "fvalue_0",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "bvalue_0": {
+                    "name": "bvalue_0",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "rf1value_0": {
+                    "name": "rf1value_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "rf2value_0": {
+                    "name": "rf2value_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 9,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "rf3value_0": {
+                    "name": "rf3value_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4705.07476313525,
+                1966.3527812801685
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 8,
+            "type": "fileops",
+            "name": "delete ass file",
+            "parameters": {
+                "on workers": {
+                    "name": "on workers",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "item count": {
+                    "name": "item count",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "path_0": {
+                    "name": "path_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['assfile']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "op_0": {
+                    "name": "op_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "rm",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                4704.903907894983,
+                2236.7178859566125
+            ],
+            "__dataclass__": "NodeData"
+        }
+    ],
+    "connections": [
+        {
+            "tmpout": 3,
+            "out_name": "main",
+            "tmpin": 1,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 5,
+            "out_name": "main",
+            "tmpin": 4,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 4,
+            "out_name": "main",
+            "tmpin": 0,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 6,
+            "out_name": "main",
+            "tmpin": 8,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 7,
+            "out_name": "main",
+            "tmpin": 6,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 8,
+            "out_name": "main",
+            "tmpin": 3,
+            "in_name": "children",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "main",
+            "tmpin": 3,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "spawned",
+            "tmpin": 7,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 1,
+            "out_name": "main",
+            "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        }
+    ],
+    "label": "houdini to arnold setup",
+    "tags": [],
+    "__NodeSnippetData__": "==3*E==",
+    "__format_version__": [
+        1,
+        0,
+        0
+    ]
+}
