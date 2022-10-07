@@ -99,7 +99,8 @@ class HipUsdGenerator(RopBaseNode):
                           f'    if node.type().category() == hou.nodeTypeCategories()["Driver"]:',
                           f'        return node.node("lopnet/karma/rop_usdrender")',
                           f'    elif node.type().category() == hou.nodeTypeCategories()["Lop"]:',
-                          f'        return node.node("rop_usdrender")'])
+                          f'        return node.node("rop_usdrender")',
+                          f'return node'])
 
     def _image_path_parm_name(self, context) -> str:
         return ''  # value ignored cuz _image_getting_code is returning non None
