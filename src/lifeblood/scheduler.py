@@ -157,6 +157,7 @@ class Scheduler:
         self.__db_cache = {'workers_resources': {},
                            'workers_state': {},
                            'invocations': {}}
+        self.__ui_cache = {'groups': {}, 'last_update_time': None}
 
         if server_addr is None:
             server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
@@ -2004,6 +2005,8 @@ class Scheduler:
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True):
         self.__logger.debug('full update for %s', task_groups)
+        now = datetime.now()
+        group_totals_update_interval = 5
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
@@ -2052,8 +2055,30 @@ class Scheduler:
                             all_tasks[task['id']] = task
             # _dbg = time.perf_counter()
             #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
-            async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
+
+            # some things are updated onlt once in a while, not on every update
+            need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
+            #async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
+            if need_group_totals_update:
+                sqlexpr =  'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
+                           'LEFT JOIN ' \
+                          f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
+                           f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
+                           f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
+                           f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
+                           'ON "grp"==task_group_attributes."group" ' \
+                           + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            else:
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            async with con.execute(sqlexpr) as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
+            if need_group_totals_update:
+                self.__ui_cache['last_update_time'] = now
+                self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
+            else:
+                for group in all_task_groups:
+                    all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
+
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
             async with con.execute('SELECT workers."id", '

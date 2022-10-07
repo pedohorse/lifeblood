@@ -42,6 +42,8 @@ class GroupsModel(QAbstractItemModel):
             return 'creation time'
         elif section == 2:
             return 'prio'
+        elif section == 3:
+            return 'prog'
 
     def rowCount(self, parent: QModelIndex = None) -> int:
         if parent is None:
@@ -51,7 +53,7 @@ class GroupsModel(QAbstractItemModel):
         return 0
 
     def columnCount(self, parent: QModelIndex = None) -> int:
-        return 3
+        return 4
 
     def is_archived(self, index) -> bool:
         return self.__items[self.__items_order[index.row()]].get('state', 0) > 0
@@ -61,8 +63,19 @@ class GroupsModel(QAbstractItemModel):
             archived = self.is_archived(index)
             if archived:
                 return QColor.fromRgbF(0.5, 0.5, 0.5)
+            item = self.__items[self.__items_order[index.row()]]
+            done_count = item.get('tdone', 0)
+            prog_count = item.get('tprog', 0)
+            err_count = item.get('terr', 0)
+            total_count = item.get('tall', 0)
+            if done_count == total_count:
+                return QColor.fromRgbF(0.65, 1.0, 0.65)
+            elif err_count > 0:
+                return QColor.fromRgbF(1.0, 0.6, 0.6)
+            elif prog_count > 0:
+                return QColor.fromRgbF(1.0, 0.9, 0.65)
         if role != Qt.DisplayRole and role != self.SortRole:
-            return
+            return None
         if index.column() == 0:
             return self.__items_order[index.row()]
         elif index.column() == 1:  # creation time
@@ -72,6 +85,9 @@ class GroupsModel(QAbstractItemModel):
                 return self.__items[self.__items_order[index.row()]].get('ctime', -1)
         elif index.column() == 2:  # priority
             return self.__items[self.__items_order[index.row()]].get('priority', None)
+        elif index.column() == 3:  # completion progress
+            item = self.__items[self.__items_order[index.row()]]
+            return f"{item.get('tprog', 0)}:{item.get('terr', 0)}:{item.get('tdone', 0)}/{item.get('tall', 0)}"
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
         if parent is None:
@@ -140,6 +156,13 @@ class GroupsView(QTreeView):
         super(GroupsView, self).setModel(self.__sorting_model)
         model.modelAboutToBeReset.connect(self._pre_model_reset)
         model.modelReset.connect(self._post_model_reset)
+
+        # some visual adjustment
+        header = self.header()
+        header.moveSection(3, 0)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        # header.setSectionResizeMode(3, QHeaderView.Fixed)
+        # header.resizeSection(3, 16)
 
     @Slot()
     def _pre_model_reset(self):
