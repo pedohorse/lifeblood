@@ -1,4 +1,3 @@
-from copy import copy
 from lifeblood.basenode import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
@@ -54,8 +53,8 @@ class Karma(BaseNodeWithTaskRequirements):
                     .format(imgpath=repr(context.param_value('image path')),
                             usdpath=repr(context.param_value('usd path')))
 
-            invoc = InvocationJob(['python', ':/mantracall.py'])
-            invoc.set_extra_file('mantracall.py', script)
+            invoc = InvocationJob(['python', ':/karmacall.py'])
+            invoc.set_extra_file('karmacall.py', script)
         else:
             invoc = InvocationJob(['husk', '-V', '2a', '--make-output-path', '-o', context.param_value('image path'), context.param_value('usd path')], env=env)
         res = ProcessingResult(invoc)
