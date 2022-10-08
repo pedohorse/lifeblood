@@ -7,8 +7,7 @@ How to Use
 .. contents::
     :local:
 
-Step by step guide
-******************
+
 
 .. _installation:
 
@@ -34,6 +33,8 @@ In this simplest case you will probably run scheduler, a worker pool and viewer 
 while extra machines will only run workers.
 
 Check :ref:`overview <overview-scheduler>` to learn basic components of Lifeblood
+
+Also check the :ref:`tutorial section <tutorials_installation>`
 
 .. _configuration:
 

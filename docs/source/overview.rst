@@ -10,9 +10,12 @@ Main components
 ===============
 
 Lifeblood is a task processing system. It consists of 3 main component types:
+
 * scheduler
 * worker
 * viewer
+
+.. image:: images/overview.png
 
 .. _overview-scheduler:
 
@@ -31,15 +34,36 @@ Viewer is the tool that allows a user to view scheduler's state.
 With a viewer you can see the state of the processing of your task group, or modify or create new node setups,
 move tasks around, or otherwise change things in scheduler.
 
+Workers typically are managed by worker pools.
+
 -----
 
-The components arranged into 2 packages:
+There is always **one single scheduler** and many workers and viewers in one setup.
+All the components can be launched on one or many machines within the same network.
 
-* lifeblood: scheduler and worker
-* lifeblood_viewer: viewer (requires lifeblood)
+For example:
 
-As you see, viewer is separated from main package to avoid GUI dependencies for scheduler and worker,
-and to make lifeblood package lighter.
+* For individual use typically it makes sense to have viewer, scheduler and a worker pool
+  running on the same machine, with additional worker pools running on several more machines in the local network.
+* For a studio use probably scheduler would get it's own dedicated machine. Worker pools would be running on farm blades,
+  and viewers would be started by artists from their machines.
+
+Generally, workers and viewers only need to be able to connect to scheduler, but certain types of tasks, like, for example,
+distributed simulation in houdini, require workers to be able to communicate to each other as well. (this requirement may be lifted in the future, if needed)
+
+By default scheduler will start broadcasting to your default interface it's ip and ports for any possible workers and viewers
+running on the same local network - this eases the small setups as all you need to do is just to launch components and they
+will find each other automatically.
+You can change that behaviour in scheduler's config. in ``core`` section ``broadcast = false`` would disable the broadcast,
+with ``server_ip``, ``server_port`` you can override ip and port to use for worker connections, and with ``ui_ip``, ``ui_port``
+you can override ip and port to use for viewer connections.
+
+.. note::
+    **IF BROADCASTING IS OFF** it is quite possible to run multiple schedulers on the same network (though you should not have a need to do it),
+    or even on the same machine (but they MUST use different databases).
+    But if broadcasting if enabled - multiple schedulers on the same local network will start to conflict with each other.
+    Again: you should NOT have a need to run multiple schedulers.
+
 
 Configuration
 ^^^^^^^^^^^^^
@@ -62,36 +86,17 @@ Read more at :ref:`scheduler database`
     are doing
 
 
------
+Distribution
+^^^^^^^^^^^^
 
-All of the components above may run on the same machine, or on different machines within the same local network (for now)
+The components arranged into 2 packages on pypi.org:
 
-Generally, workers and viewers only need to be able to connect to scheduler, but certain types of tasks, like, for example,
-distributed simulation in houdini, require workers to be able to communicate to each other as well. (this requirement may be lifted in the future, if needed)
+* `lifeblood <https://pypi.org/project/lifeblood/>`_: scheduler and worker
+* `lifeblood_viewer <https://pypi.org/project/lifeblood_viewer/>`_: viewer (requires lifeblood)
 
-By default scheduler will start broadcasting to your default interface it's ip and ports for any possible workers and viewers
-running on the same local network - this eases the small setups as all you need to do is just to launch components and they
-will find each other automatically.
-You can change that behaviour in scheduler's config. in ``core`` section ``broadcast = false`` would disable the broadcast,
-with ``server_ip``, ``server_port`` you can override ip and port to use for worker connections, and with ``ui_ip``, ``ui_port``
-you can override ip and port to use for viewer connections.
+As you see, viewer is separated from main package to avoid GUI dependencies for scheduler and worker,
+and to make lifeblood package lighter.
 
-.. note::
-    **IF BROADCASTING IS OFF** it is quite possible to run multiple schedulers on the same network (though you should not have a need to do it),
-    or even on the same machine (but they MUST use different databases).
-    But if broadcasting if enabled - multiple schedulers on the same local network will start to conflict with each other.
-    Again: you should NOT have a need to run multiple schedulers.
-
-so example config might look like this:
-
-::
-
-  [core]
-    broadcast = false
-    server_ip = "192.168.0.2"
-    server_port = 7979
-    ui_ip = "192.168.0.2"
-    ui_port = 7989
 
 Requirements
 ============
@@ -105,9 +110,3 @@ Currently it was **only tested in linux**.
 
 MacOS, being posix, should theoretically work without problems too.
 Windows requires some os-specific modifications and testing.
-
-Installation
-============
-
-* lifeblood package (scheduler and worker) can be installed from pip: ``pip install lifeblood``, or ``python3 -m pip install lifeblood``
-* lifeblood viewer (viewer, will also install lifeblood package) can be installed from pip: ``pip install lifeblood_viewer`` or ``python3 -m pip install lifeblood``

@@ -9,5 +9,6 @@ Lifeblood Viewer
 
     ../expressions
 
+.. image:: ../images/viewer_overview.png
 
 .. include:: ../logging.rst
