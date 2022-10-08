@@ -109,4 +109,4 @@ There is nothing strictly os-specific, except signal handling and process managi
 Currently it was **only tested in linux**.
 
 MacOS, being posix, should theoretically work without problems too.
-Windows requires some os-specific modifications and testing.
+Windows requires some os-specific modifications. it *should* work, but was never properly tested.
