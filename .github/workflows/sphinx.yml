@@ -3,7 +3,7 @@ name: "Documentation"
 on:
   push:
     branches: [ dev ]
-    paths: [ docs/* ]
+    paths: [ docs/** ]
 #  pull_request:
 #    branches: [ master ]
 
