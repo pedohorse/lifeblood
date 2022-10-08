@@ -161,7 +161,7 @@
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": "requirements_mantra",
+                    "uvalue": "requirements_render",
                     "expr": null,
                     "__dataclass__": "ParamData"
                 }
@@ -402,7 +402,7 @@
                         "__NodeParameterType__": "==3*E=="
                     },
                     "uvalue": 2.0,
-                    "expr": "task['requirements_mantra']['cpu']['min']",
+                    "expr": "task['requirements_render']['cpu']['min']",
                     "__dataclass__": "ParamData"
                 },
                 "worker cpu cost preferred": {
@@ -412,7 +412,7 @@
                         "__NodeParameterType__": "==3*E=="
                     },
                     "uvalue": 4.0,
-                    "expr": "task['requirements_mantra']['cpu']['pref']",
+                    "expr": "task['requirements_render']['cpu']['pref']",
                     "__dataclass__": "ParamData"
                 },
                 "worker mem cost": {
@@ -422,7 +422,7 @@
                         "__NodeParameterType__": "==3*E=="
                     },
                     "uvalue": 0.5,
-                    "expr": "task['requirements_mantra']['cmem']['min']",
+                    "expr": "task['requirements_render']['cmem']['min']",
                     "__dataclass__": "ParamData"
                 },
                 "worker mem cost preferred": {
@@ -432,7 +432,7 @@
                         "__NodeParameterType__": "==3*E=="
                     },
                     "uvalue": 0.5,
-                    "expr": "task['requirements_mantra']['cmem']['pref']",
+                    "expr": "task['requirements_render']['cmem']['pref']",
                     "__dataclass__": "ParamData"
                 },
                 "worker groups": {
