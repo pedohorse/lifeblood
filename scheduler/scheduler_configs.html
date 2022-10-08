@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scheduler Config &mdash; Lifeblood 1.0.0 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Lifeblood Worker" href="../worker.html" />
+    <link rel="prev" title="Lifeblood Scheduler" href="scheduler.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Lifeblood
+          </a>
+              <div class="version">
+                1.0.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview of Lifeblood</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../usage.html">How to Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials.html">Tutorials</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Components:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="scheduler.html">Lifeblood Scheduler</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Scheduler Config</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#main-configuration-file">Main Configuration file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nodes">nodes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#custom-node-type-configuration">custom node type configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#custom-default-parameter-values">Custom default parameter values</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html#database">Database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html#broadcasting">Broadcasting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html#logging">Logging</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../worker.html">Lifeblood Worker</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../viewer/viewer.html">Lifeblood Viewer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Lifeblood</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="scheduler.html">Lifeblood Scheduler</a> &raquo;</li>
+      <li>Scheduler Config</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/scheduler/scheduler_configs.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="scheduler-config">
+<span id="scheduler-configs"></span><h1>Scheduler Config<a class="headerlink" href="#scheduler-config" title="Permalink to this heading"></a></h1>
+<p>All scheduler-related configuration files are loated in <a class="reference internal" href="../usage.html#config-dir"><span class="std std-ref">Config location</span></a> <code class="docutils literal notranslate"><span class="pre">/scheduler</span></code></p>
+<p>All configuration files we are going to mention below are located there (unles explicitly
+stated otherwise)</p>
+<section id="main-configuration-file">
+<h2>Main Configuration file<a class="headerlink" href="#main-configuration-file" title="Permalink to this heading"></a></h2>
+<p>The main configuration file used by Scheduler is config.toml</p>
+<p>As it implies, configuration uses <a class="reference external" href="https://toml.io/">toml language</a>, which
+should be a bit more user-friendly than yaml.</p>
+<p>When you first start the Scheduler - it will generate a default configuration file. That file
+contains some general sections with commented example settings that could be changed</p>
+<p>This file covers things like what network interfaces/ports to use, default database file and some of it’s configuration</p>
+<p>the default config will look something like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">core</span><span class="p">]</span>
+    <span class="c1">## you can uncomment stuff below to specify some static values</span>
+    <span class="c1">##</span>
+    <span class="c1"># server_ip = &quot;192.168.0.2&quot;</span>
+    <span class="c1"># server_port =1384</span>
+    <span class="c1"># ui_ip = &quot;192.168.0.2&quot;</span>
+    <span class="c1"># ui_port = 1385</span>
+
+    <span class="c1">## you can turn off scheduler broadcasting if you want to manually configure viewer and workers to connect</span>
+    <span class="c1">## to a specific address</span>
+    <span class="c1"># broadcast = false</span>
+
+    <span class="p">[</span><span class="n">scheduler</span><span class="p">]</span>
+
+    <span class="p">[</span><span class="n">scheduler</span><span class="o">.</span><span class="n">database</span><span class="p">]</span>
+    <span class="c1">## you can specify default database path,</span>
+    <span class="c1">##  but this can be overriden with command line argument --db-path</span>
+    <span class="c1"># path = &quot;/path/to/database.db&quot;</span>
+
+    <span class="c1">## uncomment line below to store task logs outside of the database</span>
+    <span class="c1">##  it works in a way that all NEW logs will be saved according to settings below</span>
+    <span class="c1">##  existing logs will be kept where they are</span>
+    <span class="c1">##  external logs will ALWAYS be looked for in location specified by store_logs_externally_location</span>
+    <span class="c1">##  so if you have ANY logs saved externally - you must keep store_logs_externally_location defined in the config,</span>
+    <span class="c1">##    or those logs will be inaccessible</span>
+    <span class="c1">##  but you can safely move logs and change location in config accordingly, but be sure scheduler is not accessing them at that time</span>
+    <span class="c1"># store_logs_externally = true</span>
+    <span class="c1"># store_logs_externally_location = /path/to/dir/where/to/store/logs</span>
+</pre></div>
+</div>
+</section>
+<section id="nodes">
+<h2>nodes<a class="headerlink" href="#nodes" title="Permalink to this heading"></a></h2>
+<p>This folder contains node type specific configurations</p>
+<section id="custom-node-type-configuration">
+<span id="id1"></span><h3>custom node type configuration<a class="headerlink" href="#custom-node-type-configuration" title="Permalink to this heading"></a></h3>
+<p>File <code class="docutils literal notranslate"><span class="pre">nodes/config.toml</span></code> is a <a class="reference external" href="https://toml.io/">toml</a> config file that can contain any arbitrary values
+belonging to any node type.</p>
+<p>The format of this config is the following: every section name represents a node type name, and every key
+within that section - is a gettable key from <cite>config</cite> object in parameter expressions (see <a class="reference internal" href="../expressions.html#parameter-expressions"><span class="std std-ref">Parameter expressions</span></a>)</p>
+<p>for example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">matrixnotifier</span><span class="p">]</span>
+<span class="n">token</span> <span class="o">=</span> <span class="s1">&#39;longstrongtoken&#39;</span>
+<span class="n">room</span> <span class="o">=</span> <span class="s1">&#39;!roomname:myserver.org&#39;</span>
+</pre></div>
+</div>
+<p>or (which is the equivalent accordint to toml)</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">matrixnotifier</span><span class="o">.</span><span class="n">token</span> <span class="o">=</span> <span class="s1">&#39;longstrongtoken&#39;</span>
+<span class="n">matrixnotifier</span><span class="o">.</span><span class="n">room</span> <span class="o">=</span> <span class="s1">&#39;!roomname:myserver.org&#39;</span>
+</pre></div>
+</div>
+<p>now only in a node of type “matrixnotifier” a parameter expression can use <code class="docutils literal notranslate"><span class="pre">config['room']</span></code>
+to get the value  <code class="docutils literal notranslate"><span class="pre">'!roomname:myserver.org'</span></code></p>
+<p>This is very convenient in combination with <a class="reference internal" href="#custom-default-parameter-values">custom default parameter values</a></p>
+</section>
+<section id="custom-default-parameter-values">
+<h3>Custom default parameter values<a class="headerlink" href="#custom-default-parameter-values" title="Permalink to this heading"></a></h3>
+<p>File <code class="docutils literal notranslate"><span class="pre">nodes/defaults.toml</span></code> is a <a class="reference external" href="https://toml.io/">toml</a> config file that can contain default ref:<cite>node settings</cite> names</p>
+<p>This file contains simple key-value pairs, where key is a node type name, and value is the name of a named ref:<cite>node settings</cite>
+for this node type.</p>
+<p>The specified node settings will be applied on node creation (on scheduler’s side, not on viewer’s side)</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="scheduler.html" class="btn btn-neutral float-left" title="Lifeblood Scheduler" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../worker.html" class="btn btn-neutral float-right" title="Lifeblood Worker" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 10132 BC - 2029 AD, XAPKOHHEH.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

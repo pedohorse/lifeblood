@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lifeblood Scheduler &mdash; Lifeblood 1.0.0 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Scheduler Config" href="scheduler_configs.html" />
+    <link rel="prev" title="Tutorials" href="../tutorials.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Lifeblood
+          </a>
+              <div class="version">
+                1.0.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview of Lifeblood</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../usage.html">How to Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials.html">Tutorials</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Components:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Lifeblood Scheduler</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#database">Database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#broadcasting">Broadcasting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#logging">Logging</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../worker.html">Lifeblood Worker</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../viewer/viewer.html">Lifeblood Viewer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Lifeblood</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Lifeblood Scheduler</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/scheduler/scheduler.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="lifeblood-scheduler">
+<span id="scheduler"></span><h1>Lifeblood Scheduler<a class="headerlink" href="#lifeblood-scheduler" title="Permalink to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a></li>
+</ul>
+</div>
+<p>Scheduler is the central part of Lifeblood: it manages tasks and workers.</p>
+<p>Generally there should always be only ONE single scheduler running in a local network.</p>
+<section id="database">
+<span id="scheduler-database"></span><h2>Database<a class="headerlink" href="#database" title="Permalink to this heading"></a></h2>
+<p>Probably the most important part of the configuration is where your scheduler’s database is stored.</p>
+<p>A scheduler’s database is something like a farm manager repository - it’s where all nodes and tasks are stored.</p>
+<p>Lifeblood uses <a class="reference external" href="https://www.sqlite.org/">sqlite</a> as it’s database engine.</p>
+<p>By default, the database file location is set to be next to scheduler’s config file in <a class="reference internal" href="../usage.html#config-dir"><span class="std std-ref">Config location</span></a></p>
+<div class="line-block">
+<div class="line">However it may be overriden by config entry <code class="docutils literal notranslate"><span class="pre">scheduler.database.path</span></code>, or command line argument <code class="docutils literal notranslate"><span class="pre">--db-path</span></code>.</div>
+<div class="line">It is quite reasonable to have multiple databases to test different things around.</div>
+<div class="line">However the main idea of Lifeblood is to set up your pipeline logic in one single database.</div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>it is better to create the database on an <strong>SSD</strong> drive if possible,
+as it will be much faster, especially on huge databases.
+Though database on HDD is quite fine for low task load, but the lag may be noticeable.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>do NOT run multiple schedulers with different databases at the same time. Though it is supported
+in general - it requires some configuration, like disabling broadcasting. So you need to know what you
+are doing</p>
+</div>
+</section>
+<section id="broadcasting">
+<span id="scheduler-broadcasting"></span><h2>Broadcasting<a class="headerlink" href="#broadcasting" title="Permalink to this heading"></a></h2>
+<div class="line-block">
+<div class="line">By default Scheduler will start broadcasting it’s address over the local network (every 10s by default)</div>
+<div class="line">This way other components (worker, viewer) will be able to automatically connect to it when started
+from anywhere within the LAN.</div>
+<div class="line">You should never start 2 or more broadcasting schedulers in the same LAN, otherwise their broadcasts will collide
+and workers and viewers will get confused.</div>
+</div>
+<p>You can disable broadcasting in scheduler’s config file, but then you will have to properly configure workers and viewers manually
+so they know where to connect.</p>
+</section>
+<section id="logging">
+<span id="scheduler-logging"></span><h2>Logging<a class="headerlink" href="#logging" title="Permalink to this heading"></a></h2>
+<div class="line-block">
+<div class="line">All Lifeblood components log to stdout, as well as to a log file.</div>
+<div class="line">Log files location is:</div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/home/&lt;username&gt;/.local/share/lifeblood/log</span></code> (or <code class="docutils literal notranslate"><span class="pre">$XDG_DATA_HOME</span></code> if defined) (linux)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">C:\Users\&lt;username&gt;\AppData\Local\lifeblood\log</span></code> (based on <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%</span></code>) (windows)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/Users/&lt;username&gt;/Library/Application</span> <span class="pre">Support/lifeblood/log</span></code> (mac)</p></li>
+</ul>
+<p>By default all components of Lifeblood are set to log only “important” messages (like warnings and errors),
+but to figure out what’s happening sometimes you would need a bit more information.</p>
+<div class="line-block">
+<div class="line">All of Lifeblood’s components can accept <code class="docutils literal notranslate"><span class="pre">--loglevel</span></code> parameter before command to specify minimum log level to, well, log.</div>
+<div class="line">for example <code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">scheduler</span> <span class="pre">--loglevel</span> <span class="pre">DEBUG</span></code> will set default log level to DEBUG and you will see all the
+crap printed out into stdout</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../tutorials.html" class="btn btn-neutral float-left" title="Tutorials" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="scheduler_configs.html" class="btn btn-neutral float-right" title="Scheduler Config" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 10132 BC - 2029 AD, XAPKOHHEH.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
