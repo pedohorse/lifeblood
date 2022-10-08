@@ -229,6 +229,9 @@ class LifebloodViewer(QMainWindow):
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
         self.__group_list.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.__group_list.header().setStretchLastSection(True)
 
         self.__worker_list = WorkerListWidget(self.__ui_connection_worker, self)
