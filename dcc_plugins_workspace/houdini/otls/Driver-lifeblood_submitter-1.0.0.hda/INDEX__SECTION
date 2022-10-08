@@ -1,7 +1,7 @@
 Operator:     lifeblood::lifeblood_submitter::1.0.0
 Label:        Lifeblood Submitter
 Path:         oplib:/lifeblood::Driver/lifeblood_submitter::1.0.0?lifeblood::Driver/lifeblood_submitter::1.0.0
-Icon:         ROP_subnet
+Icon:         opdef:/lifeblood::Driver/lifeblood_submitter::1.0.0?IconSVG
 Table:        Driver
 License:      
 Extra:        
