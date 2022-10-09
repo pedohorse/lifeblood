@@ -15,5 +15,3 @@ pywin32==304; platform_system=='Windows'
 semantic-version~=2.10
 toml~=0.10
 watchdog~=2.1
-imgui~=1.4
-PySide2~=5.15
