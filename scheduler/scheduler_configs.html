@@ -1,39 +1,77 @@
+
+
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
-
+  <meta charset="utf-8" />
+  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
   <title>Scheduler Config &mdash; Lifeblood 1.0.0 documentation</title>
-      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
   <!--[if lt IE 9]>
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
         <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
         <script src="../_static/jquery.js"></script>
         <script src="../_static/underscore.js"></script>
-        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../_static/doctools.js"></script>
-        <script src="../_static/sphinx_highlight.js"></script>
-    <script src="../_static/js/theme.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Lifeblood Worker" href="../worker.html" />
     <link rel="prev" title="Lifeblood Scheduler" href="scheduler.html" /> 
 </head>
 
-<body class="wy-body-for-nav"> 
+<body class="wy-body-for-nav">
+
+   
   <div class="wy-grid-for-nav">
+    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
+          
+
+          
             <a href="../index.html" class="icon icon-home"> Lifeblood
+          
+
+          
           </a>
+
+          
+            
+            
               <div class="version">
                 1.0.0
               </div>
+            
+          
+
+          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -41,7 +79,18 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview of Lifeblood</a></li>
@@ -69,38 +118,80 @@
 <li class="toctree-l1"><a class="reference internal" href="../viewer/viewer.html">Lifeblood Viewer</a></li>
 </ul>
 
+            
+          
         </div>
+        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../index.html">Lifeblood</a>
+        
       </nav>
 
+
       <div class="wy-nav-content">
+        
         <div class="rst-content">
-          <div role="navigation" aria-label="Page navigation">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
   <ul class="wy-breadcrumbs">
+    
       <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+        
           <li><a href="scheduler.html">Lifeblood Scheduler</a> &raquo;</li>
+        
       <li>Scheduler Config</li>
+    
+    
       <li class="wy-breadcrumbs-aside">
+        
+          
             <a href="../_sources/scheduler/scheduler_configs.rst.txt" rel="nofollow"> View page source</a>
+          
+        
       </li>
+    
   </ul>
+
+  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-             
-  <section id="scheduler-config">
-<span id="scheduler-configs"></span><h1>Scheduler Config<a class="headerlink" href="#scheduler-config" title="Permalink to this heading"></a></h1>
+            
+  <div class="section" id="scheduler-config">
+<span id="scheduler-configs"></span><h1>Scheduler Config<a class="headerlink" href="#scheduler-config" title="Permalink to this headline">¶</a></h1>
 <p>All scheduler-related configuration files are loated in <a class="reference internal" href="../usage.html#config-dir"><span class="std std-ref">Config location</span></a> <code class="docutils literal notranslate"><span class="pre">/scheduler</span></code></p>
 <p>All configuration files we are going to mention below are located there (unles explicitly
 stated otherwise)</p>
-<section id="main-configuration-file">
-<h2>Main Configuration file<a class="headerlink" href="#main-configuration-file" title="Permalink to this heading"></a></h2>
+<div class="section" id="main-configuration-file">
+<h2>Main Configuration file<a class="headerlink" href="#main-configuration-file" title="Permalink to this headline">¶</a></h2>
 <p>The main configuration file used by Scheduler is config.toml</p>
 <p>As it implies, configuration uses <a class="reference external" href="https://toml.io/">toml language</a>, which
 should be a bit more user-friendly than yaml.</p>
@@ -138,12 +229,12 @@ contains some general sections with commented example settings that could be cha
     <span class="c1"># store_logs_externally_location = /path/to/dir/where/to/store/logs</span>
 </pre></div>
 </div>
-</section>
-<section id="nodes">
-<h2>nodes<a class="headerlink" href="#nodes" title="Permalink to this heading"></a></h2>
+</div>
+<div class="section" id="nodes">
+<h2>nodes<a class="headerlink" href="#nodes" title="Permalink to this headline">¶</a></h2>
 <p>This folder contains node type specific configurations</p>
-<section id="custom-node-type-configuration">
-<span id="id1"></span><h3>custom node type configuration<a class="headerlink" href="#custom-node-type-configuration" title="Permalink to this heading"></a></h3>
+<div class="section" id="custom-node-type-configuration">
+<span id="id1"></span><h3>custom node type configuration<a class="headerlink" href="#custom-node-type-configuration" title="Permalink to this headline">¶</a></h3>
 <p>File <code class="docutils literal notranslate"><span class="pre">nodes/config.toml</span></code> is a <a class="reference external" href="https://toml.io/">toml</a> config file that can contain any arbitrary values
 belonging to any node type.</p>
 <p>The format of this config is the following: every section name represents a node type name, and every key
@@ -162,46 +253,63 @@ within that section - is a gettable key from <cite>config</cite> object in param
 <p>now only in a node of type “matrixnotifier” a parameter expression can use <code class="docutils literal notranslate"><span class="pre">config['room']</span></code>
 to get the value  <code class="docutils literal notranslate"><span class="pre">'!roomname:myserver.org'</span></code></p>
 <p>This is very convenient in combination with <a class="reference internal" href="#custom-default-parameter-values">custom default parameter values</a></p>
-</section>
-<section id="custom-default-parameter-values">
-<h3>Custom default parameter values<a class="headerlink" href="#custom-default-parameter-values" title="Permalink to this heading"></a></h3>
+</div>
+<div class="section" id="custom-default-parameter-values">
+<h3>Custom default parameter values<a class="headerlink" href="#custom-default-parameter-values" title="Permalink to this headline">¶</a></h3>
 <p>File <code class="docutils literal notranslate"><span class="pre">nodes/defaults.toml</span></code> is a <a class="reference external" href="https://toml.io/">toml</a> config file that can contain default ref:<cite>node settings</cite> names</p>
 <p>This file contains simple key-value pairs, where key is a node type name, and value is the name of a named ref:<cite>node settings</cite>
 for this node type.</p>
 <p>The specified node settings will be applied on node creation (on scheduler’s side, not on viewer’s side)</p>
-</section>
-</section>
-</section>
+</div>
+</div>
+</div>
 
 
            </div>
+           
           </div>
-          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="scheduler.html" class="btn btn-neutral float-left" title="Lifeblood Scheduler" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
         <a href="../worker.html" class="btn btn-neutral float-right" title="Lifeblood Worker" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="scheduler.html" class="btn btn-neutral float-left" title="Lifeblood Scheduler" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 10132 BC - 2029 AD, XAPKOHHEH.</p>
-  </div>
+    <p>
+        &#169; Copyright 10132 BC - 2029 AD, XAPKOHHEH.
 
-  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    provided by <a href="https://readthedocs.org">Read the Docs</a>.
-   
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
 
 </footer>
         </div>
       </div>
+
     </section>
+
   </div>
-  <script>
+  
+
+  <script type="text/javascript">
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script> 
+  </script>
+
+  
+  
+    
+   
 
 </body>
 </html>
