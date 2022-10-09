@@ -48,7 +48,7 @@ class Arnold(BaseNodeWithTaskRequirements):
                      'if not os.path.exists({imgpath}):\n' \
                      '    import sys\n' \
                      '    from subprocess import Popen\n' \
-                     "    sys.exit(Popen(['arnold',  '-dw', '-dp', '-v', '2', '-i', {asspath}, '-o', {imgpath}]).wait())\n" \
+                     "    sys.exit(Popen(['kick',  '-dw', '-dp', '-v', '2', '-i', {asspath}, '-o', {imgpath}]).wait())\n" \
                      "else:\n" \
                      "    print('image file already exists, skipping work')\n" \
                     .format(imgpath=repr(context.param_value('image path')),
