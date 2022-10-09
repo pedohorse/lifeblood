@@ -1,13 +1,14 @@
 import os
+from pathlib import Path
 import copy
 import toml
 import asyncio
+import tempfile
 from threading import Lock
 from . import paths
+from .logging import get_logger
 
-from typing import Any, List, Tuple, Union, Callable, TYPE_CHECKING
-if TYPE_CHECKING:
-    from pathlib import Path
+from typing import Any, List, Tuple, Union, Callable
 
 
 _conf_cache = {}
@@ -60,28 +61,55 @@ def create_default_user_config_file(subname: str, default_config: Union[str, dic
             toml.dump(default_config, f, encoder=toml_encoder)
 
 
+def get_local_scratch_path():
+    return os.path.join(tempfile.gettempdir(), 'lifeblood', 'shared')
+
+
 class Config:
+    __logger = get_logger('config')
     class OverrideNotFound(RuntimeError):
         pass
 
-    def __init__(self, subname: str, overrides=None):
-        config_path = paths.config_path('config.toml', subname)
+    def __init__(self, subname: str, base_name: str = 'config', overrides=None):
+        config_path = paths.config_path(f'{base_name}.toml', subname)
+        configd_path = paths.config_path(f'{base_name}.d', subname)
         self.__writable_config_path = config_path
         self.__conf_lock = Lock()
         self.__write_file_lock = Lock()
 
         self.__sources: List["Path"] = []
 
-        if os.path.exists(config_path):
-            self.__sources.append(config_path)
-            with open(config_path, 'r') as f:
-                self.__stuff = toml.load(f)
-        else:
-            self.__stuff = {}
+        self.__stuff = {}
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    self.__stuff = toml.load(f)
+            except Exception as e:
+                self.__logger.error(f'failed to load primary config file {config_path}, skipping')
+            else:
+                self.__sources.append(config_path)
+
+        if configd_path.exists() and configd_path.is_dir():
+            for subconfig_path in configd_path.iterdir():
+                try:
+                    with subconfig_path.open('r') as f:
+                        self.__update_dicts(self.__stuff, toml.load(f))
+                except Exception as e:
+                    self.__logger.error(f'failed to load config file {subconfig_path}, skipping')
+                else:
+                    self.__sources.append(subconfig_path)
 
         self.__encoder_generator = None
         self.__overrides = {}
         self.set_overrides(overrides)
+
+    @classmethod
+    def __update_dicts(cls, main: dict, secondary: dict):
+        for key, value in secondary.items():
+            if isinstance(value, dict) and isinstance(main.get(key), dict):
+                cls.__update_dicts(main[key], value)
+                continue
+            main[key] = value
 
     def reload(self, keep_overrides=True) -> None:
         self.__stuff = {}
@@ -93,7 +121,7 @@ class Config:
 
         for source in self.__sources:
             with open(source, 'r') as f:
-                self.__stuff.update(toml.load(f))
+                self.__update_dicts(self.__stuff, toml.load(f))
 
     def writeable_file(self) -> "Path":
         """
@@ -103,6 +131,14 @@ class Config:
         :return:
         """
         return self.__writable_config_path
+
+    def override_config_save_location(self, path: Union[Path, str]):
+        """
+        change default config write location
+
+        :return:
+        """
+        self.__writable_config_path = Path(path)
 
     def loaded_files(self) -> Tuple["Path"]:
         """

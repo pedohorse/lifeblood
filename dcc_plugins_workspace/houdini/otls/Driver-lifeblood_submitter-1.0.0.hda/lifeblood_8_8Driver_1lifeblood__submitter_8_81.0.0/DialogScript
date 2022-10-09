@@ -51,7 +51,7 @@
         label   "port"
         type    integer
         nolabel
-        default { "7979" }
+        default { "1384" }
         range   { 0 10 }
         parmtag { "script_callback_language" "python" }
     }
@@ -72,7 +72,7 @@
             label   "port"
             type    integer
             nolabel
-            default { "9000" }
+            default { "34305" }
             range   { 0 10 }
             parmtag { "script_callback_language" "python" }
         }
@@ -121,14 +121,6 @@
         type    float
         default { "50" }
         range   { 0! 100 }
-        parmtag { "script_callback_language" "python" }
-    }
-    parm {
-        name    "netscratchpath"
-        label   "global scratch location"
-        type    string
-        default { "" }
-        help    "it just sets additional attribute called global_scratch_location"
         parmtag { "script_callback_language" "python" }
     }
     group {

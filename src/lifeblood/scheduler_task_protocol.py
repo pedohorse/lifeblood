@@ -54,8 +54,13 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     # when worker pings scheduler - scheduler returns the state it thinks the worker is in
                     addr = await read_string()
                     wid = await self.__scheduler.worker_id_from_address(addr)
-                    state = await self.__scheduler.get_worker_state(wid)
+                    if wid is None:
+                        state = WorkerState.UNKNOWN
+                    else:
+                        state = await self.__scheduler.get_worker_state(wid)
                     writer.write(struct.pack('>I', state.value))
+                elif command == b'pulse':
+                    writer.write(b'\1')
                 elif command == b'done':
                     tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
                     task = await reader.readexactly(tasksize)
@@ -72,12 +77,6 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     stderr = await read_string()
                     await self.__scheduler.task_cancel_reported(task, stdout, stderr)
                     writer.write(b'\1')
-                elif command == b'res':
-                    addr = await read_string()
-                    reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    worker_resources: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
-                    await self.__scheduler.update_worker_resources(addr, worker_resources)
-                    writer.write(b'\1')
                 elif command == b'hello':
                     # worker reports for duty
                     addr = await read_string()
@@ -85,7 +84,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
                     worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
                     await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
-                    writer.write(b'\1')
+                    writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
                 elif command == b'bye':
                     # worker reports he's quitting
                     addr = await read_string()
@@ -198,6 +197,12 @@ class SchedulerTaskClient:
         assert await self.__reader.readexactly(1) == b'\1'
 
     async def ping(self, my_address: str) -> WorkerState:
+        """
+        remind scheduler about worker's existence and get back what he thinks of us
+
+        :param my_address: address of this worker used to register at scheduler
+        :return: worker state that scheduler thinks a worker with given address has
+        """
         await self._ensure_conn_open()
         self.__writer.write(b'ping\n')
         try:
@@ -208,15 +213,21 @@ class SchedulerTaskClient:
             self.__logger.error('ping failed. %s', e)
             raise
 
-    async def update_resources(self, address_of_worker: str, resources: WorkerResources):
+    async def pulse(self) -> None:
+        """
+        just ping the scheduler and get back a response, check if it's alive
+        check pulse sorta
+
+        :return:
+        """
         await self._ensure_conn_open()
-        self.__writer.write(b'res\n')
-        await self.write_string(address_of_worker)
-        resdata = resources.serialize()
-        self.__writer.write(struct.pack('>Q', len(resdata)))
-        self.__writer.write(resdata)
-        await self.__writer.drain()
-        assert await self.__reader.readexactly(1) == b'\1'
+        self.__writer.write(b'pulse\n')
+        try:
+            await self.__writer.drain()
+            await self.__reader.readexactly(1)
+        except ConnectionResetError as e:
+            self.__logger.error('pulse check failed. %s', e)
+            raise
 
     async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
         await self._ensure_conn_open()
@@ -227,8 +238,8 @@ class SchedulerTaskClient:
         self.__writer.write(struct.pack('>Q', len(resdata)))
         self.__writer.write(resdata)
         await self.__writer.drain()
-        # we DO need a reply to ensure proper sequence of events
-        assert await self.__reader.readexactly(1) == b'\1'
+        # as return we get the database's unique id to distinguish it from others
+        return struct.unpack('>Q', await self.__reader.readexactly(8))[0]
 
     async def say_bye(self, address_of_worker: str):
         await self._ensure_conn_open()

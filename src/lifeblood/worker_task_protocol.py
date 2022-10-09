@@ -2,6 +2,8 @@ import asyncio
 import aiofiles
 from enum import Enum
 import struct
+from .exceptions import NotEnoughResources, ProcessInitializationError
+from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
 from . import nethelpers
@@ -33,9 +35,6 @@ class WorkerPingReply(Enum):
 class AlreadyRunning(RuntimeError):
     pass
 
-class NotEnoughResources(RuntimeError):
-    pass
-
 
 class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
@@ -51,7 +50,6 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
         # there is a bug in py <=3.8, callback task can be GCd
         # see https://bugs.python.org/issue46309
         # so we HAVE to save a reference to self somewhere
-        print(asyncio.current_task())
         self.__saved_references.append(asyncio.current_task())
 
         async def read_string() -> str:
@@ -104,12 +102,23 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                     except AlreadyRunning:
                         self.__logger.debug('BUSY. rejecting task')
                         writer.write(bytes([TaskScheduleStatus.BUSY.value]))
+                    except ResolutionImpossibleError:
+                        self.__logger.info('Worker failed to resolve required environment. rejecting task')
+                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
+                    except ProcessInitializationError:
+                        self.__logger.info('Failed to initialize payload process. rejecting task')
+                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except NotEnoughResources:
-                        self.__logger.debug('Not enough resources. rejecting task')
+                        self.__logger.warning('Not enough resources (this is unusual error - scheduler should know our resources). rejecting task')
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except Exception as e:
                         self.__logger.exception('no, cuz %s', e)
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
+                #
+                # quit worker
+                elif command == b'quit':
+                    self.__worker.stop()
+                    writer.write(b'\1')
                 #
                 # command drop/cancel current task
                 elif command == b'drop':  # scheduler wants us to drop current task

@@ -1,6 +1,6 @@
 import sys
 import os
-import pathlib
+from pathlib import Path
 import traceback
 import time
 from datetime import datetime
@@ -9,7 +9,6 @@ import sqlite3
 import itertools
 import random  # for db id generation
 import struct
-from enum import Enum
 import asyncio
 import aiosqlite
 import aiofiles
@@ -17,6 +16,7 @@ from aiorwlock import RWLock
 from contextlib import asynccontextmanager
 import signal
 import threading  # for bugfix
+from concurrent.futures import ThreadPoolExecutor
 
 from . import logging
 from . import paths
@@ -37,11 +37,12 @@ from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
 from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode, TaskGroupArchivedState
-from .config import get_config, create_default_user_config_file
-from .misc import atimeit
+from .config import get_config, create_default_user_config_file, get_local_scratch_path
+from .misc import atimeit, alocking
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
+from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
-from typing import Optional, Any, AnyStr, List, Iterable, Union, Dict
+from typing import Optional, Any, AnyStr, Tuple, List, Iterable, Union, Dict
 
 SCHEDULER_DB_FORMAT_VERSION = 1
 
@@ -50,7 +51,17 @@ SCHEDULER_DB_FORMAT_VERSION = 1
 
 
 class Scheduler:
-    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1):
+    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1,
+                 server_addr: Optional[Tuple[str, int]] = None, server_ui_addr: Optional[Tuple[str, int]] = None):
+        """
+        TODO: add a docstring
+
+        :param db_file_path:
+        :param do_broadcasting:
+        :param helpers_minimal_idle_to_ensure:
+        :param server_addr:
+        :param server_ui_addr:
+        """
         self.__logger = logging.get_logger('scheduler')
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         self.__logger.info('loading core plugins')
@@ -101,7 +112,10 @@ class Scheduler:
         if db_file_path is None:
             config = get_config('scheduler')
             db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
-        db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+        if not db_file_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
+            db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
+
+        self.__logger.debug(f'starting scheduler with database: {db_file_path}')
         #
         # ensure database is initialized
         with sqlite3.connect(db_file_path) as con:
@@ -128,11 +142,11 @@ class Scheduler:
         ##
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
-        self.__external_log_location: Optional[pathlib.Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
+        self.__external_log_location: Optional[Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
         if self.__use_external_log and not self.__external_log_location:
             raise SchedulerConfigurationError('if store_logs_externally is set - store_logs_externally_location must be set too')
         if self.__use_external_log:
-            external_log_path = pathlib.Path(self.__use_external_log)
+            external_log_path = Path(self.__use_external_log)
             if external_log_path.exists() and external_log_path.is_file():
                 external_log_path.unlink()
             if not external_log_path.exists():
@@ -140,22 +154,31 @@ class Scheduler:
             if not os.access(self.__external_log_location, os.X_OK | os.W_OK):
                 raise RuntimeError('cannot write to external log location provided')
 
-        self.__db_cache = {'workers_state': {},
+        self.__db_cache = {'workers_resources': {},
+                           'workers_state': {},
                            'invocations': {}}
+        self.__ui_cache = {'groups': {}, 'last_update_time': None}
 
-        server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-        server_port = config.get_option_noasync('core.server_port', 7979)
-        ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
-        ui_port = config.get_option_noasync('core.ui_port', 7989)
+        if server_addr is None:
+            server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
+            server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
+        else:
+            server_ip, server_port = server_addr
+        if server_ui_addr is None:
+            ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
+            ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
+        else:
+            ui_ip, ui_port = server_ui_addr
         self.__stop_event = asyncio.Event()
+        self.__server_closing_task = None
         self.__wakeup_event = asyncio.Event()
         self.__task_processor_kick_event = asyncio.Event()
         self.__wakeup_event.set()
         self.__server = None
-        self.__server_coro = loop.create_server(self.scheduler_protocol_factory, server_ip, server_port, backlog=16)
+        self.__server_coro = loop.create_server(self._scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
         self.__ui_server = None
-        self.__ui_server_coro = loop.create_server(self.ui_protocol_factory, ui_ip, ui_port, backlog=16)
+        self.__ui_server_coro = loop.create_server(self._ui_protocol_factory, ui_ip, ui_port, backlog=16)
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting is None:
             do_broadcasting = config.get_option_noasync('core.broadcast', True)
@@ -175,17 +198,17 @@ class Scheduler:
     def get_event_loop(self):
         return self.__event_loop
 
-    def scheduler_protocol_factory(self):
+    def _scheduler_protocol_factory(self):
         return SchedulerTaskProtocol(self)
 
-    def ui_protocol_factory(self):
+    def _ui_protocol_factory(self):
         return SchedulerUiProtocol(self)
 
     def db_uid(self) -> int:
         """
         unique id that was generated on creation for the DB currently in use
 
-        :return: 64 bit signed int
+        :return: 64 bit unsigned int
         """
         return self.__db_uid
 
@@ -297,14 +320,23 @@ class Scheduler:
             self.__node_objects_locks[node_id] = RWLock(fast=True)  # read about fast on github. the points is if we have awaits inside critical section - it's safe to use fast
         return self.__node_objects_locks[node_id]
 
-    async def get_task_attributes(self, task_id: int):
+    async def get_task_attributes(self, task_id: int) -> Tuple[Dict[str, Any], Optional[EnvironmentResolverArguments]]:
+        """
+        get tasks, atributes and it's enviroment resolver's attributes
+
+        :param task_id:
+        :return:
+        """
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+            async with con.execute('SELECT attributes, environment_resolver_data FROM tasks WHERE "id" = ?', (task_id,)) as cur:
                 res = await cur.fetchone()
             if res is None:
                 raise RuntimeError('task with specified id was not found')
-            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes'])
+            env_res_args = None
+            if res['environment_resolver_data'] is not None:
+                env_res_args = await EnvironmentResolverArguments.deserialize_async(res['environment_resolver_data'])
+            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes']), env_res_args
 
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -322,6 +354,12 @@ class Scheduler:
         return await InvocationJob.deserialize_async(data)
 
     def stop(self):
+        async def _server_closer():
+            await self.__worker_pool.wait_till_stops()
+            if self.__server is not None:
+                self.__server.close()
+                await self.__server.wait_closed()
+
         if self.__stop_event.is_set():
             self.__logger.error('cannot double stop!')
             return  # no double stopping
@@ -329,14 +367,13 @@ class Scheduler:
             self.__logger.error('cannot stop what is not started!')
             return
         self.__logger.info('STOPPING SCHEDULER')
-        self.__stop_event.set()
-        if self.__server is not None:
-            self.__server.close()
+        self.__stop_event.set()  # this will stop things including task_processor
+        self.__worker_pool.stop()
+        self.__server_closing_task = asyncio.create_task(_server_closer())  # we ensure worker pool stops BEFORE server, so workers have chance to report back
         if self.__ui_server is not None:
             self.__ui_server.close()
-        self.__worker_pool.stop()
 
-    def _stop_event_wait(self):
+    def _stop_event_wait(self):  # TODO: this is currently being used by ui proto to stop long connections, but not used in task proto, but what if it'll also get long living connections?
         return self.__stop_event.wait()
 
     async def start(self):
@@ -384,6 +421,7 @@ class Scheduler:
         await self.__started_event.wait()
         assert self.__all_components is not None
         await self.__all_components
+        await self.__server_closing_task
 
     def is_started(self):
         return self.__started_event.is_set()
@@ -470,7 +508,8 @@ class Scheduler:
                     return False
                 if switch_state_on_reset is not None:
                     await self.set_worker_state(worker_row['id'], switch_state_on_reset, con, nocommit=True)
-                need_commit = await self.reset_invocations_for_worker(worker_row['id'], con)
+                need_commit = await self.__update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=con)  # remove resource usage info
+                need_commit = (await self.reset_invocations_for_worker(worker_row['id'], con)) or need_commit
                 return need_commit or switch_state_on_reset is not None
 
             self.__pinger_logger.debug('    :: pinger started')
@@ -540,7 +579,7 @@ class Scheduler:
                 # TODO: commented below as it seem to cause race conditions with worker invocation done reporting. NEED CHECKING
                 #if await self.reset_invocations_for_worker(worker_row['id'], con=con):
                 #    await con.commit()
-            else:
+            elif ping_code == WorkerPingReply.BUSY:
                 #workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
                 async with con.execute('SELECT "id" FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
@@ -554,6 +593,8 @@ class Scheduler:
                     # Therefore additional cleanup needed later - still better than lock things or check too hard
 
                 # await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
+            else:
+                raise NotImplementedError(f'not a known ping_code {ping_code}')
 
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
             self.__db_cache['workers_state'][worker_row['id']]['last_seen'] = int(time.time())
@@ -575,6 +616,10 @@ class Scheduler:
         """
         if into < 1:
             raise ValueError('cant split into less than 1 part')
+
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
+        # even first selects are only safe to do within a transaction
 
         async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
             task_row = await cur.fetchone()
@@ -634,9 +679,9 @@ class Scheduler:
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT '
-                                       '"id", cpu_count, mem_size, gpu_count, gmem_size, last_address, worker_type, hwid, state '
+                                       '"id", last_address, worker_type, hwid, state '
                                        'FROM workers '
-                                       'WHERE state != ? ', (WorkerState.UNKNOWN.value,)  # so we don't bother to ping UNKNOWN ones, until they hail us and stop being UNKNOWN
+                                       'WHERE state != ? AND state != ?', (WorkerState.UNKNOWN.value, WorkerState.OFF.value)  # so we don't bother to ping UNKNOWN ones, until they hail us and stop being UNKNOWN
                                        # 'WHERE tmp_workers_states.ping_state != ?', (WorkerPingState.CHECKING.value,)
                                        ) as cur:
                     all_rows = await cur.fetchall()
@@ -711,7 +756,7 @@ class Scheduler:
             loop = asyncio.get_event_loop()
             try:
                 async with self.get_node_lock_by_id(task_row['node_id']).reader_lock:
-                    process_result: ProcessingResult = await loop.run_in_executor(None, processor_to_run, task_row)  # TODO: this should have task and node attributes!
+                    process_result: ProcessingResult = await loop.run_in_executor(awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
                                         #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
@@ -740,11 +785,17 @@ class Scheduler:
                 #con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
                 #print(f'up till block: {time.perf_counter() - _blo}')
+
+                if not con.in_transaction:
+                    await con.execute('BEGIN IMMEDIATE')
+                    assert con.in_transaction
                 if process_result.output_name:
                     await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                       (process_result.output_name, task_id))
                 #_blo = time.perf_counter()
                 #_bla1 = time.perf_counter()
+
+                # note: this may be not obvious, but ALL branches of the next if result in implicit transaction start
                 if process_result.do_kill_task:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (TaskState.DEAD.value, task_id))
@@ -761,6 +812,7 @@ class Scheduler:
 
                         taskdada_serialized = await process_result.invocation_job.serialize_async()
                         invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
+                        invoc_requirements_dict_str = json.dumps(process_result.invocation_job.requirements().to_dict(resources_only=True))
                         job_priority = process_result.invocation_job.priority()
                         async with con.execute('SELECT MAX(task_group_attributes.priority) AS priority FROM task_group_attributes '
                                                'INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group" '
@@ -770,9 +822,11 @@ class Scheduler:
                                 group_priority = 50.0  # "or" should only work in case there were no unarchived groups at all for the task
                             else:
                                 group_priority = group_priority[0]
-                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, priority = ? '
+                        await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, '
+                                          'priority = ? '
                                           'WHERE "id" = ?',
-                                          (taskdada_serialized, TaskState.READY.value, invoc_requirements_sql, group_priority + job_priority,
+                                          (taskdada_serialized, TaskState.READY.value, ':::'.join((invoc_requirements_sql, invoc_requirements_dict_str)),
+                                           group_priority + job_priority,
                                            task_id))
                 #print(f'kill/invoc: {time.perf_counter() - _bla1}')
                 #_bla1 = time.perf_counter()
@@ -816,8 +870,15 @@ class Scheduler:
                     result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                     await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                       (result_serialized, task_id))
+
+                # process environment resolver arguments if provided
+                if (envargs := process_result._environment_resolver_arguments) is not None:
+                    await con.execute('UPDATE tasks SET environment_resolver_data = ? WHERE "id" = ?',
+                                      (await envargs.serialize_async(), task_id))
+
                 #print(f'attset: {time.perf_counter() - _bla1}')
                 #_bla1 = time.perf_counter()
+                # spawning new tasks after all attributes were set, so children inherit
                 if process_result.spawn_list is not None:
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
@@ -848,22 +909,25 @@ class Scheduler:
                 port = int(port)
             except:
                 self.__logger.error('error addres converting during unexpected here. ping should have cought it')
-                return
+                ip, port = None, None  # set to invalid values to exit in error-checking if a bit below
 
             work_data = task_row['work_data']
             assert work_data is not None
             task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-            if not task.args():
+            if not task.args() or ip is None:  #
                 async with awaiter_lock, aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as skipwork_transaction:
                     await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                        (TaskState.POST_WAITING.value, task_row['id']))
                     await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                        (WorkerState.IDLE.value, worker_row['id']))
+                    # unset resource usage
+                    await self.__update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=con)
                     await skipwork_transaction.commit()
                     return
 
             # so task.args() is not None
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as submit_transaction:
+                submit_transaction.row_factory = aiosqlite.Row
                 async with awaiter_lock:
                     async with submit_transaction.execute(
                             'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
@@ -916,8 +980,11 @@ class Scheduler:
                                                           worker_row['id']))
                         await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
                                                          (invocation_id,))
+                        # update resource usage to none
+                        await self.__update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
                     await submit_transaction.commit()
 
+        awaiter_executor = ThreadPoolExecutor()  # TODO: max_workers= set from config
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self.__stop_event.wait())
@@ -1024,15 +1091,18 @@ class Scheduler:
                     total_processed += len(all_task_rows)
 
                     self.__logger.debug(f'total {task_state.name}: {len(all_task_rows)}')
+                    # TODO: the problem might occur below when there are thousands of processing tasks - it may take some time before implicit transaction lock is given to task_processor
                     #
                     # waiting to be processed
                     if task_state == TaskState.WAITING:
                         awaiters = []
+                        set_to_stuff = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.ERROR.value, task_row['id']))
+                                set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
                                 # note that ready_to_process_task is ran not inside the read lock
@@ -1042,36 +1112,45 @@ class Scheduler:
                                 if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
                                     continue
 
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.GENERATING.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.GENERATING.value, task_row['id']))
+                                set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
-                        await con.commit()
+                        if set_to_stuff:
+                            await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
+                            await con.commit()
+                        self.__logger.debug('loop done, creating tasks')
                         for coro in awaiters:
                             tasks_to_wait.add(asyncio.create_task(coro))
                     #
                     # waiting to be post processed
                     elif task_state == TaskState.POST_WAITING:
                         awaiters = []
+                        set_to_stuff = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.ERROR.value, task_row['id']))
+                                set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
                                 if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                     continue
 
-                                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                                  (TaskState.POST_GENERATING.value, task_row['id']))
+                                # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                                #                   (TaskState.POST_GENERATING.value, task_row['id']))
+                                set_to_stuff.append((TaskState.POST_GENERATING.value, task_row['id']))
                                 total_state_changes += 1
 
                                 awaiters.append(_awaiter((await self._get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
-                        await con.commit()
+                        if set_to_stuff:
+                            await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
+                            await con.commit()
                         for coro in awaiters:
                             tasks_to_wait.add(asyncio.create_task(coro))  # note - dont change to run in executors in threads - there are things here like asyncio locks that RELY ON BEING IN SAME THREAD
                     #
@@ -1096,11 +1175,18 @@ class Scheduler:
                                 self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
                                 continue
                             #
-                            if task_row["_invoc_requirement_clause"] in where_empty_cache:
+                            requirements_clause_sql: str = task_row["_invoc_requirement_clause"]
+                            requirements_clause_dict = None
+                            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:
+                                requirements_clause_dict = json.loads(requirements_clause_sql[splitpos+3:])
+                                requirements_clause_sql = requirements_clause_sql[:splitpos]
+                            if requirements_clause_sql in where_empty_cache:
                                 continue
                             try:
                                 self.__logger.debug('submitter selecting worker')
-                                async with con.execute(f'SELECT * from workers WHERE state == ? AND ( {task_row["_invoc_requirement_clause"]} )', (WorkerState.IDLE.value,)) as worcur:
+                                async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
+                                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
+                                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
                                     worker = await worcur.fetchone()
                             except aiosqlite.Error as e:
                                 await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
@@ -1115,7 +1201,7 @@ class Scheduler:
                                 self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
                                 continue
                             if worker is None:  # nothing available
-                                where_empty_cache.add(task_row["_invoc_requirement_clause"])
+                                where_empty_cache.add(requirements_clause_sql)
                                 continue
                             # note that there might be no implicit transaction here yet, so previously selected
                             # worker might have changed states between that select and this update
@@ -1131,6 +1217,12 @@ class Scheduler:
                             total_state_changes += 1
                             await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                                 (WorkerState.INVOKING.value, worker['id']))
+                            # set resource usage straight away
+                            try:
+                                await self.__update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
+                            except NotEnoughResources:
+                                self.__logger.warning(f'inconsistence in worker resource tracking! could not submit to worker {worker["id"]}')
+                                continue
 
                             submitters.append(_submitter(dict(task_row), dict(worker)))
                             self.__logger.debug('submitter scheduled')
@@ -1185,12 +1277,16 @@ class Scheduler:
                         async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({}) AND dead = 0'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
                             total = await cur.fetchone()
                         if total is None or total['total'] == 0:
-                            self.__logger.info('no useful tasks seem to be available')
+                            self.__logger.debug('no useful tasks seem to be available')
                             self.__sleep()
                 else:
                     self.wake()
 
-            self.__logger.debug(f'processing run in {time.perf_counter() - _debug_con}')
+            processing_time = time.perf_counter() - _debug_con
+            if processing_time > 1.0:
+                self.__logger.info(f'processing run in {processing_time}')
+            else:
+                self.__logger.debug(f'processing run in {processing_time}')
 
             # and wait for a bit
             if wakeup_task is not None:
@@ -1261,6 +1357,7 @@ class Scheduler:
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
+            await self.__update_worker_resouce_usage(invocation['worker_id'], connection=con)  # remove resource usage info
             tasks_to_wait = []
             if not self.__use_external_log:
                 await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
@@ -1273,7 +1370,7 @@ class Scheduler:
             if task.invocation_id() in self.__db_cache['invocations']:
                 del self.__db_cache['invocations'][task.invocation_id()]
 
-            if task.finished_needs_retry():  # TODO: max retry count!
+            if task.finished_needs_retry():  # max retry count will be checked by task processor
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
             elif task.finished_with_error():
@@ -1332,6 +1429,7 @@ class Scheduler:
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
+            await self.__update_worker_resouce_usage(invocation['worker_id'], connection=con)  # remove resource usage info
             tasks_to_wait = []
             if not self.__use_external_log:
                 await con.execute('UPDATE invocations SET "stdout" = ?, "stderr" = ? WHERE "id" = ?',
@@ -1382,104 +1480,137 @@ class Scheduler:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con)
                 await con.execute('UPDATE "workers" SET '
                                   'hwid=?, '
-                                  'cpu_count=?, '
-                                  'total_cpu_count=?, '
-                                  'mem_size=?, '
-                                  'total_mem_size=?, '
-                                  'gpu_count=?, '
-                                  'total_gpu_count=?, '
-                                  'gmem_size=?, '
-                                  'total_gmem_size=?, '
-                                  'last_seen=?, ping_state=?, state=?, worker_type=? '
+                                  'last_seen=?, ping_state=?, state=?, worker_type=?, '
+                                  'last_address=?  '
                                   'WHERE "id"=?',
                                   (worker_resources.hwid,
-                                   worker_resources.cpu_count,
-                                   worker_resources.total_cpu_count,
-                                   worker_resources.mem_size,
-                                   worker_resources.total_mem_size,
-                                   worker_resources.gpu_count,
-                                   worker_resources.total_gpu_count,
-                                   worker_resources.gmem_size,
-                                   worker_resources.total_gmem_size,
                                    tstamp, ping_state, state, worker_type.value,
+                                   addr,
                                    worker_row['id']))
                 # async with con.execute('SELECT "id" FROM "workers" WHERE last_address=?', (addr,)) as worcur:
-                #     upd_worker_id = (await worcur.fetchone())['id']
-                upd_worker_id = worker_row['id']
-                self.__db_cache['workers_state'][upd_worker_id].update({'last_seen': tstamp,
+                #     worker_id = (await worcur.fetchone())['id']
+                worker_id = worker_row['id']
+                self.__db_cache['workers_state'][worker_id].update({'last_seen': tstamp,
                                                                         'last_checked': tstamp,
                                                                         'ping_state': ping_state,
-                                                                        'worker_id': upd_worker_id})
+                                                                        'worker_id': worker_id})
                 # await con.execute('UPDATE tmpdb.tmp_workers_states SET '
                 #                   'last_seen=?, ping_state=? '
                 #                   'WHERE worker_id=?',
-                #                   (tstamp, ping_state, upd_worker_id))
+                #                   (tstamp, ping_state, worker_id))
             else:
                 async with con.execute('INSERT INTO "workers" '
                                        '(hwid, '
-                                       'cpu_count, total_cpu_count, '
-                                       'mem_size, total_mem_size, '
-                                       'gpu_count, total_gpu_count, '
-                                       'gmem_size, total_gmem_size, '
                                        'last_address, last_seen, ping_state, state, worker_type) '
                                        'VALUES '
-                                       '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                       (worker_resources.hwid,
-                                        worker_resources.cpu_count,
-                                        worker_resources.total_cpu_count,
-                                        worker_resources.mem_size,
-                                        worker_resources.total_mem_size,
-                                        worker_resources.gpu_count,
-                                        worker_resources.total_gpu_count,
-                                        worker_resources.gmem_size,
-                                        worker_resources.total_gmem_size,
-                                        addr, tstamp, ping_state, state, worker_type.value)) as insworcur:
-                    new_worker_id = insworcur.lastrowid
-                self.__db_cache['workers_state'][new_worker_id] = {'last_seen': tstamp,
-                                                                   'last_checked': tstamp,
-                                                                   'ping_state': ping_state,
-                                                                   'worker_id': new_worker_id}
+                                       '(?, ?, ?, ?, ?, ?)',
+                                       (worker_resources.hwid, addr, tstamp, ping_state, state, worker_type.value)) as insworcur:
+                    worker_id = insworcur.lastrowid
+                self.__db_cache['workers_state'][worker_id] = {'last_seen': tstamp,
+                                                               'last_checked': tstamp,
+                                                               'ping_state': ping_state,
+                                                               'worker_id': worker_id}
                 # await con.execute('INSERT INTO tmpdb.tmp_workers_states '
                 #                   '(worker_id, last_seen, ping_state) '
                 #                   'VALUES '
                 #                   '(?, ?, ?)',
-                #                   (new_worker_id, tstamp, ping_state))
-            await con.commit()
-        self.poke_task_processor()
+                #                   (worker_id, tstamp, ping_state))
 
-    #
-    # update existing worker's resources
-    async def update_worker_resources(self, addr: str, worker_resources: WorkerResources):
-        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            con.row_factory = aiosqlite.Row
-            await con.execute('BEGIN IMMEDIATE')
-            async with con.execute('SELECT id, hwid from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
-                worker_row = await worcur.fetchone()
-            wid = worker_row['id']
-            if worker_row['hwid'] != worker_resources.hwid:
-                # hwid mismatch - this cannot happen in normal work - so assume this worker is bad
-                # ignore this request?
-                self.__logger.warning('logger reporting resources has different hwid from what we expect.\n'
-                                      'This can happen when several workers are reconnecting at the same time.\n'
-                                      'in any other cases this cannot happen and is a bug')
-                await con.commit()
-                return
-
-            await con.execute('UPDATE "workers" SET '
-                              'cpu_count=?, '
-                              'mem_size=?, '
-                              'gpu_count=?, '
-                              'gmem_size=? '
-                              'WHERE "id"==?',
-                              (worker_resources.cpu_count,
-                               worker_resources.mem_size,
+            await con.execute('INSERT INTO resources '
+                              '(hwid, cpu_count, total_cpu_count, '
+                              'cpu_mem, total_cpu_mem, '
+                              'gpu_count, total_gpu_count, '
+                              'gpu_mem, total_gpu_mem) '
+                              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+                              'ON CONFLICT(hwid) DO UPDATE SET '
+                              'cpu_count=excluded.cpu_count, total_cpu_count=excluded.total_cpu_count, '
+                              'cpu_mem=excluded.cpu_mem, total_cpu_mem=excluded.total_cpu_mem, '
+                              'gpu_count=excluded.gpu_count, total_gpu_count=excluded.total_gpu_count, '
+                              'gpu_mem=excluded.gpu_mem, total_gpu_mem=excluded.total_gpu_mem',
+                              (worker_resources.hwid,
+                               worker_resources.cpu_count,
+                               worker_resources.total_cpu_count,
+                               worker_resources.cpu_mem,
+                               worker_resources.total_cpu_mem,
                                worker_resources.gpu_count,
-                               worker_resources.gmem_size,
-                               wid)
-                              )
-
+                               worker_resources.total_gpu_count,
+                               worker_resources.gpu_mem,
+                               worker_resources.total_gpu_mem)
+                               )
+            await self.__update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
             await con.commit()
         self.poke_task_processor()
+
+    # TODO: add decorator that locks method from reentry or smth
+    #  potentially a worker may report done while this works,
+    #  or when scheduler picked worker and about to run this, which will lead to inconsistency warning
+    #  NOTE!: so far it's always called from a STARTED transaction, so there should not be reentry possible
+    #  But that is not enforced right now, easy to make mistake
+    async def __update_worker_resouce_usage(self, worker_id: int, resources: Optional[dict] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
+        """
+        updates resource information based on new worker resources usage
+        as part of ongoing transaction
+        Note: con SHOULD HAVE STARTED TRANSACTION, otherwise it might be not safe to call this
+
+        :param worker_id:
+        :param hwid: if hwid of worker_id is already known - provide it here to skip extra db query. but be SURE it's correct!
+        :param connection: opened db connection. expected to have Row as row factory
+        :return: if commit is needed on connection (if db set operation happened)
+        """
+        resource_fields = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')
+
+        workers_resources = self.__db_cache['workers_resources']
+        if hwid is None:
+            async with connection.execute('SELECT "hwid" FROM "workers" WHERE "id" == ?', (worker_id,)) as worcur:
+                hwid = (await worcur.fetchone())['hwid']
+
+        # calculate available resources NOT counting current worker_id
+        async with connection.execute(f'SELECT '
+                                      f'{", ".join(resource_fields)}, '
+                                      f'{", ".join("total_"+x for x in resource_fields)} '
+                                      f'FROM resources WHERE hwid == ?', (hwid,)) as rescur:
+            available_res = dict(await rescur.fetchone())
+        current_available = {k: v for k, v in available_res.items() if not k.startswith('total_')}
+        available_res = {k[len('total_'):]: v for k, v in available_res.items() if k.startswith('total_')}
+
+        for wid, res in workers_resources.items():
+            if wid == worker_id:
+                continue  # SKIP worker_id currently being set
+            if res.get('hwid') != hwid:
+                continue
+            for field in resource_fields:
+                if field not in res:
+                    continue
+                available_res[field] -= res[field]
+        ##
+
+        # now choose proper amount of resources to pick
+        if resources is None:
+            workers_resources[worker_id] = {'hwid': hwid}  # remove resource usage info
+        else:
+            workers_resources[worker_id] = {}
+            for field in resource_fields:
+                if field not in resources:
+                    continue
+                if available_res[field] < resources[field]:
+                    raise NotEnoughResources(f'{field}: {resources[field]} out of {available_res[field]}')
+                # so we take preferred amount of resources (or minimum if pref not set), but no more than available
+                # if preferred is lower than min - it's ignored
+                workers_resources[worker_id][field] = min(available_res[field],
+                                                          max(resources.get(f'pref_{field}', resources[field]),
+                                                              resources[field]))
+                available_res[field] -= workers_resources[worker_id][field]
+
+            workers_resources[worker_id]['hwid'] = hwid  # just to ensure it was not overriden
+
+        self.__logger.debug(f'updating resources {hwid} with {available_res} against {current_available}')
+        self.__logger.debug(workers_resources)
+
+        if available_res == current_available:  # nothing needs to be updated
+            return False
+
+        await connection.execute(f'UPDATE resources SET {", ".join(f"{k}={v}" for k, v in available_res.items())} WHERE hwid == ?', (hwid,))
+        return True
 
     #
     # worker reports it being stopped
@@ -1493,10 +1624,15 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')
-            async with con.execute('SELECT id from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
+            async with con.execute('SELECT id, hwid from "workers" WHERE "last_address" = ?', (addr,)) as worcur:
                 worker_row = await worcur.fetchone()
+            if worker_row is None:
+                self.__logger.warning(f'unregistered worker reported "stopped": {addr}, ignoring')
+                await con.rollback()
+                return
             wid = worker_row['id']
-            print(wid)
+            hwid = worker_row['hwid']
+            # print(wid)
 
             # we ensure there are no invocations running with this worker
             async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND "state" = ?', (wid, InvocationState.IN_PROGRESS.value)) as invcur:
@@ -1505,9 +1641,14 @@ class Scheduler:
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
             await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
             await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.WAITING.value, x["task_id"]) for x in invocations))
+            await self.__update_worker_resouce_usage(wid, hwid=hwid, connection=con)
+            del self.__db_cache['workers_resources'][wid]  # remove from cache
             await con.commit()
         self.__logger.debug(f'finished worker reported stopped: {addr}')
 
+    #
+    # protocol related commands
+    #
     #
     # cancel invocation
     async def cancel_invocation(self, invocation_id: str):
@@ -1541,6 +1682,18 @@ class Scheduler:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id" FROM "invocations" WHERE "task_id" = ? AND state = ?', (task_id, InvocationState.IN_PROGRESS.value)) as cur:
+                invoc = await cur.fetchone()
+        if invoc is None:
+            return
+        return await self.cancel_invocation(invoc['id'])
+
+    #
+    #
+    async def cancel_invocation_for_worker(self, worker_id: int):
+        self.__logger.debug(f'canceling invocation for worker {worker_id}')
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id" FROM "invocations" WHERE "worker_id" == ? AND state == ?', (worker_id, InvocationState.IN_PROGRESS.value)) as cur:
                 invoc = await cur.fetchone()
         if invoc is None:
             return
@@ -1731,6 +1884,16 @@ class Scheduler:
             await con.commit()
 
     #
+    # set environment resolver
+    async def set_task_environment_resolver_arguments(self, task_id: int, env_res: Optional[EnvironmentResolverArguments]):
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('UPDATE tasks SET "environment_resolver_data" = ? WHERE "id" = ?',
+                              (await env_res.serialize_async() if env_res is not None else None,
+                               task_id))
+            await con.commit()
+
+    #
     # node stuff
     async def set_node_name(self, node_id: int, node_name: str) -> str:
         """
@@ -1821,10 +1984,29 @@ class Scheduler:
             await con.commit()
 
     #
+    # set worker groups
+    async def set_worker_groups(self, worker_hwid: int, groups: List[str]):
+        groups = set(groups)
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            await con.execute('BEGIN IMMEDIATE')  # start transaction straight away
+            async with con.execute('SELECT "group" FROM worker_groups WHERE worker_hwid == ?', (worker_hwid,)) as cur:
+                existing_groups = set(x[0] for x in await cur.fetchall())
+            to_delete = existing_groups - groups
+            to_add = groups - existing_groups
+            if len(to_delete):
+                await con.execute(f'DELETE FROM worker_groups WHERE worker_hwid == ? AND "group" IN ({",".join(("?",)*len(to_delete))})', (worker_hwid, *to_delete))
+            if len(to_add):
+                await con.executemany(f'INSERT INTO worker_groups (worker_hwid, "group") VALUES (?, ?)',
+                                      ((worker_hwid, x) for x in to_add))
+            await con.commit()
+
+    #
     # stuff
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True):
         self.__logger.debug('full update for %s', task_groups)
+        now = datetime.now()
+        group_totals_update_interval = 5
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
@@ -1852,7 +2034,7 @@ class Scheduler:
                 for group in task_groups:
                     # _dbg = time.perf_counter()
                     async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
-                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
+                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
                                            'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
                                            'FROM "tasks" '
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
@@ -1873,24 +2055,48 @@ class Scheduler:
                             all_tasks[task['id']] = task
             # _dbg = time.perf_counter()
             #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
-            async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
+
+            # some things are updated onlt once in a while, not on every update
+            need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
+            #async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
+            if need_group_totals_update:
+                sqlexpr =  'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
+                           'LEFT JOIN ' \
+                          f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
+                           f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
+                           f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
+                           f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
+                           'ON "grp"==task_group_attributes."group" ' \
+                           + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            else:
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            async with con.execute(sqlexpr) as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
+            if need_group_totals_update:
+                self.__ui_cache['last_update_time'] = now
+                self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
+            else:
+                for group in all_task_groups:
+                    all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
+
             # print(f'distinct groups: {time.perf_counter() - _dbg}')
             # _dbg = time.perf_counter()
             async with con.execute('SELECT workers."id", '
                                    'cpu_count, '
                                    'total_cpu_count, '
-                                   'mem_size, '
-                                   'total_mem_size, '
+                                   'cpu_mem, '
+                                   'total_cpu_mem, '
                                    'gpu_count, '
                                    'total_gpu_count, '
-                                   'gmem_size, '
-                                   'total_gmem_size, '
+                                   'gpu_mem, '
+                                   'total_gpu_mem, '
+                                   'workers."hwid", '
                                    'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
                                    'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
-                                   'LEFT JOIN worker_groups ON workers."id" == worker_groups.worker_id '
+                                   'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
+                                   'LEFT JOIN resources ON workers.hwid == resources.hwid '
                                    'GROUP BY workers."id"') as cur:
                 all_workers = tuple({**dict(x),
                                      'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen'],
@@ -2003,6 +2209,7 @@ class Scheduler:
 
     #
     # spawning new task callback
+    @alocking()
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
         """
 
@@ -2177,21 +2384,33 @@ class Scheduler:
         return self.__server_address
 
 
-default_config = '''
+default_config = f'''
 [core]
 ## you can uncomment stuff below to specify some static values
 ## 
 # server_ip = "192.168.0.2"
-# server_port = 7979
+# server_port = {default_scheduler_port()}
 # ui_ip = "192.168.0.2"
-# ui_port = 7989
+# ui_port = {default_ui_port()}
+
+## you can turn off scheduler broadcasting if you want to manually configure viewer and workers to connect
+## to a specific address
+# broadcast = false
 
 [scheduler]
-## you may specify here some db to load
-## ore use --db-path cmd argument to override whatever is in the config
-# db_path = "~/some_special_place/main.db"
+
+[scheduler.globals]
+## entries from this section will be available to any node from config[key] 
+##
+## if you use more than 1 machine - you must change this to a network location shared among all workers
+## by default it's set to scheduler's machine local temp path, and will only work for 1 machine setup 
+global_scratch_path = "{get_local_scratch_path()}"
 
 [scheduler.database]
+## you can specify default database path, 
+##  but this can be overriden with command line argument --db-path
+# path = "/path/to/database.db"
+
 ## uncomment line below to store task logs outside of the database
 ##  it works in a way that all NEW logs will be saved according to settings below
 ##  existing logs will be kept where they are
@@ -2205,20 +2424,44 @@ default_config = '''
 
 
 async def main_async(db_path=None):
-    def graceful_closer():
+    def graceful_closer(*args):
         scheduler.stop()
 
+    noasync_do_close = False
+    def noasync_windows_graceful_closer_event(*args):
+        nonlocal noasync_do_close
+        noasync_do_close = True
+
+    async def windows_graceful_closer():
+        while not noasync_do_close:
+            await asyncio.sleep(1)
+        graceful_closer()
+
     scheduler = Scheduler(db_path)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
-    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    win_signal_waiting_task = None
+    try:
+        asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
+        asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, graceful_closer)
+    except NotImplementedError:  # solution for windows
+        signal.signal(signal.SIGINT, noasync_windows_graceful_closer_event)
+        signal.signal(signal.SIGBREAK, noasync_windows_graceful_closer_event)
+        win_signal_waiting_task = asyncio.create_task(windows_graceful_closer())
+
     await scheduler.start()
     await scheduler.wait_till_stops()
+    if win_signal_waiting_task is not None:
+        if not win_signal_waiting_task.done():
+            win_signal_waiting_task.cancel()
+    logging.get_logger('scheduler').info('SCHEDULER STOPPED')
 
 
 def main(argv):
     import argparse
+    import tempfile
+
     parser = argparse.ArgumentParser('lifeblood scheduler')
     parser.add_argument('--db-path', help='path to sqlite database to use')
+    parser.add_argument('--ephemeral', action='store_true', help='start with an empty one time use database, that is placed into shared memory IF POSSIBLE')
     parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
     opts = parser.parse_args(argv)
 
@@ -2226,8 +2469,37 @@ def main(argv):
     create_default_user_config_file('scheduler', default_config)
 
     config = get_config('scheduler')
-    db_path = opts.db_path if opts.db_path is not None else config.get_option_noasync('scheduler.db_path', str(paths.default_main_database_location()))
+    if opts.db_path is not None:
+        db_path = opts.db_path
+    else:
+        db_path = config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
+
     global_logger = logging.get_logger('scheduler')
+
+    fd = None
+    if opts.ephemeral:
+        if opts.db_path is not None:
+            parser.error('only one of --db-path or --ephemeral must be provided, not both')
+        # 'file:memorydb?mode=memory&cache=shared'
+        # this does not work ^ cuz shared cache means that all runs on the *same connection*
+        # and when there is a transaction conflict on the same connection - we get instalocked (SQLITE_LOCKED)
+        # and there is no way to emulate normal DB in memory but with shared cache
+
+        # look for shm (UNIX only)
+        shm_path = Path('/dev/shm')
+        lb_shm_path = None
+        if shm_path.exists():
+            lb_shm_path = shm_path/f'u{os.getuid()}-lifeblood'
+            try:
+                lb_shm_path.mkdir(exist_ok=True)
+            except Exception as e:
+                global_logger.warning('/dev/shm is not accessible (permission issues?), creating ephemeral database in temp dir')
+                lb_shm_path = None
+        else:
+            global_logger.warning('/dev/shm is not supported by OS, creating ephemeral database in temp dir')
+
+        fd, db_path = tempfile.mkstemp(dir=lb_shm_path, prefix='shedb-')
+
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
     try:
@@ -2235,7 +2507,11 @@ def main(argv):
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')
-
+    finally:
+        if opts.ephemeral:
+            assert fd is not None
+            os.close(fd)
+            os.unlink(db_path)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

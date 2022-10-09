@@ -150,6 +150,7 @@ class BaseNode:
                 self.__logger.warning('this method probably should not be called from the main scheduler thread')
             else:  # we are not in main thread
                 fut.result(60)  # ensure callback is completed before continuing. not sure how much it's needed, but it feels safer
+                # TODO: even though timeout even here is impossible in any sane situation - still we should do something about it
             # and this is a nono: asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
     # def _state_changed(self):
@@ -178,8 +179,10 @@ class BaseNode:
         return True
 
     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        with self.get_ui().lock_interface_readonly():
-            return self.process_task(ProcessingContext(self, task_dict))
+        # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!
+        #  TODO: , in case threads do l1---r1    - release2 WILL leave lock in locked state forever, as it remembered it at l2
+        #  TODO:                         l2---r2
+        return self.process_task(ProcessingContext(self, task_dict))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -191,8 +194,8 @@ class BaseNode:
         raise NotImplementedError()
 
     def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
-        with self.get_ui().lock_interface_readonly():
-            return self.postprocess_task(ProcessingContext(self, task_dict))
+        # with self.get_ui().lock_interface_readonly():  #TODO: read comment for _process_task_wrapper
+        return self.postprocess_task(ProcessingContext(self, task_dict))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -341,8 +344,12 @@ class BaseNodeWithTaskRequirements(BaseNode):
         with ui.initializing_interface_lock():
             with ui.collapsable_group_block('main worker requirements', 'worker requirements'):
                 ui.add_parameter('priority adjustment', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
-                ui.add_parameter('worker cpu cost', 'cpu cost (cores)', NodeParameterType.FLOAT, 1.0).set_value_limits(value_min=0)
-                ui.add_parameter('worker mem cost', 'memory cost (GBs)', NodeParameterType.FLOAT, 0.5).set_value_limits(value_min=0)
+                with ui.parameters_on_same_line_block():
+                    ui.add_parameter('worker cpu cost', 'min <cpu (cores)> preferred', NodeParameterType.FLOAT, 1.0).set_value_limits(value_min=0)
+                    ui.add_parameter('worker cpu cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
+                with ui.parameters_on_same_line_block():
+                    ui.add_parameter('worker mem cost', 'min <memory (GBs)> preferred', NodeParameterType.FLOAT, 0.5).set_value_limits(value_min=0)
+                    ui.add_parameter('worker mem cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
                 ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
                 ui.add_parameter('worker type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
                     .add_menu((('standard', WorkerType.STANDARD.value),
@@ -357,6 +364,14 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 reqs.add_groups(re.split(r'[ ,]+', raw_groups))
             reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
+            # preferred
+            pref_cpu_count = context.param_value('worker cpu cost preferred')
+            pref_mem_bytes = context.param_value('worker mem cost preferred') * 10**9
+            if pref_cpu_count > 0:
+                reqs.set_preferred_cpu_count(pref_cpu_count)
+            if pref_mem_bytes > 0:
+                reqs.set_preferred_memory_bytes(pref_mem_bytes)
+
             reqs.set_worker_type(WorkerType(context.param_value('worker type')))
             result.invocation_job.set_requirements(reqs)
             result.invocation_job.set_priority(context.param_value('priority adjustment'))

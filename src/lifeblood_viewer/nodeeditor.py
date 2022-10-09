@@ -6,6 +6,8 @@ from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from .db_misc import sql_init_script_nodes
+from .utils import performance_measurer
+from lifeblood.misc import timeit
 from lifeblood.uidata import UiData, NodeUi, Parameter
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -15,6 +17,7 @@ from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 from lifeblood.text import generate_name
 
@@ -204,7 +207,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_add_node_connection_requested = Signal(int, str, int, str)
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
-    _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], str]
+    _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], int, str]
     _signal_set_task_group_state_requested = Signal(str, TaskGroupArchivedState)
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
@@ -215,6 +218,8 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_duplicate_nodes_requested = Signal(dict, QPointF)
     _signal_set_skip_dead = Signal(bool)
     _signal_set_skip_archived_groups = Signal(bool)
+    _signal_set_environment_resolver_arguments = Signal(int, EnvironmentResolverArguments)
+    _signal_unset_environment_resolver_arguments = Signal(int)
 
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     nodepresets_updated = Signal(dict)
@@ -301,6 +306,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_task_invocation_job_requested.connect(self.__ui_connection_worker.get_task_invocation_job)
         self._signal_set_skip_dead.connect(self.__ui_connection_worker.set_skip_dead)
         self._signal_set_skip_archived_groups.connect(self.__ui_connection_worker.set_skip_archived_groups)
+        self._signal_set_environment_resolver_arguments.connect(self.__ui_connection_worker.set_environment_resolver_arguments)
+        self._signal_unset_environment_resolver_arguments.connect(self.__ui_connection_worker.unset_environment_resolver_arguments)
 
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
@@ -375,11 +382,16 @@ class QGraphicsImguiScene(QGraphicsScene):
     def set_task_state(self, task_ids: List[int], state: TaskState):
         self._signal_set_task_state.emit(task_ids, state)
 
-    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
-        self._signal_set_tasks_paused.emit(task_ids_or_group, paused)
+    def set_tasks_paused(self, task_ids_or_groups: List[Union[int, str]], paused: bool):
+        if all(isinstance(x, int) for x in task_ids_or_groups):
+            self._signal_set_tasks_paused.emit(task_ids_or_groups, paused)
+        else:
+            for tid_or_group in task_ids_or_groups:
+                self._signal_set_tasks_paused.emit(tid_or_group, paused)
 
-    def set_task_group_archived_state(self, group_name: str, state: TaskGroupArchivedState):
-        self._signal_set_task_group_state_requested.emit(group_name, state)
+    def set_task_group_archived_state(self, group_names: List[str], state: TaskGroupArchivedState):
+        for group_name in group_names:
+            self._signal_set_task_group_state_requested.emit(group_name, state)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
@@ -404,6 +416,12 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def set_skip_archived_groups(self, do_skip: bool) -> None:
         self._signal_set_skip_archived_groups.emit(do_skip)
+
+    def request_set_environment_resolver_arguments(self, task_id, env_args):
+        self._signal_set_environment_resolver_arguments.emit(task_id, env_args)
+
+    def request_unset_environment_resolver_arguments(self, task_id):
+        self._signal_unset_environment_resolver_arguments.emit(task_id)
 
     def skip_dead(self) -> bool:
         return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
@@ -440,6 +458,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
 
+    @timeit(0.05)
     @Slot(object)
     def full_update(self, uidata: UiData):
         # logger.debug('full_update')
@@ -463,104 +482,144 @@ class QGraphicsImguiScene(QGraphicsScene):
         existing_node_ids: Dict[int, Node] = {}
         existing_conn_ids: Dict[int, NodeConnection] = {}
         existing_task_ids: Dict[int, Task] = {}
-        for item in self.items():
-            if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
-                if item.get_id() not in uidata.nodes() or item.node_type() != uidata.nodes()[item.get_id()]['type']:
-                    to_del.append(item)
-                    continue
-                existing_node_ids[item.get_id()] = item
-                # TODO: update all kind of attribs here, for now we just don't have any
-            elif isinstance(item, NodeConnection):
-                if item.get_id() not in uidata.connections():
-                    to_del.append(item)
-                    continue
-                existing_conn_ids[item.get_id()] = item
-                # TODO: update all kind of attribs here, for now we just don't have any
-            elif isinstance(item, Task):
-                if item.get_id() not in uidata.tasks():
-                    to_del.append(item)
-                    if item.node() is not None:
-                        if not item.node() in to_del_tasks:
-                            to_del_tasks[item.node()] = []
-                        to_del_tasks[item.node()].append(item)
-                    continue
-                existing_task_ids[item.get_id()] = item
+        _perf_total = 0.0
+        with performance_measurer() as pm:
+            for item in self.items():
+                if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
+                    if item.get_id() not in uidata.nodes() or item.node_type() != uidata.nodes()[item.get_id()]['type']:
+                        to_del.append(item)
+                        continue
+                    existing_node_ids[item.get_id()] = item
+                    # TODO: update all kind of attribs here, for now we just don't have any
+                elif isinstance(item, NodeConnection):
+                    if item.get_id() not in uidata.connections():
+                        to_del.append(item)
+                        continue
+                    existing_conn_ids[item.get_id()] = item
+                    # TODO: update all kind of attribs here, for now we just don't have any
+                elif isinstance(item, Task):
+                    if item.get_id() not in uidata.tasks():
+                        to_del.append(item)
+                        if item.node() is not None:
+                            if not item.node() in to_del_tasks:
+                                to_del_tasks[item.node()] = []
+                            to_del_tasks[item.node()].append(item)
+                        continue
+                    existing_task_ids[item.get_id()] = item
+        _perf_item_classify = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
-        for node, tasks in to_del_tasks.items():
-            node.remove_tasks(tasks)
-        for item in to_del:
-            self.removeItem(item)
+        with performance_measurer() as pm:
+            for node, tasks in to_del_tasks.items():
+                node.remove_tasks(tasks)
+        _perf_remove_tasks = pm.elapsed()
+        _perf_total += pm.elapsed()
+        with performance_measurer() as pm:
+            for item in to_del:
+                self.removeItem(item)
+        _perf_remove_items = pm.elapsed()
+        _perf_total += pm.elapsed()
         # removing items might cascade things, like removing node will remove connections to that node
         # so now we need to recheck existing items validity
         # though not consistent scene states should not come in uidata at all
-        for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
-            for item_id, item in tuple(existings.items()):
-                if item.scene() != self:
-                    del existings[item_id]
+        with performance_measurer() as pm:
+            for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
+                for item_id, item in tuple(existings.items()):
+                    if item.scene() != self:
+                        del existings[item_id]
+        _perf_revalidate = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         nodes_to_layout = []
-        for id, newdata in uidata.nodes().items():
-            if id in existing_node_ids:
-                existing_node_ids[id].set_name(newdata['name'])
-                continue
-            new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
-            try:
-                new_node.setPos(*self.node_position(id))
-            except ValueError:
-                nodes_to_layout.append(new_node)
-            existing_node_ids[id] = new_node
-            self.addItem(new_node)
+        with performance_measurer() as pm:
+            for id, newdata in uidata.nodes().items():
+                if id in existing_node_ids:
+                    existing_node_ids[id].set_name(newdata['name'])
+                    continue
+                new_node = Node(id, newdata['type'], newdata['name'] or f'node #{id}')
+                try:
+                    new_node.setPos(*self.node_position(id))
+                except ValueError:
+                    nodes_to_layout.append(new_node)
+                existing_node_ids[id] = new_node
+                self.addItem(new_node)
+        _perf_create_nodes = pm.elapsed()
+        _perf_total += pm.elapsed()
 
-        for id, newdata in uidata.connections().items():
-            if id in existing_conn_ids:
-                # ensure connections
-                innode, inname = existing_conn_ids[id].input()
-                outnode, outname = existing_conn_ids[id].output()
-                if innode.get_id() != newdata['node_id_in'] or inname != newdata['in_name']:
-                    existing_conn_ids[id].set_input(existing_node_ids[newdata['node_id_in']], newdata['in_name'])
-                    existing_conn_ids[id].update()
-                if outnode.get_id() != newdata['node_id_out'] or outname != newdata['out_name']:
-                    existing_conn_ids[id].set_output(existing_node_ids[newdata['node_id_out']], newdata['out_name'])
-                    existing_conn_ids[id].update()
-                continue
-            new_conn = NodeConnection(id, existing_node_ids[newdata['node_id_out']],
-                                      existing_node_ids[newdata['node_id_in']],
-                                      newdata['out_name'], newdata['in_name'])
-            existing_conn_ids[id] = new_conn
-            self.addItem(new_conn)
+        with performance_measurer() as pm:
+            for id, newdata in uidata.connections().items():
+                if id in existing_conn_ids:
+                    # ensure connections
+                    innode, inname = existing_conn_ids[id].input()
+                    outnode, outname = existing_conn_ids[id].output()
+                    if innode.get_id() != newdata['node_id_in'] or inname != newdata['in_name']:
+                        existing_conn_ids[id].set_input(existing_node_ids[newdata['node_id_in']], newdata['in_name'])
+                        existing_conn_ids[id].update()
+                    if outnode.get_id() != newdata['node_id_out'] or outname != newdata['out_name']:
+                        existing_conn_ids[id].set_output(existing_node_ids[newdata['node_id_out']], newdata['out_name'])
+                        existing_conn_ids[id].update()
+                    continue
+                new_conn = NodeConnection(id, existing_node_ids[newdata['node_id_out']],
+                                          existing_node_ids[newdata['node_id_in']],
+                                          newdata['out_name'], newdata['in_name'])
+                existing_conn_ids[id] = new_conn
+                self.addItem(new_conn)
+        _perf_create_connections = pm.elapsed()
+        _perf_total += pm.elapsed()
 
-        for id, newdata in uidata.tasks().items():
-            if id not in existing_task_ids:
-                new_task = Task(id, newdata['name'] or '<noname>', newdata['groups'])
-                existing_task_ids[id] = new_task
-                if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
-                    origin_task = existing_task_ids[newdata['origin_task_id']]
-                    new_task.setPos(origin_task.scenePos())
-                elif newdata['parent_id'] is not None and newdata['parent_id'] in existing_task_ids:
-                    origin_task = existing_task_ids[newdata['parent_id']]
-                    new_task.setPos(origin_task.scenePos())
-                self.addItem(new_task)
-            task = existing_task_ids[id]
-            task.set_name(newdata['name'])
-            task.set_groups(set(newdata['groups']))
-            #print(f'setting {task.get_id()} to {newdata["node_id"]}')
-            existing_node_ids[newdata['node_id']].add_task(task)
-            task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
-            task.set_state_details(newdata['state_details'])  # TODO: maybe instead of 3 calls do it with one, so task parses it's own raw data?
-            task.set_raw_data(newdata)
-            if newdata['progress'] is not None:
-                task.set_progress(newdata['progress'])
-            task.set_groups(newdata['groups'])
-            # new_task_groups.update(task.groups())
+        with performance_measurer() as pm:
+            for id, newdata in uidata.tasks().items():
+                if id not in existing_task_ids:
+                    new_task = Task(id, newdata['name'] or '<noname>', newdata['groups'])
+                    existing_task_ids[id] = new_task
+                    if newdata['origin_task_id'] is not None and newdata['origin_task_id'] in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
+                        origin_task = existing_task_ids[newdata['origin_task_id']]
+                        new_task.setPos(origin_task.scenePos())
+                    elif newdata['parent_id'] is not None and newdata['parent_id'] in existing_task_ids:
+                        origin_task = existing_task_ids[newdata['parent_id']]
+                        new_task.setPos(origin_task.scenePos())
+                    self.addItem(new_task)
+                task = existing_task_ids[id]
+                task.set_name(newdata['name'])
+                task.set_groups(set(newdata['groups']))
+                #print(f'setting {task.get_id()} to {newdata["node_id"]}')
+                existing_node_ids[newdata['node_id']].add_task(task)
+                task.set_state(TaskState(newdata['state']), bool(newdata['paused']))
+                task.set_state_details(newdata['state_details'])  # TODO: maybe instead of 3 calls do it with one, so task parses it's own raw data?
+                task.set_raw_data(newdata)
+                if newdata['progress'] is not None:
+                    task.set_progress(newdata['progress'])
+                task.set_groups(newdata['groups'])
+                # new_task_groups.update(task.groups())
+        _perf_create_tasks = pm.elapsed()
+        _perf_total += pm.elapsed()
 
         # now layout nodes that need it
-        if nodes_to_layout:
-            self.layout_nodes(nodes_to_layout)
+        with performance_measurer() as pm:
+            if nodes_to_layout:
+                self.layout_nodes(nodes_to_layout)
+        _perf_layout = pm.elapsed()
+        _perf_total += pm.elapsed()
 
-        if self.__all_task_groups != uidata.task_groups():
-            self.__all_task_groups = uidata.task_groups()
-            self.task_groups_updated.emit(uidata.task_groups())
+        with performance_measurer() as pm:
+            if self.__all_task_groups != uidata.task_groups():
+                self.__all_task_groups = uidata.task_groups()
+                self.task_groups_updated.emit(uidata.task_groups())
+        _perf_task_groups_update = pm.elapsed()
+        _perf_total += pm.elapsed()
+
+        if _perf_total > 0.04:  # arbitrary threshold ~ 1/25 of a sec
+            logger.debug(f'update performed:\n'
+                         f'{_perf_item_classify:.04f}:\tclassify\n'
+                         f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
+                         f'{_perf_remove_items:.04f}:\tremove items\n'
+                         f'{_perf_revalidate:.04f}:\trevalidate\n'
+                         f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
+                         f'{_perf_create_connections:.04f}:\tcreate connections\n'
+                         f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
+                         f'{_perf_layout:.04f}:\tlayout\n'
+                         f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object)
     def log_fetched(self, task_id: int, log: dict):
@@ -579,12 +638,14 @@ class QGraphicsImguiScene(QGraphicsScene):
         node.update_nodeui(nodeui)
 
     @Slot(object, object, object)
-    def _task_attribs_fetched(self, task_id: int, attribs: dict, data: Optional["LongOperationData"] = None):
+    def _task_attribs_fetched(self, task_id: int, all_attribs: Tuple[dict, Optional[EnvironmentResolverArguments]], data: Optional["LongOperationData"] = None):
         task = self.get_task(task_id)
         if task is None:
             logger.warning('attribs fetched, but task not found!')
             return
+        attribs, env_attribs = all_attribs
         task.update_attributes(attribs)
+        task.set_environment_attributes(env_attribs)
         if data is not None:
             data.data = attribs
             self.process_operation(data)
@@ -742,7 +803,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 for param_name, param_data in parm_pairs:
                     self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
                     _, _, has_param = yield
-                    if not has_param:
+                    if not has_param:  # ffs, i could leave some comments for myself... this seem to be dealing with multiparms. if parm instance is not there yet - wait with it
                         if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
                             parm_pairs.append((param_name, param_data))
                             cyclestart = param_name
@@ -1009,14 +1070,29 @@ class Shortcutable:
     def __init__(self, config_name):
         assert isinstance(self, QObject)
         self.__shortcuts: Dict[str, QShortcut] = {}
+        self.__shortcut_contexts: Dict[str, Set[str]] = {}
         config = get_config(config_name)
         defaults = self.default_shortcuts()
+        self.__context_name = 'main'
+
         for action, meth in self.shortcutable_methods().items():
             shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
             if shortcut is None:
                 continue
             self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
+            self.__shortcut_contexts[action] = {'main'}  # TODO: make a way to define shortcut context per shortcut or per action, dunno
             self.__shortcuts[action].activated.connect(meth)
+
+    def change_shortcut_context(self, new_context_name: str) -> None:
+        self.disable_shortcuts()
+        self.__context_name = new_context_name
+        self.enable_shortcuts()
+
+    def reset_shortcut_context(self) -> None:
+        return self.change_shortcut_context('main')
+
+    def current_shortcut_context(self) -> str:
+        return self.__context_name
 
     def shortcuts(self):
         return MappingProxyType(self.__shortcuts)
@@ -1028,12 +1104,24 @@ class Shortcutable:
         return {}
 
     def disable_shortcuts(self):
-        for shortcut in self.__shortcuts.values():
-            shortcut.setEnabled(False)
+        """
+        disable shortcuts for current context
+
+        :return:
+        """
+        for action, shortcut in self.__shortcuts.items():
+            if self.__context_name in self.__shortcut_contexts.get(action, {}):
+                shortcut.setEnabled(False)
 
     def enable_shortcuts(self):
-        for shortcut in self.__shortcuts.values():
-            shortcut.setEnabled(True)
+        """
+        enable shortcuts for current context
+
+        :return:
+        """
+        for action, shortcut in self.__shortcuts.items():
+            if self.__context_name in self.__shortcut_contexts.get(action, {}):
+                shortcut.setEnabled(True)
 
 
 class NodeEditor(QGraphicsView, Shortcutable):
@@ -1363,6 +1451,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def _popup_create_task_callback(self, node_id: int, wgt: CreateTaskDialog):
         new_task = NewTask(wgt.get_task_name(), node_id, task_attributes=wgt.get_task_attributes())
         new_task.add_extra_group_names(wgt.get_task_groups())
+        res_name, res_args = wgt.get_task_environment_resolver_and_arguments()
+        new_task.set_environment_resolver(res_name, res_args)
         self.__scene.request_add_task(new_task)
 
     def _popup_create_task(self, node: Node):
@@ -1388,13 +1478,31 @@ class NodeEditor(QGraphicsView, Shortcutable):
         wgt.show()
 
     def _popup_modify_task_callback(self, task_id, wgt: CreateTaskDialog):
-        name, groups, changes, deletes = wgt.get_task_changes()
+        name, groups, changes, deletes, resolver_name, res_changed, res_deletes = wgt.get_task_changes()
         if len(changes) > 0 or len(deletes) > 0:
             self.__scene.request_update_task_attributes(task_id, changes, deletes)
         if name is not None:
             self.__scene.request_rename_task(task_id, name)
         if groups is not None:
             self.__scene.request_set_task_groups(task_id, set(groups))
+
+        if resolver_name is not None or res_changed or res_deletes:
+            if resolver_name == '':
+                self.__scene.request_unset_environment_resolver_arguments(task_id)
+            else:
+                task = self.__scene.get_task(task_id)
+                env_args = task.environment_attributes() or EnvironmentResolverArguments()
+                args = dict(env_args.arguments())
+                if res_changed:
+                    args.update(res_changed)
+                for name in res_deletes:
+                    del args[name]
+                env_args = EnvironmentResolverArguments(resolver_name or env_args.name(), args)
+                self.__scene.request_set_environment_resolver_arguments(task_id, env_args)
+
+        # TODO: this works only because connection worker CURRENTLY executes requests sequentially
+        #  so first request to update task goes through, then request to update attributes.
+        #  if connection worker is improoved to be multithreaded - this has to be enforced with smth like longops
         self.__scene.request_attributes(task_id)  # request updated task from scheduler
 
     def _popup_save_settings_dialog(self, node: Node):
@@ -1469,6 +1577,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def _get_clipboard(self) -> str:
         return QApplication.clipboard().text()
 
+    @timeit(0.05)
+    def drawItems(self, *args, **kwargs):
+        return super(NodeEditor, self).drawItems(*args, **kwargs)
+
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         painter.beginNativePainting()
         if not self.__imgui_init:
@@ -1514,13 +1626,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
             self.__menu_popup_selection_name = ()
             self.__menu_popup_arrow_down = False
 
+            self.change_shortcut_context('create_node')
+
         if imgui.begin_popup('create node'):
             changed, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
             if not imgui.is_item_active() and not imgui.is_mouse_down():
                 # if text input is always focused - selectable items do not work
                 imgui.set_keyboard_focus_here(-1)
             if changed:
+                # reset selected item if filter line changed
                 self.__menu_popup_selection_id = 0
+                self.__menu_popup_selection_name = ()
             item_number = 0
             max_items = 32
             for (entity_type, entity_type_label, package), (type_name, type_meta) in chain(zip(repeat(('node', None, None)), self.__node_types.items()),
@@ -1539,7 +1655,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
                     if selected:
                         self.__menu_popup_selection_id = item_number
-                        self.__menu_popup_selection_name = (package, type_name, entity_type)
+                        self.__menu_popup_selection_name = (package, type_name, label, entity_type)
                     item_number += 1
                     if item_number > max_items:
                         break
@@ -1548,15 +1664,16 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if imguio.keys_down[imgui.KEY_DOWN_ARROW]:
                 if not self.__menu_popup_arrow_down:
                     self.__menu_popup_selection_id += 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % item_number
+                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                     self.__menu_popup_arrow_down = True
             elif imguio.keys_down[imgui.KEY_UP_ARROW]:
                 if not self.__menu_popup_arrow_down:
                     self.__menu_popup_selection_id -= 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % item_number
+                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                     self.__menu_popup_arrow_down = True
             if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
                 imgui.close_current_popup()
+                self.reset_shortcut_context()
                 # for type_name, type_meta in self.__node_types.items():
                 #     if self.__node_type_input in type_name \
                 #             or self.__node_type_input in type_meta.tags \
@@ -1566,9 +1683,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 # else:
                 #     self.__node_type_input = ''
                 if self.__menu_popup_selection_name:
-                    package, entity_name, entity_type = self.__menu_popup_selection_name
+                    package, entity_name, label, entity_type = self.__menu_popup_selection_name
                     if entity_type == 'node':
-                        self.__scene.request_create_node(entity_name, f'{entity_name} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                        self.__scene.request_create_node(entity_name, f'{label} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
                     elif entity_type == 'vpreset':
                         self.__scene.nodes_from_snippet(self.__viewer_presets[entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
                     elif entity_type == 'spreset':
@@ -1581,6 +1698,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
             elif imguio.keys_down[imgui.KEY_ESCAPE]:
                 imgui.close_current_popup()
+                self.reset_shortcut_context()
                 self.__node_type_input = ''
                 self.__menu_popup_selection_id = 0
             imgui.end_popup()

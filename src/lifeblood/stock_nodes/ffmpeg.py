@@ -62,18 +62,21 @@ class Ffmpeg(BaseNode):
         os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
         if isinstance(sequence[0], str):  # we have sequence of frames
-            filterline = None
+            filterlines = []
+            filterlines.append(f"color=c='Black':r={fps}[null];"
+                               f'[null][0]scale2ref=w=iw:h=ih[prebase][sink];[sink]nullsink;[prebase]setsar=1/1[base0];'
+                               f'[base0][0]overlay=shortest=1')
+
             if context.param_value('docc'):
-                gam = 1.0 / context.param_value("cc gamma")
-                filterline = f'lut=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})'  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
+                gam = context.param_value("cc gamma")
+                filterlines.append(f'lutrgb=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})')  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
             args = [binpath, '-f', 'concat', '-safe', '0', '-r', fps, '-i', ':/framelist.txt']
-            if filterline:
-                args += ['-filter:v', filterline]
+            args += ['-filter_complex', ','.join(filterlines)]  # , here - cuz we just chain those guys together. ";" is for separating chains, not filters in single chain as it is here
             args += [*outopts, '-y', outpath]
             job = InvocationJob(args)
             framelist = '\n'.join(f'file \'{seqitem}\'' for seqitem in sequence)  # file in ffmpeg concat format
             job.set_extra_file('framelist.txt', framelist)
-        elif isinstance(sequence[0], list):
+        elif isinstance(sequence[0], list):  # WTF is this? :) i forgot... but #TODO: black base for image needed in case above too
             # for now logic is this:
             # calc dims
             # pick first sequence, use as size ref with dims
@@ -97,7 +100,7 @@ class Ffmpeg(BaseNode):
                     break
             if context.param_value('docc'):
                 gam = context.param_value("cc gamma")
-                filterlines.append(f'[base{input}]lut=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})')  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
+                filterlines.append(f'[base{input}]lutrgb=r=gammaval({gam}):g=gammaval({gam}):b=gammaval({gam})')  # this does NOT work for float pixels tho. seems that nothing in FFMPEG does
             else:
                 filterlines.append(f'[base{input}]null')
             filter += ';'.join(filterlines)

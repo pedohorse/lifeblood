@@ -109,6 +109,9 @@ class NodeSnippetData:
     def tags(self) -> Set[str]:
         return self.__tags
 
+    def add_tag(self, tag: str):
+        self.__tags.add(tag)
+
     def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], label: Optional[str] = None, tags: Optional[Iterable[str]] = None):
         self.__nodes_data = list(nodes_data)
         self.__connections_data = list(connections_data)

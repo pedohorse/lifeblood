@@ -9,3 +9,11 @@ class SchedulerConfigurationError(ConfigurationError):
 
 class NodeNotReadyToProcess(Exception):
     pass
+
+
+class NotEnoughResources(RuntimeError):
+    pass
+
+
+class ProcessInitializationError(RuntimeError):
+    pass

@@ -8,6 +8,6 @@ API Reference
     :maxdepth: 2
     :caption: Contents
 
-    scheduler_api
+    scheduler/scheduler_api
     worker_api
-    viewer_api
+    viewer/viewer_api

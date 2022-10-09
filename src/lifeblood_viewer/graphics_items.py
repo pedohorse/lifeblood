@@ -6,10 +6,11 @@ from datetime import timedelta
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
-from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup
+from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 from lifeblood.enums import NodeParameterType
 
@@ -121,6 +122,8 @@ class Node(NetworkItemWithUI):
         self.__ui_widget: Optional[nodeeditor.NodeEditor] = None
         self.__ui_grabbed_conn = None
 
+        self.__ui_selected_tab = 0
+
         # prepare default drawing tools
         self.__borderpen= QPen(QColor(96, 96, 96, 255))
         self.__borderpen_selected = QPen(QColor(144, 144, 144, 255))
@@ -182,6 +185,10 @@ class Node(NetworkItemWithUI):
         self.reanalyze_nodeui()
 
     def reanalyze_nodeui(self):
+        self.prepareGeometryChange()  # not calling this seem to be able to break scene's internal index info on our connections
+        # bug that appears - on first scene load deleting a node with more than 1 input/output leads to crash
+        # on open nodes have 1 output, then they receive interface update and this func is called, and here's where bug may happen
+
         Node._node_inputs_outputs_cached[self.__node_type] = (list(self.__nodeui.inputs_names()), list(self.__nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
         self.__header_brush = QBrush(QColor(*(x * 255 for x in self.__nodeui.color_scheme().main_color()), 192))
@@ -318,6 +325,7 @@ class Node(NetworkItemWithUI):
         painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
         painter.setPen(self.__typename_pen)
         painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.__node_type)
+        painter.drawText(headershape.boundingRect(), Qt.AlignLeft | Qt.AlignBottom, f'{len(self.__tasks)}')
 
     def get_input_position(self, name: str = 'main') -> QPointF:
         if self.__inputs is None:
@@ -356,6 +364,7 @@ class Node(NetworkItemWithUI):
         if task in self.__tasks:
             return
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
+        self.update()  # cuz node displays task number - we should redraw
         pos_id = len(self.__tasks)
         if task.node() is None:
             task.set_node(self, *self.get_task_pos(task, pos_id))
@@ -386,6 +395,7 @@ class Node(NetworkItemWithUI):
         self.__tasks = self.__tasks[:-off]
         for x in tasks_to_remove:
             assert x not in self.__tasks
+        self.update()  # cuz node displays task number - we should redraw
 
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
@@ -397,6 +407,7 @@ class Node(NetworkItemWithUI):
             self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks = self.__tasks[:-1]
         assert task_to_remove not in self.__tasks
+        self.update()  # cuz node displays task number - we should redraw
 
     def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
@@ -547,6 +558,8 @@ class Node(NetworkItemWithUI):
                 # same here.
                 self.scene().send_node_parameter_expression_change(self.get_id(), item)
 
+        elif isinstance(item, Separator):
+            imgui.separator()
         elif isinstance(item, OneLineParametersLayout):
             first_time = True
             for child in item.items(recursive=False):
@@ -564,7 +577,9 @@ class Node(NetworkItemWithUI):
             if expanded:
                 for child in item.items(recursive=False):
                     h, w = item.relative_size_for_child(child)
+                    imgui.indent(5)
                     self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
+                    imgui.unindent(5)
                 imgui.separator()
         elif isinstance(item, ParametersLayoutBase):
             for child in item.items(recursive=False):
@@ -579,10 +594,19 @@ class Node(NetworkItemWithUI):
     # main dude
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.__node_type}", name {self.__name}')
-        if imgui.collapsing_header(f'description##{self.__node_type}', None)[0]:
+
+        if imgui.selectable(f'parameters##{self.__name}', self.__ui_selected_tab == 0, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+            self.__ui_selected_tab = 0
+        imgui.same_line()
+        if imgui.selectable(f'description##{self.__name}', self.__ui_selected_tab == 1, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+            self.__ui_selected_tab = 1
+        imgui.separator()
+
+        if self.__ui_selected_tab == 0:
+            if self.__nodeui is not None:
+                self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
+        elif self.__ui_selected_tab == 1:
             imgui.text(self.scene().node_types()[self.__node_type].description if self.__node_type in self.scene().node_types() else 'error')
-        if self.__nodeui is not None:
-            self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
 
     def add_connection(self, new_connection: "NodeConnection"):
         self.__connections.add(new_connection)
@@ -607,7 +631,7 @@ class Node(NetworkItemWithUI):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value:   # item was just selected
                 self.scene().request_node_ui(self.get_id())
-        elif change == QGraphicsItem.ItemSceneChange:
+        elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
             for connection in conns:
                 if self.scene() is not None and value != self.scene():
@@ -1007,6 +1031,7 @@ class Task(NetworkItemWithUI):
         self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
+        self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
         self.__requested_invocs_while_selected = set()
 
         self.__size = 16
@@ -1183,9 +1208,6 @@ class Task(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
-    def set_groups(self, groups: Iterable[str]):
-        self.__groups = set(groups)
-
     def update_log(self, alllog: Dict[int, Dict[int, dict]]):
         """
         This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
@@ -1214,6 +1236,13 @@ class Task(NetworkItemWithUI):
         logger.debug('attrs updated with %s', attributes)
         self.__ui_attributes = attributes
         self.update_ui()
+
+    def set_environment_attributes(self, env_attrs: Optional[EnvironmentResolverArguments]):
+        self.__ui_env_res_attributes = env_attrs
+        self.update_ui()
+
+    def environment_attributes(self) -> Optional[EnvironmentResolverArguments]:
+        return self.__ui_env_res_attributes
 
     def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
@@ -1247,14 +1276,15 @@ class Task(NetworkItemWithUI):
         if animgroup is None:
             animgroup = QSequentialAnimationGroup(self.scene())
             animgroup.finished.connect(self._clear_animation_group)
-        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 0.5), parent=animgroup)
+        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 1.0), parent=animgroup)
         if self.__animation_group is None:
             self.setParentItem(None)
             self.__animation_group = animgroup
 
         self.__final_pos = pos
         self.__final_layer = layer
-        self.__animation_group.addAnimation(new_animation)
+        # turns out i do NOT need to add animation to group IF animgroup was passed as parent to animation - it's added automatically
+        # self.__animation_group.addAnimation(new_animation)
         if self.__animation_group.state() != QAbstractAnimation.Running:
             self.__animation_group.start()
         if self.__node and self.__node != node:
@@ -1386,6 +1416,22 @@ class Task(NetworkItemWithUI):
         else:
             super(Task, self).mouseReleaseEvent(event)
 
+    @staticmethod
+    def _draw_dict_table(attributes: dict, table_name: str):
+        imgui.columns(2, table_name)
+        imgui.separator()
+        imgui.text('name')
+        imgui.next_column()
+        imgui.text('value')
+        imgui.next_column()
+        imgui.separator()
+        for key, val in attributes.items():
+            imgui.text(key)
+            imgui.next_column()
+            imgui.text(repr(val))
+            imgui.next_column()
+        imgui.columns(1)
+
     #
     # interface
     def draw_imgui_elements(self, drawing_widget):
@@ -1395,36 +1441,38 @@ class Task(NetworkItemWithUI):
         imgui.text(f'parent id: {self.__raw_data.get("parent_id", None)}')
         imgui.text(f'children count: {self.__raw_data.get("children_count", None)}')
         imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
+        imgui.text(f'invocation attempts: {self.__raw_data.get("work_data_invocation_attempt", 0)}')
 
         # first draw attributes
-        if self.__ui_attributes.items():
-            imgui.columns(2, 'node_attributes')
-            imgui.separator()
-            imgui.text('name')
-            imgui.next_column()
-            imgui.text('value')
-            imgui.next_column()
-            imgui.separator()
-            for key, val in self.__ui_attributes.items():
-                imgui.text(key)
-                imgui.next_column()
-                imgui.text(repr(val))
-                imgui.next_column()
-            imgui.columns(1)
+        if self.__ui_attributes:
+            self._draw_dict_table(self.__ui_attributes, 'node_task_attributes')
+
+        if self.__ui_env_res_attributes:
+            tab_expanded, _ = imgui.collapsing_header(f'environment resolver attributes##collapsing_node_task_environment_resolver_attributes')
+            if tab_expanded:
+                imgui.text(f'environment resolver: "{self.__ui_env_res_attributes.name()}"')
+                if self.__ui_env_res_attributes.arguments():
+                    self._draw_dict_table(self.__ui_env_res_attributes.arguments(), 'node_task_environment_resolver_attributes')
 
         # now draw log
         if self.__log is None:
             return
+        imgui.text('Logs:')
         for node_id, invocs in self.__log.items():
-            node_expanded, _ = imgui.collapsing_header(f'node {node_id}')
+            node: Node = self.scene().get_node(node_id)
+            if node is not None:
+                node_name: str = node.node_name()
+            node_expanded, _ = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
             if not node_expanded:  # or invocs is None:
                 continue
             for invoc_id, invoc in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
+                imgui.indent(10)
                 invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
                                                             (f', worker {invoc["worker_id"]}' if invoc.get('worker_id') is not None else '') +
                                                             (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else ''))
                 if not invoc_expanded:
+                    imgui.unindent(10)
                     continue
                 if invoc_id not in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.add(invoc_id)
@@ -1447,6 +1495,7 @@ class Task(NetworkItemWithUI):
                             logger.debug('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
                                 self.__requested_invocs_while_selected.remove(invoc_id)
+                imgui.unindent(10)
 
 
 class SnapPoint:

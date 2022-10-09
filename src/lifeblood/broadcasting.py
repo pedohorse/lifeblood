@@ -6,6 +6,9 @@ import struct
 
 from . import logging
 from .nethelpers import get_localhost
+from .defaults import broadcast_port as default_broadcast_port
+
+from . import os_based_cheats
 
 from typing import Tuple, Union, Optional, Callable, Coroutine, Any
 
@@ -16,14 +19,14 @@ Address = Tuple[str, int]
 _magic = b'=\xe2\x88\x88\xe2\xad\x95\xe2\x88\x8b='
 
 
-async def create_broadcaster(identifier: str, information, *, broad_port=9000, ip='0.0.0.0', broadcasts_count: Optional[int] = None, broadcast_interval: int = 10):
+async def create_broadcaster(identifier: str, information, *, broad_port: int = default_broadcast_port(), ip='0.0.0.0', broadcasts_count: Optional[int] = None, broadcast_interval: int = 10):
     loop = asyncio.get_event_loop()
     return await loop.create_datagram_endpoint(
         lambda: BroadcastProtocol(identifier, information, (ip, broad_port), broadcasts_count, broadcast_interval, loop=loop),
         family=socket.AF_INET, reuse_port=True, allow_broadcast=True)
 
 
-async def await_broadcast(identifier: str, broad_port: int = 9000, listen_address: str = '0.0.0.0') -> str:
+async def await_broadcast(identifier: str, broad_port: int = default_broadcast_port(), listen_address: str = '0.0.0.0') -> str:
     loop = asyncio.get_event_loop()
     protocol: BroadcastReceiveProtocol
     _, protocol = await loop.create_datagram_endpoint(
@@ -38,7 +41,7 @@ async def await_broadcast(identifier: str, broad_port: int = 9000, listen_addres
 
 
 class BroadcastListener:  # TODO: This was never tested
-    def __init__(self, identifier: str, callback: Callable[[str], Coroutine], broad_port: int = 9000, listen_address: str = '0.0.0.0'):
+    def __init__(self, identifier: str, callback: Callable[[str], Coroutine], broad_port: int = default_broadcast_port(), listen_address: str = '0.0.0.0'):
         self.__identifier = identifier
         self.__callback = callback
         self.__addr = (listen_address, broad_port)

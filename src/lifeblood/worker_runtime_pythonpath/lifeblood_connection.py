@@ -4,6 +4,7 @@ this module should be kept minimal, with only standard modules and maximum compa
 """
 from __future__ import print_function
 import os
+import errno
 import pickle
 import threading
 import socket
@@ -96,6 +97,10 @@ class TaskSpawn:
         return pickle.dumps(self)
 
 
+_threads_to_wait = []
+_threads_to_wait_lock = threading.Lock()
+
+
 def create_task(name, attributes, blocking=False):
     invocation_id = int(os.environ['LIFEBLOOD_RUNTIME_IID'])
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
@@ -113,10 +118,14 @@ def create_task(name, attributes, blocking=False):
         res = sock.recv(4)  # 4 should be small enough to ensure receiving in one call
         # ignore result?
 
+        if not blocking:
+            _clear_me_from_threads_to_wait()
+
     if blocking:
         _send()
     else:
         thread = threading.Thread(target=_send)
+        _threads_to_wait.append(thread)
         thread.start()  # and not care
 
 
@@ -133,10 +142,85 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         sock.sendall(updata)
         sock.recv(1)  # recv confirmation
 
+        if not blocking:
+            _clear_me_from_threads_to_wait()
+
     task_id = int(os.environ['LIFEBLOOD_RUNTIME_TID'])
 
     if blocking:
         _send()
     else:
         thread = threading.Thread(target=_send)
+        with _threads_to_wait_lock:
+            _threads_to_wait.append(thread)
         thread.start()  # and not care
+
+
+def _clear_me_from_threads_to_wait():
+    with _threads_to_wait_lock:
+        me = threading.current_thread()
+        try:
+            _threads_to_wait.remove(me)
+        except ValueError:  # not in the list
+            pass
+
+
+def wait_for_all_async_operations():
+    """
+    The python program will not end until all non-daemon threads are done.
+    So skipping explicit wait for most of the operations is fine
+
+    But sometimes you might need to wait for all current async operations to finish
+    and for that you can use this function
+
+    :return:
+    """
+    global _threads_to_wait
+    with _threads_to_wait_lock:
+        for thread in _threads_to_wait:
+            thread.join()
+        _threads_to_wait.clear()
+
+
+def get_host_ip():
+    """
+    returns the ip address of the host running the task.
+    if host has multiple interfaces - the one that can connect to the scheduler will be chosen
+
+    :return:
+    """
+    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+    addr, sport = addrport.rsplit(':', 1)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((addr, 1))
+        myip = s.getsockname()[0]
+    except Exception:
+        myip = '127.0.0.1'
+    finally:
+        s.close()
+    return myip
+
+
+def get_free_tcp_port(ip, starting_at=20001):
+    """
+    returns the next openable port starting at starting_at on the given interface
+    NOTE: that port is not reserved, so by the time you try to open it again after this function
+    it may be already taken
+
+    :param ip:
+    :param starting_at:
+    :return:
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    for starting_at in range(starting_at, starting_at + 2000):  # big barely sane number of tries, but not infinite
+        try:
+            s.bind((ip, starting_at))
+            s.close()
+            break
+        except OSError as e:
+            if e.errno == errno.EADDRINUSE:
+                continue
+            raise
+    return starting_at

@@ -42,6 +42,8 @@ class GroupsModel(QAbstractItemModel):
             return 'creation time'
         elif section == 2:
             return 'prio'
+        elif section == 3:
+            return 'prog'
 
     def rowCount(self, parent: QModelIndex = None) -> int:
         if parent is None:
@@ -51,7 +53,7 @@ class GroupsModel(QAbstractItemModel):
         return 0
 
     def columnCount(self, parent: QModelIndex = None) -> int:
-        return 3
+        return 4
 
     def is_archived(self, index) -> bool:
         return self.__items[self.__items_order[index.row()]].get('state', 0) > 0
@@ -61,8 +63,19 @@ class GroupsModel(QAbstractItemModel):
             archived = self.is_archived(index)
             if archived:
                 return QColor.fromRgbF(0.5, 0.5, 0.5)
+            item = self.__items[self.__items_order[index.row()]]
+            done_count = item.get('tdone', 0)
+            prog_count = item.get('tprog', 0)
+            err_count = item.get('terr', 0)
+            total_count = item.get('tall', 0)
+            if done_count == total_count:
+                return QColor.fromRgbF(0.65, 1.0, 0.65)
+            elif err_count > 0:
+                return QColor.fromRgbF(1.0, 0.6, 0.6)
+            elif prog_count > 0:
+                return QColor.fromRgbF(1.0, 0.9, 0.65)
         if role != Qt.DisplayRole and role != self.SortRole:
-            return
+            return None
         if index.column() == 0:
             return self.__items_order[index.row()]
         elif index.column() == 1:  # creation time
@@ -72,6 +85,9 @@ class GroupsModel(QAbstractItemModel):
                 return self.__items[self.__items_order[index.row()]].get('ctime', -1)
         elif index.column() == 2:  # priority
             return self.__items[self.__items_order[index.row()]].get('priority', None)
+        elif index.column() == 3:  # completion progress
+            item = self.__items[self.__items_order[index.row()]]
+            return f"{item.get('tprog', 0)}:{item.get('terr', 0)}:{item.get('tdone', 0)}/{item.get('tall', 0)}"
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
         if parent is None:
@@ -92,8 +108,8 @@ class GroupsModel(QAbstractItemModel):
 
 class GroupsView(QTreeView):
     selection_changed = Signal(set)
-    group_pause_state_change_requested = Signal(str, bool)
-    task_group_archived_state_change_requested = Signal(str, TaskGroupArchivedState)
+    group_pause_state_change_requested = Signal(list, bool)
+    task_group_archived_state_change_requested = Signal(list, TaskGroupArchivedState)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -114,16 +130,19 @@ class GroupsView(QTreeView):
         if not index.isValid():
             return
 
-        group = index.siblingAtColumn(0).data(Qt.DisplayRole)
+        if len(self.selectedIndexes()) == 0:
+            groups = [index.siblingAtColumn(0).data(Qt.DisplayRole)]
+        else:
+            groups = list({x.siblingAtColumn(0).data(Qt.DisplayRole) for x in self.selectedIndexes()})
         event.accept()
         menu = QMenu(parent=self)
-        menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, True))
-        menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(group, False))
+        menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, True))
+        menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, False))
         menu.addSeparator()
         if model.sourceModel().is_archived(index):
-            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.NOT_ARCHIVED))
+            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.NOT_ARCHIVED))
         else:
-            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of group {group}') and self.task_group_archived_state_change_requested.emit(group, TaskGroupArchivedState.ARCHIVED))
+            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
     def setModel(self, model):
@@ -137,6 +156,13 @@ class GroupsView(QTreeView):
         super(GroupsView, self).setModel(self.__sorting_model)
         model.modelAboutToBeReset.connect(self._pre_model_reset)
         model.modelReset.connect(self._post_model_reset)
+
+        # some visual adjustment
+        header = self.header()
+        header.moveSection(3, 0)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        # header.setSectionResizeMode(3, QHeaderView.Fixed)
+        # header.resizeSection(3, 16)
 
     @Slot()
     def _pre_model_reset(self):
@@ -161,6 +187,7 @@ class LifebloodViewer(QMainWindow):
         super(LifebloodViewer, self).__init__(parent)
         # icon
         self.setWindowIcon(QIcon(str(pathlib.Path(__file__).parent/'icons'/'lifeblood.svg')))
+        self.setWindowTitle('Lifeblood Viewer')
 
         if db_path is None:
             db_path = paths.config_path('node_viewer.db', 'viewer')
@@ -202,6 +229,9 @@ class LifebloodViewer(QMainWindow):
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
         self.__group_list.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.__group_list.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.__group_list.header().setStretchLastSection(True)
 
         self.__worker_list = WorkerListWidget(self.__ui_connection_worker, self)

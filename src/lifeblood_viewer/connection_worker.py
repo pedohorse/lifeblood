@@ -16,6 +16,8 @@ from lifeblood.uidata import Parameter
 from lifeblood.net_classes import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.snippets import NodeSnippetData
+from lifeblood.defaults import ui_port
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
@@ -31,7 +33,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(UiData)
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
-    task_attribs_fetched = Signal(int, dict, object)
+    task_attribs_fetched = Signal(int, tuple, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     nodetypes_fetched = Signal(dict)
     nodepresets_fetched = Signal(dict)
@@ -140,7 +142,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 #sche_port = int(sche_port)
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
-            sche_port = config.get_option_noasync('viewer.scheduler_port', 7989)  # TODO: promote all defaults like this somewhere
+            sche_port = config.get_option_noasync('viewer.scheduler_port', ui_port())
         logger.debug(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
 
         while not self.interruption_requested():
@@ -266,12 +268,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', task_id))
             rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
             attribs = pickle.loads(recv_exactly(self.__conn, rcvsize))
+            rcvsize = struct.unpack('>Q', recv_exactly(self.__conn, 8))[0]
+            env_attrs = None
+            if rcvsize > 0:
+                env_attrs = EnvironmentResolverArguments.deserialize(recv_exactly(self.__conn, rcvsize))
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.task_attribs_fetched.emit(task_id, attribs, data)
+            self.task_attribs_fetched.emit(task_id, (attribs, env_attrs), data)
 
     @Slot(int)
     def get_task_invocation_job(self, task_id: int):
@@ -659,7 +665,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     # task control things
     @Slot()
-    def set_tasks_paused(self, task_ids_or_group: Union[List[int], str], paused: bool):
+    def set_tasks_paused(self, task_ids_or_group: Union[List[int], int, str], paused: bool):
         if len(task_ids_or_group) == 0:
             return
         if not self.ensure_connected():
@@ -672,6 +678,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__conn.sendall(struct.pack('>?', paused))
                 self._send_string(task_ids_or_group)
             else:
+                if isinstance(task_ids_or_group, int):
+                    task_ids_or_group = [task_ids_or_group]
                 numtasks = len(task_ids_or_group)
                 if numtasks == 0:
                     return
@@ -797,6 +805,20 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except Exception:
             logger.exception('problems in network operations')
 
+    @Slot(object)
+    def cancel_task_for_worker(self, worker_id: int):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        try:
+            self.__conn.sendall(b'workertaskcancel\n')
+            self.__conn.sendall(struct.pack('>Q', worker_id))
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
     @Slot()
     def add_task(self, new_task: NewTask):
         if not self.ensure_connected():
@@ -808,6 +830,50 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(struct.pack('>Q', len(data)))
             self.__conn.sendall(data)
             _ = recv_exactly(self.__conn, 4)  # reply that we don't care about for now
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problem in network operations')
+
+    @Slot()
+    def set_environment_resolver_arguments(self, task_id: int, env_args: Optional[EnvironmentResolverArguments]):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        try:
+            self.__conn.sendall(b'settaskenvresolverargs\n')
+            self.__conn.sendall(struct.pack('>Q', task_id))
+            if env_args is None:
+                self.__conn.sendall(struct.pack('>Q', 0))
+            else:
+                data = env_args.serialize()
+                self.__conn.sendall(struct.pack('>Q', len(data)))
+                self.__conn.sendall(data)
+            assert recv_exactly(self.__conn, 1) == b'\1'
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problem in network operations')
+
+    @Slot()
+    def unset_environment_resolver_arguments(self, task_id: int):
+        return self.set_environment_resolver_arguments(task_id, None)
+
+    # TODO: problem below will affect ALL 64 bit arguments, need to correct all other functions
+    @Slot(object, list)  # interestingly since int here is 64 bit - i have to mark signal as object, but then it doesn't connect unless i specify slot as object too.
+    def set_worker_groups(self, whwid: int, groups: List[str]):
+        logger.debug(f'set_worker_groups with {whwid}, {groups}')
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+
+        try:
+            self.__conn.sendall(b'setworkergroups\n')
+            self.__conn.sendall(struct.pack('>QQ', whwid, len(groups)))
+            for group in groups:
+                self._send_string(group)
+            assert recv_exactly(self.__conn, 1) == b'\1'
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:

@@ -53,5 +53,9 @@ def main(argv):
         return main(cmd_argv)
 
 
-if __name__ == '__main__':
+def console_entry_point():
     sys.exit(main(sys.argv[1:]))
+
+
+if __name__ == '__main__':
+    console_entry_point()

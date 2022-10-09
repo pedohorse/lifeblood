@@ -29,19 +29,29 @@ class RenameAttributes(BaseNode):
         super(RenameAttributes, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            with ui.parameters_on_same_line_block():
-                ui.add_parameter('oldname', 'from', NodeParameterType.STRING, 'from')
-                ui.add_parameter('newname', 'to', NodeParameterType.STRING, 'to')
+            with ui.multigroup_parameter_block('num'):
+                with ui.parameters_on_same_line_block():
+                    ui.add_parameter('oldname', '<from / to>', NodeParameterType.STRING, 'from')
+                    ui.add_parameter('newname', None, NodeParameterType.STRING, 'to')
 
     def process_task(self, context) -> ProcessingResult:
-        attr_oldname = context.param_value('oldname')
-        attrs = context.task_attributes()
-        if attr_oldname not in attrs:
-            return ProcessingResult()
-        attr_newname = context.param_value('newname')
         res = ProcessingResult()
-        res.set_attribute(attr_newname, attrs[attr_oldname])
-        res.remove_attribute(attr_oldname)
+        attrs = dict(context.task_attributes())
+        for i in range(context.param_value('num')):
+            attr_oldname = context.param_value(f'oldname_{i}')
+
+            if attr_oldname not in attrs:
+                continue
+
+            attr_newname = context.param_value(f'newname_{i}')
+            if attr_newname == attr_oldname:
+                continue
+
+            res.set_attribute(attr_newname, attrs[attr_oldname])
+            res.remove_attribute(attr_oldname)
+            attrs[attr_newname] = attrs[attr_oldname]
+            del attrs[attr_oldname]
+
         return res
 
     def postprocess_task(self, context) -> ProcessingResult:

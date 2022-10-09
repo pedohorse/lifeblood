@@ -88,5 +88,9 @@ def start_viewer(config_path=None):
         con.commit()
 
 
+def console_entry_point():
+    sys.exit(main(sys.argv[1:]))
+
+
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    console_entry_point()

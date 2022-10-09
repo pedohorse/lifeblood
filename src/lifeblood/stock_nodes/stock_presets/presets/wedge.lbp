@@ -1,0 +1,498 @@
+{
+    "nodes": [
+        {
+            "tmpid": 0,
+            "type": "wedge",
+            "name": "wedge attribute",
+            "parameters": {
+                "wedge count": {
+                    "name": "wedge count",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "wtype_0": {
+                    "name": "wtype_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attr_0": {
+                    "name": "attr_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": "task['wedge_attr']",
+                    "__dataclass__": "ParamData"
+                },
+                "from_0": {
+                    "name": "from_0",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['wedge_attr_from']",
+                    "__dataclass__": "ParamData"
+                },
+                "to_0": {
+                    "name": "to_0",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 9.0,
+                    "expr": "task['wedge_attr_to']",
+                    "__dataclass__": "ParamData"
+                },
+                "count_0": {
+                    "name": "count_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 10,
+                    "expr": "task['wedge_attr_count']",
+                    "__dataclass__": "ParamData"
+                },
+                "max_0": {
+                    "name": "max_0",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 9.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "inc_0": {
+                    "name": "inc_0",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                6272.590496330715,
+                2442.589338333786
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 1,
+            "type": "null",
+            "name": "IN WEDGE",
+            "parameters": {},
+            "pos": [
+                6272.590496330714,
+                2316.221283824751
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 2,
+            "type": "split_waiter",
+            "name": "gather framerange",
+            "parameters": {
+                "wait for all": {
+                    "name": "wait for all",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                6301.590496330717,
+                2845.309615702259
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 3,
+            "type": "hip_driver_renderer",
+            "name": "hip_driver_renderer Hykap copy",
+            "parameters": {
+                "priority adjustment": {
+                    "name": "priority adjustment",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost": {
+                    "name": "worker cpu cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1.0,
+                    "expr": "task['requirements']['cpu']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost preferred": {
+                    "name": "worker cpu cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cpu']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost": {
+                    "name": "worker mem cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements']['cmem']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost preferred": {
+                    "name": "worker mem cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cmem']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker groups": {
+                    "name": "worker groups",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker type": {
+                    "name": "worker type",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "hip path": {
+                    "name": "hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipfile']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask as different hip": {
+                    "name": "mask as different hip",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "mask hip path": {
+                    "name": "mask hip path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task.get('hipfile_orig', task['hipfile'])`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "driver path": {
+                    "name": "driver path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['hipdriver']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "ignore inputs": {
+                    "name": "ignore inputs",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to context": {
+                    "name": "attrs to context",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['wedge_attr']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "whole range": {
+                    "name": "whole range",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "skip if exists": {
+                    "name": "skip if exists",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "gen for skipped": {
+                    "name": "gen for skipped",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do override output": {
+                    "name": "do override output",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override output": {
+                    "name": "override output",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do override parmname": {
+                    "name": "do override parmname",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override parmname": {
+                    "name": "override parmname",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "sopoutput",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs": {
+                    "name": "attrs",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "*",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs to extract": {
+                    "name": "attrs to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "intrinsics to extract": {
+                    "name": "intrinsics to extract",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                6301.590496330715,
+                2707.1986279259145
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 4,
+            "type": "split_waiter",
+            "name": "gather wedges",
+            "parameters": {
+                "wait for all": {
+                    "name": "wait for all",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                6271.000000000001,
+                2968.894614005693
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 5,
+            "type": "null",
+            "name": "out wedge",
+            "parameters": {},
+            "pos": [
+                6272.2285110078565,
+                3097.622287917447
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 6,
+            "type": "framerange_splitter",
+            "name": "split framerange",
+            "parameters": {
+                "chunk size": {
+                    "name": "chunk size",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 10,
+                    "expr": "task.get('framechunk_size', 10)",
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                6300.409503669283,
+                2569.690384297741
+            ],
+            "__dataclass__": "NodeData"
+        }
+    ],
+    "connections": [
+        {
+            "tmpout": 3,
+            "out_name": "main",
+            "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 4,
+            "out_name": "main",
+            "tmpin": 5,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "main",
+            "tmpin": 6,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 2,
+            "out_name": "main",
+            "tmpin": 4,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 6,
+            "out_name": "main",
+            "tmpin": 3,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 1,
+            "out_name": "main",
+            "tmpin": 0,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        }
+    ],
+    "label": "wedge setup",
+    "tags": [],
+    "__NodeSnippetData__": "==3*E==",
+    "__format_version__": [
+        1,
+        0,
+        0
+    ]
+}

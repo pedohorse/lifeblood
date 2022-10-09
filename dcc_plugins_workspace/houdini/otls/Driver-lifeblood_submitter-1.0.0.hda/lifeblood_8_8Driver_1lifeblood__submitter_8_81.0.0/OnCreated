@@ -10,10 +10,3 @@ node.parm('env_arg_name_0').setExpression('"user"', language=hou.exprLanguage.Py
 node.parm('env_arg_val_0').setExpression('import getpass\nreturn getpass.getuser()', language=hou.exprLanguage.Python)
 node.parm('env_arg_name_1').setExpression('import sys\nreturn "package.houdini.py%d" % sys.version_info.major', language=hou.exprLanguage.Python)
 node.parm('env_arg_val_1').setExpression('"~=" + hou.applicationVersionString()', language=hou.exprLanguage.Python)
-
-# set scratch location
-scparm = node.parm('netscratchpath')
-if scparm.eval() == '':
-    import tempfile
-    import os
-    scparm.set(os.path.join(tempfile.gettempdir(), 'lifeblood'))

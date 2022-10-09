@@ -139,8 +139,10 @@ def _install_package(package_path, plugin_category):
             try:
                 with open(os.path.join(presets_path, filename), 'rb') as f:
                     snippet = NodeSnippetData.deserialize(f.read())
+                snippet.add_tag('preset')
             except Exception as e:
                 logger.error(f'failed to load snippet {filebasename}, error: {str(e)}')
+                continue
 
             if package_name not in presets:
                 presets[package_name] = {}

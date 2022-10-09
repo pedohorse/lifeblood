@@ -30,6 +30,20 @@ async def do(port, webport, killport):
         writer.close()
         close_event.set()
 
+    ip = lifeblood_connection.get_host_ip()
+    # find free ports
+    port = lifeblood_connection.get_free_tcp_port(ip, port)
+    webport = lifeblood_connection.get_free_tcp_port(ip, webport)
+    if webport == port:
+        webport = lifeblood_connection.get_free_tcp_port(ip, webport + 1)
+    killport = lifeblood_connection.get_free_tcp_port(ip, killport)
+    if killport == port:
+        killport = lifeblood_connection.get_free_tcp_port(ip, killport + 1)
+    if killport == webport:  # NOTE: port < webport, always, so we need 2 independent checks. worst case both conditions may be true
+        killport = lifeblood_connection.get_free_tcp_port(ip, killport + 1)
+
+    # at this point we have free ports, but by the time we start our servers - ports might get taken
+
     server = await asyncio.start_server(conn_cb, port=killport, family=socket.AF_INET)
     proc = await asyncio.create_subprocess_exec('hython', '-m', 'simtracker', '-v', str(port), str(webport))
 
@@ -42,18 +56,6 @@ async def do(port, webport, killport):
         return await proc.wait()
 
     await server.start_serving()
-    # now find a most appropriate socket address
-    ip = '127.0.0.1'
-
-    probe_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # doesn't even have to be reachable
-        probe_s.connect(('240.255.255.255', 1))
-        ip = probe_s.getsockname()[0]
-    except Exception:
-        ip = '127.0.0.1'
-    finally:
-        probe_s.close()
 
     attrs = json.loads(os.environ['LBATTRS_JSON'])
     attrs['simtracker_host'] = ip

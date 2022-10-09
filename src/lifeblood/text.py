@@ -8,7 +8,7 @@ from typing import Optional, List, Iterable
 def generate_name(word_length: int = 6, max_word_length: Optional[int] = None):
     word_length = max(1, word_length)
     if max_word_length is not None:
-        word_length = random.randint(word_length, max_word_length)
+        word_length = random.randint(word_length, max(word_length, max_word_length))
 
     blk1 = 'aeiouy'
     blk2 = 'bcdfghjklmnprstvw'
@@ -64,10 +64,14 @@ def filter_by_pattern(pattern: str, items: Iterable[str]) -> List[str]:
 
 
 def nice_memory_formatting(memory_bytes: int) -> str:
+    prefix = ''
+    if memory_bytes < 0:
+        prefix = '-'
+        memory_bytes *= -1
     suff = ('B', 'KB', 'MB', 'GB', 'TB', 'PB')
     next_suff = 'EB'
     for su in suff:
         if memory_bytes < 1100:
-            return f'{memory_bytes}{su}'
+            return f'{prefix}{memory_bytes}{su}'
         memory_bytes //= 1000
-    return f'{memory_bytes}{next_suff}'
+    return f'{prefix}{memory_bytes}{next_suff}'

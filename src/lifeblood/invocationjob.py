@@ -102,6 +102,10 @@ class InvocationEnvironment:
 class InvocationRequirements:
     """
     requirements a worker has to match in order to be able to pick this task
+
+    logic is that workers must fit into minimums, but up to pref (preferred) amount of resources will be actually taken
+    for example, you might want minimum of 1 CPU core, but would prefer to use 4
+    then a 1 core machine may pick up one task, but 16 core machine will pick just 4 tasks
     """
     def __init__(self, *, min_cpu_count: Optional[int] = None, min_memory_bytes: Optional[int] = None, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
         self.__groups = set(groups) if groups is not None else set()
@@ -110,10 +114,11 @@ class InvocationRequirements:
         self.__min_memory_bytes = min_memory_bytes or 0
         self.__min_gpu_count = 0
         self.__min_gpu_memory_bytes = 0
-        self.__max_cpu_count = None  # TODO: these are not yet implemented, but None should mean max==min
-        self.__max_memory_bytes = None
-        self.__max_gpu_count = None
-        self.__max_gpu_memory_bytes = None
+
+        self.__pref_cpu_count = None
+        self.__pref_memory_bytes = None
+        self.__pref_gpu_count = None
+        self.__pref_gpu_memory_bytes = None
 
     def groups(self):
         return tuple(self.__groups)
@@ -133,6 +138,12 @@ class InvocationRequirements:
     def set_min_memory_bytes(self, min_memory_bytes):
         self.__min_memory_bytes = min_memory_bytes
 
+    def set_preferred_cpu_count(self, pref_cpu_count):
+        self.__pref_cpu_count = pref_cpu_count
+
+    def set_preferred_memory_bytes(self, pref_memory_bytes):
+        self.__pref_memory_bytes = pref_memory_bytes
+
     def set_worker_type(self, worker_type: WorkerType):
         self.__worker_type = worker_type
 
@@ -141,38 +152,58 @@ class InvocationRequirements:
         if self.__min_cpu_count > 0:
             conds.append(f'("cpu_count" >= {self.__min_cpu_count - 1e-8 if isinstance(self.__min_cpu_count, float) else self.__min_cpu_count})')   # to ensure sql compare will work
         if self.__min_memory_bytes > 0:
-            conds.append(f'("mem_size" >= {self.__min_memory_bytes})')
+            conds.append(f'("cpu_mem" >= {self.__min_memory_bytes})')
         if len(self.__groups) > 0:
             esc = '\\'
 
             def _morph(s: str):
                 return re.sub(r'(?<!\\)\?', '_', re.sub(r'(?<!\\)\*', '%', s.replace('%', r'\%').replace('_', r'\_')))
-            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_id" == workers."id" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
+            conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_hwid" == workers."hwid" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
+
+    def to_dict(self, resources_only: bool = False) -> dict:
+        ret = {'cpu_count': self.__min_cpu_count,
+               'cpu_mem': self.__min_memory_bytes,
+               'gpu_count': self.__min_gpu_count,
+               'gpu_mem': self.__min_gpu_memory_bytes}
+        if self.__pref_cpu_count is not None:
+            ret['pref_cpu_count'] = self.__pref_cpu_count
+        if self.__pref_memory_bytes is not None:
+            ret['pref_cpu_mem'] = self.__pref_memory_bytes
+        if self.__pref_gpu_count is not None:
+            ret['pref_gpu_count'] = self.__pref_gpu_count
+        if self.__pref_gpu_memory_bytes is not None:
+            ret['pref_gpu_mem'] = self.__pref_gpu_memory_bytes
+
+        if resources_only:
+            return ret
+
+        ret['groups'] = self.groups()
+        return ret
 
     def to_min_worker_resources(self) -> WorkerResources:
         res = WorkerResources()
         res.cpu_count = self.__min_cpu_count
-        res.mem_size = self.__min_memory_bytes
+        res.cpu_mem = self.__min_memory_bytes
         res.gpu_count = self.__min_gpu_count
-        res.gmem_size = self.__min_gpu_memory_bytes
+        res.gpu_mem = self.__min_gpu_memory_bytes
         return res
 
     def __gt__(self, other):
         if not isinstance(other, WorkerResources):
             raise NotImplementedError()
         return self.__min_cpu_count > other.cpu_count and \
-               self.__min_memory_bytes > other.mem_size and \
+               self.__min_memory_bytes > other.cpu_mem and \
                self.__min_gpu_count > other.gpu_count and \
-               self.__min_gpu_memory_bytes > other.gmem_size
+               self.__min_gpu_memory_bytes > other.gpu_mem
 
     def __eq__(self, other):
         if not isinstance(other, WorkerResources):
             raise NotImplementedError()
         return self.__min_cpu_count == other.cpu_count and \
-               self.__min_memory_bytes == other.mem_size and \
+               self.__min_memory_bytes == other.cpu_mem and \
                self.__min_gpu_count == other.gpu_count and \
-               self.__min_gpu_memory_bytes == other.gmem_size
+               self.__min_gpu_memory_bytes == other.gpu_mem
 
 
 class InvocationJob:
@@ -206,7 +237,7 @@ class InvocationJob:
 
         self.__requirements = requirements or InvocationRequirements()
         self.__priority = 0.0
-        self.__envres_args = None # environment_wrapper_arguments
+        self.__envres_args = None  # environment_wrapper_arguments
 
         self.__exitcode = None
         self.__running_time = None
@@ -216,19 +247,19 @@ class InvocationJob:
         self.__attrs = {}
         self.__extra_files: Dict[str, Union[str, bytes]] = {}
 
-    def requirements(self):
+    def requirements(self) -> InvocationRequirements:
         return self.__requirements
 
     def set_requirements(self, requirements: InvocationRequirements):
         self.__requirements = requirements
 
-    def priority(self):
+    def priority(self) -> float:
         return self.__priority
 
     def set_priority(self, priority: float):
         self.__priority = priority
 
-    def environment_resolver_arguments(self):
+    def environment_resolver_arguments(self):  # type: () -> Optional[EnvironmentResolverArguments]
         return self.__envres_args
 
     def set_stdout_progress_regex(self, regex: Optional[str]):
@@ -344,7 +375,7 @@ class InvocationJob:
         self.__envres_args = args
 
     def __repr__(self):
-        return 'InvocationJob: %d, %s %s' % (self.__invocation_id, repr(self.__args), repr(self.__env))
+        return f'InvocationJob: {self.__invocation_id}, {repr(self.__args)} {repr(self.__env)}'
 
     @classmethod
     def deserialize(cls, data: bytes) -> "InvocationJob":

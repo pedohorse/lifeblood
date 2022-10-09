@@ -3,12 +3,13 @@ import pickle
 import json
 import asyncio
 from . import logging
-from .uidata import NodeUi
+from .uidata import NodeUi, ParameterLocked, ParameterReadonly
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from . import pluginloader
 from .net_classes import NodeTypeMetadata
 from .taskspawn import NewTask
 from .snippets import NodeSnippetDataPlaceholder
+from .environment_resolver import EnvironmentResolverArguments
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -82,10 +83,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_get_task_attribs():  # elif command == b'gettaskattribs':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            attribs = await self.__scheduler.get_task_attributes(task_id)
-            data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
-            writer.write(struct.pack('>Q', len(data)))
-            writer.write(data)
+            attribs, env_attribs = await self.__scheduler.get_task_attributes(task_id)
+
+            data_attirbs: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, attribs)
+            data_env: bytes = b''
+            if env_attribs is not None:
+                data_env: bytes = await EnvironmentResolverArguments.serialize_async(env_attribs)
+            writer.write(struct.pack('>Q', len(data_attirbs)))
+            writer.write(data_attirbs)
+            writer.write(struct.pack('>Q', len(data_env)))
+            writer.write(data_env)
 
         async def comm_get_task_invocation():  # elif command == b'gettaskinvoc':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -172,11 +179,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
                     await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
                     value = node.param(param_name).unexpanded_value()
-            except Exception:
+            except ParameterReadonly:
+                self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
+                writer.write(b'\0')
+            except ParameterLocked:
+                self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is LOCKED')
+                writer.write(b'\0')
+            except Exception as e:
                 err_val_prev = str(param_value)
                 if len(err_val_prev) > 23:
                     err_val_prev = err_val_prev[:20] + '...'
-                self.__logger.warning(f'FAILED request to set node {node_id} parameter {param_name}({NodeParameterType(param_type).name}) to {err_val_prev}')
+                self.__logger.warning(f'FAILED request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}) to {err_val_prev}')
+                self.__logger.exception(e)
                 writer.write(b'\0')
             else:
                 writer.write(b'\1')
@@ -202,7 +216,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).set_expression, expression)
                     # node.param(param_name).set_expression(expression)
                 else:
-                    node.param(param_name).remove_expression()
+                    await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).remove_expression)
             writer.write(b'\1')
 
         async def comm_apply_node_settings():
@@ -318,6 +332,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             await self.__scheduler.cancel_invocation_for_task(task_id)
             writer.write(b'\1')
 
+        async def worker_task_cancel():  # workertaskcancel  # cancel invocation for worker
+            worker_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            await self.__scheduler.cancel_invocation_for_worker(worker_id)
+            writer.write(b'\1')
+
         async def comm_task_set_node():  # elif command == b'tsetnode':  # set task node
             task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
             await self.__scheduler.force_set_node_task(task_id, node_id)
@@ -360,6 +379,27 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
             ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
             writer.write(struct.pack('>I', ret.value))
+
+        #
+        async def set_task_environment_resolver_arguments():
+            task_id, data_size = struct.unpack('>QQ', await reader.readexactly(16))
+            if data_size == 0:
+                env_res = None
+            else:
+                env_res = await EnvironmentResolverArguments.deserialize_async(await reader.readexactly(data_size))
+            await self.__scheduler.set_task_environment_resolver_arguments(task_id, env_res)
+            writer.write(b'\1')
+
+        #
+        async def set_worker_groups():
+            hwid, groups_count = struct.unpack('>QQ', await reader.readexactly(16))
+            groups = []
+            for i in range(groups_count):
+                groups.append(await read_string())
+
+            await self.__scheduler.set_worker_groups(hwid, groups)
+            writer.write(b'\1')
+
         #
         #
         commands = {b'getfullstate': comm_get_full_state,
@@ -390,12 +430,15 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'tpausegrp': comm_pause_task_group,
                     b'tarchivegrp': comm_archive_task_group,
                     b'tcancel': comm_task_cancel,
+                    b'workertaskcancel': worker_task_cancel,
                     b'tsetnode': comm_task_set_node,
                     b'tcstate': comm_task_change_state,
                     b'tsetname': comm_task_set_name,
                     b'tsetgroups': comm_task_set_groups,
                     b'tupdateattribs': comm_task_update_attribs,
-                    b'addtask': comm_add_task}
+                    b'addtask': comm_add_task,
+                    b'settaskenvresolverargs': set_task_environment_resolver_arguments,
+                    b'setworkergroups': set_worker_groups}
         #
         # connection callback
         #
