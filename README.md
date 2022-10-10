@@ -20,6 +20,9 @@ processing graph.
 
 This system overview should be very familiar to anyone who saw at least one renderfarm.
 
+check [documentation here](https://pedohorse.github.io/lifeblood/tutorials.html)  
+and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
+
 ### Features:
 - instantly and easily deployable
 - easy scaling in mind
