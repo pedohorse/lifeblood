@@ -338,6 +338,22 @@ class Scheduler:
                 env_res_args = await EnvironmentResolverArguments.deserialize_async(res['environment_resolver_data'])
             return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes']), env_res_args
 
+    async def get_task_fields(self, task_id: int) -> Dict[str, Any]:
+        """
+        returns information about the given task, excluding thicc fields like attributes or env resolver
+        for those - use get_task_attributes
+
+        :param task_id:
+        :return:
+        """
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            async with con.execute('SELECT "id", parent_id, children_count, active_children_count, "state", paused, '
+                                   '"node_id", split_level, priority, "dead" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
+                res = await cur.fetchone()
+            if res is None:
+                raise RuntimeError('task with specified id was not found')
+            return dict(res)
+
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
