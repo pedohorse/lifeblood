@@ -118,3 +118,4 @@ class WorkerResources:
         # res.gpu_mem += other.gpu_mem
         return res
 
+
