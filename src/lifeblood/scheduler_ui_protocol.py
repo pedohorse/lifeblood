@@ -103,6 +103,15 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(struct.pack('>Q', len(data)))
                 writer.write(data)
 
+        async def comm_get_task_state():  # elif command == b'gettaskstate':
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            fields_dict = await self.__scheduler.get_task_fields(task_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, str.encode,
+                                                                  await asyncio.get_event_loop().run_in_executor(None, json.dumps, fields_dict),
+                                                                  'UTF-8')
+            writer.write(struct.pack('>Q', len(data)))
+            writer.write(data)
+
         # node related commands
         async def comm_list_node_types():  # elif command == b'listnodetypes':
             typemetas = []
@@ -409,6 +418,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'getnodeinterface': comm_get_node_interface,
                     b'gettaskattribs': comm_get_task_attribs,
                     b'gettaskinvoc': comm_get_task_invocation,
+                    b'gettaskstate': comm_get_task_state,
                     b'listnodetypes': comm_list_node_types,
                     b'listnodepresets': comm_list_presets,
                     b'getnodepreset': comm_get_node_preset,
