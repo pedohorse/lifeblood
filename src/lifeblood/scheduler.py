@@ -354,6 +354,17 @@ class Scheduler:
                 raise RuntimeError('task with specified id was not found')
             return dict(res)
 
+    async def task_name_to_id(self, name: str) -> List[int]:
+        """
+        get the list of task ids that have specified name
+
+        :param name:
+        :return:
+        """
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            async with con.execute('SELECT "id" FROM "tasks" WHERE "name" = ?', (name,)) as cur:
+                return list(x[0] for x in await cur.fetchall())
+
     async def get_task_invocation_serialized(self, task_id: int) -> Optional[bytes]:
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
