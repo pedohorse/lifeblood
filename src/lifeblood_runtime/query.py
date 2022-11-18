@@ -3,7 +3,7 @@ import struct
 import pickle
 import json
 import time
-from .nethelpers import recv_exactly
+from .nethelpers import recv_exactly, send_string, recv_string
 from .environment_resolver import EnvironmentResolverArguments
 
 try:
@@ -12,7 +12,7 @@ except ImportError:  # py2 does not have typing module, but adequete IDE will st
     pass
 
 
-class ui_client:
+class scheduler_client:
     def __init__(self, ip, port):
         self.__addr = (ip, port)
         self.__socket = None  # type: Optional[socket.socket]
@@ -37,6 +37,22 @@ class ui_client:
         if self.__socket is None:
             return
         self.__socket.close()
+
+    def find_nodes_by_name(self, node_name):  # type: (str) -> Tuple[int, ...]
+        self.__socket.sendall(b'nodenametoid\n')
+
+        send_string(self.__socket, node_name)
+        num = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]
+        ids = struct.unpack('>' + 'Q'*num, recv_exactly(self.__socket, 8*num))
+        return ids
+
+    def find_tasks_by_name(self, task_name):  # type: (str) -> Tuple[int, ...]
+        self.__socket.sendall(b'tasknametoid\n')
+
+        send_string(self.__socket, task_name)
+        num = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]
+        ids = struct.unpack('>' + 'Q'*num, recv_exactly(self.__socket, 8*num))
+        return ids
 
     def get_task_attributes(self, task_id):
         attribs, _ = self.get_task_attributes_and_env(task_id)
@@ -108,7 +124,7 @@ class Task:
     def _ensure_fields_fetched(self):
         if time.time() - self.__fields_update_timestamp < self.__cache_validity_timeout:
             return
-        with ui_client(*self.__addr) as client:
+        with scheduler_client(*self.__addr) as client:
             data_dict = client.get_task_fields(self.__id)
         self.__id = data_dict['id']
         self.__name = data_dict['name']
@@ -120,6 +136,13 @@ class Task:
         self.__paused = bool(data_dict['paused'])
         self.__state = data_dict['state']
         self.__fields_update_timestamp = time.time()
+
+    def _ensure_attributes_fetched(self):
+        if time.time() - self.__attribs_update_timestamp < self.__cache_validity_timeout:
+            return
+        with scheduler_client(*self.__addr) as client:
+            self.__attribs, self.__env_resolver_args = client.get_task_attributes_and_env(self.__id)
+        self.__attribs_update_timestamp = time.time()
 
     @property
     def id(self):
@@ -166,10 +189,27 @@ class Task:
         self._ensure_fields_fetched()
         return self.__state
 
+    def get_attributes(self):
+        self._ensure_attributes_fetched()
+        return self.__attribs
 
-def get_task_by_id(task_id):
-    pass
+    def get_attribute_names(self):
+        self._ensure_attributes_fetched()
+        return tuple(self.__attribs.keys())
+
+    def get_attribute_value(self, attrib_name):
+        self._ensure_attributes_fetched()
+        return self.__attribs[attrib_name]
+
+    def get_environment_resolver_arguments(self):
+        self._ensure_attributes_fetched()
+        return self.__env_resolver_args
 
 
-def get_tasks_by_name(task_name):
-    pass
+def get_task_by_id(scheduler_address, task_id):  # type: (Tuple[str, int], int) -> Task
+    return Task(scheduler_address, task_id)
+
+
+def get_tasks_by_name(scheduler_address, task_name):  # type: (Tuple[str, int], str) -> List[Task]
+    with scheduler_client(*scheduler_address) as client:
+        return [Task(scheduler_address, x) for x in client.find_tasks_by_name(task_name)]
