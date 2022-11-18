@@ -3,6 +3,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 import pickle
+import json
 
 from . import logging
 from . import invocationjob
@@ -30,6 +31,115 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         # so we HAVE to save a reference to self somewhere
         self.__saved_references.append(asyncio.current_task())
 
+        #
+        #
+        # commands
+
+        async def comm_ping():  # if command == b'ping'
+            # when worker pings scheduler - scheduler returns the state it thinks the worker is in
+            addr = await read_string()
+            wid = await self.__scheduler.worker_id_from_address(addr)
+            if wid is None:
+                state = WorkerState.UNKNOWN
+            else:
+                state = await self.__scheduler.get_worker_state(wid)
+            writer.write(struct.pack('>I', state.value))
+
+        async def comm_pulse():  # elif command == b'pulse':
+            writer.write(b'\1')
+
+        async def comm_done():  # elif command == b'done':
+            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+            task = await reader.readexactly(tasksize)
+            task = await invocationjob.InvocationJob.deserialize_async(task)
+            stdout = await read_string()
+            stderr = await read_string()
+            await self.__scheduler.task_done_reported(task, stdout, stderr)
+            writer.write(b'\1')
+
+        async def comm_dropped():  # elif command == b'dropped':
+            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+            task = await reader.readexactly(tasksize)
+            task = await invocationjob.InvocationJob.deserialize_async(task)
+            stdout = await read_string()
+            stderr = await read_string()
+            await self.__scheduler.task_cancel_reported(task, stdout, stderr)
+            writer.write(b'\1')
+
+        async def comm_hello():  # elif command == b'hello':
+            # worker reports for duty
+            addr = await read_string()
+            workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
+            reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
+            worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
+            await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
+            writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
+
+        async def comm_bye():  # elif command == b'bye':
+            # worker reports he's quitting
+            addr = await read_string()
+            await self.__scheduler.worker_stopped(addr)
+            writer.write(b'\1')
+
+        #
+        # commands used mostly by lifeblood_connection
+        #
+        # spawn a child task for task being processed
+        async def comm_spawn():  # elif command == b'spawn':
+            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
+            taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
+            ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
+            writer.write(struct.pack('>I', ret.value))
+
+        async def comm_node_name_to_id():  # elif command == b'nodenametoid':
+            nodename = await read_string()
+            self.__logger.debug(f'got {nodename}')
+            ids = await self.__scheduler.node_name_to_id(nodename)
+            self.__logger.debug(f'sending {ids}')
+            writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
+
+        async def comm_update_task_attributes():  # elif command == b'tupdateattribs':  # note - this one is the same as in scheduler_ui_protocol... TODO: should they maybe be unified?
+            task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
+            attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
+            self.__logger.warning(attribs_to_update)
+            attribs_to_delete = set()
+            for _ in range(strcount):
+                attribs_to_delete.add(await read_string())
+            await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
+            writer.write(b'\1')
+
+        async def comm_get_task_state():  # elif command == b'gettaskstate':
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            fields_dict = await self.__scheduler.get_task_fields(task_id)
+            data = await asyncio.get_event_loop().run_in_executor(None, str.encode,
+                                                                  await asyncio.get_event_loop().run_in_executor(None, json.dumps, fields_dict),
+                                                                  'UTF-8')
+            writer.write(struct.pack('>Q', len(data)))
+            writer.write(data)
+
+        async def comm_task_name_to_id():  # elif command == b'tasknametoid':
+            taskname = await read_string()
+            self.__logger.debug(f'got {taskname}')
+            ids = await self.__scheduler.task_name_to_id(taskname)
+            self.__logger.debug(f'sending {ids}')
+            writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
+
+        #
+        commands = {b'ping': comm_ping,
+                    b'pulse': comm_pulse,
+                    b'done': comm_done,
+                    b'dropped': comm_dropped,
+                    b'hello': comm_hello,
+                    b'bye': comm_bye,
+                    b'spawn': comm_spawn,
+                    b'nodenametoid': comm_node_name_to_id,
+                    b'tupdateattribs': comm_update_task_attributes,
+                    b'gettaskstate': comm_get_task_state,
+                    b'tasknametoid': comm_task_name_to_id,
+                    }
+        #
+        #
+
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
             return (await reader.readexactly(strlen)).decode('UTF-8')
@@ -50,71 +160,10 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 if command.endswith(b'\n'):
                     command = command[:-1]
                 self.__logger.debug(f'scheduler got command: {command.decode("UTF-8")}')
-                if command == b'ping':
-                    # when worker pings scheduler - scheduler returns the state it thinks the worker is in
-                    addr = await read_string()
-                    wid = await self.__scheduler.worker_id_from_address(addr)
-                    if wid is None:
-                        state = WorkerState.UNKNOWN
-                    else:
-                        state = await self.__scheduler.get_worker_state(wid)
-                    writer.write(struct.pack('>I', state.value))
-                elif command == b'pulse':
-                    writer.write(b'\1')
-                elif command == b'done':
-                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    task = await reader.readexactly(tasksize)
-                    task = await invocationjob.InvocationJob.deserialize_async(task)
-                    stdout = await read_string()
-                    stderr = await read_string()
-                    await self.__scheduler.task_done_reported(task, stdout, stderr)
-                    writer.write(b'\1')
-                elif command == b'dropped':
-                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    task = await reader.readexactly(tasksize)
-                    task = await invocationjob.InvocationJob.deserialize_async(task)
-                    stdout = await read_string()
-                    stderr = await read_string()
-                    await self.__scheduler.task_cancel_reported(task, stdout, stderr)
-                    writer.write(b'\1')
-                elif command == b'hello':
-                    # worker reports for duty
-                    addr = await read_string()
-                    workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
-                    reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
-                    await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
-                    writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
-                elif command == b'bye':
-                    # worker reports he's quitting
-                    addr = await read_string()
-                    await self.__scheduler.worker_stopped(addr)
-                    writer.write(b'\1')
-                #
-                # commands used mostly by lifeblood_connection
-                #
-                # spawn a child task for task being processed
-                elif command == b'spawn':
-                    tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-                    taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
-                    ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
-                    writer.write(struct.pack('>I', ret.value))
-                #
-                elif command == b'nodenametoid':
-                    nodename = await read_string()
-                    self.__logger.debug(f'got {nodename}')
-                    ids = await self.__scheduler.node_name_to_id(nodename)
-                    self.__logger.debug(f'sending {ids}')
-                    writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
-                elif command == b'tupdateattribs':  # note - this one is the same as in scheduler_ui_protocol... TODO: should they maybe be unified?
-                    task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
-                    attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
-                    self.__logger.warning(attribs_to_update)
-                    attribs_to_delete = set()
-                    for _ in range(strcount):
-                        attribs_to_delete.add(await read_string())
-                    await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
-                    writer.write(b'\1')
+
+                if command in commands:
+                    await commands[command]()
+
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
