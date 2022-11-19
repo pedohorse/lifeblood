@@ -1,9 +1,9 @@
 import json
 import os
 try:
-    from lifeblood_runtime import submitting
+    from lifeblood_client import submitting
 except ImportError:
-    print('lifeblood_runtime is not loaded. lifeblood submitter will not work, it is most likely not a problem if running in batch mode')
+    print('lifeblood_client is not loaded. lifeblood submitter will not work, it is most likely not a problem if running in batch mode')
 
 
 def submit_button_callback(node):
@@ -24,6 +24,7 @@ def submit_button_callback(node):
         hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
     except Exception as e:
         hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
+
 
 def submit(node):
     s_ip = node.parm('sch_ip').evalAsString()

@@ -10,6 +10,7 @@ import pickle
 import socket
 import struct
 from .nethelpers import recv_string, recv_exactly, send_string
+from .query import scheduler_client
 
 
 class TaskSpawn(object):
@@ -138,18 +139,11 @@ def create_task(name, node_id_or_name, scheduler_addr, attributes={}, priority=5
     if isinstance(node_id_or_name, str):
         addr, sport = scheduler_addr
         port = int(sport)
-        sock = socket.create_connection((addr, port), timeout=30)
+        with scheduler_client(addr, port) as client:
+            nodeids = client.find_nodes_by_name(node_id_or_name)
 
-        sock.sendall(b'\0\0\0\0')
-        sock.sendall(b'nodenametoid\n')
-        send_string(sock, node_id_or_name)
-        print('foo')
-        numids = struct.unpack('>Q', recv_exactly(sock, 8))[0]
-        print(numids)
-        if numids == 0:
+        if len(nodeids) == 0:
             raise RuntimeError('lifeblood graph does not have node named %s' % node_id_or_name)
-        nodeids = struct.unpack('>' + 'Q'*numids, recv_exactly(sock, 8*numids))
-        print(nodeids)
         node_id = nodeids[0]
     else:
         assert isinstance(node_id_or_name, int)
