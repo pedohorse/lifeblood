@@ -10,7 +10,7 @@ import pickle
 import socket
 import struct
 from .nethelpers import recv_string, recv_exactly, send_string
-from .query import scheduler_client
+from .query import scheduler_client, Task
 
 
 class TaskSpawn(object):
@@ -130,9 +130,11 @@ class NewTask(TaskSpawn):
         sock.sendall(b'spawn\n')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
-        res = struct.unpack('>I', sock.recv(4))[0]
-        if res != 0:
+        status, is_null, task_id = struct.unpack('>I?Q', sock.recv(13))[0]
+        if status != 0:
             raise RuntimeError('scheduler failed to create task')
+        assert not is_null
+        return Task(self.__scheduler_addr, task_id)
 
 
 def create_task(name, node_id_or_name, scheduler_addr, attributes={}, priority=50.0):
