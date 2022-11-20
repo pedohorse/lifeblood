@@ -829,7 +829,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn.sendall(b'addtask\n')
             self.__conn.sendall(struct.pack('>Q', len(data)))
             self.__conn.sendall(data)
-            _ = recv_exactly(self.__conn, 4)  # reply that we don't care about for now
+            _ = recv_exactly(self.__conn, 13)  # reply that we don't care about for now
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
