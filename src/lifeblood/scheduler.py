@@ -2237,7 +2237,7 @@ class Scheduler:
     #
     # spawning new task callback
     @alocking()
-    async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> SpawnStatus:
+    async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> Union[Tuple[SpawnStatus, Optional[int]], Tuple[Tuple[SpawnStatus, Optional[int]], ...]]:
         """
 
         :param newtasks:
@@ -2245,7 +2245,8 @@ class Scheduler:
         :return:
         """
 
-        async def _inner_shit():
+        async def _inner_shit() -> Tuple[Tuple[SpawnStatus, Optional[int]], ...]:
+            result = []
             current_timestamp = int(datetime.utcnow().timestamp())
             for newtask in newtasks:
                 if newtask.source_invocation_id() is not None:
@@ -2259,6 +2260,7 @@ class Scheduler:
                     node_id, parent_task_id = newtask.forced_node_task_id()
                 else:
                     self.__logger.error('ERROR CREATING SPAWN TASK: Malformed source')
+                    result.append((SpawnStatus.FAILED, None))
                     continue
 
                 async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -2304,19 +2306,23 @@ class Scheduler:
                             continue
                         await con.execute('INSERT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
                                           (group, current_timestamp))
+                result.append((SpawnStatus.SUCCEEDED, new_id))
+            return tuple(result)
 
+        return_single = False
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
+            return_single = True
         if con is not None:
-            await _inner_shit()
+            stuff = await _inner_shit()
         else:
             async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                 con.row_factory = aiosqlite.Row
-                await _inner_shit()
+                stuff = await _inner_shit()
                 await con.commit()
         self.wake()
         self.poke_task_processor()
-        return SpawnStatus.SUCCEEDED
+        return stuff[0] if return_single else stuff
 
     #
     async def node_name_to_id(self, name: str) -> List[int]:
