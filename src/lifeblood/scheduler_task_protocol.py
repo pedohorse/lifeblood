@@ -11,7 +11,7 @@ from .taskspawn import TaskSpawn
 from .enums import WorkerType, SpawnStatus, WorkerState
 from .net_classes import WorkerResources
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Tuple
 if TYPE_CHECKING:
     from .scheduler import Scheduler
 
@@ -88,8 +88,8 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         async def comm_spawn():  # elif command == b'spawn':
             tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
             taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
-            ret: SpawnStatus = await self.__scheduler.spawn_tasks([taskspawn])
-            writer.write(struct.pack('>I', ret.value))
+            ret: Tuple[SpawnStatus, Optional[int]] = await self.__scheduler.spawn_tasks(taskspawn)
+            writer.write(struct.pack('>I?Q', ret[0].value, ret[1] is not None, 0 if ret[1] is None else ret[1]))
 
         async def comm_node_name_to_id():  # elif command == b'nodenametoid':
             nodename = await read_string()
@@ -298,11 +298,12 @@ class SchedulerTaskClient:
         # we DO need a reply to ensure proper sequence of events
         assert await self.__reader.readexactly(1) == b'\1'
 
-    async def spawn(self, taskspawn: TaskSpawn) -> SpawnStatus:
+    async def spawn(self, taskspawn: TaskSpawn) -> Tuple[SpawnStatus, Optional[int]]:
         await self._ensure_conn_open()
         self.__writer.write(b'spawn\n')
         data_ser = await taskspawn.serialize_async()
         self.__writer.write(struct.pack('>Q', len(data_ser)))
         self.__writer.write(data_ser)
         await self.__writer.drain()
-        return SpawnStatus(struct.unpack('>I', await self.__reader.readexactly(4)))
+        status, is_null, val = struct.unpack('>I?Q', await self.__reader.readexactly(13))
+        return SpawnStatus(status), None if is_null else val

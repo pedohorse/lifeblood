@@ -11,7 +11,7 @@ from .taskspawn import NewTask
 from .snippets import NodeSnippetDataPlaceholder
 from .environment_resolver import EnvironmentResolverArguments
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Tuple
 if TYPE_CHECKING:
     from .basenode import BaseNode
     from .scheduler import Scheduler
@@ -377,8 +377,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         async def comm_add_task():  # elif command == b'addtask':
             tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
             newtask: NewTask = NewTask.deserialize(await reader.readexactly(tasksize))
-            ret: SpawnStatus = await self.__scheduler.spawn_tasks([newtask])
-            writer.write(struct.pack('>I', ret.value))
+            ret: Tuple[SpawnStatus, Optional[int]] = await self.__scheduler.spawn_tasks(newtask)
+            writer.write(struct.pack('>I?Q', ret[0].value, ret[1] is not None, 0 if ret[1] is None else ret[1]))
 
         #
         async def set_task_environment_resolver_arguments():
