@@ -115,7 +115,7 @@ def create_task(name, attributes, blocking=False):
         sock.sendall(b'spawn\n')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
-        res = sock.recv(4)  # 4 should be small enough to ensure receiving in one call
+        res = sock.recv(13)  # >I?Q  13 should be small enough to ensure receiving in one call
         # ignore result?
 
         if not blocking:
