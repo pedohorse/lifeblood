@@ -180,6 +180,16 @@ def init():
 
     plugin_paths.append((str(custom_plugins_path), 'user'))
 
+    extra_paths = []
+    for path in os.environ.get('LIFEBLOOD_PLUGIN_PATH', '').split(os.pathsep):
+        if os.path.isabs(path):
+            logger.warning(f'"{path}" is not absolute, skipping')
+            continue
+        if not os.path.exists(path):
+            logger.warning(f'"{path}" does not exist, skipping')
+            continue
+        extra_paths.append(path)
+        logger.debug(f'using extra plugin path: "{path}"')
 
     for plugin_path, plugin_category in plugin_paths:
         for filename in os.listdir(plugin_path):
