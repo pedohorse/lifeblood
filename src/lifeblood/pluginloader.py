@@ -49,11 +49,12 @@ def _install_node(filepath, plugin_category, parent_package=None):
         mod._plugin_info = plugin_info.PluginInfo(filepath, parent_package)
     except:
         logger.exception(f'failed to load plugin "{filebasename}". skipping.')
+        return
     for requred_attr in ('node_class',):
         if not hasattr(mod, requred_attr):
             logger.error(f'error loading plugin "{filebasename}". '
                          f'required method {requred_attr} is missing.')
-            continue
+            return
     plugins[mod.node_class().type_name()] = mod
     hasher = hashlib.md5()
     with open(filepath, 'rb') as f:
@@ -182,7 +183,9 @@ def init():
 
     extra_paths = []
     for path in os.environ.get('LIFEBLOOD_PLUGIN_PATH', '').split(os.pathsep):
-        if os.path.isabs(path):
+        if path == '':
+            continue
+        if not os.path.isabs(path):
             logger.warning(f'"{path}" is not absolute, skipping')
             continue
         if not os.path.exists(path):
@@ -190,6 +193,8 @@ def init():
             continue
         extra_paths.append(path)
         logger.debug(f'using extra plugin path: "{path}"')
+
+    plugin_paths.extend((x, 'extra') for x in extra_paths)
 
     for plugin_path, plugin_category in plugin_paths:
         for filename in os.listdir(plugin_path):
