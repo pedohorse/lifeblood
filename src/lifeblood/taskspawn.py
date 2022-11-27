@@ -44,7 +44,16 @@ class TaskSpawn:
     def create_as_spawned(self):
         return self._create_as_spawned
 
-    def force_set_node_task_id(self, node_id, task_id):
+    def force_set_node_task_id(self, node_id: Optional[int], task_id: Optional[int]):
+        """
+        force override some standard inheritance
+
+        :param node_id: if given - will be the node to spawn task in
+        :param task_id: if given - will override the parent task for this spawning task (must be given together with node_id)
+        :return:
+        """
+        if node_id is None and task_id is None:
+            self.__forced_node_task_id_pair = None
         self.__forced_node_task_id_pair = (node_id, task_id)
 
     def forced_node_task_id(self) -> Optional[Tuple[int, int]]:
