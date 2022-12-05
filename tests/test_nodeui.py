@@ -145,6 +145,18 @@ class ParametersWithLimitsNode(ParamNode):
             ui.add_parameter('float_param_default_exceeds', None, param_type=NodeParameterType.FLOAT, param_val=-2.1).set_value_limits(-1.5, 43.2)
 
 
+class NestedMultiGroupLayoutNode1(ParamNode):
+    def __init__(self, name):
+        super(NestedMultiGroupLayoutNode1, self).__init__(name)
+        ui = self.get_ui()
+        with ui.initializing_interface_lock():
+            with ui.multigroup_parameter_block('outer block'):
+                ui.add_parameter('outer param', None, NodeParameterType.INT, -102)
+                with ui.multigroup_parameter_block('middle block'):
+                    ui.add_parameter('middle param', None, NodeParameterType.INT, -12)
+                    with ui.multigroup_parameter_block('inner block'):
+                        ui.add_parameter('inner param', None, NodeParameterType.INT, -2)
+
 class UniqueUiParametersCheck(TestCase):
     def test_parameter_name_collision(self):
         self.assertRaises(ParameterNameCollisionError, BadParamNode1, 'name1')
@@ -528,3 +540,95 @@ class UniqueUiParametersCheck(TestCase):
         self.assertTrue(node.param('int_param').visible())
         node.param('int_param2').set_value(6)
         self.assertFalse(node.param('int_param').visible())
+
+    def test_bad_multigroup_visibility_reference(self):
+        class NodeWithBadVisReference(ParamNode):
+            def __init__(self, name):
+                super(NodeWithBadVisReference, self).__init__(name)
+                ui = self.get_ui()
+                with ui.initializing_interface_lock():
+                    p1 = ui.add_parameter('outer param', None, NodeParameterType.STRING, 'wow')
+                    with ui.multigroup_parameter_block('count'):
+                        p2 = ui.add_parameter('inner param', None, NodeParameterType.FLOAT, -1.2)
+                        p2.append_visibility_condition(p1, '==', 'wow')
+
+        self.assertRaises(AssertionError, NodeWithBadVisReference, 'oof')  # a bit general... we expect specifically "p2.append_visi..." line to raise
+        # and this next check just can never occur currently
+        #self.assertRaises(ParameterDefinitionError, node.param('count').set_value, 1)
+
+    def test_nested_multiparameters1(self):
+        node = NestedMultiGroupLayoutNode1('foo')
+
+        node.param('outer block').set_value(1)
+        self.assertEqual(-102, node.param('outer param_0').value())
+        node.param('outer param_0').set_value(-103)
+        self.assertEqual(-103, node.param('outer param_0').value())
+        self.assertEqual(0, node.param('middle block_0').value())
+
+        node.param('middle block_0').set_value(1)
+        self.assertEqual(-12, node.param('middle param_0.0').value())
+        node.param('middle param_0.0').set_value(-13)
+        self.assertEqual(-13, node.param('middle param_0.0').value())
+        self.assertEqual(0, node.param('inner block_0.0').value())
+
+        node.param('inner block_0.0').set_value(1)
+        self.assertEqual(-2, node.param('inner param_0.0.0').value())
+        node.param('inner param_0.0.0').set_value(-3)
+        self.assertEqual(-3, node.param('inner param_0.0.0').value())
+
+    def test_nested_multiparameters2(self):
+        node = NestedMultiGroupLayoutNode1('foo')
+
+        node.param('outer block').set_value(1)
+        node.param('middle block_0').set_value(1)
+        node.param('inner block_0.0').set_value(1)
+
+        node.param('outer param_0').set_value(123)
+        node.param('middle param_0.0').set_value(1234)
+        node.param('inner param_0.0.0').set_value(12345)
+
+        node.param('inner block_0.0').set_value(2)
+        node.param('middle block_0').set_value(3)
+        node.param('outer block').set_value(4)
+        node.param('middle block_2').set_value(3)
+        node.param('inner block_2.2').set_value(2)
+        node.param('inner block_2.1').set_value(2)
+        node.param('inner block_2.0').set_value(2)
+        node.param('middle block_1').set_value(3)
+        node.param('inner block_1.0').set_value(2)
+        node.param('inner block_1.1').set_value(2)
+        node.param('inner block_1.2').set_value(2)
+        node.param('inner block_0.1').set_value(2)
+        node.param('inner block_0.2').set_value(2)
+        node.param('middle block_3').set_value(3)
+        node.param('inner block_3.2').set_value(2)
+        node.param('inner block_3.1').set_value(2)
+        node.param('inner block_3.0').set_value(2)
+
+        self.assertEqual(123, node.param('outer param_0').value())
+        self.assertEqual(1234, node.param('middle param_0.0').value())
+        self.assertEqual(12345, node.param('inner param_0.0.0').value())
+
+        node.param('outer param_3').set_value(234)
+        node.param('middle param_2.2').set_value(2345)
+        node.param('inner param_1.0.1').set_value(23456)
+
+        self.assertEqual(234, node.param('outer param_3').value())
+        self.assertEqual(2345, node.param('middle param_2.2').value())
+        self.assertEqual(23456, node.param('inner param_1.0.1').value())
+
+        rng = random.Random(666131313)
+        for _ in range(1000):
+            outer_i = rng.randint(0, 3)
+            middle_i = rng.randint(0, 2)
+            inner_i = rng.randint(0, 1)
+            outer_v = rng.randint(-9999, 9999)
+            middle_v = rng.randint(-9999, 9999)
+            inner_v = rng.randint(-9999, 9999)
+            node.param(f'outer param_{outer_i}').set_value(outer_v)
+            node.param(f'middle param_{outer_i}.{middle_i}').set_value(middle_v)
+            node.param(f'inner param_{outer_i}.{middle_i}.{inner_i}').set_value(inner_v)
+
+            self.assertEqual(outer_v, node.param(f'outer param_{outer_i}').value())
+            self.assertEqual(middle_v, node.param(f'middle param_{outer_i}.{middle_i}').value())
+            self.assertEqual(inner_v, node.param(f'inner param_{outer_i}.{middle_i}.{inner_i}').value())
