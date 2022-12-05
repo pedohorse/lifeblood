@@ -512,6 +512,17 @@ class Parameter(ParameterHierarchyLeaf):
         assert other_parameter in self.__params_referencing_me
         self.__params_referencing_me.remove(other_parameter)
 
+    def references(self) -> Tuple["Parameter", ...]:
+        """
+        returns tuple of parameters referenced by this parameter's definition
+        static/dynamic references from expressions ARE NOT INCLUDED - they are not parameter's DEFINITION
+        currently the only thing that can be a reference is parameter from visibility conditions
+        """
+        return tuple(x[0] for x in self.__vis_when)
+
+    def visibility_conditions(self) -> Tuple[Tuple["Parameter", str, Union[bool, int, float, str, tuple]], ...]:
+        return tuple(self.__vis_when)
+
     def append_visibility_condition(self, other_param: "Parameter", condition: str, value: Union[bool, int, float, str, tuple]) -> "Parameter":
         """
         condition currently can only be a simplest
@@ -900,6 +911,20 @@ class MultiGroupLayout(OrderedParametersLayout):
         self.__count_param = Parameter(name, label, NodeParameterType.INT, 0, can_have_expression=False)
         self.__count_param.set_parent(self)
         self.__last_count = 0
+        self.__nested_indices = []
+
+    def nested_indices(self):
+        """
+        if a multiparam is inside other multiparams - those multiparams should add their indices
+        to this one, so that this multiparam will be able to uniquely and predictable name it's parameters
+        """
+        return tuple(self.__nested_indices)
+
+    def __append_nested_index(self, index: int):
+        """
+        this should be called only when a multiparam is instanced by another multiparam
+        """
+        self.__nested_indices.append(index)
 
     def set_spawning_template(self, layout: ParametersLayoutBase):
         self.__template = deepcopy(layout)
@@ -937,10 +962,23 @@ class MultiGroupLayout(OrderedParametersLayout):
             if self.__template is None:
                 raise LayoutError('template is not set')
             for _ in range(new_count - self.__last_count):
+                # note: the check below is good, but it's not needed currently, cuz visibility condition on append checks common parent
+                # and nodes not from template do not share parents with template, so that prevents external references
+                for param in self.__template.parameters(recursive=True):
+                    # sanity check - for now we only support references within the same template block only
+                    for ref_param in param.references():
+                        if not ref_param.has_same_parent(param):
+                            raise ParameterDefinitionError('Parameters within MultiGroupLayout\'s template currently cannot reference outer parameters')
+                ##
                 new_layout = deepcopy(self.__template)
                 i = len(self.children()) - 1
                 for param in new_layout.parameters(recursive=True):
-                    param._set_name(param.name() + '_' + str(i))
+                    param._set_name(param.name() + '_' + '.'.join(str(x) for x in (*self.nested_indices(), i)))
+                    parent = param.parent()
+                    if isinstance(parent, MultiGroupLayout):
+                        for idx in self.nested_indices():
+                            parent.__append_nested_index(idx)
+                        parent.__append_nested_index(i)
                 new_layout.set_parent(self)
         elif self.__last_count > self.__count_param.value():
             for _ in range(self.__last_count - new_count):
@@ -1188,6 +1226,7 @@ class NodeUi(ParameterHierarchyItem):
             def __enter__(self):
                 self.__new_layout = VerticalParametersLayout()
                 self.__ui._NodeUi__groups_stack.append(self.__new_layout)
+                return self
 
             def __exit__(self, exc_type, exc_val, exc_tb):
                 assert self.__ui._NodeUi__groups_stack.pop() == self.__new_layout
@@ -1197,7 +1236,7 @@ class NodeUi(ParameterHierarchyItem):
                         multi_layout.set_spawning_template(self.__new_layout)
                     self.__ui._add_layout(multi_layout)
 
-            def multigroup(self):
+            def multigroup(self) -> VerticalParametersLayout:
                 return self.__new_layout
 
         if self.__lock_ui_readonly:
