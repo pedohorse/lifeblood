@@ -347,7 +347,8 @@ class Scheduler:
         :return:
         """
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-            async with con.execute('SELECT "id", parent_id, children_count, active_children_count, "state", paused, '
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id", "name", parent_id, children_count, active_children_count, "state", paused, '
                                    '"node_id", split_level, priority, "dead" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
                 res = await cur.fetchone()
             if res is None:
