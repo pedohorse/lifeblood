@@ -12,7 +12,8 @@ from typing import Optional, Tuple, List, Iterable
 
 class Unpickler(pickle.Unpickler):
     def find_class(self, module, name):
-        if module in ('lifeblood_connection', 'lifeblood_runtime.submitting'):  # TODO: this becomes dirty as it scales... make this more generic!
+        if module in ('lifeblood_connection',
+                      'lifeblood_client.submitting'):  # TODO: this becomes dirty as it scales... make this more generic!
             if name == 'TaskSpawn':
                 return TaskSpawn
             elif name == 'NewTask':
