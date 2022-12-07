@@ -69,6 +69,10 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ui.parameter('worker type').set_hidden(True)
             ui.parameter('worker type').set_locked(True)
 
+    @staticmethod
+    def _fescape(s):
+        return s.replace('{', '{{').replace('}', '}}')
+
     def process_task(self, context) -> ProcessingResult:
         """
         this node expects to find the following attributes:
@@ -92,8 +96,8 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
         env = InvocationEnvironment()
 
-        spawnlines =       "kwargs = {{'frames': {frames}}}\n" \
-                          f"for attr, val in {repr(attr_to_trans)}:\n" \
+        # we add first line "kwargs = {{'frames': {frames}}}\n" later
+        spawnlines =      f"for attr, val in {repr(attr_to_trans)}:\n" \
                           f"    kwargs[attr] = val\n" \
                           f"kwargs['hipfile'] = {repr(hippath)}\n" \
                           f"kwargs['file'] = node.evalParm(output_parm_name)\n"
@@ -115,6 +119,11 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                           f"    kwargs[intrinsic_name] = geo.intrinsicValue(intrinsic_name)\n"
             spawnlines += f"geo.clear()\n"
         spawnlines +=     f"lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
+
+        spawnlines = self._fescape(spawnlines)
+        # now we add first line that we DON'T want to escape...
+        # yeah, a bit shitty...
+        spawnlines = "kwargs = {{'frames': {frames}}}\n" + spawnlines
 
         if not self.is_output_connected('spawned'):
             spawnlines = None
@@ -167,7 +176,8 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
         if context.param_value('whole range'):
             script += \
-                f'hou.setFrame({frames[0]})\n' \
+                f'frame = {frames[0]}\n' \
+                f'hou.setFrame(frame)\n' \
                 f'skipped = False\n'
             if context.param_value('skip if exists'):
                 script += 'skipped = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
