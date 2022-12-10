@@ -908,6 +908,9 @@ class Scheduler:
                 #_bla1 = time.perf_counter()
                 # spawning new tasks after all attributes were set, so children inherit
                 if process_result.spawn_list is not None:
+                    for spawn in process_result.spawn_list:
+                        # we do NOT allow spawning children anywhere else but in the same node, and with the task as parent
+                        spawn.force_set_node_task_id(task_row['node_id'], task_row['id'])
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
                 #print(f'spawn: {time.perf_counter() - _bla1}')
