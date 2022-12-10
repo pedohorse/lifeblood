@@ -116,13 +116,14 @@ def create_task(name, attributes, blocking=False):
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         res = sock.recv(13)  # >I?Q  13 should be small enough to ensure receiving in one call
-        # ignore result?
+        good, is_not_none, task_id = struct.unpack('>I?Q', res)
 
         if not blocking:
             _clear_me_from_threads_to_wait()
+        return task_id if is_not_none else -1
 
     if blocking:
-        _send()
+        return _send()
     else:
         thread = threading.Thread(target=_send)
         _threads_to_wait.append(thread)
