@@ -3,6 +3,7 @@ import json
 from .invocationjob import InvocationJob
 from .taskspawn import TaskSpawn
 from .environment_resolver import EnvironmentResolverArguments
+from .processingcontext import ProcessingContext  # reexport
 
 from typing import List, Dict, Any, Optional
 
