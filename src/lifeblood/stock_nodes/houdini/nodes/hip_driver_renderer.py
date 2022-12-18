@@ -172,7 +172,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         if context.param_value('do override output'):
             override_path = context.param_value('override output').strip()
             if override_path != '':
-                script += f'node.parm(output_parm_name).set({repr(override_path)})\n'
+                script += f'node.parm(output_parm_name).set({repr(override_path)})\n'  # TODO: implement readonly-workaround through takes!
 
         if context.param_value('whole range'):
             script += \
