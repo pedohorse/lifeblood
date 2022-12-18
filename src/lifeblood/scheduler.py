@@ -1140,8 +1140,11 @@ class Scheduler:
                                 # as it's expected that:
                                 #  - running the function is even faster than locking
                                 #  - function misfire (being highly unlikely) does not have side effects, so will not cause any damage
-                                if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
-                                    continue
+                                try:
+                                    if not (await self._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
+                                        continue
+                                except Exception:
+                                    self.__logger.exception('a node bugged out on fast ready check. ignoring the check')
 
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.GENERATING.value, task_row['id']))
