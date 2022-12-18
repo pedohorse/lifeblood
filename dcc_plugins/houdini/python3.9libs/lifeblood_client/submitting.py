@@ -130,10 +130,10 @@ class NewTask(TaskSpawn):
         sock.sendall(b'spawn\n')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
-        status, is_null, task_id = struct.unpack('>I?Q', sock.recv(13))[0]
+        status, is_not_null, task_id = struct.unpack('>I?Q', sock.recv(13))
         if status != 0:
             raise RuntimeError('scheduler failed to create task')
-        assert not is_null
+        assert is_not_null
         return Task(self.__scheduler_addr, task_id)
 
 
