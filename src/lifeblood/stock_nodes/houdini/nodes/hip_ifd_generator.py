@@ -64,7 +64,7 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
         driverpath = context.param_value('driver path')
         frames = attrs['frames']
         matching_attrnames = filter_by_pattern(context.param_value('attrs'), attrs.keys())
-        attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
+        attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file', 'outimage', 'hipfile'))
         attr_to_context = filter_by_pattern(context.param_value('attrs to context'), attrs.keys())
 
         env = InvocationEnvironment()
