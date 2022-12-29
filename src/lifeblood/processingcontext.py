@@ -108,3 +108,6 @@ class ProcessingContext:
 
     def task_id(self):
         return self.__task_dict.get('id')
+
+    def task_name(self):
+        return self.__task_dict.get('name')
