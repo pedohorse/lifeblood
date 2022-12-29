@@ -15,6 +15,19 @@ except ImportError:
     pass
 
 
+class EnvironmentResolverArguments:
+    """
+    this is a copy of envirionment_resolver.EnvironmentResolverArguments class purely for pickling
+    """
+    def __init__(self, resolver_name=None, arguments=None):
+        if arguments is None:
+            arguments = {}
+        if resolver_name is None and len(arguments) > 0:
+            raise ValueError('if name is None - no arguments are allowed')
+        self.__resolver_name = resolver_name
+        self.__args = arguments
+
+
 class TaskSpawn:
     """
     this class is a pickle compatible shrunk copy of lifeblood.taskspawn.TaskSpawn
@@ -101,9 +114,17 @@ _threads_to_wait = []
 _threads_to_wait_lock = threading.Lock()
 
 
-def create_task(name, attributes, blocking=False):
+def create_task(name, attributes, env_arguments=None, blocking=False):
+    """
+    creates a new task with name and attributes.
+    if env_attributes is None - environment is inherited fully from the parent,
+      otherwise env_attributes completely override env from the parent task.
+
+    if blocking is False - create_task creates a thread and exits immediately.
+      this is the default as you would usually want to contact scheduler in parallel with actual work.
+    """
     invocation_id = int(os.environ['LIFEBLOOD_RUNTIME_IID'])
-    spawn = TaskSpawn(name, invocation_id, task_attributes=attributes)
+    spawn = TaskSpawn(name, invocation_id, task_attributes=attributes, env_args=env_arguments)
 
     def _send():
         addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
@@ -166,7 +187,7 @@ def _clear_me_from_threads_to_wait():
             pass
 
 
-def wait_for_all_async_operations():
+def wait_for_currently_running_async_operations():
     """
     The python program will not end until all non-daemon threads are done.
     So skipping explicit wait for most of the operations is fine
@@ -178,9 +199,16 @@ def wait_for_all_async_operations():
     """
     global _threads_to_wait
     with _threads_to_wait_lock:
-        for thread in _threads_to_wait:
-            thread.join()
-        _threads_to_wait.clear()
+        threads_list_snapshot = _threads_to_wait
+
+    for thread in threads_list_snapshot:
+        thread.join()
+
+    with _threads_to_wait_lock:  # cleanup just in case
+        for thread in threads_list_snapshot:
+            if thread in _threads_to_wait:
+                print('WARNING: uncleaned thread!')
+                _threads_to_wait.remove(thread)
 
 
 def get_host_ip():
