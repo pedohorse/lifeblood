@@ -47,16 +47,17 @@ class Karma(BaseNodeWithTaskRequirements):
                      'if not os.path.exists({imgpath}):\n' \
                      '    import sys\n' \
                      '    from subprocess import Popen\n' \
-                     "    sys.exit(Popen(['husk', '-V', '2a', '--make-output-path', '-o', {imgpath}, {usdpath}]).wait())\n" \
+                     "    sys.exit(Popen(['husk', '-V', '2a', '--make-output-path', '-f', {frame}, '-o', {imgpath}, {usdpath}]).wait())\n" \
                      "else:\n" \
                      "    print('image file already exists, skipping work')\n" \
                     .format(imgpath=repr(context.param_value('image path')),
-                            usdpath=repr(context.param_value('usd path')))
+                            usdpath=repr(context.param_value('usd path')),
+                            frame=repr(str(args['frames'][0])))
 
             invoc = InvocationJob(['python', ':/karmacall.py'])
             invoc.set_extra_file('karmacall.py', script)
-        else:
-            invoc = InvocationJob(['husk', '-V', '2a', '--make-output-path', '-o', context.param_value('image path'), context.param_value('usd path')], env=env)
+        else:  # TODO: -f there is testing, if succ - make a parameter out of it on the node or smth
+            invoc = InvocationJob(['husk', '-V', '2a', '--make-output-path', '-f', str(args['frames'][0]), '-o', context.param_value('image path'), context.param_value('usd path')], env=env)
         res = ProcessingResult(invoc)
         return res
 
