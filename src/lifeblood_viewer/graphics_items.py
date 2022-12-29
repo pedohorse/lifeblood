@@ -1470,7 +1470,8 @@ class Task(NetworkItemWithUI):
                 imgui.indent(10)
                 invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
                                                             (f', worker {invoc["worker_id"]}' if invoc.get('worker_id') is not None else '') +
-                                                            (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else ''))
+                                                            (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else '') +
+                                                            f'###logentry_{invoc_id}')
                 if not invoc_expanded:
                     imgui.unindent(10)
                     continue
