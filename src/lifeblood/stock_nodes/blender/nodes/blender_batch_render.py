@@ -140,7 +140,7 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
 
         # is correct one frame_current or frame_current_final ?
         spawnlines = \
-            f"    attrs = {{'frames': [frame], 'file': {repr(file_path)}, 'outimage': outimage}}\n" \
+            f"    attrs = {{'frames': [frame], 'blendfile': {repr(file_path)}, 'file': outimage}}\n" \
             f"    for attr, val in {repr(attr_to_trans)}:\n" \
             f"        attrs[attr] = val\n" \
             f"    lifeblood_connection.create_task('{context.task_name()}_spawned frame %g' % frame, attrs)\n"
