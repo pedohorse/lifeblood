@@ -13,7 +13,7 @@ jobs:
   
     steps:
     - name: Sphinx Pages
-      uses: seanzhengw/sphinx-pages@d29427677b3b89c1b5311d9eb135fb4168f4ba4a
+      uses: pedohorse/sphinx-pages@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         create_readme: true
