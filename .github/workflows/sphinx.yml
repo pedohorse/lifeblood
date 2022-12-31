@@ -19,3 +19,4 @@ jobs:
         create_readme: true
         source_dir: docs/source
         install_extensions: true
+        create_nojekyll: true
