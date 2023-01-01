@@ -1,3 +1,5 @@
+[Documentation](https://pedohorse.github.io/lifeblood)
+
 |master|dev|
 |---|---|
 |[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|
@@ -20,7 +22,7 @@ processing graph.
 
 This system overview should be very familiar to anyone who saw at least one renderfarm.
 
-check [documentation here](https://pedohorse.github.io/lifeblood/tutorials.html)  
+check [documentation here](https://pedohorse.github.io/lifeblood)  
 and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
 
 ### Features:
