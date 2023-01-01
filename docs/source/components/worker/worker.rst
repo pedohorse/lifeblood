@@ -84,4 +84,4 @@ and this can get as granular as resources allow. That's why always make sure to 
 and limit maximum workers that pool can spawn to some sane and safe amount.
 
 
-.. include:: logging.rst
+.. include:: ../logging.rst

@@ -7,8 +7,8 @@ Lifeblood Viewer
 .. toctree::
     :maxdepth: 1
 
-    ../expressions
+    ../../expressions
 
-.. image:: ../images/viewer_overview.png
+.. image:: /images/viewer_overview.png
 
 .. include:: ../logging.rst

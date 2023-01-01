@@ -1,5 +1,5 @@
-Sphinx==4.*
-sphinx-rtd-theme==0.*
+Sphinx==5.*
+pydata-sphinx-theme==0.*
 sphinxcontrib-applehelp==1.*
 sphinxcontrib-devhelp==1.*
 sphinxcontrib-htmlhelp==2.*
