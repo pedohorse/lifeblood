@@ -1,194 +1,300 @@
 
-
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
-<head>
-  <meta charset="utf-8" />
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>How to Use &#8212; Lifeblood 1.0.0 documentation</title>
   
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>How to Use &mdash; Lifeblood 1.0.0 documentation</title>
   
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "dark";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=796348d33e8b1d947c94" rel="stylesheet">
+<link href="_static/styles/bootstrap.css?digest=796348d33e8b1d947c94" rel="stylesheet">
+<link href="_static/styles/pydata-sphinx-theme.css?digest=796348d33e8b1d947c94" rel="stylesheet">
 
   
-  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=796348d33e8b1d947c94" rel="stylesheet">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2">
 
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
   
-  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=796348d33e8b1d947c94">
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=796348d33e8b1d947c94">
 
-  
-  
-
-  
-
-  
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="_static/js/theme.js"></script>
-
-    
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Tutorials" href="tutorials.html" />
-    <link rel="prev" title="Overview of Lifeblood" href="overview.html" /> 
-</head>
-
-<body class="wy-body-for-nav">
-
-   
-  <div class="wy-grid-for-nav">
-    
-    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
-      <div class="wy-side-scroll">
-        <div class="wy-side-nav-search" >
-          
-
-          
-            <a href="index.html" class="icon icon-home"> Lifeblood
-          
-
-          
-          </a>
-
-          
-            
-            
-              <div class="version">
-                1.0.0
-              </div>
-            
-          
-
-          
-<div role="search">
-  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
-    <input type="hidden" name="check_keywords" value="yes" />
-    <input type="hidden" name="area" value="default" />
-  </form>
-</div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview of Lifeblood</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">How to Use</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#configuration">Configuration</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#config-location">Config location</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#hardware-setup">Hardware Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#prepare-to-lunch">Prepare To Lunch</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#launch">Launch</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#start-a-scheduler">Start a Scheduler</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#start-workers">Start Workers</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#use-pools-instead">Use Pools instead</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#start-viewer">Start Viewer</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="tutorials.html">Tutorials</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">Components:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="scheduler/scheduler.html">Lifeblood Scheduler</a></li>
-<li class="toctree-l1"><a class="reference internal" href="worker.html">Lifeblood Worker</a></li>
-<li class="toctree-l1"><a class="reference internal" href="viewer/viewer.html">Lifeblood Viewer</a></li>
-</ul>
-
-            
-          
-        </div>
-        
-      </div>
-    </nav>
-
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
-          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">Lifeblood</a>
-        
-      </nav>
-
-
-      <div class="wy-nav-content">
-        
-        <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
-  <ul class="wy-breadcrumbs">
-    
-      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-        
-      <li>How to Use</li>
-    
-    
-      <li class="wy-breadcrumbs-aside">
-        
-          
-            <a href="_sources/usage.rst.txt" rel="nofollow"> View page source</a>
-          
-        
-      </li>
-    
-  </ul>
+    <link rel="prev" title="Overview of Lifeblood" href="overview.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="docsearch:language" content="en">
+  </head>
+  
+  
+  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="180" data-default-mode="dark">
 
   
-  <hr/>
+  
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  
+  <input type="checkbox" class="sidebar-toggle" name="__primary" id="__primary">
+  <label class="overlay overlay-primary" for="__primary"></label>
+
+  
+  <input type="checkbox" class="sidebar-toggle" name="__secondary" id="__secondary">
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+      
+<form class="bd-search d-flex align-items-center" action="search.html" method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search" class="form-control" name="q" id="search-input" placeholder="Search the docs ..." aria-label="Search the docs ..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+    </div>
+  </div>
+
+  
+  <nav class="bd-header navbar navbar-expand-lg bd-navbar" id="navbar-main"><div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+      <span class="fa-solid fa-bars"></span>
+  </label>
+  <div id="navbar-start">
+    
+    
+  
+
+
+<a class="navbar-brand logo" href="index.html">
+
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <img src="_static/lifeblood.svg" class="logo__image only-light" alt="Logo image">
+    <img src="_static/lifeblood.svg" class="logo__image only-dark" alt="Logo image">
+  
+  
+</a>
+    
+  </div>
+
+  
+  <div class="col-lg-9 navbar-header-items">
+    <div id="navbar-center" class="mr-auto">
+      
+      <div class="navbar-center-item">
+        <nav class="navbar-nav">
+    <p class="sidebar-header-items__title" role="heading" aria-level="1" aria-label="Site Navigation">
+        Site Navigation
+    </p>
+    <ul id="navbar-main-elements" class="navbar-nav">
+        
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="overview.html">
+                        Overview of Lifeblood
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="#">
+                        How to Use
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+    </ul>
+</nav>
+      </div>
+      
+    </div>
+
+    <div id="navbar-end">
+      
+        <div class="navbar-end-item navbar-persistent--container">
+          
+<button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-toggle="tooltip">
+  <i class="fa-solid fa-magnifying-glass"></i>
+</button>
+        </div>
+      
+      
+      <div class="navbar-end-item">
+        <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-toggle="tooltip">
+    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
+    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
+    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+</button>
+      </div>
+      
+      <div class="navbar-end-item">
+        <ul id="navbar-icon-links" class="navbar-nav" aria-label="Icon Links">
+      </ul>
+      </div>
+      
+    </div>
+  </div>
+
+
+  
+  
+    <div class="navbar-persistent--mobile">
+<button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-toggle="tooltip">
+  <i class="fa-solid fa-magnifying-glass"></i>
+</button>
+    </div>
+  
+
+  
+  <label class="sidebar-toggle secondary-toggle" for="__secondary">
+      <span class="fa-solid fa-outdent"></span>
+  </label>
+  
+
 </div>
-          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
-           <div itemprop="articleBody">
+  </nav>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      <div class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+      
+      <div class="navbar-center-item">
+        <nav class="navbar-nav">
+    <p class="sidebar-header-items__title" role="heading" aria-level="1" aria-label="Site Navigation">
+        Site Navigation
+    </p>
+    <ul id="navbar-main-elements" class="navbar-nav">
+        
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="overview.html">
+                        Overview of Lifeblood
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="#">
+                        How to Use
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+    </ul>
+</nav>
+      </div>
+      
+      </div>
+    
+
+    
+    
+    <div class="sidebar-header-items__end">
+      
+      <div class="navbar-end-item">
+        <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-toggle="tooltip">
+    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
+    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
+    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+</button>
+      </div>
+      
+      <div class="navbar-end-item">
+        <ul id="navbar-icon-links" class="navbar-nav" aria-label="Icon Links">
+      </ul>
+      </div>
+      
+    </div>
+    
+  </div>
+
+  
+
+  
+  <div class="sidebar-end-items sidebar-primary__section">
+    <div class="sidebar-end-items__item">
+    </div>
+  </div>
+
+  
+  <div id="rtd-footer-container"></div>
+
+      </div>
+      <main id="main-content" class="bd-main">
+        
+        
+        <div class="bd-content">
+          <div class="bd-article-container">
             
-  <div class="section" id="how-to-use">
-<span id="usage"></span><h1>How to Use<a class="headerlink" href="#how-to-use" title="Permalink to this headline">¶</a></h1>
+            <div class="bd-header-article">
+                
+            </div>
+            
+            
+            <article class="bd-article" role="main">
+              
+  <section id="how-to-use">
+<span id="usage"></span><h1>How to Use<a class="headerlink" href="#how-to-use" title="Permalink to this heading">#</a></h1>
 <div class="contents local topic" id="contents">
 <ul class="simple">
 <li><p><a class="reference internal" href="#installation" id="id3">Installation</a></p></li>
@@ -212,8 +318,8 @@
 </li>
 </ul>
 </div>
-<div class="section" id="installation">
-<span id="id1"></span><h2><a class="toc-backref" href="#id3">Installation</a><a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<section id="installation">
+<span id="id1"></span><h2><a class="toc-backref" href="#id3">Installation</a><a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h2>
 <p>Lifeblood consists of 2 parts:</p>
 <ul class="simple">
 <li><p>the core part that contains scheduler and worker, and has no GUI dependencies</p></li>
@@ -232,16 +338,16 @@ on those extra machines.</p>
 while extra machines will only run workers.</p>
 <p>Check <a class="reference internal" href="overview.html#overview-scheduler"><span class="std std-ref">overview</span></a> to learn basic components of Lifeblood</p>
 <p>Also check the <a class="reference internal" href="tutorials.html#tutorials-installation"><span class="std std-ref">tutorial section</span></a></p>
-</div>
-<div class="section" id="configuration">
-<span id="id2"></span><h2><a class="toc-backref" href="#id4">Configuration</a><a class="headerlink" href="#configuration" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="configuration">
+<span id="id2"></span><h2><a class="toc-backref" href="#id4">Configuration</a><a class="headerlink" href="#configuration" title="Permalink to this heading">#</a></h2>
 <p>Lifeblood is made in a way so you can start it with minimum to zero pre-configuration.
 But even in simplest cases you might will need to adjust something.</p>
 <p>Lifeblood’s components will create default configs for themselves on first launch.
 You can start with default config and adjust it if such need arises.</p>
 <p>All components of Lifeblood are configured by a number of configs files, some of those values can be overriden with command-line arguments</p>
-<div class="section" id="config-location">
-<span id="config-dir"></span><h3><a class="toc-backref" href="#id5">Config location</a><a class="headerlink" href="#config-location" title="Permalink to this headline">¶</a></h3>
+<section id="config-location">
+<span id="config-dir"></span><h3><a class="toc-backref" href="#id5">Config location</a><a class="headerlink" href="#config-location" title="Permalink to this heading">#</a></h3>
 <p>Config files are generated and stored in location defined by <code class="docutils literal notranslate"><span class="pre">LIFEBLOOD_CONFIG_LOCATION</span></code> environment variable,
 by default it’s:</p>
 <ul class="simple">
@@ -257,7 +363,7 @@ The main config file in most cases is called <code class="docutils literal notra
 </div>
 <p>Detailed config file description see at:</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="scheduler/scheduler_configs.html#scheduler-configs"><span class="std std-ref">Scheduler Config</span></a></p></li>
+<li><p><a class="reference internal" href="components/scheduler/scheduler_configs.html#scheduler-configs"><span class="std std-ref">Scheduler Config</span></a></p></li>
 <li><p><span class="xref std std-ref">worker configs</span></p></li>
 <li><p><span class="xref std std-ref">viewer configs</span></p></li>
 </ul>
@@ -268,10 +374,10 @@ The main config file in most cases is called <code class="docutils literal notra
 <div class="line"><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">scheduler</span></code></div>
 <div class="line">use <code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">&lt;command&gt;</span> <span class="pre">--help</span></code> to get reference for each command</div>
 </div>
-</div>
-</div>
-<div class="section" id="hardware-setup">
-<h2><a class="toc-backref" href="#id6">Hardware Setup</a><a class="headerlink" href="#hardware-setup" title="Permalink to this headline">¶</a></h2>
+</section>
+</section>
+<section id="hardware-setup">
+<h2><a class="toc-backref" href="#id6">Hardware Setup</a><a class="headerlink" href="#hardware-setup" title="Permalink to this heading">#</a></h2>
 <p>In this “How To” it’s assumed that you have the simplest and most common individual network setup:</p>
 <ul>
 <li><p>All your computers on the network can directly communicate to each other</p></li>
@@ -290,9 +396,9 @@ on all machines</div>
 </div>
 </li>
 </ul>
-</div>
-<div class="section" id="prepare-to-lunch">
-<h2><a class="toc-backref" href="#id7">Prepare To Lunch</a><a class="headerlink" href="#prepare-to-lunch" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="prepare-to-lunch">
+<h2><a class="toc-backref" href="#id7">Prepare To Lunch</a><a class="headerlink" href="#prepare-to-lunch" title="Permalink to this heading">#</a></h2>
 <div class="line-block">
 <div class="line">As said before, the most common use case for Lifeblood needs little to none configuration,</div>
 <div class="line">However, if you plan to use default standard environment resolver - it needs to detect the location of
@@ -301,21 +407,21 @@ the software it can resolve.</div>
 <ul class="simple">
 <li><p>TODO: add steps how to generate initial resolver config</p></li>
 </ul>
-</div>
-<div class="section" id="launch">
-<h2><a class="toc-backref" href="#id8">Launch</a><a class="headerlink" href="#launch" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="launch">
+<h2><a class="toc-backref" href="#id8">Launch</a><a class="headerlink" href="#launch" title="Permalink to this heading">#</a></h2>
 <p>You will need to launch Lifeblood’s components.</p>
 <ul class="simple">
 <li><p>single scheduler</p></li>
 <li><p>any number of workers</p></li>
 <li><p>veiwers if needed and as needed</p></li>
 </ul>
-<div class="section" id="start-a-scheduler">
-<h3><a class="toc-backref" href="#id9">Start a Scheduler</a><a class="headerlink" href="#start-a-scheduler" title="Permalink to this headline">¶</a></h3>
+<section id="start-a-scheduler">
+<h3><a class="toc-backref" href="#id9">Start a Scheduler</a><a class="headerlink" href="#start-a-scheduler" title="Permalink to this heading">#</a></h3>
 <div class="line-block">
 <div class="line">Scheduler is the central part of Lifeblood: it manages tasks and workers.</div>
 <div class="line">Generally there should always be only one single scheduler running in a local network.</div>
-<div class="line">read more <a class="reference internal" href="scheduler/scheduler.html#scheduler"><span class="std std-ref">in scheduler documentation</span></a></div>
+<div class="line">read more <a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">in scheduler documentation</span></a></div>
 </div>
 <p>Starting scheduler is simple:</p>
 <ul class="simple">
@@ -327,9 +433,9 @@ too much noise in the log, so some of them can be explicitly set to use a differ
 <li><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">--loglevel</span> <span class="pre">DEBUG</span> <span class="pre">scheduler</span> <span class="pre">--verbosity-pinger</span> <span class="pre">INFO</span> <span class="pre">--db-path</span> <span class="pre">/path/to/database.db</span></code> - in addition to all
 said above, here we override database location set in config to use sqlite db file at <code class="docutils literal notranslate"><span class="pre">/path/to/database.db</span></code></p></li>
 </ul>
-</div>
-<div class="section" id="start-workers">
-<h3><a class="toc-backref" href="#id10">Start Workers</a><a class="headerlink" href="#start-workers" title="Permalink to this headline">¶</a></h3>
+</section>
+<section id="start-workers">
+<h3><a class="toc-backref" href="#id10">Start Workers</a><a class="headerlink" href="#start-workers" title="Permalink to this heading">#</a></h3>
 <div class="line-block">
 <div class="line">Worker is the part of Lifeblood that is responsible for launching things as ordered by scheduler.</div>
 <div class="line">You would have a single scheduler and multiple workers ran across local network.</div>
@@ -340,9 +446,9 @@ resources among each other</div>
 scheduler to work. If machine runs out of memory - scheduler will have problems working and may crash
 or be killed by the system.</div>
 </div>
-<p>Read more <a class="reference internal" href="worker.html#worker"><span class="std std-ref">in worker documentation</span></a></p>
-<div class="section" id="use-pools-instead">
-<span id="usage-pools"></span><h4><a class="toc-backref" href="#id11">Use Pools instead</a><a class="headerlink" href="#use-pools-instead" title="Permalink to this headline">¶</a></h4>
+<p>Read more <a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">in worker documentation</span></a></p>
+<section id="use-pools-instead">
+<span id="usage-pools"></span><h4><a class="toc-backref" href="#id11">Use Pools instead</a><a class="headerlink" href="#use-pools-instead" title="Permalink to this heading">#</a></h4>
 <p>Instead of starting individual workers you will probably want to start some kind of worker pool that will manage workers
 for you</p>
 <p>If you just want to get it started:</p>
@@ -355,10 +461,10 @@ system has resources left to do work.</p>
 <blockquote>
 <div><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">worker</span></code></p>
 </div></blockquote>
-</div>
-</div>
-<div class="section" id="start-viewer">
-<h3><a class="toc-backref" href="#id12">Start Viewer</a><a class="headerlink" href="#start-viewer" title="Permalink to this headline">¶</a></h3>
+</section>
+</section>
+<section id="start-viewer">
+<h3><a class="toc-backref" href="#id12">Start Viewer</a><a class="headerlink" href="#start-viewer" title="Permalink to this heading">#</a></h3>
 <p>Viewer is a component that is used to connect to the scheduler and:</p>
 <ul>
 <li><p>see the progress of your tasks</p></li>
@@ -371,56 +477,179 @@ system has resources left to do work.</p>
 <p>You will have to use viewer to set up your Lifeblood task processing node network.
 By default scheduler with a new database has no nodes, so no tasks can be created.</p>
 <p>see <span class="xref std std-ref">tutorials</span> to understand how to work in the viewer</p>
-</div>
-</div>
-</div>
+</section>
+</section>
+</section>
 
 
-           </div>
-           
-          </div>
-          <footer>
-    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-        <a href="tutorials.html" class="btn btn-neutral float-right" title="Tutorials" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
-        <a href="overview.html" class="btn btn-neutral float-left" title="Overview of Lifeblood" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-    </div>
-
-  <hr/>
-
-  <div role="contentinfo">
-    <p>
-        &#169; Copyright 10132 BC - 2029 AD, XAPKOHHEH.
-
-    </p>
-  </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
-    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
-
-</footer>
-        </div>
+            </article>
+            
+            
+            
+            <footer class="bd-footer-article">
+                <!-- Previous / next buttons -->
+<div class='prev-next-area'>
+  <a class='left-prev' id="prev-link" href="overview.html" title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+          <p class="prev-next-subtitle">previous</p>
+          <p class="prev-next-title">Overview of Lifeblood</p>
       </div>
+  </a>
+  <a class='right-next' id="next-link" href="tutorials.html" title="next page">
+  <div class="prev-next-info">
+      <p class="prev-next-subtitle">next</p>
+      <p class="prev-next-title">Tutorials</p>
+  </div>
+  <i class="fa-solid fa-angle-right"></i>
+  </a>
+</div>
+            </footer>
+            
+          </div>
+          
+          
+          
+            <div class="bd-sidebar-secondary bd-toc">
+              
+<div class="toc-item">
+  
+<div class="tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+</div>
+<nav id="bd-toc-nav" class="page-toc">
+    <ul class="visible nav section-nav flex-column">
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#installation">
+   Installation
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#configuration">
+   Configuration
+  </a>
+  <ul class="visible nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#config-location">
+     Config location
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#hardware-setup">
+   Hardware Setup
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#prepare-to-lunch">
+   Prepare To Lunch
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#launch">
+   Launch
+  </a>
+  <ul class="visible nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#start-a-scheduler">
+     Start a Scheduler
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#start-workers">
+     Start Workers
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#use-pools-instead">
+       Use Pools instead
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#start-viewer">
+     Start Viewer
+    </a>
+   </li>
+  </ul>
+ </li>
+</ul>
 
-    </section>
+</nav>
+</div>
+
+<div class="toc-item">
+  
+<div id="searchbox"></div>
+</div>
+
+<div class="toc-item">
+  
+</div>
+
+<div class="toc-item">
+  
+<div class="tocsection sourcelink">
+    <a href="_sources/usage.rst.txt">
+        <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+</div>
+
+</div>
+
+            </div>
+          
+          
+        </div>
+        <footer class="bd-footer-content">
+          <div class="bd-footer-content__inner">
+            
+          </div>
+        </footer>
+        
+      </main>
+    </div>
+  </div>
+
+  
+    
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=796348d33e8b1d947c94"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=796348d33e8b1d947c94"></script>
+
+  <footer class="bd-footer"><div class="bd-footer__inner container">
+  
+  <div class="footer-item">
+    
+<p class="copyright">
+
+    &copy; Copyright 10132 BC - 2029 AD, XAPKOHHEH.<br>
+
+</p>
 
   </div>
   
-
-  <script type="text/javascript">
-      jQuery(function () {
-          SphinxRtdTheme.Navigation.enable(true);
-      });
-  </script>
-
+  <div class="footer-item">
+    <p class="theme-version">
+    Built with the
+    <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">
+        PyData Sphinx Theme
+    </a>
+    0.12.0.
+</p>
+  </div>
   
-  
+  <div class="footer-item">
     
-   
+<p class="sphinx-version">
+Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.3.0.<br>
+</p>
 
-</body>
+  </div>
+  
+</div>
+  </footer>
+  </body>
 </html>

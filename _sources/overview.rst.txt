@@ -6,6 +6,14 @@ Overview of Lifeblood
     :depth: 2
     :local:
 
+**Lifeblood** is a task management software tuned to CG industry.
+
+**Lifeblood** solves the same problem as Deadline, Tractor and other farm managers,
+but Lifeblood does much more on top of that.
+
+**Lifeblood** allows you do define task processing workflows in terms of a node graph,
+where tasks that travel from node to node and may produce workload to be executed by a swarm of workers.
+
 Main components
 ===============
 
@@ -15,7 +23,7 @@ Lifeblood is a task processing system. It consists of 3 main component types:
 * worker
 * viewer
 
-.. image:: images/overview.png
+.. image:: /images/overview.png
 
 .. _overview-scheduler:
 

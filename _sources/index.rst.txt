@@ -1,6 +1,8 @@
 Welcome to Lifeblood documentation!
 ====================================
 
+.. image:: images/lifeblood.svg
+
 **Lifeblood** is a task management software tuned to CG industry.
 
 **Lifeblood** solves the same problem as Deadline, Tractor and other farm managers,
@@ -16,15 +18,7 @@ where tasks that travel from node to node and may produce workload to be execute
     overview
     usage
     tutorials
-
-.. toctree::
-    :maxdepth: 1
-    :caption: Components:
-
-    scheduler/scheduler
-    worker
-    viewer/viewer
-
+    components/index
 
 Indices and tables
 ==================
