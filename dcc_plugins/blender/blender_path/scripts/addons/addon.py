@@ -1,5 +1,6 @@
 from logging import getLogger
 from getpass import getuser
+from lifeblood_utils_bpy import address_from_broadcast_ui
 import bpy
 
 logger = getLogger('lifeblood_plugin')
@@ -181,7 +182,8 @@ class BroadcastListenerOperator(bpy.types.Operator):
     def execute(self, context):
         if 'lifeblood_submitter_parameters' not in context.scene:
             context.scene['lifeblood_submitter_parameters'] = {}
-        context.scene['lifeblood_submitter_parameters']['address'] = 'urmom'
+        address, port = address_from_broadcast_ui(('0.0.0.0', 34305))
+        context.scene['lifeblood_submitter_parameters']['address'] = f'{address}:{port}'
 
         return {'FINISHED'}
 
