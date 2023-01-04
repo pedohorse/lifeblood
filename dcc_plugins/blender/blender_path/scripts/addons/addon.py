@@ -31,11 +31,23 @@ def _attrib_count_set(subm, value, collection_name):
             getattr(subm, collection_name).remove(len(subm.attribs) - 1)
 
 
+def _set_to_stash(subm, value, attrib_name):
+    if 'lifeblood_submitter_parameters' not in bpy.context.scene:
+        bpy.context.scene['lifeblood_submitter_parameters'] = {}
+    bpy.context.scene['lifeblood_submitter_parameters'][attrib_name] = value
+
+
+def _get_from_stash(subm, attrib_name):
+    return bpy.context.scene.get('lifeblood_submitter_parameters', {}).get(attrib_name, '127.0.0.1:1384')
+
+
 class LifebloodSubmitOperator(bpy.types.Operator):
     bl_label = 'Lifeblood Submitter'
     bl_idname = 'wm.lifeblood_submitter'
 
-    address: bpy.props.StringProperty(name='scheduler address', default='127.0.0.1:1384')
+    address: bpy.props.StringProperty(name='scheduler address',
+                                      get=lambda x: _get_from_stash(x, 'address'),
+                                      set=lambda x, y: _set_to_stash(x, y, 'address'))
     node_name: bpy.props.StringProperty(name='node name', default='IN BLENDER')
 
     attrib_count: bpy.props.IntProperty(name='Number Of Attributes', default=0, min=0,
@@ -74,7 +86,7 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         layout = self.layout
         layout.prop(self, 'address')
         layout.prop(self, 'node_name')
-        #layout.operator('nop', 'detec')
+        layout.operator('wm.lifeblood_broadcast_listener', text='detec')
 
         layout.separator()
 
@@ -117,15 +129,14 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         print('executing', self.address)
         import time
         context.window_manager.progress_begin(0, 100)
-        time.sleep(4)
+        # time.sleep(4)
         context.window_manager.progress_update(25)
-        time.sleep(4)
+        # time.sleep(4)
         context.window_manager.progress_update(50)
-        time.sleep(4)
+        # time.sleep(4)
         context.window_manager.progress_update(75)
-        time.sleep(4)
+        # time.sleep(4)
         context.window_manager.progress_end()
-
 
         # stash
         stash = {}
@@ -147,15 +158,34 @@ class LifebloodSubmitOperator(bpy.types.Operator):
                          'res_cpu_min', 'res_cpu_pref', 'res_mem_min', 'res_mem_pref'):
                 if prop in stash:
                     setattr(self, prop, stash[prop])
-            self.attrib_count = len(stash['attribs'])
-            for i, (name, val) in enumerate(stash['attribs'].items()):
-                self.attribs[i].name = name
-                self.attribs[i].val = val
-            self.resolver_attrib_count = len(stash['resolver_attribs'])
-            for i, (name, val) in enumerate(stash['resolver_attribs'].items()):
-                self.resolver_attribs[i].name = name
-                self.resolver_attribs[i].val = val
+            if 'attribs' in stash:
+                self.attrib_count = len(stash['attribs'])
+                for i, (name, val) in enumerate(stash['attribs'].items()):
+                    self.attribs[i].name = name
+                    self.attribs[i].val = val
+            if 'resolver_attribs' in stash:
+                self.resolver_attrib_count = len(stash['resolver_attribs'])
+                for i, (name, val) in enumerate(stash['resolver_attribs'].items()):
+                    self.resolver_attribs[i].name = name
+                    self.resolver_attribs[i].val = val
 
+        return context.window_manager.invoke_props_dialog(self)
+
+
+class BroadcastListenerOperator(bpy.types.Operator):
+    bl_label = 'Lifeblood Listener'
+    bl_idname = 'wm.lifeblood_broadcast_listener'
+
+    boob: bpy.props.StringProperty(name='Booba', default='boobA')
+
+    def execute(self, context):
+        if 'lifeblood_submitter_parameters' not in context.scene:
+            context.scene['lifeblood_submitter_parameters'] = {}
+        context.scene['lifeblood_submitter_parameters']['address'] = 'urmom'
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
 
@@ -166,6 +196,7 @@ def lifeblood_main_menu_items(self, context):
 def register():
     logger.info('registering lifeblood plugin...')
     bpy.utils.register_class(LifebloodTaskAttributeItem)
+    bpy.utils.register_class(BroadcastListenerOperator)
     bpy.utils.register_class(LifebloodSubmitOperator)
     bpy.types.TOPBAR_MT_render.append(lifeblood_main_menu_items)
 
