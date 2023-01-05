@@ -9,6 +9,7 @@ from __future__ import print_function, absolute_import
 import pickle
 import socket
 import struct
+from getpass import getuser
 from .nethelpers import recv_string, recv_exactly, send_string
 from .query import scheduler_client, Task
 
@@ -137,7 +138,17 @@ class NewTask(TaskSpawn):
         return Task(self.__scheduler_addr, task_id)
 
 
-def create_task(name, node_id_or_name, scheduler_addr, attributes={}, priority=50.0):
+def create_task(name, node_id_or_name,
+                scheduler_addr,
+                attributes=None,
+                env_resolver_name='StandardEnvironmentResolver', env_arguments=None,
+                priority=50.0):
+
+    if attributes is None:
+        attributes = {}
+    if env_arguments is None:
+        env_arguments = {'user': getuser()}
+    env_res = EnvironmentResolverArguments(env_resolver_name, env_arguments)
     if isinstance(node_id_or_name, str):
         addr, sport = scheduler_addr
         port = int(sport)
@@ -151,5 +162,5 @@ def create_task(name, node_id_or_name, scheduler_addr, attributes={}, priority=5
         assert isinstance(node_id_or_name, int)
         node_id = node_id_or_name
 
-    task = NewTask(name, node_id, scheduler_addr, None, task_attributes=attributes, priority=priority)
+    task = NewTask(name, node_id, scheduler_addr, env_args=env_res, task_attributes=attributes, priority=priority)
     return task
