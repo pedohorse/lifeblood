@@ -1,6 +1,7 @@
 from logging import getLogger
 from getpass import getuser
 from lifeblood_utils_bpy import address_from_broadcast_ui
+from lifeblood_client.submitting import create_task, EnvironmentResolverArguments
 import bpy
 
 logger = getLogger('lifeblood_plugin')
@@ -50,6 +51,9 @@ class LifebloodSubmitOperator(bpy.types.Operator):
                                       get=lambda x: _get_from_stash(x, 'address'),
                                       set=lambda x, y: _set_to_stash(x, y, 'address'))
     node_name: bpy.props.StringProperty(name='node name', default='IN BLENDER')
+
+    task_name: bpy.props.StringProperty(name='task name', default='blender task')
+    priority: bpy.props.IntProperty(name='Priority', min=0, max=100, default=50)
 
     attrib_count: bpy.props.IntProperty(name='Number Of Attributes', default=0, min=0,
                                         get=lambda x: _attrib_count_get(x, 'attribs'),
@@ -148,6 +152,19 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         stash['attribs'] = {prop.name: prop.val for prop in self.attribs}
         stash['resolver_attribs'] = {prop.name: prop.val for prop in self.resolver_attribs}
         context.scene['lifeblood_submitter_parameters'] = stash
+
+        # and submit
+        if ':' in self.address:
+            addr = self.address.split(':', 1)
+            addr[1] = int(addr[1])
+        else:
+            addr = (self.address, 1384)
+
+        create_task(self.task_name, self.node_name, addr,
+                    {prop.name: prop.val for prop in self.attribs},
+                    self.resolver_name, {prop.name: prop.val for prop in self.resolver_attribs},
+                    self.priority).submit()
+
         return {'FINISHED'}
 
     def invoke(self, context, event):

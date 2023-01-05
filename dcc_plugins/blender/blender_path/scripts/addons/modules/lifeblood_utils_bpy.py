@@ -14,7 +14,7 @@ def address_from_broadcast_ui(broadcast_address: Tuple[str, int], awaited_id='li
             awaited_id=awaited_id,
             timeout=timeout)))
     thread.start()
-    
+
     time_step = 0.1
     start_time = time.time()
     wm = bpy.context.window_manager
