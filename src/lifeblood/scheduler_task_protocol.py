@@ -101,7 +101,6 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         async def comm_update_task_attributes():  # elif command == b'tupdateattribs':  # note - this one is the same as in scheduler_ui_protocol... TODO: should they maybe be unified?
             task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
             attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(update_data_size))
-            self.__logger.warning(attribs_to_update)
             attribs_to_delete = set()
             for _ in range(strcount):
                 attribs_to_delete.add(await read_string())
