@@ -7,6 +7,19 @@
 branch=dev
 
 set -e
+install_viewer=true
+
+for arg in "$@"; do
+  if [ $arg == "--no-viewer" ]; then
+    install_viewer=false
+  fi
+  if [ $arg == "--help" -o $arg == "-h" ]; then
+    echo "`basename $0` usage:"
+    echo "    --no-viewer    do NOT install lifeblood_viewer. SHOULD be used for headless machines!"
+    echo "    -h / --help      shot this message"
+    exit 0
+  fi
+done
 
 if [ -x $(which python3) ]; then
   PYTHON=$(which python3)
@@ -67,6 +80,7 @@ mv lifeblood-${branch}/entry.py $hash/.
 
 # THIS IS FOR TESTING ONLY !!!             !!!!
 cp requirements.txt $hash/.
+cp requirements_viewer.txt $hash/.
 
 pushd $hash
 echo "initializing venv"
@@ -76,16 +90,30 @@ source venv/bin/activate
 
 echo "installing dependencies"
 pip install -r requirements.txt
+if $install_viewer; then
+  pip install -r requirements_viewer.txt
+fi
 
 echo "deactivating venv"
 deactivate
 
+popd
+
 echo "making links"
-echo "#!/bin/sh" > lifeblood  # pfffff, it's a module in this dir, ffs
-echo "exec entry.py" > lifeblood
+if [ -e current ]; then
+  rm current
+fi
+ln -s $hash current
+
+echo "#!/bin/sh" > lifeblood
+echo "exec current/entry.py "\"\$@\" > lifeblood
 chmod +x lifeblood
 
-popd
+if $install_viewer; then
+  echo "#!/bin/sh" > lifeblood_viewer
+  echo "exec current/entry.py viewer "\"\$@\" > lifeblood_viewer
+  chmod +x lifeblood_viewer
+fi
 
 echo "cleaning up..."
 rm -rf lifeblood-${branch}
