@@ -147,16 +147,19 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
 
         do_spawn = self.is_output_connected('spawned')
         main_script = f'import bpy\n' \
-                      + ('import lifeblood_connection\n' if do_spawn else '') + \
+                      f'import lifeblood_connection\n' \
                       f'scene = bpy.context.scene\n' \
+                      f'all_outimages = []\n' \
                       f'for frame in {repr(frames)}:\n' \
                       f'    scene.frame_set(int(frame), subframe=frame%1.0)\n' \
                       f'    outimage = scene.render.frame_path()\n' \
+                      f'    all_outimages.append(outimage)\n' \
                       f'    _filepath_stash = scene.render.filepath\n' \
                       f'    scene.render.filepath = outimage\n' \
                       f'    bpy.ops.render.render(write_still=True)\n' \
                       + (spawnlines if do_spawn else '') + \
                       f'    scene.render.filepath = _filepath_stash\n' \
+                      + ('lifeblood_connection.set_attributes({"images": all_outimages})\n' if not do_spawn else '') \
                       + (f'lifeblood_connection.wait_for_currently_running_async_operations()\n' if do_spawn else '')
         scripts['main_script.py'] = main_script
         args += ['-P', ':/main_script.py']
