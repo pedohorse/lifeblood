@@ -1,5 +1,6 @@
 from logging import getLogger
 from getpass import getuser
+import json
 from lifeblood_utils_bpy import address_from_broadcast_ui
 from lifeblood_client.submitting import create_task, EnvironmentResolverArguments
 import bpy
@@ -11,6 +12,13 @@ bl_info = {
     'blender': (3, 4, 0),
     'category': 'Interface'
 }
+
+
+def try_json_decode(value: str):
+    try:
+        return json.loads(value)
+    except json.decoder.JSONDecodeError:
+        return value
 
 
 class LifebloodTaskAttributeItem(bpy.types.PropertyGroup):
@@ -160,9 +168,15 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         else:
             addr = (self.address, 1384)
 
+        attribs = {prop.name: try_json_decode(prop.val) for prop in self.attribs}
+        attribs['requirements'] = {'cpu': {'min': self.res_cpu_min,
+                                           'pref': self.res_cpu_pref},
+                                   'cmem': {'min': self.res_mem_min,
+                                           'pref': self.res_mem_pref}}
+
         create_task(self.task_name, self.node_name, addr,
-                    {prop.name: prop.val for prop in self.attribs},
-                    self.resolver_name, {prop.name: prop.val for prop in self.resolver_attribs},
+                    attribs,
+                    self.resolver_name, {prop.name: try_json_decode(prop.val) for prop in self.resolver_attribs},
                     self.priority).submit()
 
         return {'FINISHED'}
