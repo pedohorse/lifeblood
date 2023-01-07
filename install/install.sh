@@ -90,7 +90,9 @@ echo "unzip done"
 echo "------------------------------------ sort of installing ------------------------------------"
 mkdir $hash
 mv lifeblood-${branch}/src/lifeblood $hash/
-mv lifeblood-${branch}/src/lifeblood_viewer $hash/
+if $install_viewer; then
+  mv lifeblood-${branch}/src/lifeblood_viewer $hash/
+fi
 mv lifeblood-${branch}/entry.py $hash/.
 
 awk '{if(found==1){found=2}} /install_requires *= */{found=1} /^ *$/{found=0} {if(found==2){sub(/^ */, ""); print}}' lifeblood-${branch}/pkg_lifeblood/setup.cfg > $hash/requirements.txt
