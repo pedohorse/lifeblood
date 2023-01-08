@@ -22,7 +22,7 @@ foreach($arg in $args){
         Write-Host "    -h / --help      shot this message"
         exit
     }
-})
+}
 
 # download embedded python
 $archname = "python-$pyver-embed-win32.zip"
@@ -56,7 +56,7 @@ $lbsrcdir = "lifeblood-$branch"
 
 Push-Location $hash
 
-'include-system-site-packages = false' | Out-File pyvenv.cfg
+'include-system-site-packages = false' | Set-Content -Path pyvenv.cfg
 
 $sitepath = "lib/python$pyxy/site-packages"
 New-Item $sitepath -ItemType "directory"
@@ -66,18 +66,16 @@ New-Item "piptmp" -ItemType "directory"
 (New-Object System.Net.WebClient).DownloadFile("https://bootstrap.pypa.io/pip/pip.pyz", "$hash/piptmp/pip.pyz")  # why that path after pushd? no idea!
 
 Write-Host "downloading dependencies from pypi"
-(Get-Content "$lbsrcdir/pkg_lifeblood/setup.cfg " -Raw | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value | Out-File "piptmp/requirements.txt"
-Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz download --only-binary :all: --platform win32 --python-version $pyver -r requirements.txt"
+(Get-Content "$lbsrcdir/pkg_lifeblood/setup.cfg " -Raw `
+    | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value `
+    | Set-Content -Path  "piptmp/requirements.txt"
+Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz install --target=../$sitepath --only-binary :all: --platform win32 --python-version $pyver -r requirements.txt"
 if($install_viewer){
-    (Get-Content "$lbsrcdir/pkg_lifeblood_viewer/setup.cfg " -Raw | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value | Out-File "piptmp/requirements_viewer.txt"
-    Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz download --only-binary :all: --platform win32 --python-version $pyver -r requirements_viewer.txt"
-}
-
-$whlfiles = Get-ChildItem "piptmp" -Filter "*.whl"
-
-foreach($file in $whlfiles){
-    Write-Host $file
-    Expand-Archive $file -DestinationPath $sitepath
+    (Get-Content "$lbsrcdir/pkg_lifeblood_viewer/setup.cfg " -Raw `
+        | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value `
+         -replace "(?m)lifeblood.*$","" `
+        | Set-Content -Path  "piptmp/requirements_viewer.txt"
+    Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz install --target=../$sitepath --only-binary :all: --platform win32 --python-version $pyver -r requirements_viewer.txt"
 }
 
 Remove-Item -Recurse "piptmp"
@@ -96,9 +94,9 @@ if(Test-Path current){
     Remove-Item current
 }
 New-Item -ItemType SymbolicLink -Path current -Target $hash
-'current/bin/python -m lifeblood.launch %*' | Out-File "lifeblood.cmd"
+'current/bin/python -m lifeblood.launch %*' | Set-Content -Path  "lifeblood.cmd"
 if($install_viewer){
-    'current/bin/python -m lifeblood_viewer.launch %*' | Out-File "lifeblood_viewer.cmd"
+    'current/bin/python -m lifeblood_viewer.launch %*' | Set-Content -Path  "lifeblood_viewer.cmd"
 }
 
 Write-Host "DONE"
