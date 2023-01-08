@@ -119,7 +119,7 @@ def _install_package(package_path, plugin_category):
         for pyver in pyvers:
             extra_python = os.path.join(python_base_path, '.'.join(str(x) for x in pyver))
             sys.path.append(extra_python)
-            os.environ['PYTHONPATH'] = os.pathsep.join((extra_python, os.environ['PYTHONPATH']))
+            os.environ['PYTHONPATH'] = os.pathsep.join((extra_python, os.environ['PYTHONPATH'])) if 'PYTHONPATH' in os.environ else extra_python
 
     # install nodes
     nodes_path = os.path.join(package_path, 'nodes')
