@@ -7,8 +7,9 @@ $pyver = "3.10.9"
 # = End of Configuration Section =
 # ================================
 
-$pyver -match "\d+.\d+"
+$pyver -match "(\d+)\.(\d+)"
 $pyxy = $Matches.0
+$pycode = $Matches.1 + $Matches.2
 $install_viewer = $true
 
 # parse args
@@ -57,8 +58,9 @@ $lbsrcdir = "lifeblood-$branch"
 Push-Location $hash
 
 'include-system-site-packages = false' | Set-Content -Path pyvenv.cfg
+'import site' | Add-Content -Path "bin/python$pycode._pth"
 
-$sitepath = "lib/python$pyxy/site-packages"
+$sitepath = "lib/site-packages"
 New-Item $sitepath -ItemType "directory"
 
 Write-Host "downloading bootstrap pip..."
@@ -93,10 +95,16 @@ Write-Host "creating links..."
 if(Test-Path current){
     Remove-Item current
 }
-New-Item -ItemType SymbolicLink -Path current -Target $hash
-'current/bin/python -m lifeblood.launch %*' | Set-Content -Path  "lifeblood.cmd"
+$current = 'current'
+New-Item -ItemType SymbolicLink -Path $current -Target $hash
+# may not have permissions
+if(-not $?){
+    $current = $hash
+}
+
+'@echo off','%~dp0\current\bin\python -m lifeblood.launch %*' | Set-Content -Path  "lifeblood.cmd"
 if($install_viewer){
-    'current/bin/python -m lifeblood_viewer.launch %*' | Set-Content -Path  "lifeblood_viewer.cmd"
+    '@echo off','%~dp0\current\bin\python -m lifeblood_viewer.launch %*' | Set-Content -Path  "lifeblood_viewer.cmd"
 }
 
 Write-Host "DONE"
