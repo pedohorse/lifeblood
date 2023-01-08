@@ -102,9 +102,9 @@ if(-not $?){
     $current = $hash
 }
 
-'@echo off','%~dp0\current\bin\python -m lifeblood.launch %*' | Set-Content -Path  "lifeblood.cmd"
+'@echo off','%~dp0\$current\bin\python -m lifeblood.launch %*' | Set-Content -Path  "lifeblood.cmd"
 if($install_viewer){
-    '@echo off','%~dp0\current\bin\python -m lifeblood_viewer.launch %*' | Set-Content -Path  "lifeblood_viewer.cmd"
+    '@echo off','%~dp0\$current\bin\python -m lifeblood_viewer.launch %*' | Set-Content -Path  "lifeblood_viewer.cmd"
 }
 
 Write-Host "DONE"
