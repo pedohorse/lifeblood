@@ -40,11 +40,17 @@ Write-Host "downloading latest $branch..."
 
 (temp_python_bin/python -c 'import zipfile;print(zipfile.ZipFile(""dev.zip"", ""r"").comment.decode())') -match ".{13}"
 $hash = $Matches.0
-Write-Host $hash
+Write-Host "new version has hash: $hash"
+if(Test-Path $hash){
+    Write-Host "folder named $host already exists, aborting"
+    exit 1
+}
 
 New-Item $hash -ItemType "directory"
 
+Write-Host "moving python into new version"
 Move-Item temp_python_bin -Destination $hash/bin
+Write-Host "extracting lifeblood"
 Expand-Archive "$branch.zip" -DestinationPath $hash
 $lbsrcdir = "lifeblood-$branch"
 
@@ -55,9 +61,17 @@ Push-Location $hash
 $sitepath = "lib/python$pyxy/site-packages"
 New-Item $sitepath -ItemType "directory"
 
+Write-Host "downloading bootstrap pip..."
 New-Item "piptmp" -ItemType "directory"
 (New-Object System.Net.WebClient).DownloadFile("https://bootstrap.pypa.io/pip/pip.pyz", "$hash/piptmp/pip.pyz")  # why that path after pushd? no idea!
-Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz download --only-binary :all: --platform win32 --python-version $pyver lifeblood"
+
+Write-Host "downloading dependencies from pypi"
+(Get-Content "$lbsrcdir/pkg_lifeblood/setup.cfg " -Raw | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value | Out-File "piptmp/requirements.txt"
+Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz download --only-binary :all: --platform win32 --python-version $pyver -r requirements.txt"
+if($install_viewer){
+    (Get-Content "$lbsrcdir/pkg_lifeblood_viewer/setup.cfg " -Raw | Select-String "(?sm)(?<=install_requires.*?\r?\n).*?(?=\r?\n\s*\r?\n)").Matches.Value | Out-File "piptmp/requirements_viewer.txt"
+    Start-Process -NoNewWindow -Wait -WorkingDirectory "piptmp" -FilePath "bin/python" -ArgumentList "pip.pyz download --only-binary :all: --platform win32 --python-version $pyver -r requirements_viewer.txt"
+}
 
 $whlfiles = Get-ChildItem "piptmp" -Filter "*.whl"
 
@@ -71,11 +85,24 @@ Remove-Item -Recurse "piptmp"
 # extract important parts of Lifeblood
 Move-Item "$lbsrcdir/src/lifeblood" -Destination .
 
+Write-Host "cleaning up..."
+Remove-Item -Recurse "$lbsrcdir"
+
 Pop-Location
 
 # create launch shortcuts
+Write-Host "creating links..."
 if(Test-Path current){
     Remove-Item current
 }
 New-Item -ItemType SymbolicLink -Path current -Target $hash
-'current/bin/python -m lifeblood %*' | Out-File "lifeblood.cmd"
+'current/bin/python -m lifeblood.launch %*' | Out-File "lifeblood.cmd"
+if($install_viewer){
+    'current/bin/python -m lifeblood_viewer.launch %*' | Out-File "lifeblood_viewer.cmd"
+}
+
+Write-Host "DONE"
+Write-Host ""
+Write-Host "you can now use lifeblood with provided 'lifeblood' and 'lifeblood_viewer' files."
+Write-Host "just type 'lifeblood --help' and see the help message, or see documentation at gitlab"
+Write-Host "you can link these files to your .local/bin, or to your /usr/local/bin to have them available in PATH"
