@@ -84,6 +84,9 @@ Remove-Item -Recurse "piptmp"
 
 # extract important parts of Lifeblood
 Move-Item "$lbsrcdir/src/lifeblood" -Destination .
+if($install_viewer){
+    Move-Item "$lbsrcdir/src/lifeblood_viewer" -Destination .
+}
 
 Write-Host "cleaning up..."
 Remove-Item -Recurse "$lbsrcdir"
