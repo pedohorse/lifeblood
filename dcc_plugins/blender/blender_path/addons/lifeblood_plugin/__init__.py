@@ -1,8 +1,8 @@
 from logging import getLogger
 from getpass import getuser
 import json
-from lifeblood_utils_bpy import address_from_broadcast_ui
-from lifeblood_client.submitting import create_task, EnvironmentResolverArguments
+from .lifeblood_utils_bpy import address_from_broadcast_ui
+from .lifeblood_client.submitting import create_task, EnvironmentResolverArguments
 import bpy
 
 logger = getLogger('lifeblood_plugin')

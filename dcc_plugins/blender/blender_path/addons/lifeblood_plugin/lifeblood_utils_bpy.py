@@ -1,7 +1,7 @@
 import threading
 import time
 from queue import Queue
-import lifeblood_utils
+from . import lifeblood_utils
 from typing import Tuple
 import bpy
 
