@@ -8,7 +8,7 @@ from threading import Lock
 from . import paths
 from .logging import get_logger
 
-from typing import Any, List, Tuple, Union, Callable
+from typing import Any, List, Tuple, Union, Callable, Set
 
 
 _conf_cache = {}
@@ -67,6 +67,7 @@ def get_local_scratch_path():
 
 class Config:
     __logger = get_logger('config')
+
     class OverrideNotFound(RuntimeError):
         pass
 
@@ -78,30 +79,19 @@ class Config:
         self.__write_file_lock = Lock()
 
         self.__sources: List["Path"] = []
+        self.__broken_sources: Set["Path"] = set()
+
+        self.__config_paths_to_check = [config_path]
+        if configd_path.exists() and configd_path.is_dir():
+            self.__config_paths_to_check.extend(configd_path.iterdir())
 
         self.__stuff = {}
-        if config_path.exists():
-            try:
-                with open(config_path, 'r') as f:
-                    self.__stuff = toml.load(f)
-            except Exception as e:
-                self.__logger.error(f'failed to load primary config file {config_path}, skipping')
-            else:
-                self.__sources.append(config_path)
-
-        if configd_path.exists() and configd_path.is_dir():
-            for subconfig_path in configd_path.iterdir():
-                try:
-                    with subconfig_path.open('r') as f:
-                        self.__update_dicts(self.__stuff, toml.load(f))
-                except Exception as e:
-                    self.__logger.error(f'failed to load config file {subconfig_path}, skipping')
-                else:
-                    self.__sources.append(subconfig_path)
 
         self.__encoder_generator = None
         self.__overrides = {}
         self.set_overrides(overrides)
+
+        self.reload(keep_overrides=True)
 
     @classmethod
     def __update_dicts(cls, main: dict, secondary: dict):
@@ -116,12 +106,21 @@ class Config:
         if not keep_overrides:
             self.__overrides = {}
 
-        if self.__writable_config_path not in self.__sources and self.__writable_config_path.exists():
-            self.__sources.append(self.__writable_config_path)
+        paths_to_check = self.__config_paths_to_check
+        # append writable path only for the reload time
+        # we don't want to mix paths added to the list from legal sources and this user overridable one
+        if self.__writable_config_path not in paths_to_check:
+            paths_to_check.append(self.__writable_config_path)
 
-        for source in self.__sources:
-            with open(source, 'r') as f:
-                self.__update_dicts(self.__stuff, toml.load(f))
+        for config_path in paths_to_check:
+            try:
+                with config_path.open('r') as f:
+                    self.__update_dicts(self.__stuff, toml.load(f))
+            except Exception as e:
+                self.__logger.error(f'failed to load config file {config_path}, skipping')
+                self.__broken_sources.add(config_path)
+            else:
+                self.__sources.append(config_path)
 
     def writeable_file(self) -> "Path":
         """
@@ -147,6 +146,12 @@ class Config:
         :return: tuple of file paths
         """
         return tuple(self.__sources)
+
+    def broken_files(self) -> Set["Path"]:
+        """
+        returns set of paths that look like configs, but had errors when parsing
+        """
+        return set(self.__broken_sources)
 
     def set_overrides(self, overrides: dict) -> None:
         """
@@ -185,20 +190,25 @@ class Config:
             clevel = clevel[name]
         return clevel
 
+    def has_option_noasync(self, option_name):
+        class _SomethingStrangeL:
+            pass
+        return self.get_option_noasync(option_name, default_val=_SomethingStrangeL) is not _SomethingStrangeL
+
     def get_option_noasync(self, option_name: str, default_val: Any = None) -> Any:
         try:
             return self._get_option_in_overrides(option_name)
         except Config.OverrideNotFound:
             pass
         with self.__conf_lock:  # to prevent config corruption when running in parallel in executor
-            names = option_name.split('.')
+            names = option_name.split('.')  # TODO: this does not allow . in the name, but we can have such, like houdini.py3, toml eats it fine
             clevel = self.__stuff
             for name in names:
                 if name not in clevel:
                     return default_val
                 clevel = clevel[name]
 
-            return clevel
+            return clevel  # TODO: return IMMUTABLE shit! this can be a list or a dict, and it can be nested too!
 
     def _set_option_noasync_nolock(self, option_name: str, value) -> None:
         names = option_name.split('.')
