@@ -79,7 +79,6 @@ class StandardEnvResTest(unittest.TestCase):
                                    'bar': {"qwe.asd": {'foof': {'nana.k..': [1, 2, 3]}}}}, expected_config_file_path)
         self.assertListEqual([1, 2, 3], config.get_option_noasync('bar."qwe.asd"."foof"."nana.k.."'))
 
-
     def test_condigd(self):
         config = get_config('boofar')
         expected_config_file_path = os.path.join(self.config_base_path, 'boofar', 'config.toml')
