@@ -195,13 +195,40 @@ class Config:
             pass
         return self.get_option_noasync(option_name, default_val=_SomethingStrangeL) is not _SomethingStrangeL
 
+    @staticmethod
+    def _split_config_names(option_name: str) -> Tuple[str, ...]:
+        names = []
+        in_quotes = False
+        mark = 0
+        word_parts = []
+        for i, l in enumerate(option_name):
+            if l == '.' and not in_quotes:
+                word_parts.append(option_name[mark:i])
+                names.append(''.join(word_parts))
+                if names[-1] == '':
+                    raise ValueError(f'"{option_name}" is not a valid option_name')
+                word_parts.clear()
+                mark = i + 1
+            elif l == '"':
+                word_parts.append(option_name[mark:i])
+                mark = i + 1
+                in_quotes = not in_quotes
+        if in_quotes:
+            raise ValueError(f'"{option_name}" is not a valid option_name')
+        word_parts.append(option_name[mark:])
+        names.append(''.join(word_parts))
+        if names[-1] == '':
+            raise ValueError(f'"{option_name}" is not a valid option_name')
+        return tuple(names)
+
+
     def get_option_noasync(self, option_name: str, default_val: Any = None) -> Any:
         try:
             return self._get_option_in_overrides(option_name)
         except Config.OverrideNotFound:
             pass
         with self.__conf_lock:  # to prevent config corruption when running in parallel in executor
-            names = option_name.split('.')  # TODO: this does not allow . in the name, but we can have such, like houdini.py3, toml eats it fine
+            names = self._split_config_names(option_name)
             clevel = self.__stuff
             for name in names:
                 if name not in clevel:
@@ -211,7 +238,7 @@ class Config:
             return clevel  # TODO: return IMMUTABLE shit! this can be a list or a dict, and it can be nested too!
 
     def _set_option_noasync_nolock(self, option_name: str, value) -> None:
-        names = option_name.split('.')
+        names = self._split_config_names(option_name)
         clevel = self.__stuff
         for name in names:
             last = name == names[-1]
