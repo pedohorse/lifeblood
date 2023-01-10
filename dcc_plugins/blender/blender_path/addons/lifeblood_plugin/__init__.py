@@ -208,18 +208,32 @@ class BroadcastListenerOperator(bpy.types.Operator):
     bl_label = 'Lifeblood Listener'
     bl_idname = 'wm.lifeblood_broadcast_listener'
 
-    boob: bpy.props.StringProperty(name='Booba', default='boobA')
+    address: bpy.props.StringProperty(name='address', default='0.0.0.0')
+    port: bpy.props.IntProperty(name='port', default=34305)
+    timeout: bpy.props.IntProperty(name='listen to broadcast timeout', default=10, min=1, max=30)
 
     def execute(self, context):
         if 'lifeblood_submitter_parameters' not in context.scene:
             context.scene['lifeblood_submitter_parameters'] = {}
-        address, port = address_from_broadcast_ui(('0.0.0.0', 34305))
-        context.scene['lifeblood_submitter_parameters']['address'] = f'{address}:{port}'
+        address, port = address_from_broadcast_ui((self.address, self.port), timeout=self.timeout)
+        if address is not None:
+            context.scene['lifeblood_submitter_parameters']['address'] = f'{address}:{port}'
+            self.report({'INFO'}, 'caught a broadcast!')
+        else:
+            self.report({'WARNING'}, 'broadcast listening timed out!')
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text='listen to boradcast')
+        row = layout.row()
+        row.prop(self, 'address')
+        row.prop(self, 'port')
+        layout.prop(self, 'timeout')
 
 
 def lifeblood_main_menu_items(self, context):
