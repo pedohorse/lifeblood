@@ -24,6 +24,24 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
     def type_name(cls) -> str:
         return 'blender_batch_render'
 
+    @classmethod
+    def description(cls) -> str:
+        return 'This node renders a blender file.\n' \
+               '\n' \
+               '- If second input is disconnected: attribute "images" will be created\n' \
+               '  on processed task containing a list of all images rendered by it.\n' \
+               '- If second input is connected: attribute "images" will NOT be created\n' \
+               '  on processed task, instead a child task will be spawned from the second\n' \
+               '  input for EACH frame with "file" attribute having the path to the image\n' \
+               '  Also spawned children tasks will get all attributes from the parent that\n' \
+               '  match "attributes to copy to children" parameter mask\n' \
+               '\n' \
+               'Pre Script: if provided - this python script is run on the given file BEFORE render\n' \
+               'If in addition "Skip Actual Render" checkbox is set - then ONLY this "Pre Script"\n' \
+               'will be executed, no render will be done\n' \
+               '\n' \
+               '(Note: currently you CANNOT modify task attributes from the pre-script)'
+
     def __init__(self, name):
         super(BlenderBatchRender, self).__init__(name)
         ui = self.get_ui()
@@ -57,6 +75,8 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
             ui.add_parameter('pre_script', None, NodeParameterType.STRING, '# task var is available here\n# get task attribute with task[\'attr_name\']\n\n') \
                 .append_visibility_condition(do_over, '==', True) \
                 .set_text_multiline(syntax_hint='python')
+            ui.add_parameter('skip_render', 'Skip Actual Render', NodeParameterType.BOOL, False) \
+                .append_visibility_condition(do_over, '==', True)
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         file_path = context.param_value('file_path')
@@ -161,8 +181,10 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
                       f'    scene.render.filepath = _filepath_stash\n' \
                       + ('lifeblood_connection.set_attributes({"images": all_outimages})\n' if not do_spawn else '') \
                       + (f'lifeblood_connection.wait_for_currently_running_async_operations()\n' if do_spawn else '')
-        scripts['main_script.py'] = main_script
-        args += ['-P', ':/main_script.py']
+
+        if not context.param_value('do_pre_script') or not context.param_value('skip_render'):
+            scripts['main_script.py'] = main_script
+            args += ['-P', ':/main_script.py']
 
         invoc = InvocationJob(args)
         for file_name, file_contents in scripts.items():
