@@ -63,6 +63,23 @@ class StandardEnvResTest(unittest.TestCase):
         self.assertEqual('asd', config.get_option_noasync('double.two'))
         self.assertDictEqual({'one': 'qwe', 'two': 'asd'}, config.get_option_noasync('double'))
 
+    def test_entries_with_dot(self):
+        config = get_config('foofar')
+        expected_config_file_path = os.path.join(self.config_base_path, 'foofar', 'config.toml')
+        self.assertEqual(expected_config_file_path, str(config.writeable_file()))
+        config.set_option_noasync('foo."baka.shaka"', 42)
+
+        self.assert_toml_contents({'foo': {'baka.shaka': 42}}, expected_config_file_path)
+
+        self.assertEqual(42, config.get_option_noasync('foo."baka.shaka"'))
+        self.assertDictEqual({"baka.shaka": 42}, config.get_option_noasync('foo'))
+
+        config.set_option_noasync('bar."qwe.asd"."foof"."nana.k.."', [1, 2, 3])
+        self.assert_toml_contents({'foo': {'baka.shaka': 42},
+                                   'bar': {"qwe.asd": {'foof': {'nana.k..': [1, 2, 3]}}}}, expected_config_file_path)
+        self.assertListEqual([1, 2, 3], config.get_option_noasync('bar."qwe.asd"."foof"."nana.k.."'))
+
+
     def test_condigd(self):
         config = get_config('boofar')
         expected_config_file_path = os.path.join(self.config_base_path, 'boofar', 'config.toml')
