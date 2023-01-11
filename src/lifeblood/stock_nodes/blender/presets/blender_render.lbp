@@ -1,0 +1,390 @@
+{
+    "nodes": [
+        {
+            "tmpid": 0,
+            "type": "split_waiter",
+            "name": "wait for all chunks",
+            "parameters": {
+                "wait for all": {
+                    "name": "wait for all",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": true,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_attribs": {
+                    "name": "transfer_attribs",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "src_attr_name_0": {
+                    "name": "src_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "images",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "transfer_type_0": {
+                    "name": "transfer_type_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "extend",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "dst_attr_name_0": {
+                    "name": "dst_attr_name_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "images",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "sort_by_0": {
+                    "name": "sort_by_0",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "frames",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "reversed_0": {
+                    "name": "reversed_0",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                1211.698470626698,
+                -220.8456276873222
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 1,
+            "type": "null",
+            "name": "IN BLENDER",
+            "parameters": {},
+            "pos": [
+                1212.4731630882802,
+                -660.4340204259828
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 2,
+            "type": "framerange_splitter",
+            "name": "split framerange",
+            "parameters": {
+                "chunk size": {
+                    "name": "chunk size",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": "task.get('framechunk_size', 1)",
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                1212.9962493773896,
+                -519.4996001821492
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 3,
+            "type": "blender_batch_render",
+            "name": "blender batch render",
+            "parameters": {
+                "priority adjustment": {
+                    "name": "priority adjustment",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost": {
+                    "name": "worker cpu cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1.0,
+                    "expr": "task['requirements']['cpu']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker cpu cost preferred": {
+                    "name": "worker cpu cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cpu']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost": {
+                    "name": "worker mem cost",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.5,
+                    "expr": "task['requirements']['cmem']['min']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker mem cost preferred": {
+                    "name": "worker mem cost preferred",
+                    "type": {
+                        "value": 2,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0.0,
+                    "expr": "task['requirements']['cmem']['pref']",
+                    "__dataclass__": "ParamData"
+                },
+                "worker groups": {
+                    "name": "worker groups",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "worker type": {
+                    "name": "worker type",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "file_path": {
+                    "name": "file_path",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "`task['blendfile']`",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do_override_frame": {
+                    "name": "do_override_frame",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override_frame_start": {
+                    "name": "override_frame_start",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override_frame_end": {
+                    "name": "override_frame_end",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 100,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override_frame_step": {
+                    "name": "override_frame_step",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 1,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "frames_attrib_name": {
+                    "name": "frames_attrib_name",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "frames",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do_override_scene": {
+                    "name": "do_override_scene",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override_scene": {
+                    "name": "override_scene",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "scene001",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do_override_output": {
+                    "name": "do_override_output",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "override_output": {
+                    "name": "override_output",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "//something.####.png",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "attrs": {
+                    "name": "attrs",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "*",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "do_pre_script": {
+                    "name": "do_pre_script",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "pre_script": {
+                    "name": "pre_script",
+                    "type": {
+                        "value": 3,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": "# task var is available here\n# get task attribute with task['attr_name']\n\n",
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "skip_render": {
+                    "name": "skip_render",
+                    "type": {
+                        "value": 1,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": false,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                }
+            },
+            "pos": [
+                1215.3614730378695,
+                -374.8922973073737
+            ],
+            "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 4,
+            "type": "null",
+            "name": "out blender",
+            "parameters": {},
+            "pos": [
+                1213.0090807242748,
+                -86.77845499136916
+            ],
+            "__dataclass__": "NodeData"
+        }
+    ],
+    "connections": [
+        {
+            "tmpout": 2,
+            "out_name": "main",
+            "tmpin": 3,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 0,
+            "out_name": "main",
+            "tmpin": 4,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 1,
+            "out_name": "main",
+            "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 3,
+            "out_name": "main",
+            "tmpin": 0,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        }
+    ],
+    "label": "blender render",
+    "tags": [],
+    "__NodeSnippetData__": "==3*E==",
+    "__format_version__": [
+        1,
+        0,
+        0
+    ]
+}
