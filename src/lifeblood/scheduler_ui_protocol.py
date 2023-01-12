@@ -3,7 +3,7 @@ import pickle
 import json
 import asyncio
 from . import logging
-from .uidata import NodeUi, ParameterLocked, ParameterReadonly
+from .uidata import NodeUi, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from . import pluginloader
 from .net_classes import NodeTypeMetadata
@@ -11,7 +11,7 @@ from .taskspawn import NewTask
 from .snippets import NodeSnippetDataPlaceholder
 from .environment_resolver import EnvironmentResolverArguments
 
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, Dict, List, Union
 if TYPE_CHECKING:
     from .basenode import BaseNode
     from .scheduler import Scheduler
@@ -206,6 +206,112 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     await write_string(value)
                 else:
                     raise NotImplementedError()
+
+        async def comm_set_node_params():  # elif command == b'batchsetnodeparams':
+            node_id, param_count, want_result = struct.unpack('>QQ?', await reader.readexactly(17))
+
+            stuff_to_set: List[Tuple[str, NodeParameterType, bool, Union[float, int, bool, str]]] = []
+            return_order: List[str] = []
+            for _ in range(param_count):
+                param_name = await read_string()
+                param_type_raw, value_is_expression = struct.unpack('>I?', await reader.readexactly(5))
+                param_type_raw: int
+                value_is_expression: bool
+
+                if value_is_expression:
+                    param_value = await read_string()
+                elif param_type_raw == NodeParameterType.FLOAT.value:
+                    param_value = struct.unpack('>d', await reader.readexactly(8))[0]
+                elif param_type_raw == NodeParameterType.INT.value:
+                    param_value = struct.unpack('>q', await reader.readexactly(8))[0]
+                elif param_type_raw == NodeParameterType.BOOL.value:
+                    param_value = struct.unpack('>?', await reader.readexactly(1))[0]
+                elif param_type_raw == NodeParameterType.STRING.value:
+                    param_value = await read_string()
+                else:
+                    raise NotImplementedError()
+                stuff_to_set.append((param_name, NodeParameterType(param_type_raw), value_is_expression, param_value))
+                return_order.append(param_name)
+
+            # now it is possible that some parameters won't exist before other parameters are set
+            #  for example: elements of multigroup won't be available until multigroup's count is set
+            #  also multigroup params may be nested, so it may be complicated to untangle beforehand
+            #  but there may be other
+            return_values: Dict[str, Tuple[bool, Optional[Tuple[NodeParameterType, Union[float, int, bool, str]]]]] = {}  # list of param_names to [set success?, final value]
+            async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
+                node: BaseNode
+                cycle_start = None
+                something_was_set_last_loop = False
+                for param_name, param_type, value_is_expression, param_value in stuff_to_set:
+                    try:
+                        await asyncio.get_event_loop().run_in_executor(None, node.param, param_name)
+                    except ParameterNotFound:
+                        # some parameters may only be present after other parameters are set.
+                        #  for example - multigroup element will appear only after count is set
+                        #  so we postpone setting missing parameters
+                        #  and only consider it a failure if no more parameters can be found at all
+                        if cycle_start is None or cycle_start == param_name and something_was_set_last_loop:
+                            cycle_start = param_name
+                            something_was_set_last_loop = False
+                            stuff_to_set.append((param_name, param_type, value_is_expression, param_value))  # put back
+                        else:  # means we already checked all parameters since last successful set and set nothing new
+                            self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" - parameter not found')
+                            return_values[param_name] = (False, None)
+                        continue
+                    try:
+                        def _set_helper(node: "BaseNode", param_name: str, value_is_expression: bool, value: Union[float, int, bool, str]):
+                            param = node.param(param_name)
+                            if value_is_expression:
+                                param.set_expression(param_value)
+                            else:
+                                if param.has_expression():
+                                    param.set_expression(None)
+                                param.set_value(value)
+
+                        await asyncio.get_event_loop().run_in_executor(None, _set_helper, node, param_name, value_is_expression, param_value)
+                        something_was_set_last_loop = True
+                        value = node.param(param_name).unexpanded_value()
+                    except ParameterReadonly:
+                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
+                        return_values[param_name] = (False, None)
+                    except ParameterLocked:
+                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is LOCKED')
+                        return_values[param_name] = (False, None)
+                    except ParameterCannotHaveExpressions:
+                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" expression. parameter cannot have expressions')
+                        return_values[param_name] = (False, None)
+                    except Exception as e:
+                        err_val_prev = str(param_value)
+                        if len(err_val_prev) > 23:
+                            err_val_prev = err_val_prev[:20] + '...'
+                        self.__logger.warning(f'FAILED request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}) to {err_val_prev}')
+                        self.__logger.exception(e)
+                        return_values[param_name] = (False, None)
+                    else:  # all went well, parameter was set
+                        return_values[param_name] = (True, (param_type, value))
+
+            if not want_result:
+                writer.write(b'\1')
+            else:
+                for param_name in return_order:
+                    was_set, other = return_values[param_name]
+                    if not was_set:
+                        writer.write(b'\0')
+                        continue
+                    writer.write(b'\1')
+                    param_type, value = other
+                    if param_type == NodeParameterType.FLOAT:
+                        writer.write(struct.pack('>d', value))
+                    elif param_type == NodeParameterType.INT:
+                        writer.write(struct.pack('>q', value))
+                    elif param_type == NodeParameterType.BOOL:
+                        writer.write(struct.pack('>?', value))
+                    elif param_type == NodeParameterType.STRING:
+                        await write_string(value)
+                    else:  # only possible if we seriously forgot to update this protocol after updating NodeParameterType or smth
+                        raise NotImplementedError()
+            # note: values written back to sender is:  \? (value) \? (value) ... \? (value)
+            #       where \? is \1 if value was set, and \0 if wasn't
 
         async def comm_set_node_param_expression():  # elif command == b'setnodeparamexpression':
             node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
@@ -417,6 +523,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     b'wipenode': comm_wipe_node,
                     b'nodehasparam': comm_node_has_param,
                     b'setnodeparam': comm_set_node_param,
+                    b'batchsetnodeparams': comm_set_node_params,
                     b'setnodeparamexpression': comm_set_node_param_expression,
                     b'applynodesettings': comm_apply_node_settings,
                     b'savecustomnodesettings': comm_save_custom_node_settings,
