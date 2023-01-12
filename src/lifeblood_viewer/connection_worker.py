@@ -23,7 +23,7 @@ import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
 #from PySide2.QtGui import QPoin
 
-from typing import Optional, Set, List, Union, Dict
+from typing import Optional, Set, List, Union, Dict, Iterable
 
 
 logger = logging.get_logger('viewer')
@@ -40,6 +40,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     nodepreset_fetched = Signal(str, str, NodeSnippetData, object)
     node_has_parameter = Signal(int, str, bool, object)
     node_parameter_changed = Signal(int, Parameter, object, object)
+    node_parameters_changed = Signal(int, object, object, object)
     node_parameter_expression_changed = Signal(int, Parameter, object)
     node_settings_applied = Signal(int, str, object)
     node_custom_settings_saved = Signal(str, str, object)
@@ -383,6 +384,42 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             else:
                 raise NotImplementedError()
             self.node_parameter_changed.emit(node_id, param, newval, data)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
+    def send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], data=None):
+        if not self.ensure_connected():
+            return
+        assert self.__conn is not None
+        params = list(params)
+        try:
+            self.__conn.sendall(b'batchsetnodeparams\n')
+            self.__conn.sendall(struct.pack('>QQ?', node_id, len(params), False))  # last False for "want_result"
+            for param in params:
+                param_type = param.type()
+                self._send_string(param.name())
+                value_is_expression = param.has_expression()
+                self.__conn.sendall(struct.pack('>I?', param_type.value, value_is_expression))
+                if value_is_expression:
+                    self._send_string(param.expression())
+                else:
+                    param_value = param.unexpanded_value()
+                    if param_type == NodeParameterType.FLOAT:
+                        self.__conn.sendall(struct.pack('>d', param_value))
+                    elif param_type == NodeParameterType.INT:
+                        self.__conn.sendall(struct.pack('>q', param_value))
+                    elif param_type == NodeParameterType.BOOL:
+                        self.__conn.sendall(struct.pack('>?', param_value))
+                    elif param_type == NodeParameterType.STRING:
+                        self._send_string(param_value)
+                    else:
+                        raise NotImplementedError()
+
+            recv_exactly(self.__conn, 1)  # not expect result, just ack
+            self.node_parameters_changed.emit(node_id, tuple(params), None, data)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:

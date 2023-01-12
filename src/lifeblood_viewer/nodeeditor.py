@@ -192,6 +192,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_has_parameter_requested = Signal(int, str, object)
     _signal_node_parameter_change_requested = Signal(int, object, object)
     _signal_node_parameter_expression_change_requested = Signal(int, object, object)
+    _signal_node_parameters_change_requested = Signal(int, object, object)
     _signal_node_apply_settings_requested = Signal(int, str, object)
     _signal_node_save_custom_settings_requested = Signal(str, str, object, object)
     _signal_node_set_settings_default_requested = Signal(str, object, object)
@@ -265,6 +266,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.nodepreset_fetched.connect(self._nodepreset_fetched)
         self.__ui_connection_worker.node_has_parameter.connect(self._node_has_parameter)
         self.__ui_connection_worker.node_parameter_changed.connect(self._node_parameter_changed)
+        self.__ui_connection_worker.node_parameters_changed.connect(self._node_parameters_changed)
         self.__ui_connection_worker.node_parameter_expression_changed.connect(self._node_parameter_expression_changed)
         self.__ui_connection_worker.node_settings_applied.connect(self._node_settings_applied)
         self.__ui_connection_worker.node_custom_settings_saved.connect(self._node_custom_settings_saved)
@@ -279,6 +281,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_has_parameter_requested.connect(self.__ui_connection_worker.send_node_has_parameter)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
         self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
+        self._signal_node_parameters_change_requested.connect(self.__ui_connection_worker.send_node_parameters_change)
         self._signal_node_apply_settings_requested.connect(self.__ui_connection_worker.apply_node_settings)
         self._signal_node_save_custom_settings_requested.connect(self.__ui_connection_worker.node_save_custom_settings)
         self._signal_node_set_settings_default_requested.connect(self.__ui_connection_worker.node_set_settings_default)
@@ -333,6 +336,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameter_expression_change_requested.emit(node_id, param, operation_data)
+
+    def send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional["LongOperationData"] = None):
+        self._signal_node_parameters_change_requested.emit(node_id, params, operation_data)
 
     def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_apply_settings_requested.emit(node_id, settings_name, operation_data)
@@ -669,6 +675,13 @@ class QGraphicsImguiScene(QGraphicsScene):
             self.process_operation(data)
             self.long_operation_progressed.emit(data)
 
+    @Slot(int, object, object, object)
+    def _node_parameters_changed(self, node_id, params, newvals, data: Optional["LongOperationData"] = None):
+        if data is not None:
+            data.data = (node_id, tuple(param.name() for param in params), newvals)
+            self.process_operation(data)
+            self.long_operation_progressed.emit(data)
+
     @Slot(int, object, object)
     def _node_parameter_expression_changed(self, node_id, param, data: Optional["LongOperationData"] = None):
         if data is not None:
@@ -796,31 +809,39 @@ class QGraphicsImguiScene(QGraphicsScene):
                 tmp_to_new[nodedata.tmpid] = node_id
                 nodes_to_select.append(node_id)
 
-                # now setting parameters.
-                cyclestart = None
-                done_smth_this_cycle = False
-                parm_pairs: List[Tuple[str, UiNodeSnippetData.ParamData]] = list(nodedata.parameters.items())
-                for param_name, param_data in parm_pairs:
-                    self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
-                    _, _, has_param = yield
-                    if not has_param:  # ffs, i could leave some comments for myself... this seem to be dealing with multiparms. if parm instance is not there yet - wait with it
-                        if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
-                            parm_pairs.append((param_name, param_data))
-                            cyclestart = param_name
-                            done_smth_this_cycle = False
-                            continue
-                        else:
-                            logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
-                            break
-                    done_smth_this_cycle = True
-                    proxy_parm = Parameter(param_name, None, param_data.type, param_data.uvalue)
+                proxy_params = []
+                for param_name, param_data in nodedata.parameters.items():
+                    proxy_param = Parameter(param_name, None, param_data.type, param_data.uvalue)
                     if param_data.expr is not None:
-                        proxy_parm.set_expression(param_data.expr)
-                    self.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
-                    yield
-                    if proxy_parm.has_expression():
-                        self.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
-                        yield
+                        proxy_param.set_expression(param_data.expr)
+                    proxy_params.append(proxy_param)
+                self.send_node_parameters_change(node_id, proxy_params, LongOperationData(longop, None))
+                yield
+                # # now setting parameters.
+                # cyclestart = None
+                # done_smth_this_cycle = False
+                # parm_pairs: List[Tuple[str, UiNodeSnippetData.ParamData]] = list(nodedata.parameters.items())
+                # for param_name, param_data in parm_pairs:
+                #     self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
+                #     _, _, has_param = yield
+                #     if not has_param:  # ffs, i could leave some comments for myself... this seem to be dealing with multiparms. if parm instance is not there yet - wait with it
+                #         if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
+                #             parm_pairs.append((param_name, param_data))
+                #             cyclestart = param_name
+                #             done_smth_this_cycle = False
+                #             continue
+                #         else:
+                #             logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
+                #             break
+                #     done_smth_this_cycle = True
+                #     proxy_parm = Parameter(param_name, None, param_data.type, param_data.uvalue)
+                #     if param_data.expr is not None:
+                #         proxy_parm.set_expression(param_data.expr)
+                #     self.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
+                #     yield
+                #     if proxy_parm.has_expression():
+                #         self.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
+                #         yield
             for node_id in nodes_to_select:
                 self.get_node(node_id).setSelected(True)
 
