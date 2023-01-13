@@ -1,6 +1,8 @@
 from logging import getLogger
 from getpass import getuser
 import json
+import os
+import re
 from .lifeblood_utils_bpy import address_from_broadcast_ui
 from .lifeblood_client.submitting import create_task, EnvironmentResolverArguments
 import bpy
@@ -14,7 +16,14 @@ bl_info = {
 }
 
 
-def try_json_decode(value: str):
+def expand_and_try_json_decode(value: str):
+    # first expand value
+    vars = dict(os.environ)
+    vars['this_blend_file'] = bpy.data.filepath
+    vars['frames_list'] = json.dumps(list(range(bpy.context.scene.frame_start, bpy.context.scene.frame_end + 1)))
+    value = re.sub(r'\$(\w+|{\w+})', lambda m: vars.get(m.group(1)), value)
+
+    # then try to decode
     try:
         return json.loads(value)
     except json.decoder.JSONDecodeError:
@@ -81,10 +90,14 @@ class LifebloodSubmitOperator(bpy.types.Operator):
     res_mem_pref: bpy.props.IntProperty(name='mem pref', default=4, min=1, soft_max=256)
 
     def __init__(self):
-        self.attrib_count = 1
+        self.attrib_count = 2
         attr = self.attribs[0]
         attr.name = 'blendfile'
-        attr.val = '<this_blend_file>'
+        attr.val = '$this_blend_file'
+
+        attr = self.attribs[0]
+        attr.name = 'frames'
+        attr.val = '$frames_list'
 
         self.resolver_attrib_count = 2
         attr = self.resolver_attribs[0]
@@ -168,7 +181,7 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         else:
             addr = (self.address, 1384)
 
-        attribs = {prop.name: try_json_decode(prop.val) for prop in self.attribs}
+        attribs = {prop.name: expand_and_try_json_decode(prop.val) for prop in self.attribs}
         attribs['requirements'] = {'cpu': {'min': self.res_cpu_min,
                                            'pref': self.res_cpu_pref},
                                    'cmem': {'min': self.res_mem_min,
@@ -176,7 +189,7 @@ class LifebloodSubmitOperator(bpy.types.Operator):
 
         create_task(self.task_name, self.node_name, addr,
                     attribs,
-                    self.resolver_name, {prop.name: try_json_decode(prop.val) for prop in self.resolver_attribs},
+                    self.resolver_name, {prop.name: expand_and_try_json_decode(prop.val) for prop in self.resolver_attribs},
                     self.priority).submit()
 
         return {'FINISHED'}
