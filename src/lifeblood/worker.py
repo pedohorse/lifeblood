@@ -279,6 +279,10 @@ class Worker:
         else:
             return os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
 
+    async def delete_logs(self, invocation_id: int):
+        path = os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()))
+        await asyncio.get_event_loop().run_in_executor(None, shutil.rmtree, path)  # assume that deletion MAY take time, so allow util tasks to be processed while we wait
+
     # This number of methods are related to message exchange mechanism between local workers
     # it was used to exchange resource usage information, but is not used anymore
     # however should it ever be needed - it can be uncommented and adjusted according to needs
@@ -577,6 +581,7 @@ class Worker:
                 self.__logger.exception('could not report cuz i have no idea')
             # end reporting
 
+            await self.delete_logs(self.__running_task.invocation_id())
 
             self.__running_task = None
             self.__running_process = None
@@ -612,9 +617,11 @@ class Worker:
                 self.__logger.warning('task_finished called, but there is no running task. This can only normally happen if a task_cancel happened the same moment as finish.')
                 return
             self.__logger.info('task finished')
-            self.__logger.info(f'reporting done back to {self.__where_to_report}')
             process_exit_code = await self.__running_process.wait()
             self.__running_task.finish(process_exit_code, time.time() - self.__running_process_start_time)
+
+            # report to scheduler
+            self.__logger.info(f'reporting done back to {self.__where_to_report}')
             try:
                 ip, port = self.__where_to_report.split(':', 1)
                 async with SchedulerTaskClient(ip, int(port)) as client:
@@ -625,6 +632,9 @@ class Worker:
                 self.__logger.exception(f'could not report cuz of {e}')
             except:
                 self.__logger.exception('could not report cuz i have no idea')
+            # end reporting
+
+            await self.delete_logs(self.__running_task.invocation_id())
 
             self.__where_to_report = None
             self.__running_task = None
