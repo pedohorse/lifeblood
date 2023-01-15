@@ -125,8 +125,9 @@ def get_unique_machine_id() -> int:
                     for addr in addrlist:
                         if addr.family != psutil.AF_LINK or addr.address == '00:00:00:00:00:00':
                             continue
-                        logger.debug(f'trying address: "{addr.address}"')
-                        __stashed_machine_uuid = int(''.join(addr.address.split(':')), base=16)
+                        address = addr.address
+                        logger.debug(f'trying address: "{address}"')
+                        __stashed_machine_uuid = int(address.replace(':', '').replace('-', ''), base=16)
                         break
                     if __stashed_machine_uuid is not None:
                         break
