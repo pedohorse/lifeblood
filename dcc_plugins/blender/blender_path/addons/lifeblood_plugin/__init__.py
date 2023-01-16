@@ -152,17 +152,7 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         row.prop(self, 'res_mem_pref')
 
     def execute(self, context):
-        print('executing', self.address)
-        import time
-        context.window_manager.progress_begin(0, 100)
-        # time.sleep(4)
-        context.window_manager.progress_update(25)
-        # time.sleep(4)
-        context.window_manager.progress_update(50)
-        # time.sleep(4)
-        context.window_manager.progress_update(75)
-        # time.sleep(4)
-        context.window_manager.progress_end()
+        logger.info(f'submitting to scheduler at {self.address}')
 
         # stash
         stash = {}
@@ -226,13 +216,16 @@ class BroadcastListenerOperator(bpy.types.Operator):
     timeout: bpy.props.IntProperty(name='listen to broadcast timeout', default=10, min=1, max=30)
 
     def execute(self, context):
+        logger.debug('starting listening to the broadcast')
         if 'lifeblood_submitter_parameters' not in context.scene:
             context.scene['lifeblood_submitter_parameters'] = {}
         address, port = address_from_broadcast_ui((self.address, self.port), timeout=self.timeout)
         if address is not None:
             context.scene['lifeblood_submitter_parameters']['address'] = f'{address}:{port}'
+            logger.debug(f'broadcast received: {address}:{port}')
             self.report({'INFO'}, 'caught a broadcast!')
         else:
+            logger.debug('broadcast timeout')
             self.report({'WARNING'}, 'broadcast listening timed out!')
 
         return {'FINISHED'}
@@ -242,7 +235,7 @@ class BroadcastListenerOperator(bpy.types.Operator):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text='listen to boradcast')
+        layout.label(text='listen to broadcast')
         row = layout.row()
         row.prop(self, 'address')
         row.prop(self, 'port')
