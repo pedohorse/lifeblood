@@ -48,8 +48,10 @@ new version installed.
 Notes
 -----
 
+* by default both scripts will install both Lifeblood Core and Viewer. If you don't want viewer - give ``--no-viewer``
+  flag to the script (you will have to do this through console)
 * on Windows ``install.ps1`` script will download latest embedded python3 from python.org, so you do not have to
-have python installed beforehand
+  have python installed beforehand
 * on Linux ``install.sh`` script will try to use system python and create a venv for lifeblood.
 
 Troubleshooting
@@ -74,5 +76,5 @@ all you need is `in src folder of the repo <https://github.com/pedohorse/lifeblo
 * ``lifeblood`` is the Lifeblood core module
 * ``lifeblood_viewer`` is the Lifeblood Viewer module
 * ``lifeblood_client`` is something you won't probably need, only if you are embedding lifeblood somewhere.
-lifeblood_client is a python module that contains client that can be used to create new tasks and query existing
-tasks in a Lifeblood Scheduler
+  lifeblood_client is a python module that contains client that can be used to create new tasks and query existing
+  tasks in a Lifeblood Scheduler

@@ -15,6 +15,8 @@ Installation
 Simple Demonstration
 ^^^^^^^^^^^^^^^^^^^^
 
+This tutorial demonstrates simple installation using **pip**
+
 For any details about installation and initial configuration - see next **Installation** video
 
 .. raw:: html
