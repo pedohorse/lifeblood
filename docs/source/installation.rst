@@ -21,7 +21,7 @@ to install Lifeblood Viewer (it will also install Lifeblood Core itself), and in
 on those extra machines.
 
 In this simplest case you will probably run scheduler, a worker pool and viewer on the main machine,
-while extra machines will only run workers.
+while extra machines will only run worker pools.
 
 Check :ref:`overview <overview-scheduler>` to learn basic components of Lifeblood
 
