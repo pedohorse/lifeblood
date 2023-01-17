@@ -342,10 +342,12 @@ new version installed.</p>
 <section id="notes">
 <h3>Notes<a class="headerlink" href="#notes" title="Permalink to this heading">#</a></h3>
 <ul class="simple">
-<li><p>on Windows <code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> script will download latest embedded python3 from python.org, so you do not have to</p></li>
+<li><p>by default both scripts will install both Lifeblood Core and Viewer. If you don’t want viewer - give <code class="docutils literal notranslate"><span class="pre">--no-viewer</span></code>
+flag to the script (you will have to do this through console)</p></li>
+<li><p>on Windows <code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> script will download latest embedded python3 from python.org, so you do not have to
+have python installed beforehand</p></li>
+<li><p>on Linux <code class="docutils literal notranslate"><span class="pre">install.sh</span></code> script will try to use system python and create a venv for lifeblood.</p></li>
 </ul>
-<p>have python installed beforehand
-* on Linux <code class="docutils literal notranslate"><span class="pre">install.sh</span></code> script will try to use system python and create a venv for lifeblood.</p>
 </section>
 <section id="troubleshooting">
 <h3>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permalink to this heading">#</a></h3>
@@ -367,10 +369,10 @@ all you need is <a class="reference external" href="https://github.com/pedohorse
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> is the Lifeblood core module</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> is the Lifeblood Viewer module</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">lifeblood_client</span></code> is something you won’t probably need, only if you are embedding lifeblood somewhere.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lifeblood_client</span></code> is something you won’t probably need, only if you are embedding lifeblood somewhere.
+lifeblood_client is a python module that contains client that can be used to create new tasks and query existing
+tasks in a Lifeblood Scheduler</p></li>
 </ul>
-<p>lifeblood_client is a python module that contains client that can be used to create new tasks and query existing
-tasks in a Lifeblood Scheduler</p>
 </section>
 </section>
 
