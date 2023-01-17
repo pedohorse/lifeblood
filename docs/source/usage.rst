@@ -8,33 +8,10 @@ How to Use
     :local:
 
 
-
-.. _installation:
-
 Installation
 ============
 
-Lifeblood consists of 2 parts:
-
-* the core part that contains scheduler and worker, and has no GUI dependencies
-* viewer part, you only need viewer on user machines that will need to see the progress of their tasks
-  and modify task nodetree
-
-The simplest way to install Lifeblood is to use pip:
-
-* on machines that will be performing work - install just Lifeblood: ``pip install lifeblood``
-* on machines that will need GUI to access scheduler - install viewer: ``pip install lifeblood_viewer``
-
-A common simplest case for one artist with 1-2 extra computers on the network would be
-to install Lifeblood_viewer (it will also install Lifeblood itself), and install just lifeblood
-on those extra machines.
-
-In this simplest case you will probably run scheduler, a worker pool and viewer on the main machine,
-while extra machines will only run workers.
-
-Check :ref:`overview <overview-scheduler>` to learn basic components of Lifeblood
-
-Also check the :ref:`tutorial section <tutorials_installation>`
+see :ref:`installation page<installation>`
 
 .. _configuration:
 
