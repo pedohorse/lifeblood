@@ -16,6 +16,7 @@ where tasks that travel from node to node and may produce workload to be execute
     :caption: Contents:
 
     overview
+    installation
     usage
     tutorials
     components/index

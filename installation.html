@@ -6,7 +6,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Tutorials &#8212; Lifeblood 1.0.0 documentation</title>
+    <title>Installation &#8212; Lifeblood 1.0.0 documentation</title>
   
   
   
@@ -38,11 +38,11 @@
     <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="_static/doctools.js"></script>
     <script src="_static/sphinx_highlight.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'tutorials';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'installation';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Components" href="components/index.html" />
-    <link rel="prev" title="How to Use" href="usage.html" />
+    <link rel="next" title="How to Use" href="usage.html" />
+    <link rel="prev" title="Overview of Lifeblood" href="overview.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="docsearch:language" content="en">
   </head>
@@ -123,8 +123,8 @@
                     </li>
                 
 
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="installation.html">
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="#">
                         Installation
                       </a>
                     </li>
@@ -137,8 +137,8 @@
                     </li>
                 
 
-                    <li class="nav-item current active">
-                      <a class="nav-link nav-internal" href="#">
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
                     </li>
@@ -227,8 +227,8 @@
                     </li>
                 
 
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="installation.html">
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="#">
                         Installation
                       </a>
                     </li>
@@ -241,8 +241,8 @@
                     </li>
                 
 
-                    <li class="nav-item current active">
-                      <a class="nav-link nav-internal" href="#">
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
                     </li>
@@ -307,77 +307,70 @@
             
             <article class="bd-article" role="main">
               
-  <section id="tutorials">
-<span id="id1"></span><h1>Tutorials<a class="headerlink" href="#tutorials" title="Permalink to this heading">#</a></h1>
-<div class="contents local topic" id="contents">
+  <section id="installation">
+<span id="id1"></span><h1>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h1>
+<p>Lifeblood consists of 2 parts:</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="#installation" id="id2">Installation</a></p>
-<ul>
-<li><p><a class="reference internal" href="#simple-demonstration" id="id3">Simple Demonstration</a></p></li>
-<li><p><a class="reference internal" href="#detailed-installation" id="id4">Detailed Installation</a></p></li>
+<li><p>the core part that contains scheduler and worker, and has no GUI dependencies</p></li>
+<li><p>viewer part, you only need viewer on user machines that will need to see the progress of their tasks
+and modify task nodetree</p></li>
 </ul>
-</li>
-<li><p><a class="reference internal" href="#usage" id="id5">Usage</a></p>
-<ul>
-<li><p><a class="reference internal" href="#houdini" id="id6">Houdini</a></p>
-<ul>
-<li><p><a class="reference internal" href="#render-with-mantra" id="id7">Render with Mantra</a></p></li>
-<li><p><a class="reference internal" href="#caching-and-wedging" id="id8">Caching and Wedging</a></p></li>
-<li><p><a class="reference internal" href="#distributed-flip-simulation" id="id9">Distributed Flip Simulation</a></p></li>
-<li><p><a class="reference internal" href="#notifications-with-matrix" id="id10">Notifications With Matrix</a></p></li>
+<p>Core part is light and has few dependencies. Core part has to be installed on (or otherwise accessible by)
+every machine that is going to participate in Lifeblood.</p>
+<p>Viewer is only needed on the machines of people that need to be able to view the task progress
+and edit the node tree</p>
+<p>A common simplest case for one artist with 1-2 extra computers on the network would be
+to install Lifeblood Viewer (it will also install Lifeblood Core itself), and install just Lifeblood Core
+on those extra machines.</p>
+<p>In this simplest case you will probably run scheduler, a worker pool and viewer on the main machine,
+while extra machines will only run workers.</p>
+<p>Check <a class="reference internal" href="overview.html#overview-scheduler"><span class="std std-ref">overview</span></a> to learn basic components of Lifeblood</p>
+<p>Also check the <a class="reference internal" href="tutorials.html#tutorials-installation"><span class="std std-ref">tutorial section</span></a></p>
+<section id="simplest-installation-scripts">
+<h2>Simplest: Installation scripts<a class="headerlink" href="#simplest-installation-scripts" title="Permalink to this heading">#</a></h2>
+<p>the <a class="reference external" href="https://github.com/pedohorse/lifeblood/tree/dev/install">github repo</a> has an <code class="docutils literal notranslate"><span class="pre">install</span></code> folder,
+that folder contains</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">install.sh</span></code> - for bash and linux (distribution does not matter, as long as python &gt;=3.8 and &lt;=3.10 is available)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> - a powershell script for windows.</p></li>
 </ul>
-</li>
+<p>Just pick one of those scripts and put it into an empty folder.</p>
+<p>Run it! (from console or just double click)</p>
+<p>A fresh version of lifeblood will be brought from github and saved to a subfolder with name taken from the commit hash
+(like 420deadbeef69), and <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> shell script files will be creating pointing to that
+new version installed.</p>
+<section id="notes">
+<h3>Notes<a class="headerlink" href="#notes" title="Permalink to this heading">#</a></h3>
+<ul class="simple">
+<li><p>on Windows <code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> script will download latest embedded python3 from python.org, so you do not have to</p></li>
 </ul>
-</li>
-</ul>
-</div>
-<section id="installation">
-<span id="tutorials-installation"></span><h2><a class="toc-backref" href="#id2">Installation</a><a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h2>
-<section id="simple-demonstration">
-<h3><a class="toc-backref" href="#id3">Simple Demonstration</a><a class="headerlink" href="#simple-demonstration" title="Permalink to this heading">#</a></h3>
-<p>For any details about installation and initial configuration - see next <strong>Installation</strong> video</p>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/R5zfpwcQVAg" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div></section>
-<hr class="docutils" />
-<section id="detailed-installation">
-<h3><a class="toc-backref" href="#id4">Detailed Installation</a><a class="headerlink" href="#detailed-installation" title="Permalink to this heading">#</a></h3>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/LdduKOkUDvQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div></section>
+<p>have python installed beforehand
+* on Linux <code class="docutils literal notranslate"><span class="pre">install.sh</span></code> script will try to use system python and create a venv for lifeblood.</p>
 </section>
-<hr class="docutils" />
-<section id="usage">
-<h2><a class="toc-backref" href="#id5">Usage</a><a class="headerlink" href="#usage" title="Permalink to this heading">#</a></h2>
-<section id="houdini">
-<h3><a class="toc-backref" href="#id6">Houdini</a><a class="headerlink" href="#houdini" title="Permalink to this heading">#</a></h3>
-<section id="render-with-mantra">
-<h4><a class="toc-backref" href="#id7">Render with Mantra</a><a class="headerlink" href="#render-with-mantra" title="Permalink to this heading">#</a></h4>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/ZT2kKv9qq8I" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div><p>Note that rendering with Karma is very much the same, it just requires you to use Karma presets
-instead of Mantra ones.</p>
-<p>Also for Karma you can specify both Karma Rop or USD Render Lop</p>
+<section id="troubleshooting">
+<h3>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permalink to this heading">#</a></h3>
+<p>In case something went wrong don’t hesitate to delete everything installed and start from scratch.</p>
 </section>
-<hr class="docutils" />
-<section id="caching-and-wedging">
-<h4><a class="toc-backref" href="#id8">Caching and Wedging</a><a class="headerlink" href="#caching-and-wedging" title="Permalink to this heading">#</a></h4>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/m4S32t5VtAI" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div></section>
-<hr class="docutils" />
-<section id="distributed-flip-simulation">
-<h4><a class="toc-backref" href="#id9">Distributed Flip Simulation</a><a class="headerlink" href="#distributed-flip-simulation" title="Permalink to this heading">#</a></h4>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/V-X07UYXaps" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div></section>
-<hr class="docutils" />
-<section id="notifications-with-matrix">
-<h4><a class="toc-backref" href="#id10">Notifications With Matrix</a><a class="headerlink" href="#notifications-with-matrix" title="Permalink to this heading">#</a></h4>
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-  <iframe src="https://www.youtube.com/embed/TbgZfmPcdUA" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-</div></section>
 </section>
+<section id="simple-using-pip">
+<h2>Simple: Using pip<a class="headerlink" href="#simple-using-pip" title="Permalink to this heading">#</a></h2>
+<p>The simplest way to install Lifeblood is to use pip:</p>
+<ul class="simple">
+<li><p>on machines that will be performing work - install just Lifeblood: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">lifeblood</span></code></p></li>
+<li><p>on machines that will need GUI to access scheduler - install viewer: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">lifeblood_viewer</span></code></p></li>
+</ul>
+</section>
+<section id="complicated-custom-way">
+<h2>Complicated: Custom way<a class="headerlink" href="#complicated-custom-way" title="Permalink to this heading">#</a></h2>
+<p>If you know what you are doing and you just want the latest hottest Lifeblood python modules -
+all you need is <a class="reference external" href="https://github.com/pedohorse/lifeblood/tree/dev/src">in src folder of the repo</a>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> is the Lifeblood core module</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> is the Lifeblood Viewer module</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lifeblood_client</span></code> is something you won’t probably need, only if you are embedding lifeblood somewhere.</p></li>
+</ul>
+<p>lifeblood_client is a python module that contains client that can be used to create new tasks and query existing
+tasks in a Lifeblood Scheduler</p>
 </section>
 </section>
 
@@ -389,17 +382,17 @@ instead of Mantra ones.</p>
             <footer class="bd-footer-article">
                 <!-- Previous / next buttons -->
 <div class='prev-next-area'>
-  <a class='left-prev' id="prev-link" href="usage.html" title="previous page">
+  <a class='left-prev' id="prev-link" href="overview.html" title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
           <p class="prev-next-subtitle">previous</p>
-          <p class="prev-next-title">How to Use</p>
+          <p class="prev-next-title">Overview of Lifeblood</p>
       </div>
   </a>
-  <a class='right-next' id="next-link" href="components/index.html" title="next page">
+  <a class='right-next' id="next-link" href="usage.html" title="next page">
   <div class="prev-next-info">
       <p class="prev-next-subtitle">next</p>
-      <p class="prev-next-title">Components</p>
+      <p class="prev-next-title">How to Use</p>
   </div>
   <i class="fa-solid fa-angle-right"></i>
   </a>
@@ -420,55 +413,31 @@ instead of Mantra ones.</p>
 <nav id="bd-toc-nav" class="page-toc">
     <ul class="visible nav section-nav flex-column">
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#installation">
-   Installation
+  <a class="reference internal nav-link" href="#simplest-installation-scripts">
+   Simplest: Installation scripts
   </a>
   <ul class="visible nav section-nav flex-column">
    <li class="toc-h3 nav-item toc-entry">
-    <a class="reference internal nav-link" href="#simple-demonstration">
-     Simple Demonstration
+    <a class="reference internal nav-link" href="#notes">
+     Notes
     </a>
    </li>
    <li class="toc-h3 nav-item toc-entry">
-    <a class="reference internal nav-link" href="#detailed-installation">
-     Detailed Installation
+    <a class="reference internal nav-link" href="#troubleshooting">
+     Troubleshooting
     </a>
    </li>
   </ul>
  </li>
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#usage">
-   Usage
+  <a class="reference internal nav-link" href="#simple-using-pip">
+   Simple: Using pip
   </a>
-  <ul class="visible nav section-nav flex-column">
-   <li class="toc-h3 nav-item toc-entry">
-    <a class="reference internal nav-link" href="#houdini">
-     Houdini
-    </a>
-    <ul class="nav section-nav flex-column">
-     <li class="toc-h4 nav-item toc-entry">
-      <a class="reference internal nav-link" href="#render-with-mantra">
-       Render with Mantra
-      </a>
-     </li>
-     <li class="toc-h4 nav-item toc-entry">
-      <a class="reference internal nav-link" href="#caching-and-wedging">
-       Caching and Wedging
-      </a>
-     </li>
-     <li class="toc-h4 nav-item toc-entry">
-      <a class="reference internal nav-link" href="#distributed-flip-simulation">
-       Distributed Flip Simulation
-      </a>
-     </li>
-     <li class="toc-h4 nav-item toc-entry">
-      <a class="reference internal nav-link" href="#notifications-with-matrix">
-       Notifications With Matrix
-      </a>
-     </li>
-    </ul>
-   </li>
-  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#complicated-custom-way">
+   Complicated: Custom way
+  </a>
  </li>
 </ul>
 
@@ -487,7 +456,7 @@ instead of Mantra ones.</p>
 <div class="toc-item">
   
 <div class="tocsection sourcelink">
-    <a href="_sources/tutorials.rst.txt">
+    <a href="_sources/installation.rst.txt">
         <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
 </div>
