@@ -2,7 +2,7 @@ import asyncio
 import aiofiles
 from enum import Enum
 import struct
-from .exceptions import NotEnoughResources, ProcessInitializationError
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
 from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
@@ -110,6 +110,9 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except NotEnoughResources:
                         self.__logger.warning('Not enough resources (this is unusual error - scheduler should know our resources). rejecting task')
+                        writer.write(bytes([TaskScheduleStatus.FAILED.value]))
+                    except WorkerNotAvailable:
+                        self.__logger.warning('Got a task, but Worker is not available. Most probably is stopping right now')
                         writer.write(bytes([TaskScheduleStatus.FAILED.value]))
                     except Exception as e:
                         self.__logger.exception('no, cuz %s', e)
