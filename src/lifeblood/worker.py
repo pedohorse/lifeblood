@@ -20,7 +20,7 @@ from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .net_classes import WorkerResources
 from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
-from .exceptions import NotEnoughResources, ProcessInitializationError
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
 from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_pool_protocol import WorkerPoolClient
 from .broadcasting import await_broadcast
@@ -239,16 +239,17 @@ class Worker:
 
         if not self.__started or self.__stopped:
             return
-        with self.__stop_lock:
+        with self.__stop_lock:  # NOTE: there is literally no threading in worker, so this is excessive
             self.__logger.info('STOPPING WORKER')
-            self.__server.close()
             self.__components_stop_event.set()
 
             async def _finalizer():
                 await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
-                await self.__server.wait_closed()  # before doing anything else we wait for server to fully close all connections
-                await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler
-                await _send_byebye()  # and only after that we report OFF to scheduler
+                await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler.
+                # no new tasks will be picked up cuz __stopped is already set
+                await _send_byebye()  # saying bye, don't bother us. (some delayed comms may still come through to the __server
+                self.__server.close()  # start the closing.
+                await self.__server.wait_closed()
 
             self.__stopping_waiters.append(asyncio.create_task(_finalizer()))
             self.__finished.set()
@@ -384,6 +385,8 @@ class Worker:
     #         await self.__local_negotiator.send_sync_event()
 
     async def run_task(self, task: InvocationJob, report_to: str):
+        if self.__stopped:
+            raise WorkerNotAvailable()
         self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}, {self.__resource_db_lock.locked_by_me()}')
         async with self.__task_changing_state_lock, self.__resource_db_lock:
             self.__logger.debug('resource+task_change_state locks aquired')
