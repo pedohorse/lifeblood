@@ -1484,6 +1484,7 @@ class Scheduler:
     #
     # add new worker to db
     async def add_worker(self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources, assume_active=True):  # TODO: all resource should also go here
+        self.__logger.debug(f'worker reported added: {addr}')
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             await con.execute('BEGIN IMMEDIATE')  # important to have locked DB during all this state change
@@ -1573,6 +1574,7 @@ class Scheduler:
                                )
             await self.__update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
             await con.commit()
+        self.__logger.debug(f'finished worker reported added: {addr}')
         self.poke_task_processor()
 
     # TODO: add decorator that locks method from reentry or smth
