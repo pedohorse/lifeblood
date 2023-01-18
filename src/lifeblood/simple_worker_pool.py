@@ -222,8 +222,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
                 # check for idle workers
                 idle_guys = len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])  # consider OFF ones as IDLEs that just boot up
-                if idle_guys > self.__ensure_minimum_idle:
-                    max_to_kill = idle_guys - self.__ensure_minimum_idle
+                if idle_guys > self.__ensure_minimum_idle and len(self.__id_to_procdata) > self.__ensure_minimum_total:
+                    max_to_kill = min(idle_guys - self.__ensure_minimum_idle, len(self.__id_to_procdata) - self.__ensure_minimum_total)
                     # if we above minimum - we can kill some idle ones
                     now = time.time()
                     for procdata in self.__worker_pool.values():
