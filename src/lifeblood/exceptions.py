@@ -15,5 +15,9 @@ class NotEnoughResources(RuntimeError):
     pass
 
 
+class WorkerNotAvailable(RuntimeError):
+    pass
+
+
 class ProcessInitializationError(RuntimeError):
     pass
