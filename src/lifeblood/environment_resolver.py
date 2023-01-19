@@ -280,41 +280,62 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
     @classmethod
     def autodetect_blender(cls, base_path: Optional[pathlib.Path] = None) -> dict:
         bases = []
+        packages = {}
         if sys.platform.startswith('linux'):
-            return {}  # TODO: implement
-            bases.append((base_path or pathlib.Path(r'/opt'), pathlib.Path('')))
+            return {}  # TODO: implement? any standard way of installinb blender is with package manager, cannot cover that case
         elif sys.platform.startswith('win'):
-            bases.append((base_path or pathlib.Path(r'C:\Program Files\Blender Foundation'), pathlib.Path('')))
-            bases.append((base_path or pathlib.Path(r'C:\Program Files (x86)\Blender Foundation'), pathlib.Path('')))
+            if base_path:
+                bases.append(base_path)
+            else:
+                bases.append(pathlib.Path(r'C:\Program Files\Blender Foundation'))
+                bases.append(base_path or pathlib.Path(r'C:\Program Files (x86)\Blender Foundation'))
+            blere = re.compile(r'^(?:[Bb]lender)\s*(\d+\.\d+(?:.\d+)*)$')
+            for base in bases:
+                if not base.exists():
+                    continue
+                for blendir in base.iterdir():
+                    if not blendir.exists() or not blendir.is_dir():
+                        continue
+                    match = blere.match(str(blendir.name))
+                    if not match:
+                        continue
+                    if 'blender' not in packages:
+                        packages['blender'] = {}
+                    packages['blender'][match.group(1)] = {
+                        'label': 'Blender',
+                        'env': {
+                            'PATH': {
+                                'prepend': str(blendir)
+                            }
+                        }
+                    }
         elif sys.platform.startswith('darwin'):
-            return {}  # TODO: implement
-            bases.append((base_path or pathlib.Path(r'/Applications/Blender'), pathlib.Path('Frameworks/Houdini.framework/Versions/Current/Resources')))
+            import subprocess
+            # TODO: single stupid case covered only, not in a super nice way either...
+            bases.append(base_path or pathlib.Path(r'/Applications/blender.app/Contents/MacOS/blender'))
+            for base in bases:
+                blenbin = base / 'blender'
+                if blenbin.exists():
+                    try:
+                        out, _ = subprocess.Popen([blenbin, '--version'], stdout=subprocess.PIPE).communicate()
+                    except:
+                        cls.logger.warning(f' could not launch {(base / "blender")} to check version')
+                        continue
+                    out = out.decode('utf-8')
+                    match = re.match(r'[Bb]lender\s*(\d+\.\d+)', out.splitlines(False)[0])
+                    if not match:
+                        continue
+                    packages['blender'][match.group(1)] = {
+                        'label': 'Blender',
+                        'env': {
+                            'PATH': {
+                                'prepend': str(base)
+                            }
+                        }
+                    }
         else:
             raise RuntimeError(f'unknown platform {sys.platform}')
 
-        packages = {}
-
-        blere = re.compile(r'^(?:[Bb]lender)\s*(\d+\.\d+(?:.\d+)*)$')
-
-        for base, prefix in bases:
-            if not base.exists():
-                continue
-            for blendir in base.iterdir():
-                if not blendir.exists() or not blendir.is_dir():
-                    continue
-                match = blere.match(str(blendir.name))
-                if not match:
-                    continue
-                if 'blender' not in packages:
-                    packages['blender'] = {}
-                packages['blender'][match.group(1)] = {
-                    'label': 'Blender',
-                    'env': {
-                        'PATH': {
-                            'prepend': str(blendir/prefix)
-                        }
-                    }
-                }
         return packages
 
 
