@@ -296,7 +296,7 @@ class Scheduler:
                 self.__node_objects[node_id] = await BaseNode.deserialize_async(node_row['node_object'], self, node_id)
                 return self.__node_objects[node_id]
 
-            #newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
+            # newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
             newnode: BaseNode = pluginloader.create_node(node_type, node_row['name'], self, node_id)
             self.__node_objects[node_id] = newnode
             await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
@@ -528,6 +528,12 @@ class Scheduler:
                 await con.commit()
 
     async def _iter_iter_func(self, worker_row):
+        # This function currently runs as a separate task in the main thread
+        # this operates on the same worker data task_processor operates on, therefore
+        # this MUST NOT interfere with usual scheduler business
+        # here we only write to DB when:
+        # * a super obvious error is detected, like when there is an error pinging worker for some significant time
+        # * a worker reappeared after being in Error state  # TODO: actually this can be resolved on worker side - it pings, sees error, reintroduces
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
 
@@ -542,9 +548,7 @@ class Scheduler:
 
             self.__pinger_logger.debug('    :: pinger started')
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.CHECKING.value
-            # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.CHECKING, con, nocommit=True)
             self.__db_cache['workers_state'][worker_row['id']]['last_checked'] = int(time.time())
-            # await con.execute("UPDATE tmpdb.tmp_workers_states SET last_checked = ? WHERE worker_id = ?", (int(time.time()), worker_row['id']))
 
             addr = worker_row['last_address']
             ip, port = addr.split(':')  # type: str, str
@@ -554,10 +558,6 @@ class Scheduler:
                 self.__pinger_logger.debug('    :: malformed address')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 await self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
-                # await asyncio.gather(
-                #     self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True),
-                #     self.set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
-                # )
                 await _check_lastseen_and_drop_invocations()
                 await con.commit()
                 return
@@ -567,21 +567,18 @@ class Scheduler:
             except asyncio.exceptions.TimeoutError:
                 self.__pinger_logger.info(f'    :: network timeout {ip}:{port}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):  # TODO: maybe give it a couple of tries before declaring a failure?
                     await con.commit()
                 return
             except ConnectionRefusedError as e:
                 self.__pinger_logger.info(f'    :: host down {ip}:{port} {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
-                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.OFF, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
                 return
             except Exception as e:
                 self.__pinger_logger.info(f'    :: ping failed {ip}:{port} {type(e)}, {e}')
                 self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                # await self.set_worker_ping_state(worker_row['id'], WorkerPingState.ERROR, con, nocommit=True)
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
                 return
@@ -603,12 +600,8 @@ class Scheduler:
 
             if ping_code == WorkerPingReply.IDLE:  # TODO, just like above - add warnings, but leave solving to worker
                 pass
-                #workerstate = WorkerState.IDLE
-                # TODO: commented below as it seem to cause race conditions with worker invocation done reporting. NEED CHECKING
-                #if await self.reset_invocations_for_worker(worker_row['id'], con=con):
-                #    await con.commit()
             elif ping_code == WorkerPingReply.BUSY:
-                #workerstate = WorkerState.BUSY  # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
+                # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
                 async with con.execute('SELECT "id" FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
                     inv_id = await invcur.fetchone()
@@ -620,19 +613,14 @@ class Scheduler:
                     self.__db_cache['invocations'][inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
                     # Therefore additional cleanup needed later - still better than lock things or check too hard
 
-                # await con.execute('UPDATE "invocations" SET "progress" = ? WHERE "state" = ? AND "worker_id" = ?', (pvalue, InvocationState.IN_PROGRESS.value, worker_row['id']))
             else:
                 raise NotImplementedError(f'not a known ping_code {ping_code}')
 
             self.__db_cache['workers_state'][worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
             self.__db_cache['workers_state'][worker_row['id']]['last_seen'] = int(time.time())
-            if worker_row['state'] == WorkerState.ERROR.value:  # so we thought worker had an network error, but now it's all fine
+            if worker_row['state'] == WorkerState.ERROR.value:  # so we thought worker had a network error, but now it's all fine
                 await self.set_worker_state(worker_row['id'], workerstate)
-            # await asyncio.gather(self.set_worker_ping_state(worker_row['id'], WorkerPingState.WORKING, con, nocommit=True),
-            #                      #self.set_worker_state(worker_row['id'], workerstate, con, nocommit=True),
-            #                      self.update_worker_lastseen(worker_row['id'], con, nocommit=True)
-            #                      )
-            # await con.commit()
+
             self.__pinger_logger.debug('    :: %s', ping_code)
 
     async def split_task(self, task_id: int, into: int, con: aiosqlite.Connection) -> List[int]:
@@ -779,7 +767,7 @@ class Scheduler:
         # task processing coroutimes
         @atimeit()
         async def _awaiter(processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
-            #_blo = time.perf_counter()
+            # _blo = time.perf_counter()
             task_id = task_row['id']
             loop = asyncio.get_event_loop()
             try:
@@ -787,14 +775,12 @@ class Scheduler:
                     process_result: ProcessingResult = await loop.run_in_executor(awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
             except NodeNotReadyToProcess:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
-                                        #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
                     await con.commit(self.poke_task_processor)
                 return
             except Exception as e:
                 async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
-                                        #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
                     await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
                                       (TaskState.ERROR.value,
                                        json.dumps({'message': traceback.format_exc(),
@@ -809,10 +795,9 @@ class Scheduler:
 
             # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
             async with awaiter_lock, SharedLazyAiosqliteConnection(None, self.db_path, 'awaiter_con', timeout=self.__db_lock_timeout) as con:
-                                    #aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
-                #con.row_factory = aiosqlite.Row
+                # con.row_factory = aiosqlite.Row
                 # This implicitly starts transaction
-                #print(f'up till block: {time.perf_counter() - _blo}')
+                # print(f'up till block: {time.perf_counter() - _blo}')
 
                 if not con.in_transaction:
                     await con.execute('BEGIN IMMEDIATE')
@@ -820,8 +805,8 @@ class Scheduler:
                 if process_result.output_name:
                     await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                       (process_result.output_name, task_id))
-                #_blo = time.perf_counter()
-                #_bla1 = time.perf_counter()
+                # _blo = time.perf_counter()
+                # _bla1 = time.perf_counter()
 
                 # note: this may be not obvious, but ALL branches of the next if result in implicit transaction start
                 if process_result.do_kill_task:
@@ -856,8 +841,8 @@ class Scheduler:
                                           (taskdada_serialized, TaskState.READY.value, ':::'.join((invoc_requirements_sql, invoc_requirements_dict_str)),
                                            group_priority + job_priority,
                                            task_id))
-                #print(f'kill/invoc: {time.perf_counter() - _bla1}')
-                #_bla1 = time.perf_counter()
+                # print(f'kill/invoc: {time.perf_counter() - _bla1}')
+                # _bla1 = time.perf_counter()
                 if process_result.do_split_remove:
                     async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
                         res = await sealcur.fetchone()
@@ -874,8 +859,8 @@ class Scheduler:
                         if process_result.output_name:
                             await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                               (process_result.output_name, task_row['split_origin_task_id']))
-                                          # so sealed split task will get the same output_name as the task that is sealing the split
-                        # and update it's attributes if provided
+                            # so sealed split task will get the same output_name as the task that is sealing the split
+                        # and update its attributes if provided
                         if len(process_result.split_attributes_to_set) > 0:
                             async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_row['split_origin_task_id'],)) as attcur:
                                 attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, (await attcur.fetchone())['attributes'])
@@ -887,8 +872,8 @@ class Scheduler:
                                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                                   (result_serialized, task_row['split_origin_task_id']))
 
-                #print(f'splitrem: {time.perf_counter() - _bla1}')
-                #_bla1 = time.perf_counter()
+                # print(f'splitrem: {time.perf_counter() - _bla1}')
+                # _bla1 = time.perf_counter()
                 if process_result.attributes_to_set:  # not None or {}
                     attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'])
                     attributes.update(process_result.attributes_to_set)
@@ -904,8 +889,8 @@ class Scheduler:
                     await con.execute('UPDATE tasks SET environment_resolver_data = ? WHERE "id" = ?',
                                       (await envargs.serialize_async(), task_id))
 
-                #print(f'attset: {time.perf_counter() - _bla1}')
-                #_bla1 = time.perf_counter()
+                # print(f'attset: {time.perf_counter() - _bla1}')
+                # _bla1 = time.perf_counter()
                 # spawning new tasks after all attributes were set, so children inherit
                 if process_result.spawn_list is not None:
                     for spawn in process_result.spawn_list:
@@ -913,8 +898,8 @@ class Scheduler:
                         spawn.force_set_node_task_id(task_row['node_id'], task_row['id'])
                     await self.spawn_tasks(process_result.spawn_list, con=con)
 
-                #print(f'spawn: {time.perf_counter() - _bla1}')
-                #_bla1 = time.perf_counter()
+                # print(f'spawn: {time.perf_counter() - _bla1}')
+                # _bla1 = time.perf_counter()
                 if process_result._split_attribs is not None:
                     split_count = len(process_result._split_attribs)
                     for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
@@ -924,11 +909,11 @@ class Scheduler:
                         split_task_attrs = json.loads(split_task_dict['attributes'])  # TODO: run in executor
                         split_task_attrs.update(attr_dict)
                         await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
-                #print(f'split: {time.perf_counter()-_bla1}')
+                # print(f'split: {time.perf_counter()-_bla1}')
 
-                #_precum = time.perf_counter()-_blo
+                # _precum = time.perf_counter()-_blo
                 await con.commit(self.poke_task_processor)
-                #print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
+                # print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
         @atimeit()
