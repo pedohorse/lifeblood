@@ -2,7 +2,7 @@ venv
 venv-doc
 .idea
 .run
-*.db
+*.db*
 **.pyc
 **/__pycache__
 imgui.ini
@@ -15,3 +15,6 @@ pkg_*/src
 **/houdini/houdini.project
 dcc_plugins/houdini/otls/Driver-taskflow*
 pipkey*
+
+*.log
+tests/**/logs/
