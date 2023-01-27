@@ -95,7 +95,7 @@ class LifebloodSubmitOperator(bpy.types.Operator):
         attr.name = 'blendfile'
         attr.val = '$this_blend_file'
 
-        attr = self.attribs[0]
+        attr = self.attribs[1]
         attr.name = 'frames'
         attr.val = '$frames_list'
 
