@@ -312,7 +312,7 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
         elif sys.platform.startswith('darwin'):
             import subprocess
             # TODO: single stupid case covered only, not in a super nice way either...
-            bases.append(base_path or pathlib.Path(r'/Applications/blender.app/Contents/MacOS/blender'))
+            bases.append(base_path or pathlib.Path(r'/Applications/Blender.app/Contents/MacOS'))
             for base in bases:
                 blenbin = base / 'blender'
                 if blenbin.exists():
