@@ -69,3 +69,9 @@ class SpawnStatus(Enum):
 class ProcessPriorityAdjustment(Enum):
     NO_CHANGE = 0
     LOWER = 1
+
+
+class UIDataType(Enum):
+    FULL = 0
+    DELTA = 1
+
