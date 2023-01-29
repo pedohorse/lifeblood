@@ -26,7 +26,7 @@ from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .environment_resolver import EnvironmentResolverArguments
-from .uidata import create_uidata
+from .ui_protocol_data import create_uidata
 from .broadcasting import create_broadcaster
 from .simple_worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
@@ -2127,6 +2127,52 @@ class Scheduler:
             # print(f'workers: {time.perf_counter() - _dbg}')
             data = await create_uidata(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
+
+    @atimeit(0.005)
+    def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
+        self.__logger.debug('tasks update for %s', task_groups)
+        now = datetime.now()
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+
+            all_tasks = dict()
+            for group in task_groups:
+                async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
+                                       'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
+                                       'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
+                                       'FROM "tasks" '
+                                       'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
+                                       'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
+                                       'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
+                                       'WHERE task_groups."group" == ? AND tasks.dead {dodead} '
+                                       'GROUP BY tasks."id"'.format(dodead=f'== 0' if skip_dead else 'IN (0,1)'),
+                                       (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
+                    grp_tasks = await cur.fetchall()
+                # print(f'fetch groups: {time.perf_counter() - _dbg}')
+                for task_row in grp_tasks:
+                    task = dict(task_row)
+                    task['progress'] = self.__db_cache['invocations'].get(task['invoc_id'], {}).get('progress', None)
+                    task['groups'] = set(task['groups'].split(','))
+                    if task['id'] in all_tasks:
+                        all_tasks[task['id']]['groups'].update(task['groups'])
+                    else:
+                        all_tasks[task['id']] = task
+
+        return all_tasks
+
+    @atimeit(0.005)
+    async def get_nodes_ui_state(self) -> Tuple[dict, dict]:
+        self.__logger.debug('nodes update')
+        now = datetime.now()
+        group_totals_update_interval = 5
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
+                all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
+            async with con.execute('SELECT * FROM "node_connections"') as cur:
+                all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
+
+        return all_nodes, all_conns
 
     #
     # change node connection callback
