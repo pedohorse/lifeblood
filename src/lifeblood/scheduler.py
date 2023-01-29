@@ -2119,11 +2119,12 @@ class Scheduler:
                                    'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
                                    'LEFT JOIN resources ON workers.hwid == resources.hwid '
                                    'GROUP BY workers."id"') as cur:
-                all_workers = tuple({**dict(x),
-                                     'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen'],
-                                     'progress': self.__db_cache['invocations'].get(x['invoc_id'], {}).get('progress', None)
-                                     } for x in await cur.fetchall())
-
+                all_workers = {x['id']: x for x in ({**dict(x),
+                                                     'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen'],
+                                                     'progress': self.__db_cache['invocations'].get(x['invoc_id'], {}).get('progress', None)
+                                                     } for x in await cur.fetchall())}
+                for worker_data in all_workers.values():
+                    worker_data['groups'] = set(worker_data['groups'].split(','))
             # print(f'workers: {time.perf_counter() - _dbg}')
             data = await create_uidata(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
@@ -2346,6 +2347,9 @@ class Scheduler:
                             continue
                         await con.execute('INSERT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
                                           (group, current_timestamp))
+                        # TODO: task_groups.group should be a foreign key to task_group_attributes.group
+                        #  but then we need to insert those guys in correct order (first in attributes table, then groups)
+                        #  then smth like FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
                 result.append((SpawnStatus.SUCCEEDED, new_id))
             return tuple(result)
 
