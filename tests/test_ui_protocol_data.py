@@ -8,8 +8,8 @@ class Tests(TestCase):
     def test_trivial1(self):
         exp_uid = UiData(UIDataType.FULL,
                          123456,
-                         NodeGraphStructureData([], []),
-                         TaskBatchData([]), None, [])
+                         NodeGraphStructureData({}, {}),
+                         TaskBatchData({}), None, {})
 
         buffer = BytesIO()
         buffer.write(b'cat')
