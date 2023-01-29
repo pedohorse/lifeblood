@@ -4,8 +4,10 @@ import struct
 import json
 import time
 import pickle
+from io import BytesIO
 
-from lifeblood.uidata import UiData, NodeUi
+from lifeblood.uidata import NodeUi
+from lifeblood.ui_protocol_data import UiData
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.nethelpers import recv_exactly, address_to_ip_port, get_default_addr
 from lifeblood import logging
@@ -226,12 +228,11 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn = None
             return
         uidatasize = struct.unpack('>Q', recvdata)[0]
+        buffer = BytesIO(recvdata)  # TODO: temporary solution till proper streams are implemented
         logger.debug(f'fullstate: {uidatasize}B')
-        uidatabytes = recv_exactly(self.__conn, uidatasize)
-        if len(uidatabytes) != uidatasize:
-            logger.error('scheduler connection lost')
-            return
-        uidata = UiData.deserialize_noasync(uidatabytes)
+        buffer.write(recv_exactly(self.__conn, uidatasize))
+        buffer.seek(0)
+        uidata = UiData.deserialize(buffer)
         # if self.__filter_dead:
         #     uidata = UiData(ui_nodes=uidata.nodes(),
         #                     ui_connections=uidata.connections(),
