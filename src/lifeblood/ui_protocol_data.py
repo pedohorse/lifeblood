@@ -14,9 +14,9 @@ async def create_uidata_from_raw(db_uid, ui_nodes, ui_connections, ui_tasks, ui_
     """
     helper function to create structured data from raw dicts
     """
-    asyncio.get_event_loop().t
-    UiData(UIDataType.FULL, db_uid, )
-    #return UiData(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups)
+    return await asyncio.get_event_loop().run_in_executor(None, _create_uidata_from_raw_noasync,
+                                                          UIDataType.FULL, db_uid, ui_nodes, ui_connections, ui_tasks,
+                                                          ui_workers, all_task_groups)
 
 
 def _create_uidata_from_raw_noasync(event_type: UIDataType, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
@@ -25,40 +25,40 @@ def _create_uidata_from_raw_noasync(event_type: UIDataType, db_uid, ui_nodes, ui
             raise RuntimeError('both ui_nodes and ui_connections must be none, or not none')
     nodes = {}
     connections = {}
-    for node_id, node_raw in ui_nodes.items:
+    for node_id, node_raw in ui_nodes.items():
         assert node_id == node_raw['id']
-        node_data = NodeData(node_id, node_raw['type'])
+        node_data = NodeData(node_id, node_raw['name'], node_raw['type'])
         nodes[node_id] = node_data
-    for conn_id, con_raw in ui_connections:
+    for conn_id, con_raw in ui_connections.items():
         assert conn_id == con_raw['id']
         conn_data = NodeConnectionData(conn_id, con_raw['node_id_in'], con_raw['in_name'], con_raw['node_id_out'], con_raw['out_name'])
         connections[conn_id] = conn_data
 
     tasks = {}
-    for task_id, task_raw in ui_tasks:
+    for task_id, task_raw in ui_tasks.items():
         assert task_id == task_raw['id']
         task_data = TaskData(task_id, task_raw['parent_id'], task_raw['children_count'], task_raw['active_children_count'],
                              TaskState(task_raw['state']), task_raw['state_details'], task_raw['paused'] != 0, task_raw['node_id'],
                              task_raw['node_input_name'], task_raw['node_output_name'], task_raw['name'], task_raw['split_level'],
-                             task_raw['progress'], task_raw['work_data_invocation_attempt'], task_raw['origin_task_id'],
+                             task_raw['work_data_invocation_attempt'], task_raw['progress'], task_raw['origin_task_id'],
                              task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
         tasks[task_id] = task_data
 
     workers = {}
-    for worker_id, worker_raw in ui_workers:
+    for worker_id, worker_raw in ui_workers.items():
         assert worker_id == worker_raw['id']
         res = WorkerResources(worker_raw['cpu_count'], worker_raw['total_cpu_count'],
                               worker_raw['cpu_mem'], worker_raw['total_cpu_mem'],
                               worker_raw['gpu_count'], worker_raw['total_gpu_count'],
                               worker_raw['gpu_mem'], worker_raw['total_gpu_mem'])
-        workers[worker_id] = WorkerData(worker_id, res, worker_raw['hwid'], worker_raw['last_address'], worker_raw['last_seen'],
+        workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
                                         WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
                                         worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
                                         worker_raw['groups'])
 
     task_groups = {}
-    for group_name, group_raw in all_task_groups:
-        assert group_name == group_raw['name']
+    for group_name, group_raw in all_task_groups.items():
+        assert group_name == group_raw['group']
         stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
         task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
                                                 group_raw['priority'], stat)
@@ -90,60 +90,84 @@ class IBufferSerializable:
 @dataclass
 class TaskData(IBufferSerializable):
     id: int
-    parent_id: int
+    parent_id: Optional[int]
     children_count: int
     active_children_count: int
     state: TaskState
-    state_details: str
+    state_details: Optional[str]
     paused: bool
     node_id: int
-    node_input_name: str
-    node_output_name: str
+    node_input_name: Optional[str]
+    node_output_name: Optional[str]
     name: str
     split_level: int
     work_data_invocation_attempt: int
-    progress: float
-    split_origin_task_id: int
-    split_id: int
-    invocation_id: int
+    progress: Optional[float]
+    split_origin_task_id: Optional[int]
+    split_id: Optional[int]
+    invocation_id: Optional[int]
     groups: Set[str]
 
     def serialize(self, stream: BufferedIOBase):
-        #                    ipcaspnswpssig
-        data = struct.pack('>QQQQI?QQQdQQQQ', self.id, self.parent_id, self.children_count, self.active_children_count,
-                           self.state.value, self.paused, self.node_id, self.split_level, self.work_data_invocation_attempt,
-                           self.progress, self.split_origin_task_id, self.split_id, self.invocation_id, len(self.groups))
+        #                    i?pcaspnsw?p?s?s?ig
+        data = struct.pack('>Q?QQQI?QQQ?d?Q?Q?QQ', self.id, self.parent_id is not None, self.parent_id or 0, self.children_count,
+                           self.active_children_count, self.state.value, self.paused, self.node_id, self.split_level,
+                           self.work_data_invocation_attempt, self.progress is not None, self.progress or 0.0,
+                           self.split_origin_task_id is not None, self.split_origin_task_id or 0,
+                           self.split_id is not None, self.split_id or 0,
+                           self.invocation_id is not None, self.invocation_id or 0, len(self.groups))
         written_size = stream.write(data)
-        data_parts = [_serialize_string(self.state_details, stream), _serialize_string(self.node_input_name, stream),
-                      _serialize_string(self.node_output_name, stream), _serialize_string(self.name, stream),
-                      *(_serialize_string(x, stream) for x in self.groups)]
-        total_size = sum(len(x) for x in data_parts)
-        for chunk in data_parts:
-            written_size += stream.write(chunk)
-        if total_size != written_size:
-            raise RuntimeError('inconsistent write!')
+        written_size += stream.write(struct.pack('>?', self.state_details is not None))
+        if self.state_details is not None:
+            written_size += _serialize_string(self.state_details, stream)
+        written_size += stream.write(struct.pack('>?', self.node_input_name is not None))
+        if self.node_input_name is not None:
+            written_size += _serialize_string(self.node_input_name, stream)
+        written_size += stream.write(struct.pack('>?', self.node_output_name is not None))
+        if self.node_output_name is not None:
+            written_size += _serialize_string(self.node_output_name, stream)
+        written_size += _serialize_string(self.name, stream)
+        written_size += sum(_serialize_string(x, stream) for x in self.groups)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskData":
-        offset = 93  # 8*4 + 4 + 1 + 8*7
-        task_id, task_parent_id, task_children_count, task_active_children_count, \
-            task_state_value, task_paused, task_node_id, task_split_level, task_work_data_invocation_attempt, progress, \
-            task_split_origin_task_id, task_split_id, task_invocation_id, group_count = struct.unpack('>QQQQI?QQQdQQQQ', stream.read(offset))
+        offset = 106  # 8 + 1 + 8*3 + 4 + 1 + 8*3 + 1+8 + 1+8 + 1+8 + 1+8 + 8
+        task_id, has_parent_id, task_parent_id, task_children_count, task_active_children_count, \
+            task_state_value, task_paused, task_node_id, task_split_level, task_work_data_invocation_attempt, \
+            has_progress, progress, \
+            has_task_split_origin_task_id, task_split_origin_task_id, \
+            has_task_split_id, task_split_id, \
+            has_task_invocation_id, task_invocation_id, group_count = struct.unpack('>Q?QQQI?QQQ?d?Q?Q?QQ', stream.read(offset))
 
-        state_details = _deserialize_string(stream)
-        node_input_name = _deserialize_string(stream)
-        node_output_name = _deserialize_string(stream)
+        has_state_details, = struct.unpack('>?', stream.read(1))
+        if has_state_details:
+            state_details = _deserialize_string(stream)
+        else:
+            state_details = None
+        has_node_input_name, = struct.unpack('>?', stream.read(1))
+        if has_node_input_name:
+            node_input_name = _deserialize_string(stream)
+        else:
+            node_input_name = None
+        has_node_output_name, = struct.unpack('>?', stream.read(1))
+        if has_node_output_name:
+            node_output_name = _deserialize_string(stream)
+        else:
+            node_output_name = None
         task_name = _deserialize_string(stream)
 
         groups = set()
         for i in range(group_count):
             group_name = _deserialize_string(stream)
-            groups.update(group_name)
+            groups.add(group_name)
 
-        return TaskData(task_id, task_parent_id, task_children_count, task_active_children_count,
+        return TaskData(task_id, task_parent_id if has_parent_id else None, task_children_count, task_active_children_count,
                         TaskState(task_state_value), state_details, task_paused, task_node_id, node_input_name, node_output_name,
-                        task_name, task_split_level, task_work_data_invocation_attempt, progress,
-                        task_split_origin_task_id, task_split_id, task_invocation_id, groups)
+                        task_name, task_split_level, task_work_data_invocation_attempt,
+                        progress if has_progress else None,
+                        task_split_origin_task_id if has_task_split_origin_task_id else None,
+                        task_split_id if has_task_split_id else None,
+                        task_invocation_id if has_task_invocation_id else None, groups)
 
 
 @dataclass
@@ -168,17 +192,20 @@ class TaskBatchData(IBufferSerializable):
 @dataclass
 class NodeData(IBufferSerializable):
     id: int
+    name: str
     type: str
 
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>Q', self.id))
+        _serialize_string(self.name, stream)
         _serialize_string(self.type, stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "NodeData":
         node_id, = struct.unpack('>Q', stream.read(8))
+        node_name = _deserialize_string(stream)
         node_type = _deserialize_string(stream)
-        return NodeData(node_id, node_type)
+        return NodeData(node_id, node_name, node_type)
 
 
 @dataclass
@@ -197,7 +224,7 @@ class NodeConnectionData(IBufferSerializable):
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "NodeConnectionData":
-        connection_id, in_id, out_id = struct.unpack('>QQQ', stream.read(16))
+        connection_id, in_id, out_id = struct.unpack('>QQQ', stream.read(24))
         in_name = _deserialize_string(stream)
         out_name = _deserialize_string(stream)
         return NodeConnectionData(connection_id, in_id, in_name, out_id, out_name)
@@ -247,7 +274,7 @@ class WorkerResources(IBufferSerializable):
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "WorkerResources":
         cpu_count, total_cpu_count, cpu_mem, total_cpu_mem, \
-        gpu_count, total_gpu_count, gpu_mem, total_gpu_mem = struct.unpack('>QQQQQQQQ', stream.read(64))
+        gpu_count, total_gpu_count, gpu_mem, total_gpu_mem = struct.unpack('>ddQQddQQ', stream.read(64))
         return WorkerResources(cpu_count, total_cpu_count, cpu_mem, total_cpu_mem,
                                gpu_count, total_gpu_count, gpu_mem, total_gpu_mem)
 
@@ -301,7 +328,7 @@ class WorkerData(IBufferSerializable):
         last_address = _deserialize_string(stream)
         groups = set()
         for i in range(groups_count):
-            groups.update(_deserialize_string(stream))
+            groups.add(_deserialize_string(stream))
         return WorkerData(worker_id, worker_resources, hwid, last_address, last_seen_timestamp, WorkerState(state_value), WorkerType(type_value),
                           current_invocation_node_id, current_invocation_task_id, current_invocation_id, current_invocation_progress, groups)
 
@@ -333,11 +360,11 @@ class TaskGroupStatisticsData(IBufferSerializable):
     tasks_total: int
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQQQ',))
+        stream.write(struct.pack('>QQQQ', self.tasks_done, self.tasks_in_progress, self.tasks_with_error, self.tasks_total))
 
     @classmethod
     def deserialize(cls, stream) -> "TaskGroupStatisticsData":
-        tasks_done, tasks_in_progress, tasks_with_error, tasks_total = struct.unpack('>QQQQ', stream.read(24))
+        tasks_done, tasks_in_progress, tasks_with_error, tasks_total = struct.unpack('>QQQQ', stream.read(32))
         return TaskGroupStatisticsData(tasks_done, tasks_in_progress, tasks_with_error, tasks_total)
 
 
