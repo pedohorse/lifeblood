@@ -157,7 +157,7 @@ class WorkerModel(QAbstractTableModel):
 
         raw_data = 'none'
         if col_name in self.__cols_with_totals:  # if there's total - make value in format if val/total, like 20/32
-            raw_data = f'{format_display(col_name, getattr(worker.worker_resources, col_name))}/{format_display(col_name, getattr(worker, f"total_{col_name}"))}'
+            raw_data = f'{format_display(col_name, getattr(worker.worker_resources, col_name))}/{format_display(col_name, getattr(worker.worker_resources, f"total_{col_name}"))}'
 
         return raw_data
 
@@ -211,7 +211,7 @@ class WorkerModel(QAbstractTableModel):
             minrow, maxrow = self.rowCount(), -1
             for worker_key in old_keys.intersection(new_keys):
                 # self.__workers[wroker_key].update(new_workers[worker_key])
-                for field in WorkerData.__dict__['__dataclass_params__']:
+                for field in WorkerData.__dict__['__dataclass_fields__']:
                     value = getattr(new_workers[worker_key], field)
                     if getattr(self.__workers[worker_key], field) != value:
                         setattr(self.__workers[worker_key], field, value)
