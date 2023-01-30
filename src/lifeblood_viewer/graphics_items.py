@@ -7,6 +7,7 @@ from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
+from lifeblood.ui_protocol_data import TaskData
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
@@ -1014,21 +1015,21 @@ class Task(NetworkItemWithUI):
     __borderpen = None
     __paused_pen = None
 
-    def __init__(self, id, name: str, groups=None):
-        super(Task, self).__init__(id)
+    def __init__(self, task_data: TaskData):
+        super(Task, self).__init__(task_data.id)
         #self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setZValue(1)
-        self.__name = name
-        self.__state = TaskState.WAITING
-        self.__paused = False
-        self.__progress = None
+        # self.__name = name
+        # self.__state = TaskState.WAITING
+        # self.__paused = False
+        # self.__progress = None
         self.__layer = 0  # draw layer from 0 - main up to inf. kinda like LOD with highres being 0
 
-        self.__state_details_raw = None
-        self.__state_details = None
-        self.__raw_data = {}
+        # self.__state_details_raw = None
+        self.__state_details_cached = None
+        self.__raw_data: TaskData = task_data
 
-        self.__groups = set() if groups is None else set(groups)
+        # self.__groups = set() if groups is None else set(groups)
         self.__log: dict = {}
         self.__ui_attributes: dict = {}
         self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
@@ -1116,52 +1117,54 @@ class Task(NetworkItemWithUI):
         if self.__layer >= self.__visible_layers_count:
             return
         path = self._get_mainpath()
-        brush = self.__brushes[self.__state][self.__layer]
+        brush = self.__brushes[self.state()][self.__layer]
         painter.fillPath(path, brush)
-        if self.__progress:
+        if self.__raw_data.progress:
             arcpath = QPainterPath()
             arcpath.arcTo(QRectF(-0.5*self.__size, -0.5*self.__size, self.__size, self.__size),
-                          90, -3.6*self.__progress)
+                          90, -3.6*self.__raw_data.progress)
             arcpath.closeSubpath()
             painter.fillPath(arcpath, self.__brushes[TaskState.DONE][self.__layer])
-        if self.__paused:
+        if self.paused():
             painter.setPen(self.__paused_pen[self.__layer])
             painter.drawPath(self._get_pausedpath())
         painter.setPen(self.__borderpen[int(self.isSelected())])
         painter.drawPath(path)
 
     def name(self):
-        return self.__name
+        return self.__raw_data.name
 
     def set_name(self, name: str):
-        if name == self.__name:
+        if name == self.__raw_data.name:
             return
-        self.__name = name
+        self.__raw_data.name= name
         self.refresh_ui()
 
-    def state(self):
-        return self.__state
+    def state(self) -> TaskState:
+        return self.__raw_data.state
 
     def state_details(self) -> Optional[dict]:
-        return self.__state_details
+        if self.__state_details_cached is None and self.__raw_data.state_details is not None:
+            self.__state_details_cached = json.loads(self.__raw_data.state_details)
+        return self.__state_details_cached
 
     def paused(self):
-        return self.__paused
+        return self.__raw_data.paused
 
-    def groups(self):
-        return self.__groups
+    def groups(self) -> Set[str]:
+        return self.__raw_data.groups
 
     def set_groups(self, groups: Set[str]):
-        if self.__groups == groups:
+        if self.__raw_data.groups == groups:
             return
-        self.__groups = groups
+        self.__raw_data.groups = groups
         self.refresh_ui()
 
     def attributes(self):
         return MappingProxyType(self.__ui_attributes)
 
     def in_group(self, group_name):
-        return group_name in self.__groups
+        return group_name in self.__raw_data.groups
 
     def node(self):
         return self.__node
@@ -1178,32 +1181,30 @@ class Task(NetworkItemWithUI):
         self.setZValue(1.0/(1.0 + layer))
 
     def set_state_details(self, state_details: Optional[str] = None):
-        if self.__state_details_raw == state_details:
+        if self.__raw_data.state_details == state_details:
             return
-        self.__state_details_raw = state_details
-        if state_details is None:
-            self.__state_details = None
-            return
-        self.__state_details = json.loads(self.__state_details_raw)
+        self.__raw_data.state_details = state_details
+        self.__state_details_cached = None
 
     def set_state(self, state: TaskState, paused: bool):
-        if state == self.__state and self.__paused == paused:
+        if state == self.__raw_data.state and self.__raw_data.paused == paused:
             return
-        self.__state = state
+        self.__raw_data.state = state
         self.set_state_details(None)
-        self.__paused = paused
+        self.__raw_data.paused = paused
         if state != TaskState.IN_PROGRESS:
-            self.__progress = None
+            self.__raw_data.progress = None
         if self.__node:
             self.__node.task_state_changed(self)
         self.update()
         self.refresh_ui()
 
-    def set_raw_data(self, raw_data: dict):
+    def set_task_data(self, raw_data: TaskData):
+        self.__state_details_cached = None
         self.__raw_data = raw_data
 
     def set_progress(self, progress: float):
-        self.__progress = progress
+        self.__raw_data.progress = progress
         # logger.debug('progress %d', progress)
         self.update()
         self.update_ui()
@@ -1435,13 +1436,13 @@ class Task(NetworkItemWithUI):
     #
     # interface
     def draw_imgui_elements(self, drawing_widget):
-        imgui.text(f'Task {self.get_id()} {self.__name}')
-        imgui.text(f'state: {self.state().name}')
-        imgui.text(f'groups: {", ".join(self.__groups)}')
-        imgui.text(f'parent id: {self.__raw_data.get("parent_id", None)}')
-        imgui.text(f'children count: {self.__raw_data.get("children_count", None)}')
-        imgui.text(f'split level: {self.__raw_data.get("split_level", None)}')
-        imgui.text(f'invocation attempts: {self.__raw_data.get("work_data_invocation_attempt", 0)}')
+        imgui.text(f'Task {self.get_id()} {self.__raw_data.name}')
+        imgui.text(f'state: {self.__raw_data.state.name}')
+        imgui.text(f'groups: {", ".join(self.__raw_data.groups)}')
+        imgui.text(f'parent id: {self.__raw_data.parent_id}')
+        imgui.text(f'children count: {self.__raw_data.children_count}')
+        imgui.text(f'split level: {self.__raw_data.split_level}')
+        imgui.text(f'invocation attempts: {self.__raw_data.work_data_invocation_attempt}')
 
         # first draw attributes
         if self.__ui_attributes:
@@ -1460,8 +1461,10 @@ class Task(NetworkItemWithUI):
         imgui.text('Logs:')
         for node_id, invocs in self.__log.items():
             node: Node = self.scene().get_node(node_id)
-            if node is not None:
-                node_name: str = node.node_name()
+            if node is None:
+                logger.warning(f'node for task {self.get_id()} does not exist')
+                continue
+            node_name: str = node.node_name()
             node_expanded, _ = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
             if not node_expanded:  # or invocs is None:
                 continue
