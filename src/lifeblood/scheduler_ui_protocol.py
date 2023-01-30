@@ -42,9 +42,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 task_groups.append(await read_string())
 
             uidata = await self.__scheduler.get_full_ui_state(task_groups, skip_dead=skip_dead, skip_archived_groups=skip_archived_groups)
-            uidata_ser = await uidata.serialize(compress=True)
-            writer.write(struct.pack('>Q', len(uidata_ser)))
-            writer.write(uidata_ser)
+            await uidata.serialize_to_streamwriter(writer)
 
         async def comm_get_invoc_meta():  # elif command in (b'getinvocmeta', b'getlog', b'getalllog'):
             # if command == b'getinvocmeta':
