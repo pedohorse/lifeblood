@@ -26,7 +26,7 @@ from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .environment_resolver import EnvironmentResolverArguments
-from .ui_protocol_data import create_uidata
+from .ui_protocol_data import create_uidata_from_raw
 from .broadcasting import create_broadcaster
 from .simple_worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
@@ -2124,13 +2124,13 @@ class Scheduler:
                                                      'progress': self.__db_cache['invocations'].get(x['invoc_id'], {}).get('progress', None)
                                                      } for x in await cur.fetchall())}
                 for worker_data in all_workers.values():
-                    worker_data['groups'] = set(worker_data['groups'].split(','))
+                    worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
             # print(f'workers: {time.perf_counter() - _dbg}')
-            data = await create_uidata(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
+            data = await create_uidata_from_raw(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
         return data
 
     @atimeit(0.005)
-    def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
+    async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
         self.__logger.debug('tasks update for %s', task_groups)
         now = datetime.now()
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
