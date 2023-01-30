@@ -228,8 +228,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.__conn = None
             return
         uidatasize = struct.unpack('>Q', recvdata)[0]
-        buffer = BytesIO(recvdata)  # TODO: temporary solution till proper streams are implemented
+        buffer = BytesIO()  # TODO: temporary solution till proper streams are implemented
         logger.debug(f'fullstate: {uidatasize}B')
+        buffer.write(recvdata)
         buffer.write(recv_exactly(self.__conn, uidatasize))
         buffer.seek(0)
         uidata = UiData.deserialize(buffer)
