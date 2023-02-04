@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass, field
-from ui_protocol_data import TaskData, UiData
+from .ui_protocol_data import TaskData, UiData
 from .enums import UIEventType
 
 from typing import Union

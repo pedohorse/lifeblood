@@ -9,8 +9,8 @@ from .db_misc import sql_init_script_nodes
 from .utils import performance_measurer
 from lifeblood.misc import timeit
 from lifeblood.uidata import NodeUi, Parameter
-from lifeblood.ui_protocol_data import UiData
-from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState, UIDataType
+from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData
+from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
 from lifeblood import paths
@@ -226,7 +226,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     nodepresets_updated = Signal(dict)
     nodepreset_received = Signal(str, str, NodeSnippetData)
-    task_groups_updated = Signal(set)
+    task_groups_updated = Signal(TaskGroupBatchData)
     task_invocation_job_fetched = Signal(int, InvocationJob)
 
     long_operation_progressed = Signal(object)  # do we need this signal?
@@ -469,9 +469,6 @@ class QGraphicsImguiScene(QGraphicsScene):
     @Slot(object)
     def full_update(self, uidata: UiData):
         # logger.debug('full_update')
-        if uidata.event_type == UIDataType.DELTA:
-            raise NotImplementedError('not yet')
-
 
         if self.__db_uid is not None and self.__db_uid != uidata.db_uid:
             logger.info('scheduler\'s database changed. resetting the view...')

@@ -6,7 +6,7 @@ from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
-from lifeblood.ui_protocol_data import TaskGroupData
+from lifeblood.ui_protocol_data import TaskGroupBatchData
 from lifeblood import paths
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
@@ -100,10 +100,10 @@ class GroupsModel(QAbstractItemModel):
         return QModelIndex()
 
     @Slot(list)
-    def update_groups(self, groups: Dict[str, TaskGroupData]):
+    def update_groups(self, groups: TaskGroupBatchData):
         self.beginResetModel()
-        self.__items = groups
-        self.__items_order = sorted(list(groups.keys()), key=lambda x: self.__items[x].creation_timestamp, reverse=True)
+        self.__items = groups.task_groups
+        self.__items_order = sorted(list(groups.task_groups.keys()), key=lambda x: self.__items[x].creation_timestamp, reverse=True)
         self.endResetModel()
 
 
@@ -282,7 +282,7 @@ class LifebloodViewer(QMainWindow):
         get_config('viewer').set_option_noasync('viewer.nodeeditor.display_dead_tasks', show)
         self.__node_editor.set_dead_shown(show)
 
-    def update_groups(self, groups: Dict[str, TaskGroupData]):
+    def update_groups(self, groups: TaskGroupBatchData):
         do_select = self.__model_main.rowCount() == 0
         self.__model_main.update_groups(groups)
         if do_select and self.__model_main.rowCount() > 0:

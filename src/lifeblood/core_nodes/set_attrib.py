@@ -16,7 +16,7 @@ class SetAttributes(BaseNode):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'set', 'attribute', 'core'
+        return 'create', 'set', 'attribute', 'core'
 
     @classmethod
     def type_name(cls) -> str:
@@ -26,7 +26,7 @@ class SetAttributes(BaseNode):
         super(SetAttributes, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            with ui.multigroup_parameter_block('attr_count'):
+            with ui.multigroup_parameter_block('attr_count') as wrapper:
                 with ui.parameters_on_same_line_block():
                     ui.add_parameter('name', 'Name', NodeParameterType.STRING, '')
                     type_param = ui.add_parameter('type', '', NodeParameterType.INT, 0)
@@ -34,7 +34,8 @@ class SetAttributes(BaseNode):
                                          ('bool', NodeParameterType.BOOL.value),
                                          ('float', NodeParameterType.FLOAT.value),
                                          ('string', NodeParameterType.STRING.value),
-                                         ('integer range', -1)))
+                                         ('integer range', -1),
+                                         ('dictionary', -2)))
 
                     ui.add_parameter('svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
                     ui.add_parameter('ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
@@ -44,6 +45,24 @@ class SetAttributes(BaseNode):
                     ui.add_parameter('rf1value', 'to', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', -1)
                     ui.add_parameter('rf2value', 'step', NodeParameterType.INT, 9).append_visibility_condition(type_param, '==', -1)
                     ui.add_parameter('rf3value', '', NodeParameterType.INT, 1).append_visibility_condition(type_param, '==', -1)
+                #
+                # dictionary (no recursive yet)
+                with ui.multigroup_parameter_block('dict_attrs'):
+                    with ui.parameters_on_same_line_block():
+                        ui.add_parameter('dict_item_name', 'Name', NodeParameterType.STRING, '')
+                        dict_type_param = ui.add_parameter('dict_item_type', '', NodeParameterType.INT, 0)
+                        dict_type_param.add_menu((('int', NodeParameterType.INT.value),
+                                                  ('bool', NodeParameterType.BOOL.value),
+                                                  ('float', NodeParameterType.FLOAT.value),
+                                                  ('string', NodeParameterType.STRING.value),))
+
+                        ui.add_parameter('dict_item_svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(dict_type_param, '==', NodeParameterType.STRING.value)
+                        ui.add_parameter('dict_item_ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(dict_type_param, '==', NodeParameterType.INT.value)
+                        ui.add_parameter('dict_item_fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(dict_type_param, '==', NodeParameterType.FLOAT.value)
+                        ui.add_parameter('dict_item_bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(dict_type_param, '==', NodeParameterType.BOOL.value)
+                #
+                wrapper.multigroup().parameter('dict_attrs').append_visibility_condition(type_param, '==', -2)
+
             ui.color_scheme().set_main_color(0.15, 0.24, 0.25)
         # # Example how one would initialize multiblock to have initial nonzero value
         # multiblock = list(ui.items())[-1]

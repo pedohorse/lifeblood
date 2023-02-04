@@ -9,90 +9,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Set
 
 
-# scheduler helpers
-async def create_uidata_from_raw(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-    """
-    helper function to create structured data from raw dicts
-    """
-    return await asyncio.get_event_loop().run_in_executor(None, _create_uidata_from_raw_noasync,
-                                                          db_uid, ui_nodes, ui_connections, ui_tasks,
-                                                          ui_workers, all_task_groups)
-
-
-def _pack_workers_from_raw(ui_workers: dict) -> "WorkerBatchData":
-    """
-    this is scheduler helper function, it's incoming data format is dictated purely by scheduler
-    """
-    workers = {}
-    for worker_id, worker_raw in ui_workers.items():
-        assert worker_id == worker_raw['id']
-        res = WorkerResources(worker_raw['cpu_count'], worker_raw['total_cpu_count'],
-                              worker_raw['cpu_mem'], worker_raw['total_cpu_mem'],
-                              worker_raw['gpu_count'], worker_raw['total_gpu_count'],
-                              worker_raw['gpu_mem'], worker_raw['total_gpu_mem'])
-        workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
-                                        WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
-                                        worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
-                                        worker_raw['groups'])
-
-    return WorkerBatchData(workers)
-
-
-def _pack_nodes_connections_data(ui_nodes, ui_connections) -> "NodeGraphStructureData":
-    if ui_nodes is None or ui_connections is None:
-        if ui_connections is not None or ui_connections is not None:
-            raise RuntimeError('both ui_nodes and ui_connections must be none, or not none')
-    nodes = {}
-    connections = {}
-    for node_id, node_raw in ui_nodes.items():
-        assert node_id == node_raw['id']
-        node_data = NodeData(node_id, node_raw['name'], node_raw['type'])
-        nodes[node_id] = node_data
-    for conn_id, con_raw in ui_connections.items():
-        assert conn_id == con_raw['id']
-        conn_data = NodeConnectionData(conn_id, con_raw['node_id_in'], con_raw['in_name'], con_raw['node_id_out'], con_raw['out_name'])
-        connections[conn_id] = conn_data
-
-    return NodeGraphStructureData(nodes, connections)
-
-
-def _pack_tasks_data(ui_tasks) -> "TaskBatchData":
-    tasks = {}
-    for task_id, task_raw in ui_tasks.items():
-        assert task_id == task_raw['id']
-        task_data = TaskData(task_id, task_raw['parent_id'], task_raw['children_count'], task_raw['active_children_count'],
-                             TaskState(task_raw['state']), task_raw['state_details'], task_raw['paused'] != 0, task_raw['node_id'],
-                             task_raw['node_input_name'], task_raw['node_output_name'], task_raw['name'], task_raw['split_level'],
-                             task_raw['work_data_invocation_attempt'], task_raw['progress'], task_raw['origin_task_id'],
-                             task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
-        tasks[task_id] = task_data
-
-    return TaskBatchData(tasks)
-
-
-def _pack_task_groups(all_task_groups) -> "TaskGroupBatchData":
-    task_groups = {}
-    for group_name, group_raw in all_task_groups.items():
-        assert group_name == group_raw['group']
-        stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
-        task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
-                                                group_raw['priority'], stat)
-
-    return TaskGroupBatchData(task_groups)
-
-
-def _create_uidata_from_raw_noasync(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-
-    node_graph_data = _pack_nodes_connections_data(ui_nodes, ui_connections)
-    tasks = _pack_tasks_data(ui_tasks)
-    worker_batch_data = _pack_workers_from_raw(ui_workers)
-    task_groups = _pack_task_groups(all_task_groups)
-
-    return UiData(db_uid, node_graph_data, tasks, worker_batch_data, task_groups)
-
-##
-
-
 def _serialize_string(s: str, stream: BufferedIOBase) -> int:
     bstr = s.encode('UTF-8')
     stream.write(struct.pack('>Q', len(bstr)))
@@ -462,7 +378,7 @@ class UiData(IBufferSerializable):
     def deserialize(cls, stream: BufferedIOBase) -> "UiData":
         buffer = BytesIO(lz4.frame.decompress(stream.read(struct.unpack('>Q', stream.read(8))[0])))
 
-        db_uid, = struct.unpack('>Q', buffer.read(12))
+        db_uid, = struct.unpack('>Q', buffer.read(8))
         datas = []
         for data_type in (NodeGraphStructureData, TaskBatchData, WorkerBatchData, TaskGroupBatchData):
             if struct.unpack('>?', buffer.read(1))[0]:
@@ -471,7 +387,7 @@ class UiData(IBufferSerializable):
                 datas.append(None)
 
         assert len(datas), 4
-        return UiData(UIDataType(event_type_value), db_uid, datas[0], datas[1], datas[2], datas[3])
+        return UiData(db_uid, datas[0], datas[1], datas[2], datas[3])
 
     async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
         await asyncio.get_event_loop().run_in_executor(None, self.serialize, stream)

@@ -41,7 +41,6 @@ class Tests(TestCase):
         self.assertEqual(b'cat', buffer.read(3))
         test_uid = UiData.deserialize(buffer)
 
-        self.assertEqual(exp_uid.event_type, test_uid.event_type)
         self.assertEqual(exp_uid.db_uid, test_uid.db_uid)
         self.assertEqual(exp_uid.graph_data, test_uid.graph_data)
         self.assertEqual(exp_uid.tasks, test_uid.tasks)
