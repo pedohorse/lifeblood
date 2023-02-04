@@ -75,7 +75,3 @@ class UIEventType(Enum):
     UPDATE = 0
     DELETE = 1
 
-class UIDataType(Enum):
-    FULL = 0
-    DELTA = 1
-
