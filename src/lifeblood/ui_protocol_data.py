@@ -3,7 +3,7 @@ import struct
 import asyncio
 from io import BytesIO, BufferedIOBase
 import pickle
-from .enums import UIDataType, TaskState, WorkerState, WorkerType, TaskGroupArchivedState
+from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState
 from dataclasses import dataclass
 
 from typing import Dict, List, Tuple, Optional, Set
@@ -15,11 +15,30 @@ async def create_uidata_from_raw(db_uid, ui_nodes, ui_connections, ui_tasks, ui_
     helper function to create structured data from raw dicts
     """
     return await asyncio.get_event_loop().run_in_executor(None, _create_uidata_from_raw_noasync,
-                                                          UIDataType.FULL, db_uid, ui_nodes, ui_connections, ui_tasks,
+                                                          db_uid, ui_nodes, ui_connections, ui_tasks,
                                                           ui_workers, all_task_groups)
 
 
-def _create_uidata_from_raw_noasync(event_type: UIDataType, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
+def _pack_workers_from_raw(ui_workers: dict) -> "WorkerBatchData":
+    """
+    this is scheduler helper function, it's incoming data format is dictated purely by scheduler
+    """
+    workers = {}
+    for worker_id, worker_raw in ui_workers.items():
+        assert worker_id == worker_raw['id']
+        res = WorkerResources(worker_raw['cpu_count'], worker_raw['total_cpu_count'],
+                              worker_raw['cpu_mem'], worker_raw['total_cpu_mem'],
+                              worker_raw['gpu_count'], worker_raw['total_gpu_count'],
+                              worker_raw['gpu_mem'], worker_raw['total_gpu_mem'])
+        workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
+                                        WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
+                                        worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
+                                        worker_raw['groups'])
+
+    return WorkerBatchData(workers)
+
+
+def _pack_nodes_connections_data(ui_nodes, ui_connections) -> "NodeGraphStructureData":
     if ui_nodes is None or ui_connections is None:
         if ui_connections is not None or ui_connections is not None:
             raise RuntimeError('both ui_nodes and ui_connections must be none, or not none')
@@ -34,6 +53,10 @@ def _create_uidata_from_raw_noasync(event_type: UIDataType, db_uid, ui_nodes, ui
         conn_data = NodeConnectionData(conn_id, con_raw['node_id_in'], con_raw['in_name'], con_raw['node_id_out'], con_raw['out_name'])
         connections[conn_id] = conn_data
 
+    return NodeGraphStructureData(nodes, connections)
+
+
+def _pack_tasks_data(ui_tasks) -> "TaskBatchData":
     tasks = {}
     for task_id, task_raw in ui_tasks.items():
         assert task_id == task_raw['id']
@@ -44,25 +67,28 @@ def _create_uidata_from_raw_noasync(event_type: UIDataType, db_uid, ui_nodes, ui
                              task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
         tasks[task_id] = task_data
 
-    workers = {}
-    for worker_id, worker_raw in ui_workers.items():
-        assert worker_id == worker_raw['id']
-        res = WorkerResources(worker_raw['cpu_count'], worker_raw['total_cpu_count'],
-                              worker_raw['cpu_mem'], worker_raw['total_cpu_mem'],
-                              worker_raw['gpu_count'], worker_raw['total_gpu_count'],
-                              worker_raw['gpu_mem'], worker_raw['total_gpu_mem'])
-        workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
-                                        WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
-                                        worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
-                                        worker_raw['groups'])
+    return TaskBatchData(tasks)
 
+
+def _pack_task_groups(all_task_groups) -> "TaskGroupBatchData":
     task_groups = {}
     for group_name, group_raw in all_task_groups.items():
         assert group_name == group_raw['group']
         stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
         task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
                                                 group_raw['priority'], stat)
-    return UiData(event_type, db_uid, NodeGraphStructureData(nodes, connections), TaskBatchData(tasks), WorkerBatchData(workers), task_groups)
+
+    return TaskGroupBatchData(task_groups)
+
+
+def _create_uidata_from_raw_noasync(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
+
+    node_graph_data = _pack_nodes_connections_data(ui_nodes, ui_connections)
+    tasks = _pack_tasks_data(ui_tasks)
+    worker_batch_data = _pack_workers_from_raw(ui_workers)
+    task_groups = _pack_task_groups(all_task_groups)
+
+    return UiData(db_uid, node_graph_data, tasks, worker_batch_data, task_groups)
 
 ##
 
@@ -374,44 +400,59 @@ class TaskGroupData(IBufferSerializable):
     creation_timestamp: int
     state: TaskGroupArchivedState
     priority: float
-    statistics: TaskGroupStatisticsData
+    statistics: Optional[TaskGroupStatisticsData]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QId', self.creation_timestamp, self.state.value, self.priority))
+        stream.write(struct.pack('>QId?', self.creation_timestamp, self.state.value, self.priority, self.statistics is not None))
         _serialize_string(self.name, stream)
         self.statistics.serialize(stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskGroupData":
-        ctimestamp, state_value, priority = struct.unpack('>QId', stream.read(20))
+        ctimestamp, state_value, priority, has_statistics = struct.unpack('>QId?', stream.read(21))
         name = _deserialize_string(stream)
-        statistics = TaskGroupStatisticsData.deserialize(stream)
+        if has_statistics:
+            statistics = TaskGroupStatisticsData.deserialize(stream)
+        else:
+             statistics = None
         return TaskGroupData(name, ctimestamp, TaskGroupArchivedState(state_value), priority, statistics)
 
 
 @dataclass
+class TaskGroupBatchData(IBufferSerializable):
+    task_groups: Dict[str, TaskGroupData]
+
+    def serialize(self, stream: BufferedIOBase):
+        stream.write(struct.pack('>Q', len(self.task_groups)))
+        for task in self.task_groups.values():
+            task.serialize(stream)
+
+    @classmethod
+    def deserialize(cls, stream: BufferedIOBase) -> "TaskGroupBatchData":
+        tasks_count, = struct.unpack('>Q', stream.read(8))
+        task_groups = {}
+        for i in range(tasks_count):
+            group_data = TaskGroupData.deserialize(stream)
+            task_groups[group_data.name] = group_data
+        return TaskGroupBatchData(task_groups)
+
+
+@dataclass
 class UiData(IBufferSerializable):
-    event_type: UIDataType
     db_uid: int
     graph_data: Optional[NodeGraphStructureData]
     tasks: Optional[TaskBatchData]
     workers: Optional[WorkerBatchData]
-    task_groups: Optional[Dict[str, TaskGroupData]]
+    task_groups: Optional[TaskGroupBatchData]
 
     def serialize(self, stream):
         buffer = BytesIO()
 
-        buffer.write(struct.pack('>IQ', self.event_type.value,  self.db_uid))
-        for data in (self.graph_data, self.tasks, self.workers):
+        buffer.write(struct.pack('>Q',  self.db_uid))
+        for data in (self.graph_data, self.tasks, self.workers, self.task_groups):
             buffer.write(struct.pack('>?', data is not None))
             if data is not None:
                 data.serialize(buffer)
-        for data_dict in (self.task_groups,):
-            buffer.write(struct.pack('>?', data_dict is not None))
-            if data_dict is not None:
-                buffer.write(struct.pack('>Q', len(data_dict)))
-                for data in data_dict.values():
-                    data.serialize(buffer)
 
         lzdata = lz4.frame.compress(buffer.getbuffer())
         stream.write(struct.pack('>Q', len(lzdata)))
@@ -421,23 +462,14 @@ class UiData(IBufferSerializable):
     def deserialize(cls, stream: BufferedIOBase) -> "UiData":
         buffer = BytesIO(lz4.frame.decompress(stream.read(struct.unpack('>Q', stream.read(8))[0])))
 
-        event_type_value, db_uid = struct.unpack('>IQ', buffer.read(12))
+        db_uid, = struct.unpack('>Q', buffer.read(12))
         datas = []
-        for data_type in (NodeGraphStructureData, TaskBatchData, WorkerBatchData):
+        for data_type in (NodeGraphStructureData, TaskBatchData, WorkerBatchData, TaskGroupBatchData):
             if struct.unpack('>?', buffer.read(1))[0]:
                 datas.append(data_type.deserialize(buffer))
             else:
                 datas.append(None)
 
-        if struct.unpack('>?', buffer.read(1))[0]:
-            data_count, = struct.unpack('>Q', buffer.read(8))
-            data_dict = {}
-            for _ in range(data_count):
-                data = TaskGroupData.deserialize(buffer)
-                data_dict[data.name] = data
-            datas.append(data_dict)
-        else:
-            datas.append(None)
         assert len(datas), 4
         return UiData(UIDataType(event_type_value), db_uid, datas[0], datas[1], datas[2], datas[3])
 
