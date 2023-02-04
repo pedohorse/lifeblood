@@ -26,7 +26,9 @@ from .scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from .scheduler_ui_protocol import SchedulerUiProtocol
 from .invocationjob import InvocationJob
 from .environment_resolver import EnvironmentResolverArguments
-from .ui_protocol_data import create_uidata_from_raw
+from .ui_protocol_data import create_uidata_from_raw, WorkerBatchData, NodeGraphStructureData, TaskBatchData, \
+    TaskGroupStatisticsData, TaskGroupData, \
+    _pack_workers_from_raw, _pack_nodes_connections_data, _pack_tasks_data, _pack_task_groups
 from .broadcasting import create_broadcaster
 from .simple_worker_pool import WorkerPool
 from .nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
@@ -36,10 +38,12 @@ from .basenode import BaseNode
 from .nodethings import ProcessingResult
 from .exceptions import *
 from . import pluginloader
-from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, SchedulerMode, TaskGroupArchivedState
+from .enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, \
+    SchedulerMode, TaskGroupArchivedState, UIEventType
 from .config import get_config, create_default_user_config_file, get_local_scratch_path
 from .misc import atimeit, alocking
 from .shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
+from .scheduler_event_log import SchedulerEventLog
 from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
 from typing import Optional, Any, AnyStr, Tuple, List, Iterable, Union, Dict
@@ -86,6 +90,8 @@ class Scheduler:
         #     self.__plugins[filebasename] = mod
         # print('loaded plugins:\n', '\n\t'.join(self.__plugins.keys()))
         config = get_config('scheduler')
+
+        self.__ui_event_log = SchedulerEventLog(log_time_length_max=10, log_event_count_max=9999999)  # not yet used
 
         self.__ping_interval = 1
         self.__dormant_mode_ping_interval_multiplier = 15
@@ -2126,13 +2132,45 @@ class Scheduler:
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
             # print(f'workers: {time.perf_counter() - _dbg}')
-            data = await create_uidata_from_raw(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
-        return data
+        return await create_uidata_from_raw(self.db_uid(), all_nodes, all_conns, all_tasks, all_workers, all_task_groups)
 
     @atimeit(0.005)
-    async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True):
-        self.__logger.debug('tasks update for %s', task_groups)
+    async def get_task_groups_ui_state(self, fetch_statistics=False, skip_archived_groups=True, offset=0, limit=-1) -> TaskGroupData:
+        self.__logger.debug('tasks groups update for %s')
+        group_totals_update_interval = 5
         now = datetime.now()
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
+            fetch_statistics = fetch_statistics and need_group_totals_update
+            if fetch_statistics:
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
+                          'LEFT JOIN ' \
+                          f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
+                          f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
+                          f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
+                          f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
+                          'ON "grp"==task_group_attributes."group" ' \
+                          + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            else:
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+            if offset > 0 or limit >= 0:
+                sqlexpr += f' LIMIT {int(limit)} OFFSET {int(offset)}'
+            async with con.execute(sqlexpr) as cur:
+                all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
+
+            # now update cache or pull statistics from cache
+            if fetch_statistics:
+                self.__ui_cache['last_update_time'] = now
+                self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
+            elif fetch_statistics:  # if fetch requested, but cache is still valid - get cache
+                for group in all_task_groups:
+                    all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
+
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_task_groups, all_task_groups)
+
+    @atimeit(0.005)
+    async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True) -> TaskBatchData:
+        self.__logger.debug('tasks update for %s', task_groups)
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
 
@@ -2159,13 +2197,11 @@ class Scheduler:
                     else:
                         all_tasks[task['id']] = task
 
-        return all_tasks
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_tasks_data, all_tasks)
 
     @atimeit(0.005)
-    async def get_nodes_ui_state(self) -> Tuple[dict, dict]:
+    async def get_nodes_ui_state(self) -> NodeGraphStructureData:
         self.__logger.debug('nodes update')
-        now = datetime.now()
-        group_totals_update_interval = 5
         async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
@@ -2173,7 +2209,37 @@ class Scheduler:
             async with con.execute('SELECT * FROM "node_connections"') as cur:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
 
-        return all_nodes, all_conns
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, all_nodes, all_conns)
+
+    @atimeit(0.005)
+    async def get_workers_ui_state(self) -> WorkerBatchData:
+        self.__logger.debug('workers update')
+        async with aiosqlite.connect(self.db_path, timeout=self.__db_lock_timeout) as con:
+            async with con.execute('SELECT workers."id", '
+                                   'cpu_count, '
+                                   'total_cpu_count, '
+                                   'cpu_mem, '
+                                   'total_cpu_mem, '
+                                   'gpu_count, '
+                                   'total_gpu_count, '
+                                   'gpu_mem, '
+                                   'total_gpu_mem, '
+                                   'workers."hwid", '
+                                   'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
+                                   'GROUP_CONCAT(worker_groups."group") as groups '
+                                   'FROM workers '
+                                   'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
+                                   'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
+                                   'LEFT JOIN resources ON workers.hwid == resources.hwid '
+                                   'GROUP BY workers."id"') as cur:
+                all_workers = {x['id']: x for x in ({**dict(x),
+                                                     'last_seen': self.__db_cache['workers_state'][x['id']]['last_seen'],
+                                                     'progress': self.__db_cache['invocations'].get(x['invoc_id'], {}).get('progress', None)
+                                                     } for x in await cur.fetchall())}
+                for worker_data in all_workers.values():
+                    worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
+
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, worker_data)
 
     #
     # change node connection callback
