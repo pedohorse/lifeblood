@@ -1,11 +1,13 @@
+import io
 import socket
 import psutil
 import asyncio
 import time
+import struct
 
 from .logging import get_logger
 
-from typing import Any, AnyStr
+from typing import Any, AnyStr, Tuple
 
 
 class BaseFeeder:
@@ -171,3 +173,47 @@ class TimeCachedData:
                 self.__creation_time = time.time()
                 self.__expiration_time = self.__creation_time + self.__valid_period
         return self.__data
+
+
+class BufferedConnection:
+    def __init__(self, address, buffering=None):
+        """
+
+        :param address:
+        :param buffering: None means default buffer size, 0 means unbuffered
+        :return:
+        """
+        self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__sock.connect(address)
+
+        self.__reader = self.__sock.makefile('rb', buffering)
+        self.__writer = self.__sock.makefile('wb', buffering)
+        assert isinstance(self.__reader, io.BufferedReader)
+        assert isinstance(self.__writer, io.BufferedWriter)
+
+    def close(self):
+        self.__writer.flush()
+        self.__writer.close()
+        self.__reader.close()
+        self.__sock.close()
+
+    @property
+    def reader(self) -> io.BufferedReader:
+        return self.__reader
+
+    @property
+    def writer(self) -> io.BufferedWriter:
+        return self.__writer
+
+    def get_rw_pair(self) -> Tuple[io.BufferedReader, io.BufferedWriter]:
+        return self.__reader, self.__writer
+
+    def write_string(self, text: str):
+        data = text.encode('UTF-8')
+        self.writer.write(struct.pack('>Q', len(data)))
+        self.writer.write(data)
+
+    def read_string(self):
+        data_len, = struct.unpack('>Q', self.reader.read(8))
+        return self.reader.read(data_len).decode('UTF-8')
+
