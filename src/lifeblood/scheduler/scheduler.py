@@ -30,7 +30,6 @@ from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, Wo
     SchedulerMode, TaskGroupArchivedState
 from ..config import get_config
 from ..misc import atimeit, alocking
-from ..scheduler_event_log import SchedulerEventLog
 from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 
 from .data_access import DataAccess
@@ -61,8 +60,6 @@ class Scheduler:
         self.__node_objects_locks: Dict[int, RWLock] = {}
         config = get_config('scheduler')
 
-        self.__ui_event_log = SchedulerEventLog(log_time_length_max=10, log_event_count_max=9999999)  # not yet used
-
         # this lock will prevent tasks from being reported cancelled and done at the same exact time should that ever happen
         # this lock is overkill already, but we can make it even more overkill by using set of locks for each invoc id
         # which would be completely useless now cuz sqlite locks DB as a whole, not even a single table, especially not just parts of table
@@ -84,6 +81,11 @@ class Scheduler:
         self.db_path = db_file_path
         self.data_access = DataAccess(db_file_path, 30)
         ##
+
+        # for ui
+        self.__latest_graph_ui_state = None
+        self.__latest_graph_ui_event_id = -1
+        #
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
         self.__external_log_location: Optional[Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
@@ -1221,7 +1223,7 @@ class Scheduler:
     async def add_node_connection(self, out_node_id: int, out_name: str, in_node_id: int, in_name: str) -> int:
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
-            async with con.execute('INSERT INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',
+            async with con.execute('INSERT OR REPLACE INTO node_connections (node_id_out, out_name, node_id_in, in_name) VALUES (?,?,?,?)',  # INSERT OR REPLACE here (and not OR ABORT or smth) to ensure lastrowid is set
                                    (out_node_id, out_name, in_node_id, in_name)) as cur:
                 ret = cur.lastrowid
             await con.commit()
