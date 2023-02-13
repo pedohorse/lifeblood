@@ -1,16 +1,18 @@
 import logging
 from .ui_events import SchedulerEvent
 
-from typing import Dict, List, Union
+from typing import Dict, List, Optional
 
 
 logger = logging.getLogger(__name__)
 
 
 class SchedulerEventLog:
-    def __init__(self, log_time_length_max, log_event_count_max):
+    def __init__(self, *, log_time_length_max: Optional[float], log_event_count_max: Optional[int]):
         self.__max_time = log_time_length_max
         self.__max_count = log_event_count_max
+        if log_event_count_max is None and log_time_length_max is None:
+            raise ValueError('at least one of log_time_length_max or log_event_count_max must be not none')
 
         self.__events: List[SchedulerEvent] = []  # will be kept sorted
         self.__event_id_to_event: Dict[int, SchedulerEvent] = {}
@@ -63,17 +65,19 @@ class SchedulerEventLog:
     def trim(self):
         if len(self.__events) == 0:
             return
-        threshold = self.__events[-1].timestamp - self.__max_time
-        if len(self.__events) < self.__max_count and self.__events[0].timestamp > threshold:
-            return
-        trimpos = self.__find_index_below_timestamp(threshold)+1
-        for event in self.__events[:trimpos]:
-            self.__event_id_to_event.pop(event.event_id)
-        self.__events = self.__events[trimpos:]
+        if self.__max_time is not None:
+            threshold = self.__events[-1].timestamp - self.__max_time
+            if (self.__max_count is None or len(self.__events) < self.__max_count) and self.__events[0].timestamp > threshold:
+                return
+            trimpos = self.__find_index_below_timestamp(threshold)+1
+            for event in self.__events[:trimpos]:
+                self.__event_id_to_event.pop(event.event_id)
+            self.__events = self.__events[trimpos:]
 
-        for event in self.__events[:-self.__max_count]:
-            self.__event_id_to_event.pop(event.event_id)
-        self.__events = self.__events[-self.__max_count:]
+        if self.__max_count is not None:
+            for event in self.__events[:-self.__max_count]:
+                self.__event_id_to_event.pop(event.event_id)
+            self.__events = self.__events[-self.__max_count:]
 
     def get_since_timestamp(self, timestamp):
         return tuple(self.__events[self.__find_index_below_timestamp(timestamp)+1:])
