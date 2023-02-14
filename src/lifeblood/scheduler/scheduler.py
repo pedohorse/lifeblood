@@ -82,11 +82,6 @@ class Scheduler:
         self.data_access = DataAccess(db_file_path, 30)
         ##
 
-        # for ui
-        self.__latest_graph_ui_state = None
-        self.__latest_graph_ui_event_id = -1
-        #
-
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
         self.__external_log_location: Optional[Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
         if self.__use_external_log and not self.__external_log_location:

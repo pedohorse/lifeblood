@@ -17,6 +17,19 @@ class UIStateAccessor:
         self.__data_access = data_accessor
         self.__ui_cache = {'groups': {}, 'last_update_time': None}
 
+        # for ui
+        self.__latest_graph_ui_state = None
+        self.__latest_graph_ui_event_id = -1
+        #
+
+    @property
+    def graph_update_id(self):
+        return self.__latest_graph_ui_event_id
+
+    def bump_graph_update_id(self):
+        self.__latest_graph_ui_state = None
+        self.__latest_graph_ui_event_id += 1
+
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
         self.__logger.debug('full update for %s', task_groups)
