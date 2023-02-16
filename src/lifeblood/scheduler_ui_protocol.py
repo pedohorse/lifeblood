@@ -55,6 +55,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             uidata = await self.__scheduler.ui_state_access.get_full_ui_state(task_groups, skip_dead=skip_dead, skip_archived_groups=skip_archived_groups)
             await uidata.serialize_to_streamwriter(writer)
 
+        async def comm_get_db_uid():
+            writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
+
         async def comm_get_ui_graph_state_update_id():  # get_ui_graph_state_update_id
             writer.write(struct.pack('>Q', self.__scheduler.ui_state_access.graph_update_id))
 
@@ -189,8 +192,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(b'\0')
 
         async def comm_set_node_param():  # elif command == b'setnodeparam':
-            node_id, param_type, param_name_data_length = struct.unpack('>QII', await reader.readexactly(16))
-            param_name = (await reader.readexactly(param_name_data_length)).decode('UTF-8')
+            node_id, param_type, has_expression = struct.unpack('>QI?', await reader.readexactly(16))
+            param_name = read_string()
+            param_expr = None
+            if has_expression:
+                param_expr = read_string()
             if param_type == NodeParameterType.FLOAT.value:
                 param_value = struct.unpack('>d', await reader.readexactly(8))[0]
             elif param_type == NodeParameterType.INT.value:
@@ -202,9 +208,18 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             else:
                 raise NotImplementedError()
             try:
-                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
-                    await asyncio.get_event_loop().run_in_executor(None, node.set_param_value, param_name, param_value)
-                    value = node.param(param_name).unexpanded_value()
+                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:  # type: BaseNode
+                    param = await asyncio.get_event_loop().run_in_executor(None, node.param, param_name)
+                    # first set expression
+                    if param.has_expression() and not has_expression:
+                        await asyncio.get_event_loop().run_in_executor(None, param.remove_expression)
+                    elif has_expression:
+                        assert param_expr is not None
+                        await asyncio.get_event_loop().run_in_executor(None, param.set_expression, param_expr)
+                    # TODO: if error happens below - we'll end up with half set parameter... not nice
+                    # then set value (value can be set independent, remember)
+                    await asyncio.get_event_loop().run_in_executor(None, param.set_value, param_name, param_value)
+                    value = param.unexpanded_value()
             except ParameterReadonly:
                 self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
                 writer.write(b'\0')
@@ -339,22 +354,22 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             # note: values written back to sender is:  \? (value) \? (value) ... \? (value)
             #       where \? is \1 if value was set, and \0 if wasn't
 
-        async def comm_set_node_param_expression():  # elif command == b'setnodeparamexpression':
-            node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
-            param_name = await read_string()
-            res = b'\1'
-            try:
-                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
-                    if set_or_unset:  # means SET
-                        expression = await read_string()
-                        await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).set_expression, expression)
-                        # node.param(param_name).set_expression(expression)
-                    else:
-                        await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).remove_expression)
-            except Exception as e:
-                self.__logger.error(f'error setting parameter expression on {node_id}: {str(e)}')
-                res = b'\0'
-            writer.write(res)
+        # async def comm_set_node_param_expression():  # elif command == b'setnodeparamexpression':
+        #     node_id, set_or_unset = struct.unpack('>Q?', await reader.readexactly(9))
+        #     param_name = await read_string()
+        #     res = b'\1'
+        #     try:
+        #         async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
+        #             if set_or_unset:  # means SET
+        #                 expression = await read_string()
+        #                 await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).set_expression, expression)
+        #                 # node.param(param_name).set_expression(expression)
+        #             else:
+        #                 await asyncio.get_event_loop().run_in_executor(None, node.param(param_name).remove_expression)
+        #     except Exception as e:
+        #         self.__logger.error(f'error setting parameter expression on {node_id}: {str(e)}')
+        #         res = b'\0'
+        #     writer.write(res)
 
         async def comm_apply_node_settings():
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
@@ -540,6 +555,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         #
         #
         commands = {'getfullstate': comm_get_full_state,
+                    'get_db_uid': comm_get_db_uid,
                     'get_ui_graph_state_update_id': comm_get_ui_graph_state_update_id,
                     'get_ui_graph_state': comm_get_ui_graph_state,
                     'get_ui_task_groups': comm_get_ui_task_groups,
@@ -560,7 +576,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'nodehasparam': comm_node_has_param,
                     'setnodeparam': comm_set_node_param,
                     'batchsetnodeparams': comm_set_node_params,
-                    'setnodeparamexpression': comm_set_node_param_expression,
+                    # 'setnodeparamexpression': comm_set_node_param_expression,
                     'applynodesettings': comm_apply_node_settings,
                     'savecustomnodesettings': comm_save_custom_node_settings,
                     'setsettingsdefault': comm_set_settings_default,
@@ -675,6 +691,17 @@ class UIProtocolSocketClient:
         w.flush()
         return UiData.deserialize(r)
 
+    def get_db_uid(self) -> int:
+        """
+
+        :return:
+        """
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('get_db_uid')
+        w.flush()
+        uid, = struct.unpack('>Q', r.read(8))
+        return uid
+
     def get_ui_graph_state_update_id(self) -> int:
         """
         get latest graph update event id
@@ -685,7 +712,7 @@ class UIProtocolSocketClient:
         uid, = struct.unpack('>Q', r.read(8))
         return uid
 
-    def comm_get_ui_graph_state(self) -> (NodeGraphStructureData, int):
+    def get_ui_graph_state(self) -> (NodeGraphStructureData, int):
         """
         returns latest graph state and update event id corresponding to it
         that id can be used to check against get_ui_graph_state_update_id() to check if update is available
@@ -705,9 +732,14 @@ class UIProtocolSocketClient:
         data = TaskGroupBatchData.deserialize(r)
         return data
 
-    def get_ui_tasks_state(self) -> TaskBatchData:
+    def get_ui_tasks_state(self, groups: Iterable[str], include_dead: bool) -> TaskBatchData:
         r, w = self.__connection.get_rw_pair()
+        if not isinstance(groups, (list, tuple)):
+            groups = list(groups)
         w.write_string('get_ui_tasks_state')
+        w.write(struct.pack('>?Q', include_dead, len(groups)))
+        for group in groups:
+            w.write_string(group)
         w.flush()
         data = TaskBatchData.deserialize(r)
         return data
@@ -839,7 +871,7 @@ class UIProtocolSocketClient:
         good = r.read(1) == b'\1'
         return good
 
-    def set_node_param(self, node_id, param: Parameter) -> Union[int, float, str, bool, None]:
+    def set_node_param(self, node_id: int, param: Parameter) -> Union[int, float, str, bool, None]:
         """
 
         :param node_id:
@@ -850,8 +882,10 @@ class UIProtocolSocketClient:
         param_type = param.type()
         param_value = param.unexpanded_value()
         w.write_string('setnodeparam')
-        w.write(struct.pack('>QI', node_id, param_type.value))
+        w.write(struct.pack('>QI?', node_id, param_type.value, param.has_expression()))
         w.write_string(param.name())
+        if param.has_expression():
+            w.write_string(param.expression())
         newval = None
         if param_type == NodeParameterType.FLOAT:
             w.write(struct.pack('>d', param_value))
