@@ -114,21 +114,22 @@ class TaskData(IBufferSerializable):
 
 @dataclass
 class TaskBatchData(IBufferSerializable):
+    db_uid: int
     tasks: Dict[int, TaskData]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>Q', len(self.tasks)))
+        stream.write(struct.pack('>QQ', self.db_uid, len(self.tasks)))
         for task in self.tasks.values():
             task.serialize(stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskBatchData":
-        tasks_count, = struct.unpack('>Q', stream.read(8))
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
         tasks = {}
         for i in range(tasks_count):
             task_data = TaskData.deserialize(stream)
             tasks[task_data.id] = task_data
-        return TaskBatchData(tasks)
+        return TaskBatchData(db_uid, tasks)
 
 
 @dataclass
@@ -174,11 +175,12 @@ class NodeConnectionData(IBufferSerializable):
 
 @dataclass
 class NodeGraphStructureData(IBufferSerializable):
+    db_uid: int
     nodes: Dict[int, NodeData]
     connections: Dict[int, NodeConnectionData]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQ', len(self.nodes), len(self.connections)))
+        stream.write(struct.pack('>QQQ', self.db_uid, len(self.nodes), len(self.connections)))
         for node in self.nodes.values():
             node.serialize(stream)
         for connection in self.connections.values():
@@ -186,7 +188,7 @@ class NodeGraphStructureData(IBufferSerializable):
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "NodeGraphStructureData":
-        nodes_count, connections_count = struct.unpack('>QQ', stream.read(16))
+        db_uid, nodes_count, connections_count = struct.unpack('>QQQ', stream.read(24))
         nodes = {}
         connections = {}
         for i in range(nodes_count):
@@ -195,7 +197,7 @@ class NodeGraphStructureData(IBufferSerializable):
         for i in range(connections_count):
             conn_data = NodeConnectionData.deserialize(stream)
             connections[conn_data.connection_id] = conn_data
-        return NodeGraphStructureData(nodes, connections)
+        return NodeGraphStructureData(db_uid, nodes, connections)
 
 
 @dataclass
@@ -277,21 +279,22 @@ class WorkerData(IBufferSerializable):
 
 @dataclass
 class WorkerBatchData(IBufferSerializable):
+    db_uid: int
     workers: Dict[int, WorkerData]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>Q', len(self.workers)))
+        stream.write(struct.pack('>QQ', self.db_uid, len(self.workers)))
         for task in self.workers.values():
             task.serialize(stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "WorkerBatchData":
-        tasks_count, = struct.unpack('>Q', stream.read(8))
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
         workers = {}
         for i in range(tasks_count):
             task_data = WorkerData.deserialize(stream)
             workers[task_data.id] = task_data
-        return WorkerBatchData(workers)
+        return WorkerBatchData(db_uid, workers)
 
 
 @dataclass
@@ -330,27 +333,28 @@ class TaskGroupData(IBufferSerializable):
         if has_statistics:
             statistics = TaskGroupStatisticsData.deserialize(stream)
         else:
-             statistics = None
+            statistics = None
         return TaskGroupData(name, ctimestamp, TaskGroupArchivedState(state_value), priority, statistics)
 
 
 @dataclass
 class TaskGroupBatchData(IBufferSerializable):
+    db_uid: int
     task_groups: Dict[str, TaskGroupData]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>Q', len(self.task_groups)))
+        stream.write(struct.pack('>QQ', self.db_uid, len(self.task_groups)))
         for task in self.task_groups.values():
             task.serialize(stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskGroupBatchData":
-        tasks_count, = struct.unpack('>Q', stream.read(8))
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
         task_groups = {}
         for i in range(tasks_count):
             group_data = TaskGroupData.deserialize(stream)
             task_groups[group_data.name] = group_data
-        return TaskGroupBatchData(task_groups)
+        return TaskGroupBatchData(db_uid, task_groups)
 
 
 @dataclass
@@ -364,7 +368,7 @@ class UiData(IBufferSerializable):
     def serialize(self, stream):
         buffer = BytesIO()
 
-        buffer.write(struct.pack('>Q',  self.db_uid))
+        buffer.write(struct.pack('>Q', self.db_uid))
         for data in (self.graph_data, self.tasks, self.workers, self.task_groups):
             buffer.write(struct.pack('>?', data is not None))
             if data is not None:

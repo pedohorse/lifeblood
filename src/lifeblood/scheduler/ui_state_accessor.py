@@ -173,7 +173,7 @@ class UIStateAccessor:
                 for group in all_task_groups:
                     all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_task_groups, all_task_groups)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_task_groups, self.__data_access.db_uid, all_task_groups)
 
     @atimeit(0.005)
     async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True) -> TaskBatchData:
@@ -204,7 +204,7 @@ class UIStateAccessor:
                     else:
                         all_tasks[task['id']] = task
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_tasks_data, all_tasks)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_tasks_data, self.__data_access.db_uid, all_tasks)
 
     @atimeit(0.005)
     async def get_nodes_ui_state(self) -> NodeGraphStructureData:
@@ -216,7 +216,7 @@ class UIStateAccessor:
             async with con.execute('SELECT * FROM "node_connections"') as cur:
                 all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, all_nodes, all_conns)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, self.__data_access.db_uid, all_nodes, all_conns)
 
     @atimeit(0.005)
     async def get_workers_ui_state(self) -> WorkerBatchData:
@@ -246,12 +246,12 @@ class UIStateAccessor:
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, worker_data)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, worker_data)
 
 
 # scheduler helpers
 
-def _pack_workers_from_raw(ui_workers: dict) -> "WorkerBatchData":
+def _pack_workers_from_raw(db_uid: int, ui_workers: dict) -> "WorkerBatchData":
     """
     this is scheduler helper function, it's incoming data format is dictated purely by scheduler
     """
@@ -267,10 +267,10 @@ def _pack_workers_from_raw(ui_workers: dict) -> "WorkerBatchData":
                                         worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
                                         worker_raw['groups'])
 
-    return WorkerBatchData(workers)
+    return WorkerBatchData(db_uid, workers)
 
 
-def _pack_nodes_connections_data(ui_nodes, ui_connections) -> "NodeGraphStructureData":
+def _pack_nodes_connections_data(db_uid: int, ui_nodes, ui_connections) -> "NodeGraphStructureData":
     if ui_nodes is None or ui_connections is None:
         if ui_connections is not None or ui_connections is not None:
             raise RuntimeError('both ui_nodes and ui_connections must be none, or not none')
@@ -285,10 +285,10 @@ def _pack_nodes_connections_data(ui_nodes, ui_connections) -> "NodeGraphStructur
         conn_data = NodeConnectionData(conn_id, con_raw['node_id_in'], con_raw['in_name'], con_raw['node_id_out'], con_raw['out_name'])
         connections[conn_id] = conn_data
 
-    return NodeGraphStructureData(nodes, connections)
+    return NodeGraphStructureData(db_uid, nodes, connections)
 
 
-def _pack_tasks_data(ui_tasks) -> "TaskBatchData":
+def _pack_tasks_data(db_uid: int, ui_tasks) -> "TaskBatchData":
     tasks = {}
     for task_id, task_raw in ui_tasks.items():
         assert task_id == task_raw['id']
@@ -299,10 +299,10 @@ def _pack_tasks_data(ui_tasks) -> "TaskBatchData":
                              task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
         tasks[task_id] = task_data
 
-    return TaskBatchData(tasks)
+    return TaskBatchData(db_uid, tasks)
 
 
-def _pack_task_groups(all_task_groups) -> "TaskGroupBatchData":
+def _pack_task_groups(db_uid: int, all_task_groups) -> "TaskGroupBatchData":
     task_groups = {}
     for group_name, group_raw in all_task_groups.items():
         assert group_name == group_raw['group']
@@ -310,14 +310,14 @@ def _pack_task_groups(all_task_groups) -> "TaskGroupBatchData":
         task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
                                                 group_raw['priority'], stat)
 
-    return TaskGroupBatchData(task_groups)
+    return TaskGroupBatchData(db_uid, task_groups)
 
 
 def _create_uidata_from_raw_noasync(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
 
-    node_graph_data = _pack_nodes_connections_data(ui_nodes, ui_connections)
-    tasks = _pack_tasks_data(ui_tasks)
-    worker_batch_data = _pack_workers_from_raw(ui_workers)
-    task_groups = _pack_task_groups(all_task_groups)
+    node_graph_data = _pack_nodes_connections_data(db_uid, ui_nodes, ui_connections)
+    tasks = _pack_tasks_data(db_uid, ui_tasks)
+    worker_batch_data = _pack_workers_from_raw(db_uid, ui_workers)
+    task_groups = _pack_task_groups(db_uid, all_task_groups)
 
     return UiData(db_uid, node_graph_data, tasks, worker_batch_data, task_groups)
