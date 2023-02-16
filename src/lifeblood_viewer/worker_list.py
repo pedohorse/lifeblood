@@ -1,5 +1,5 @@
 from datetime import datetime
-from lifeblood.ui_protocol_data import UiData, WorkerData
+from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
@@ -196,11 +196,9 @@ class WorkerModel(QAbstractTableModel):
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
-    def full_update(self, uidata: UiData):
-        if uidata.workers is None:
-            return
+    def workers_update(self, workers_data: WorkerBatchData):
         with performance_measurer() as pm:
-            new_workers = {x.last_address: x for x in uidata.workers.workers.values()}  # TODO: maybe use id instead of last_address?
+            new_workers = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
             new_keys = set(new_workers.keys())
             old_keys = set(self.__workers.keys())
         _perf_preinit = pm.elapsed()
@@ -267,7 +265,7 @@ class WorkerModel(QAbstractTableModel):
                                 f'{_perf_remove:04f}:\tremove')
 
     def start(self):
-        self.__scheduler_worker.full_update.connect(self.full_update)
+        self.__scheduler_worker.workers_update.connect(self.workers_update)
         self.group_update_requested.connect(self.__scheduler_worker.set_worker_groups)
         self.cancel_invocation_for_worker.connect(self.__scheduler_worker.cancel_task_for_worker)
 
