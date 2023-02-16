@@ -385,17 +385,21 @@ class Node(NetworkItemWithUI):
         for task in tasks_to_remove:
             task._Task__node = None
             #task.set_node(None)  # no, currently causes bad recursion
-        self.__tasks: List["Task"] = [None if x in tasks_to_remove else x for x in self.__tasks]
-        off = 0
-        for i, task in enumerate(self.__tasks):
-            if task is None:
-                off += 1
-            else:
-                self.__tasks[i - off] = self.__tasks[i]
-                self.__tasks[i - off].set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
-        self.__tasks = self.__tasks[:-off]
-        for x in tasks_to_remove:
-            assert x not in self.__tasks
+
+        if self.__tasks is tasks_to_remove:  # special case
+            self.__tasks = []
+        else:
+            self.__tasks: List["Task"] = [None if x in tasks_to_remove else x for x in self.__tasks]
+            off = 0
+            for i, task in enumerate(self.__tasks):
+                if task is None:
+                    off += 1
+                else:
+                    self.__tasks[i - off] = self.__tasks[i]
+                    self.__tasks[i - off].set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
+            self.__tasks = self.__tasks[:-off]
+            for x in tasks_to_remove:
+                assert x not in self.__tasks
         self.update()  # cuz node displays task number - we should redraw
 
     def remove_task(self, task_to_remove: "Task"):
@@ -634,6 +638,9 @@ class Node(NetworkItemWithUI):
                 self.scene().request_node_ui(self.get_id())
         elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
+            if len(self.__tasks):
+                logger.warning(f'node {self.get_id()}({self.node_name()}) has tasks at the moment of deletion, orphaning the tasks')
+                self.remove_tasks(self.__tasks)
             for connection in conns:
                 if self.scene() is not None and value != self.scene():
                     logger.debug('removing connections...')
@@ -1116,6 +1123,9 @@ class Task(NetworkItemWithUI):
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         if self.__layer >= self.__visible_layers_count:
             return
+        if self.__node is None:  # probably temporary state due to asyncronous incoming events from scheduler
+            return  # or we can draw them somehow else?
+
         path = self._get_mainpath()
         brush = self.__brushes[self.state()][self.__layer]
         painter.fillPath(path, brush)
