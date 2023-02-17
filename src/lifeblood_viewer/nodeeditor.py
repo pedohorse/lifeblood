@@ -9,7 +9,7 @@ from .db_misc import sql_init_script_nodes
 from .utils import performance_measurer
 from lifeblood.misc import timeit
 from lifeblood.uidata import NodeUi, Parameter
-from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData
+from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
@@ -226,7 +226,6 @@ class QGraphicsImguiScene(QGraphicsScene):
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     nodepresets_updated = Signal(dict)
     nodepreset_received = Signal(str, str, NodeSnippetData)
-    task_groups_updated = Signal(TaskGroupBatchData)
     task_invocation_job_fetched = Signal(int, InvocationJob)
 
     long_operation_progressed = Signal(object)  # do we need this signal?
@@ -240,9 +239,10 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__nodes_table_name = None
         self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
         self.__cached_nodepresets: Dict[str, Dict[str, Union[NodeSnippetData, NodeSnippetDataPlaceholder]]] = {}
-        self.__all_task_groups = set()
         self.__task_group_filter = None
         self.__db_uid: Optional[int] = None  # this is unique id of the scheduler's db. we use this to determine where to save node positions locally, not to mix and collide
+
+        self.__tasks_to_try_reparent_during_node_update = []
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -257,7 +257,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         self.__long_operations: Dict[int, LongOperation] = {}
 
-        self.__ui_connection_worker.full_update.connect(self.full_update)
+        self.__ui_connection_worker.graph_update.connect(self.graph_update)
+        self.__ui_connection_worker.tasks_update.connect(self.tasks_update)
+        self.__ui_connection_worker.db_uid_update.connect(self.db_uid_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
         self.__ui_connection_worker.task_attribs_fetched.connect(self._task_attribs_fetched)
@@ -465,9 +467,153 @@ class QGraphicsImguiScene(QGraphicsScene):
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
 
+    #
+    # scheduler update events
+    #
+
+    @Slot(object)
+    def db_uid_update(self, new_db_uid: int):
+        if self.__db_uid is not None and self.__db_uid != new_db_uid:
+            logger.info('scheduler\'s database changed. resetting the view...')
+            self.save_node_layout()
+            self.clear()
+            self.__db_uid = None
+            self.__nodes_table_name = None
+            # this means we probably reconnected to another scheduler, so existing nodes need to be dropped
+
+        if self.__db_uid is None:
+            self.__db_uid = new_db_uid
+            self.__nodes_table_name = f'nodes_{self.__db_uid}'
+            with sqlite3.connect(self.__db_path) as con:
+                con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
+
+    @timeit(0.05)
+    @Slot(object)
+    def graph_update(self, graph_data: NodeGraphStructureData):
+        if self.__db_uid != graph_data.db_uid:
+            logger.warning(f'received node graph update with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {graph_data.db_uid}')
+            return
+
+        to_del = []
+        existing_node_ids: Dict[int, Node] = {}
+        existing_conn_ids: Dict[int, NodeConnection] = {}
+
+        for item in self.items():
+            if isinstance(item, Node):
+                if item.get_id() not in graph_data.nodes or item.node_type() != graph_data.nodes[item.get_id()].type:
+                    to_del.append(item)
+                    continue
+                existing_node_ids[item.get_id()] = item
+            elif isinstance(item, NodeConnection):
+                if item.get_id() not in graph_data.connections:
+                    to_del.append(item)
+                    continue
+                existing_conn_ids[item.get_id()] = item
+
+        # delete things
+        for item in to_del:
+            self.removeItem(item)
+
+        # removing items might cascade things, like removing node will remove connections to that node
+        # so now we need to recheck existing items validity
+        for existings in (existing_node_ids, existing_conn_ids):
+            for item_id, item in tuple(existings.items()):
+                if item.scene() != self:
+                    del existings[item_id]
+
+        # create new nodes, update node names (node parameters are NOT part of graph data)
+        nodes_to_layout = []
+        for id, new_node_data in graph_data.nodes.items():
+            if id in existing_node_ids:
+                existing_node_ids[id].set_name(new_node_data.name)
+                continue
+            new_node = Node(id, new_node_data.type, new_node_data.name or f'node #{id}')
+            try:
+                new_node.setPos(*self.node_position(id))
+            except ValueError:
+                nodes_to_layout.append(new_node)
+            existing_node_ids[id] = new_node
+            self.addItem(new_node)
+
+        # add connections
+        for id, new_conn_data in graph_data.connections.items():
+            if id in existing_conn_ids:
+                # ensure connections
+                innode, inname = existing_conn_ids[id].input()
+                outnode, outname = existing_conn_ids[id].output()
+                if innode.get_id() != new_conn_data.in_id or inname != new_conn_data.in_name:
+                    existing_conn_ids[id].set_input(existing_node_ids[new_conn_data.in_id], new_conn_data.in_name)
+                    existing_conn_ids[id].update()
+                if outnode.get_id() != new_conn_data.out_id or outname != new_conn_data.out_name:
+                    existing_conn_ids[id].set_output(existing_node_ids[new_conn_data.out_id], new_conn_data.out_name)
+                    existing_conn_ids[id].update()
+                continue
+            new_conn = NodeConnection(id, existing_node_ids[new_conn_data.out_id],
+                                      existing_node_ids[new_conn_data.in_id],
+                                      new_conn_data.out_name, new_conn_data.in_name)
+            existing_conn_ids[id] = new_conn
+            self.addItem(new_conn)
+
+        if nodes_to_layout:
+            self.layout_nodes(nodes_to_layout)
+
+    @timeit(0.05)
+    @Slot(object)
+    def tasks_update(self, tasks_data: TaskBatchData):
+        if self.__db_uid != tasks_data.db_uid:
+            logger.warning(f'received node graph update with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {tasks_data.db_uid}')
+            return
+
+        to_del = []
+        to_del_tasks = {}
+        existing_task_ids: Dict[int, Task] = {}
+
+        for item in self.items():
+            if isinstance(item, Task):
+                if item.get_id() not in tasks_data.tasks:
+                    to_del.append(item)
+                    if item.node() is not None:
+                        if not item.node() in to_del_tasks:
+                            to_del_tasks[item.node()] = []
+                        to_del_tasks[item.node()].append(item)
+                    continue
+                existing_task_ids[item.get_id()] = item
+
+        for node, tasks in to_del_tasks.items():
+            node.remove_tasks(tasks)
+
+        for item in to_del:
+            self.removeItem(item)
+
+        # removing items might cascade things, like removing node will remove connections to that node
+        # so now we need to recheck existing items validity
+        # though not consistent scene states should not come in uidata at all
+        for item_id, item in tuple(existing_task_ids.items()):
+            if item.scene() != self:
+                del existing_task_ids[item_id]
+
+        for id, new_task_data in tasks_data.tasks.items():
+            if id not in existing_task_ids:
+                new_task = Task(new_task_data)
+                existing_task_ids[id] = new_task
+                if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
+                    origin_task = existing_task_ids[new_task_data.split_origin_task_id]
+                    new_task.setPos(origin_task.scenePos())
+                elif new_task_data.parent_id is not None and new_task_data.parent_id in existing_task_ids:
+                    origin_task = existing_task_ids[new_task_data.parent_id]
+                    new_task.setPos(origin_task.scenePos())
+                self.addItem(new_task)
+            task = existing_task_ids[id]
+            existing_node = self.get_node(new_task_data.node_id)
+            if existing_node:
+                existing_node.add_task(task)
+            # TODO: add some concept of orphaned tasks to be checked on nodes update ?
+            task.set_task_data(new_task_data)
+
     @timeit(0.05)
     @Slot(object)
     def full_update(self, uidata: UiData):
+        raise DeprecationWarning('no use')
         # logger.debug('full_update')
 
         if self.__db_uid is not None and self.__db_uid != uidata.db_uid:
