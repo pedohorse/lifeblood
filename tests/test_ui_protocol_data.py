@@ -49,3 +49,18 @@ class Tests(TestCase):
         print(buffer.tell())
         self.assertEqual(footer, buffer.read(len(footer)))
         print(buffer.tell())
+
+    def test_many_groups(self):
+        groups = {}
+        for i in range(10000):
+            tgdata = TaskGroupData(f'groupo_{i}', 123456+i, TaskGroupArchivedState.NOT_ARCHIVED, 51+0.0001*i, TaskGroupStatisticsData(i*2, i, i, i*4))
+            groups[tgdata.name] = tgdata
+        batch_data = TaskGroupBatchData(groups)
+
+        buffer = BytesIO()
+        batch_data.serialize(buffer)
+        print(buffer.tell())
+        # TODO: what am i testing here?
+        buffer.seek(0)
+        returned_data = TaskGroupBatchData.deserialize(buffer)
+        self.assertEqual(batch_data, returned_data)
