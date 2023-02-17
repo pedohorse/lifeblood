@@ -18,8 +18,8 @@ class UIStateAccessor:
         self.__ui_cache = {'groups': {}, 'last_update_time': None}
 
         # for ui
-        self.__latest_graph_ui_state = None
-        self.__latest_graph_ui_event_id = -1
+        self.__latest_graph_ui_state: Optional[NodeGraphStructureData] = None
+        self.__latest_graph_ui_event_id = 0
         #
 
     @property
@@ -32,7 +32,7 @@ class UIStateAccessor:
 
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
-        self.__logger.debug('full update for %s', task_groups)
+        self.__logger.debug(f'full update for {task_groups}')
         now = datetime.now()
         group_totals_update_interval = 5
         async with self.__data_access.data_connection() as con:
@@ -143,10 +143,11 @@ class UIStateAccessor:
 
     @atimeit(0.005)
     async def get_task_groups_ui_state(self, fetch_statistics=False, skip_archived_groups=True, offset=0, limit=-1) -> TaskGroupBatchData:
-        self.__logger.debug('tasks groups update for %s')
+        self.__logger.debug(f'tasks groups update for offset={offset}, limit={"unlim" if limit < 0 else limit}')
         group_totals_update_interval = 5
         now = datetime.now()
         async with self.__data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
             need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
             fetch_statistics = fetch_statistics and need_group_totals_update
             if fetch_statistics:
@@ -177,7 +178,7 @@ class UIStateAccessor:
 
     @atimeit(0.005)
     async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True) -> TaskBatchData:
-        self.__logger.debug('tasks update for %s', task_groups)
+        self.__logger.debug(f'tasks update for {task_groups}')
         async with self.__data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
 
@@ -208,20 +209,23 @@ class UIStateAccessor:
 
     @atimeit(0.005)
     async def get_nodes_ui_state(self) -> NodeGraphStructureData:
-        self.__logger.debug('nodes update')
-        async with self.__data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
-                all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
-            async with con.execute('SELECT * FROM "node_connections"') as cur:
-                all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
+        if self.__latest_graph_ui_state is None:
+            self.__logger.debug('nodes update')
+            async with self.__data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
+                    all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
+                async with con.execute('SELECT * FROM "node_connections"') as cur:
+                    all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, self.__data_access.db_uid, all_nodes, all_conns)
+            self.__latest_graph_ui_state = await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, self.__data_access.db_uid, all_nodes, all_conns)
+        return self.__latest_graph_ui_state
 
     @atimeit(0.005)
     async def get_workers_ui_state(self) -> WorkerBatchData:
         self.__logger.debug('workers update')
         async with self.__data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
             async with con.execute('SELECT workers."id", '
                                    'cpu_count, '
                                    'total_cpu_count, '
@@ -246,7 +250,7 @@ class UIStateAccessor:
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, worker_data)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers)
 
 
 # scheduler helpers
