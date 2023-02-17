@@ -2,6 +2,7 @@ import struct
 import pickle
 import json
 import asyncio
+from asyncio.exceptions import IncompleteReadError
 from . import logging
 from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
 from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData
@@ -62,18 +63,27 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(struct.pack('>Q', self.__scheduler.ui_state_access.graph_update_id))
 
         async def comm_get_ui_graph_state():  # get_ui_graph_state
-            raise NotImplementedError()
-
-            await self.__scheduler.ui_state_access.get_nodes_ui_state()
+            state = await self.__scheduler.ui_state_access.get_nodes_ui_state()
+            update_id = self.__scheduler.ui_state_access.graph_update_id  # there should be no possibility for race condition between aquiring of state and update_id, cus async, but not multithreaded
+            writer.write(struct.pack('>Q', update_id))
+            await state.serialize_to_streamwriter(writer)
 
         async def comm_get_ui_task_groups():  # get_ui_task_groups
-            raise NotImplementedError()
+            skip_archived_groups, = struct.unpack('>?', await reader.readexactly(1))
+            state = await self.__scheduler.ui_state_access.get_task_groups_ui_state(True, skip_archived_groups=skip_archived_groups)
+            await state.serialize_to_streamwriter(writer)
 
         async def comm_get_ui_tasks_state():  # get_ui_tasks_state
-            raise NotImplementedError()
+            include_dead, num_groups = struct.unpack('>?Q', await reader.readexactly(9))
+            groups = []
+            for _ in range(num_groups):
+                groups.append(await read_string())
+            state = await self.__scheduler.ui_state_access.get_tasks_ui_state(groups, not include_dead)
+            await state.serialize_to_streamwriter(writer)
 
         async def comm_get_ui_workers_state():  # get_ui_workers_state
-            raise NotImplementedError()
+            state = await self.__scheduler.ui_state_access.get_workers_ui_state()
+            await state.serialize_to_streamwriter(writer)
 
         async def comm_get_invoc_meta():  # elif command in (b'getinvocmeta', b'getlog', b'getalllog'):
             # if command == b'getinvocmeta':
@@ -626,7 +636,10 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     readline_task.cancel()
                     return
                 assert readline_task.done()
-                command: str = await readline_task
+                try:
+                    command: str = await readline_task
+                except IncompleteReadError:  # this means connection was closed
+                    break
                 self.__logger.debug(f'got command {command}')
                 # get full nodegraph state. only brings in where is which item, no other details
 
@@ -648,7 +661,6 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             self.__logger.error('connection error. UI disconnected %s', e)
         except Exception as e:
             self.__logger.exception('unknown error. UI disconnected %s', e)
-            raise
         finally:
             writer.close()
             await writer.wait_closed()
