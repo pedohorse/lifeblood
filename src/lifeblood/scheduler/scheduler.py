@@ -1093,6 +1093,7 @@ class Scheduler:
             if node_id in self.__node_objects:
                 self.__node_objects[node_id].set_name(node_name)
             await con.commit()
+            self.ui_state_access.bump_graph_update_id()
         return node_name
 
     #
@@ -1104,6 +1105,7 @@ class Scheduler:
                 # TODO: this below may be not safe (at least not proven to be safe yet, but maybe). check
                 del self.__node_objects[node_id]  # it's here to "protect" operation within db transaction. TODO: but a proper __node_object lock should be in place instead
             await con.commit()
+            self.ui_state_access.bump_graph_update_id()  # not sure if needed - even number of inputs/outputs is not part of graph description
         self.wake()
 
     #
@@ -1212,6 +1214,7 @@ class Scheduler:
             await con.execute(f'UPDATE node_connections SET {", ".join(parts)} WHERE "id" = ?', vals)
             await con.commit()
         self.wake()
+        self.ui_state_access.bump_graph_update_id()
 
     #
     # add node connection callback
@@ -1223,6 +1226,7 @@ class Scheduler:
                 ret = cur.lastrowid
             await con.commit()
             self.wake()
+            self.ui_state_access.bump_graph_update_id()
             return ret
 
     #
@@ -1234,6 +1238,7 @@ class Scheduler:
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('DELETE FROM node_connections WHERE "id" = ?', (node_connection_id,))
                 await con.commit()
+                self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
             self.__logger.error('could not remove node connection because of database integrity check')
 
@@ -1248,6 +1253,7 @@ class Scheduler:
                                    (node_type, node_name)) as cur:
                 ret = cur.lastrowid
             await con.commit()
+            self.ui_state_access.bump_graph_update_id()
             return ret
 
     async def remove_node(self, node_id: int):
@@ -1257,6 +1263,7 @@ class Scheduler:
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('DELETE FROM "nodes" WHERE "id" = ?', (node_id,))
                 await con.commit()
+                self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
             self.__logger.error('could not remove node connection because of database integrity check')
 
