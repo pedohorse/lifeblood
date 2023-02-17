@@ -258,7 +258,7 @@ class LifebloodViewer(QMainWindow):
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiScene)
-        scene.task_groups_updated.connect(self.update_groups)
+        self.__ui_connection_worker.groups_update.connect(self.update_groups)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
         self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
