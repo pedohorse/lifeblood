@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass, field
-from .ui_protocol_data import TaskData, UiData
+from .ui_protocol_data import TaskData, TaskBatchData, UiData
 from .enums import UIEventType
 
 from typing import Union
@@ -21,3 +21,13 @@ class TaskEvent(SchedulerEvent):
 @dataclass
 class DataUpdateEvent(SchedulerEvent):
     ui_data: UiData
+
+
+@dataclass
+class TaskGroupFullUpdate(SchedulerEvent):
+    task_batch_data: TaskBatchData
+
+
+@dataclass
+class TaskGraphUpdate(SchedulerEvent):
+    task_batch_data: TaskBatchData
