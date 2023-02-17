@@ -28,6 +28,9 @@ class IBufferSerializable:
     def deserialize(cls, stream: BufferedIOBase):
         raise NotImplementedError()
 
+    async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
+        await asyncio.get_event_loop().run_in_executor(None, self.serialize, stream)
+
 
 @dataclass
 class TaskData(IBufferSerializable):
@@ -58,18 +61,19 @@ class TaskData(IBufferSerializable):
                            self.split_origin_task_id is not None, self.split_origin_task_id or 0,
                            self.split_id is not None, self.split_id or 0,
                            self.invocation_id is not None, self.invocation_id or 0, len(self.groups))
-        written_size = stream.write(data)
-        written_size += stream.write(struct.pack('>?', self.state_details is not None))
+        stream.write(data)
+        stream.write(struct.pack('>?', self.state_details is not None))
         if self.state_details is not None:
-            written_size += _serialize_string(self.state_details, stream)
-        written_size += stream.write(struct.pack('>?', self.node_input_name is not None))
+            _serialize_string(self.state_details, stream)
+        stream.write(struct.pack('>?', self.node_input_name is not None))
         if self.node_input_name is not None:
-            written_size += _serialize_string(self.node_input_name, stream)
-        written_size += stream.write(struct.pack('>?', self.node_output_name is not None))
+            _serialize_string(self.node_input_name, stream)
+        stream.write(struct.pack('>?', self.node_output_name is not None))
         if self.node_output_name is not None:
-            written_size += _serialize_string(self.node_output_name, stream)
-        written_size += _serialize_string(self.name, stream)
-        written_size += sum(_serialize_string(x, stream) for x in self.groups)
+            _serialize_string(self.node_output_name, stream)
+        _serialize_string(self.name, stream)
+        for group in self.groups:
+            _serialize_string(group, stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskData":
@@ -392,9 +396,6 @@ class UiData(IBufferSerializable):
 
         assert len(datas), 4
         return UiData(db_uid, datas[0], datas[1], datas[2], datas[3])
-
-    async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
-        await asyncio.get_event_loop().run_in_executor(None, self.serialize, stream)
 
     def __repr__(self):
         return f'{self.graph_data} :::: {self.tasks}'  # TODO: this is not a good representation at all
