@@ -242,7 +242,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__task_group_filter = None
         self.__db_uid: Optional[int] = None  # this is unique id of the scheduler's db. we use this to determine where to save node positions locally, not to mix and collide
 
-        self.__tasks_to_try_reparent_during_node_update = []
+        self.__tasks_to_try_reparent_during_node_update = {}
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -535,6 +535,18 @@ class QGraphicsImguiScene(QGraphicsScene):
             existing_node_ids[id] = new_node
             self.addItem(new_node)
 
+        # now check if there are task updates that we received before node updates
+        for task_id, node_id in self.__tasks_to_try_reparent_during_node_update.items():
+            if node_id in existing_node_ids:
+                task = self.get_task(task_id)
+                if task is None:  # may has already been deleted by another tasks update
+                    continue
+                existing_node_ids[node_id].add_task(task)
+            else:
+                task = self.get_task(task_id)
+                logger.warning(f'could not find node_id {node_id} for an orphaned during update task {task_id} ({task})')
+
+
         # add connections
         for id, new_conn_data in graph_data.connections.items():
             if id in existing_conn_ids:
@@ -607,7 +619,8 @@ class QGraphicsImguiScene(QGraphicsScene):
             existing_node = self.get_node(new_task_data.node_id)
             if existing_node:
                 existing_node.add_task(task)
-            # TODO: add some concept of orphaned tasks to be checked on nodes update ?
+            else:
+                self.__tasks_to_try_reparent_during_node_update[id] = new_task_data.node_id
             task.set_task_data(new_task_data)
 
     @timeit(0.05)
