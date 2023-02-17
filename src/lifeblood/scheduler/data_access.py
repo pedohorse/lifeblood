@@ -2,8 +2,9 @@ import aiosqlite
 import sqlite3
 import random
 import struct
-from ..logging import get_logger
 from ..db_misc import sql_init_script
+from ..logging import get_logger
+from ..scheduler_event_log import SchedulerEventLog
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 
 SCHEDULER_DB_FORMAT_VERSION = 1
@@ -14,6 +15,9 @@ class DataAccess:
         self.__logger = get_logger('scheduler.data_access')
         self.db_path: str = db_path
         self.db_timeout: int = db_connection_timeout
+
+        self.__tasks_ui_event_log = SchedulerEventLog(log_time_length_max=10, log_event_count_max=None)
+
         self.mem_cache_workers_resources: dict = {}
         self.mem_cache_workers_state: dict = {}
         self.mem_cache_invocations: dict = {}
@@ -42,6 +46,9 @@ class DataAccess:
     @property
     def db_uid(self):
         return self.__db_uid
+
+    def get_tasks_ui_event_log(self):
+        return self.__tasks_ui_event_log
 
     def data_connection(self):
         return aiosqlite.connect(self.db_path, timeout=self.db_timeout)
