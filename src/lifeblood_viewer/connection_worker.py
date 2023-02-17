@@ -34,7 +34,7 @@ logger = logging.get_logger('viewer')
 
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(object)
-    bd_uid_update = Signal(object)
+    db_uid_update = Signal(object)
     graph_update = Signal(object)
     tasks_update = Signal(object)
     groups_update = Signal(object)
@@ -163,8 +163,10 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         while not self.interruption_requested():
             try:
                 self.__client = UIProtocolSocketClient(sche_addr, sche_port, timeout=30)
-                bd_uid_update = self.__client.get_db_uid()
-                self.bd_uid_update.emit(bd_uid_update)
+                self.__client.initialize()
+                db_uid_update = self.__client.get_db_uid()
+                self.__latest_graph_update_id = -1
+                self.db_uid_update.emit(db_uid_update)
             except ConnectionError:
                 logger.debug('ui connection refused, retrying...')
 
@@ -177,7 +179,6 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 break
 
         assert self.__client is not None
-        self.__client.initialize()
         config.set_option_noasync('viewer.last_scheduler_address', f'{sche_addr}:{sche_port}')
         return True
 
@@ -202,6 +203,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if self.__client is not None:
                 self.__client.close()
             self.__client = None
+            self.__latest_graph_update_id = -1
             return
 
         if not self.ensure_connected():
@@ -215,7 +217,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
                 self.graph_update.emit(graph_state)
 
-            tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter, not self.__skip_dead)
+            tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
             self.tasks_update.emit(tasks_state)
 
             workers_state = self.__client.get_ui_workers_state()
