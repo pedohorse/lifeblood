@@ -1,6 +1,7 @@
 import io
 import socket
 import struct
+from .exceptions import IncompleteReadError
 
 from typing import Tuple
 
@@ -47,21 +48,48 @@ class BufferedConnection:
         return self.__reader, self.__writer
 
 
-class BufferedReaderWrapper(io.BufferedReader):
+class BufferedReader(io.BufferedReader):
+    def readexactly(self, size) -> bytes:
+        # a tiny optimization: first try to read with a single call, and then employ general tactics if that fails
+        part = self.read(size)
+        lpart = len(part)
+        if lpart == 0:
+            raise IncompleteReadError(f'wanted to read {size}, but got EOF')
+        if lpart == size:
+            return part
+
+        # and now generic algorithm
+        parts = [part]
+        total_read = lpart
+        while total_read < size:
+            part = self.read(size)
+            lpart = len(part)
+            if lpart == 0:  # meaning EOF
+                raise IncompleteReadError(f'wanted to read {size}, but got only {total_read} before EOF')
+            total_read += lpart
+            parts.append(part)
+        return b''.join(parts)
+
+
+class BufferedWriter(io.BufferedWriter):
+    pass
+
+
+class BufferedReaderWrapper(BufferedReader):
     def __init__(self, stuff_to_wrap: io.BufferedReader, buffering=None):
         super().__init__(stuff_to_wrap.raw, buffering)
         self.__wrapped = stuff_to_wrap
 
     def read_string(self):
-        data_len, = struct.unpack('>Q', self.read(8))
-        return self.read(data_len).decode('UTF-8')
+        data_len, = struct.unpack('>Q', self.readexactly(8))
+        return self.readexactly(data_len).decode('UTF-8')
 
     def close(self) -> None:
         super().close()
         self.__wrapped.close()
 
 
-class BufferedWriterWrapper(io.BufferedWriter):
+class BufferedWriterWrapper(BufferedWriter):
     def __init__(self, stuff_to_wrap: io.BufferedWriter, buffering=None):
         super().__init__(stuff_to_wrap.raw, buffering)
         self.__wrapped = stuff_to_wrap
