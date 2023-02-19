@@ -3,9 +3,8 @@ from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
-from lifeblood.misc import timeit
+from lifeblood.misc import timeit, performance_measurer
 from .connection_worker import SchedulerConnectionWorker
-from .utils import performance_measurer
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView, QMenu
 from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QPoint
