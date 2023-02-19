@@ -2,7 +2,7 @@ import asyncio
 import aiosqlite
 from datetime import datetime
 from ..logging import get_logger
-from ..misc import atimeit
+from ..misc import atimeit, aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData
@@ -141,15 +141,15 @@ class UIStateAccessor:
                                                               all_workers,
                                                               all_task_groups)
 
-    @atimeit(0.005)
     async def get_task_groups_ui_state(self, fetch_statistics=False, skip_archived_groups=True, offset=0, limit=-1) -> TaskGroupBatchData:
         self.__logger.debug(f'tasks groups update for offset={offset}, limit={"unlim" if limit < 0 else limit}')
-        group_totals_update_interval = 5
-        now = datetime.now()
-        async with self.__data_access.data_connection() as con:
+        # group_totals_update_interval = 5
+        # now = datetime.now()
+        async with self.__data_access.data_connection() as con, \
+                aperformance_measurer(threshold_to_report=0.005, name='get_task_groups_ui_state'):
             con.row_factory = aiosqlite.Row
-            need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
-            fetch_statistics = fetch_statistics and need_group_totals_update
+            # need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
+            # fetch_statistics = fetch_statistics and need_group_totals_update
             if fetch_statistics:
                 sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
                           'LEFT JOIN ' \
@@ -166,20 +166,20 @@ class UIStateAccessor:
             async with con.execute(sqlexpr) as cur:
                 all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
 
-            # now update cache or pull statistics from cache
-            if fetch_statistics:
-                self.__ui_cache['last_update_time'] = now
-                self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
-            elif fetch_statistics:  # if fetch requested, but cache is still valid - get cache
-                for group in all_task_groups:
-                    all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
+            # # now update cache or pull statistics from cache
+            # if fetch_statistics:
+            #     self.__ui_cache['last_update_time'] = now
+            #     self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
+            # elif fetch_statistics:  # if fetch requested, but cache is still valid - get cache
+            #     for group in all_task_groups:
+            #         all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
 
         return await asyncio.get_event_loop().run_in_executor(None, _pack_task_groups, self.__data_access.db_uid, all_task_groups)
 
-    @atimeit(0.005)
     async def get_tasks_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True) -> TaskBatchData:
         self.__logger.debug(f'tasks update for {task_groups}')
-        async with self.__data_access.data_connection() as con:
+        async with self.__data_access.data_connection() as con, \
+                aperformance_measurer(threshold_to_report=0.005, name='get_tasks_ui_state'):
             con.row_factory = aiosqlite.Row
 
             all_tasks = dict()
@@ -207,11 +207,11 @@ class UIStateAccessor:
 
         return await asyncio.get_event_loop().run_in_executor(None, _pack_tasks_data, self.__data_access.db_uid, all_tasks)
 
-    @atimeit(0.005)
     async def get_nodes_ui_state(self) -> NodeGraphStructureData:
         if self.__latest_graph_ui_state is None:
             self.__logger.debug('nodes update')
-            async with self.__data_access.data_connection() as con:
+            async with self.__data_access.data_connection() as con, \
+                    aperformance_measurer(threshold_to_report=0.005, name='get_nodes_ui_state'):
                 con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
                     all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
@@ -221,10 +221,10 @@ class UIStateAccessor:
             self.__latest_graph_ui_state = await asyncio.get_event_loop().run_in_executor(None, _pack_nodes_connections_data, self.__data_access.db_uid, all_nodes, all_conns)
         return self.__latest_graph_ui_state
 
-    @atimeit(0.005)
     async def get_workers_ui_state(self) -> WorkerBatchData:
         self.__logger.debug('workers update')
-        async with self.__data_access.data_connection() as con:
+        async with self.__data_access.data_connection() as con, \
+                aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT workers."id", '
                                    'cpu_count, '
@@ -310,7 +310,10 @@ def _pack_task_groups(db_uid: int, all_task_groups) -> "TaskGroupBatchData":
     task_groups = {}
     for group_name, group_raw in all_task_groups.items():
         assert group_name == group_raw['group']
-        stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
+        if 'tdone' in group_raw:  # if has stat:
+            stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
+        else:
+            stat = None
         task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
                                                 group_raw['priority'], stat)
 
