@@ -6,8 +6,7 @@ from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from .db_misc import sql_init_script_nodes
-from .utils import performance_measurer
-from lifeblood.misc import timeit
+from lifeblood.misc import timeit, performance_measurer
 from lifeblood.uidata import NodeUi, Parameter
 from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
@@ -222,7 +221,12 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_set_skip_archived_groups = Signal(bool)
     _signal_set_environment_resolver_arguments = Signal(int, EnvironmentResolverArguments)
     _signal_unset_environment_resolver_arguments = Signal(int)
-
+    #
+    _signal_poke_graph_and_tasks_update = Signal()
+    _signal_poke_task_groups_update = Signal()
+    _signal_poke_workers_update = Signal()
+    #
+    #
     nodetypes_updated = Signal(dict)  # TODO: separate worker-oriented "private" signals for readability
     nodepresets_updated = Signal(dict)
     nodepreset_received = Signal(str, str, NodeSnippetData)
@@ -314,7 +318,10 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_set_skip_archived_groups.connect(self.__ui_connection_worker.set_skip_archived_groups)
         self._signal_set_environment_resolver_arguments.connect(self.__ui_connection_worker.set_environment_resolver_arguments)
         self._signal_unset_environment_resolver_arguments.connect(self.__ui_connection_worker.unset_environment_resolver_arguments)
-
+        #
+        self._signal_poke_graph_and_tasks_update.connect(self.__ui_connection_worker.poke_graph_and_tasks_update)
+        self._signal_poke_task_groups_update.connect(self.__ui_connection_worker.poke_task_groups_update)
+        self._signal_poke_workers_update.connect(self.__ui_connection_worker.poke_workers_update)
 
     def request_log(self, task_id: int, node_id: int, invocation_id: int):
         self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
@@ -431,6 +438,30 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def request_unset_environment_resolver_arguments(self, task_id):
         self._signal_unset_environment_resolver_arguments.emit(task_id)
+
+    #
+
+    def request_graph_and_tasks_update(self):
+        """
+        send a request to the scheduler to update node graph and tasks state immediately
+        """
+        self._signal_poke_graph_and_tasks_update.emit()
+
+    def request_task_groups_update(self):
+        """
+        send a request to the scheduler to update task groups state immediately
+        """
+        self._signal_poke_task_groups_update.emit()
+
+    def request_workers_update(self):
+        """
+        send a request to the scheduler to update workers state immediately
+        """
+        self._signal_poke_workers_update.emit()
+
+    #
+    #
+    #
 
     def skip_dead(self) -> bool:
         return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
@@ -1388,6 +1419,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
     @Slot(bool)
     def set_dead_shown(self, show: bool):
         self.__scene.set_skip_dead(not show)
+        self.__scene.request_graph_and_tasks_update()
 
     def archived_groups_shown(self) -> bool:
         return not self.__scene.skip_archived_groups()
@@ -1395,6 +1427,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
     @Slot(bool)
     def set_archived_groups_shown(self, show: bool):
         self.__scene.set_skip_archived_groups(not show)
+        self.__scene.request_task_groups_update()
 
     #
     # Actions
