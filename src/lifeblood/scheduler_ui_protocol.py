@@ -70,7 +70,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_get_ui_task_groups():  # get_ui_task_groups
             skip_archived_groups, = struct.unpack('>?', await reader.readexactly(1))
-            state = await self.__scheduler.ui_state_access.get_task_groups_ui_state(True, skip_archived_groups=skip_archived_groups)
+            state = await self.__scheduler.ui_state_access.get_task_groups_ui_state(fetch_statistics=True, skip_archived_groups=skip_archived_groups)
             await state.serialize_to_streamwriter(writer)
 
         async def comm_get_ui_tasks_state():  # get_ui_tasks_state
@@ -639,6 +639,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 try:
                     command: str = await readline_task
                 except IncompleteReadError:  # this means connection was closed
+                    self.__logger.debug('UI disconnected: connection closed')
                     break
                 self.__logger.debug(f'got command {command}')
                 # get full nodegraph state. only brings in where is which item, no other details
@@ -711,7 +712,7 @@ class UIProtocolSocketClient:
         r, w = self.__connection.get_rw_pair()
         w.write_string('get_db_uid')
         w.flush()
-        uid, = struct.unpack('>Q', r.read(8))
+        uid, = struct.unpack('>Q', r.readexactly(8))
         return uid
 
     def get_ui_graph_state_update_id(self) -> int:
@@ -721,7 +722,7 @@ class UIProtocolSocketClient:
         r, w = self.__connection.get_rw_pair()
         w.write_string('get_ui_graph_state_update_id')
         w.flush()
-        uid, = struct.unpack('>Q', r.read(8))
+        uid, = struct.unpack('>Q', r.readexactly(8))
         return uid
 
     def get_ui_graph_state(self) -> (NodeGraphStructureData, int):
@@ -732,7 +733,7 @@ class UIProtocolSocketClient:
         r, w = self.__connection.get_rw_pair()
         w.write_string('get_ui_graph_state')
         w.flush()
-        update_id, = struct.unpack('>Q', r.read(8))
+        update_id, = struct.unpack('>Q', r.readexactly(8))
         data = NodeGraphStructureData.deserialize(r)
         return data, update_id
 
@@ -768,8 +769,8 @@ class UIProtocolSocketClient:
         w.write_string('getinvocmeta')
         w.write(struct.pack('>Q', task_id))
         w.flush()
-        rcvsize, = struct.unpack('>I', r.read(4))
-        invocmeta = pickle.loads(r.read(rcvsize))
+        rcvsize, = struct.unpack('>I', r.readexactly(4))
+        invocmeta = pickle.loads(r.readexactly(rcvsize))
         return invocmeta
 
     def get_log(self, task_id, node_id, invocation_id) -> Dict[int, Dict[int, dict]]:
@@ -777,8 +778,8 @@ class UIProtocolSocketClient:
         w.write_string('getlog')
         w.write(struct.pack('>QQQ', task_id, node_id, invocation_id))
         w.flush()
-        rcvsize = struct.unpack('>I', r.read(4))[0]
-        alllogs = pickle.loads(r.read(rcvsize))
+        rcvsize = struct.unpack('>I', r.readexactly(4))[0]
+        alllogs = pickle.loads(r.readexactly(rcvsize))
         return alllogs
 
     def get_log_all(self, task_id, node_id):
@@ -789,8 +790,8 @@ class UIProtocolSocketClient:
         w.write_string('getnodeinterface')
         w.write(struct.pack('>Q', node_id))
         w.flush()
-        rcvsize = struct.unpack('>I', r.read(4))[0]
-        nodeui: NodeUi = pickle.loads(r.read(rcvsize))
+        rcvsize = struct.unpack('>I', r.readexactly(4))[0]
+        nodeui: NodeUi = pickle.loads(r.readexactly(rcvsize))
         return nodeui
 
     def get_task_attribs(self, task_id) -> Tuple[Dict[str, Any], Optional[EnvironmentResolverArguments]]:
@@ -798,12 +799,12 @@ class UIProtocolSocketClient:
         w.write_string('gettaskattribs')
         w.write(struct.pack('>Q', task_id))
         w.flush()
-        rcvsize = struct.unpack('>Q', r.read(8))[0]
-        attribs = _deserialize_json_dict(r.read(rcvsize))
-        rcvsize = struct.unpack('>Q', r.read(8))[0]
+        rcvsize = struct.unpack('>Q', r.readexactly(8))[0]
+        attribs = _deserialize_json_dict(r.readexactly(rcvsize))
+        rcvsize = struct.unpack('>Q', r.readexactly(8))[0]
         env_attrs = None
         if rcvsize > 0:
-            env_attrs = EnvironmentResolverArguments.deserialize(r.read(rcvsize))
+            env_attrs = EnvironmentResolverArguments.deserialize(r.readexactly(rcvsize))
         return attribs, env_attrs
 
     def get_task_invocation(self, task_id) -> InvocationJob:
@@ -811,11 +812,11 @@ class UIProtocolSocketClient:
         w.write_string('gettaskinvoc')
         w.write(struct.pack('>Q', task_id))
         w.flush()
-        rcvsize = struct.unpack('>Q', r.read(8))[0]
+        rcvsize = struct.unpack('>Q', r.readexactly(8))[0]
         if rcvsize == 0:
             invoc = InvocationJob([])
         else:
-            invoc = InvocationJob.deserialize(r.read(rcvsize))
+            invoc = InvocationJob.deserialize(r.readexactly(rcvsize))
         return invoc
 
     def list_node_types(self) -> Dict[str, NodeTypeMetadata]:
@@ -823,10 +824,10 @@ class UIProtocolSocketClient:
         metas: List[NodeTypeMetadata] = []
         w.write_string('listnodetypes')
         w.flush()
-        elemcount, = struct.unpack('>Q', r.read(8))
+        elemcount, = struct.unpack('>Q', r.readexactly(8))
         for i in range(elemcount):
-            btlen, = struct.unpack('>Q', r.read(8))
-            metas.append(pickle.loads(r.read(btlen)))
+            btlen, = struct.unpack('>Q', r.readexactly(8))
+            metas.append(pickle.loads(r.readexactly(btlen)))
         nodetypes = {n.type_name: n for n in metas}
         return nodetypes
 
@@ -834,8 +835,8 @@ class UIProtocolSocketClient:
         r, w = self.__connection.get_rw_pair()
         w.write_string('listnodepresets')
         w.flush()
-        btlen, = struct.unpack('>Q', r.read(8))
-        presets = pickle.loads(r.read(btlen))
+        btlen, = struct.unpack('>Q', r.readexactly(8))
+        presets = pickle.loads(r.readexactly(btlen))
         return presets
 
     def get_node_preset(self, package_name, preset_name) -> Optional[NodeSnippetData]:
@@ -844,11 +845,11 @@ class UIProtocolSocketClient:
         w.write_string(package_name)
         w.write_string(preset_name)
         w.flush()
-        good, = struct.unpack('>?', r.read(1))
+        good, = struct.unpack('>?', r.readexactly(1))
         if not good:
             return None
-        btlen = struct.unpack('>Q', r.read(8))[0]
-        snippet: NodeSnippetData = NodeSnippetData.deserialize(r.read(btlen))
+        btlen = struct.unpack('>Q', r.readexactly(8))[0]
+        snippet: NodeSnippetData = NodeSnippetData.deserialize(r.readexactly(btlen))
         return snippet
 
     def remove_node(self, node_id: int):
@@ -856,7 +857,7 @@ class UIProtocolSocketClient:
         w.write_string('removenode')
         w.write(struct.pack('>Q', node_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def add_node(self, node_type: str, node_name: str) -> int:
         r, w = self.__connection.get_rw_pair()
@@ -864,7 +865,7 @@ class UIProtocolSocketClient:
         w.write_string(node_type)
         w.write_string(node_name)
         w.flush()
-        node_id, = struct.unpack('>Q', r.read(8))
+        node_id, = struct.unpack('>Q', r.readexactly(8))
         return node_id
 
     def wipe_node(self, node_id: int):
@@ -872,7 +873,7 @@ class UIProtocolSocketClient:
         w.write_string('wipenode')
         w.write(struct.pack('>Q', node_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def node_has_param(self, node_id: int, param_name: str) -> bool:
         r, w = self.__connection.get_rw_pair()
@@ -880,7 +881,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', node_id))
         w.write_string(param_name)
         w.flush()
-        good = r.read(1) == b'\1'
+        good = r.readexactly(1) == b'\1'
         return good
 
     def set_node_param(self, node_id: int, param: Parameter) -> Union[int, float, str, bool, None]:
@@ -902,22 +903,22 @@ class UIProtocolSocketClient:
         if param_type == NodeParameterType.FLOAT:
             w.write(struct.pack('>d', param_value))
             w.flush()
-            if r.read(1) == b'\1':
-                newval, = struct.unpack('>d', r.read(8))
+            if r.readexactly(1) == b'\1':
+                newval, = struct.unpack('>d', r.readexactly(8))
         elif param_type == NodeParameterType.INT:
             w.write(struct.pack('>q', param_value))
             w.flush()
-            if r.read(1) == b'\1':
-                newval, = struct.unpack('>q', r.read(8))
+            if r.readexactly(1) == b'\1':
+                newval, = struct.unpack('>q', r.readexactly(8))
         elif param_type == NodeParameterType.BOOL:
             w.write(struct.pack('>?', param_value))
             w.flush()
-            if r.read(1) == b'\1':
-                newval, = struct.unpack('>?', r.read(1))
+            if r.readexactly(1) == b'\1':
+                newval, = struct.unpack('>?', r.readexactly(1))
         elif param_type == NodeParameterType.STRING:
             w.write_string(param_value)
             w.flush()
-            if r.read(1) == b'\1':
+            if r.readexactly(1) == b'\1':
                 newval = r.read_string()
         else:
             raise NotImplementedError()
@@ -949,20 +950,20 @@ class UIProtocolSocketClient:
                     raise NotImplementedError()
         w.flush()
         if not want_result:
-            assert r.read(1) == b'\1'  # not expect result, just ack
+            assert r.readexactly(1) == b'\1'  # not expect result, just ack
             return
         result = {}
         for param in params:
-            if r.read(1) == b'\0':
+            if r.readexactly(1) == b'\0':
                 result[param.name()] = None
                 continue
             param_type = param.type()
             if param_type == NodeParameterType.FLOAT:
-                val, = struct.unpack('>d', r.read(8))
+                val, = struct.unpack('>d', r.readexactly(8))
             elif param_type == NodeParameterType.INT:
-                val, = struct.unpack('>q', r.read(8))
+                val, = struct.unpack('>q', r.readexactly(8))
             elif param_type == NodeParameterType.BOOL:
-                val, = struct.unpack('>?', r.read(1))
+                val, = struct.unpack('>?', r.readexactly(1))
             elif param_type == NodeParameterType.STRING:
                 val = r.read_string()
             else:
@@ -979,7 +980,7 @@ class UIProtocolSocketClient:
         if set_or_unset:
             w.write_string(expression)
         w.flush()
-        return r.read(1) == b'\1'
+        return r.readexactly(1) == b'\1'
 
     def apply_node_settings(self, node_id: int, settings_name: str) -> bool:
         r, w = self.__connection.get_rw_pair()
@@ -987,7 +988,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', node_id))
         w.write_string(settings_name)
         w.flush()
-        return r.read(1) == b'\1'
+        return r.readexactly(1) == b'\1'
 
     def save_custom_node_settings(self, node_type_name: str, settings_name: str, settings: Dict[str, Any]) -> bool:
         r, w = self.__connection.get_rw_pair()
@@ -998,7 +999,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', len(settings_data)))
         w.write(settings_data)
         w.flush()
-        return r.read(1) == b'\1'
+        return r.readexactly(1) == b'\1'
 
     def set_settings_default(self, node_type_name: str, settings_name: Optional[str]):
         r, w = self.__connection.get_rw_pair()
@@ -1008,7 +1009,7 @@ class UIProtocolSocketClient:
         if settings_name is not None:
             w.write_string(settings_name)
         w.flush()
-        return r.read(1) == b'\1'
+        return r.readexactly(1) == b'\1'
 
     def rename_node(self, node_id: int, node_name: str) -> str:
         r, w = self.__connection.get_rw_pair()
@@ -1030,13 +1031,13 @@ class UIProtocolSocketClient:
         for node_id in node_ids:
             w.write(struct.pack('>Q', node_id))
         w.flush()
-        result = r.read(1)
+        result = r.readexactly(1)
         if result == b'\0':
             return None
-        cnt, = struct.unpack('>Q', r.read(8))
+        cnt, = struct.unpack('>Q', r.readexactly(8))
         ret = {}
         for i in range(cnt):
-            old_id, new_id = struct.unpack('>QQ', r.read(16))
+            old_id, new_id = struct.unpack('>QQ', r.readexactly(16))
             assert old_id in node_ids
             ret[old_id] = new_id
         return ret
@@ -1050,7 +1051,7 @@ class UIProtocolSocketClient:
         if innode_id is not None:
             w.write_string(in_name)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def add_connection(self, outnode_id: int, out_name: str, innode_id: int, in_name: str) -> int:
         """
@@ -1067,7 +1068,7 @@ class UIProtocolSocketClient:
         w.write_string(out_name)
         w.write_string(in_name)
         w.flush()
-        new_or_existing_id, = struct.unpack('>Q', r.read(8))
+        new_or_existing_id, = struct.unpack('>Q', r.readexactly(8))
         return new_or_existing_id
 
     def remove_connection_by_id(self, connection_id: int):
@@ -1075,7 +1076,7 @@ class UIProtocolSocketClient:
         w.write_string('removeconnection')
         w.write(struct.pack('>Q', connection_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def pause_tasks(self, task_ids: Iterable[int], paused: bool):
         r, w = self.__connection.get_rw_pair()
@@ -1088,14 +1089,14 @@ class UIProtocolSocketClient:
         if numtasks > 1:
             w.write(struct.pack('>' + 'Q' * (numtasks - 1), *task_ids[1:]))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def pause_task_group(self, task_group_name, paused):
         r, w = self.__connection.get_rw_pair()
         w.write_string('tpausegrp')
         w.write(struct.pack('>?', paused))
         w.write_string(task_group_name)
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def archive_task_group(self, archived_state: TaskGroupArchivedState, task_group_name: str):
         r, w = self.__connection.get_rw_pair()
@@ -1103,28 +1104,28 @@ class UIProtocolSocketClient:
         w.write_string(task_group_name)
         w.write(struct.pack('>I', archived_state.value))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def cancel_invocation_for_task(self, task_id: int):
         r, w = self.__connection.get_rw_pair()
         w.write_string('tcancel')
         w.write(struct.pack('>Q', task_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def cancel_invocation_for_worker(self, worker_id: int):
         r, w = self.__connection.get_rw_pair()
         w.write_string('workertaskcancel')
         w.write(struct.pack('>Q', worker_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def set_node_for_task(self, task_id: int, node_id: int):
         r, w = self.__connection.get_rw_pair()
         w.write_string('tsetnode')
         w.write(struct.pack('>QQ', task_id, node_id))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def change_tasks_state(self, task_ids: Iterable[int], state: TaskState):
         r, w = self.__connection.get_rw_pair()
@@ -1137,7 +1138,7 @@ class UIProtocolSocketClient:
         if numtasks > 1:
             w.write(struct.pack('>' + 'Q' * (numtasks - 1), *task_ids[1:]))
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def set_task_name(self, task_id: int, new_name: str):
         r, w = self.__connection.get_rw_pair()
@@ -1145,7 +1146,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', task_id))
         w.write_string(new_name)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def set_task_groups(self, task_id: int, task_groups: Iterable[str]):
         r, w = self.__connection.get_rw_pair()
@@ -1155,7 +1156,7 @@ class UIProtocolSocketClient:
         for group in task_groups:
             w.write_string(group)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def update_task_attributes(self, task_id, attribs_to_set: Dict[str, Any], attribs_to_delete: Iterable[str]):
         r, w = self.__connection.get_rw_pair()
@@ -1167,7 +1168,7 @@ class UIProtocolSocketClient:
         for attr in attribs_to_delete:
             w.write_string(attr)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def add_task(self, new_task: NewTask) -> Optional[int]:
         """
@@ -1181,7 +1182,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', len(data)))
         w.write(data)
         w.flush()
-        spawn_status_value, new_id = struct.unpack('>I?Q', r.read(13))  # reply that we don't care about for now
+        spawn_status_value, new_id = struct.unpack('>I?Q', r.readexactly(13))  # reply that we don't care about for now
         if SpawnStatus(spawn_status_value) == SpawnStatus.FAILED:
             return None
         return new_id
@@ -1197,7 +1198,7 @@ class UIProtocolSocketClient:
             w.write(struct.pack('>Q', len(data)))
             w.write(data)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
 
     def set_worker_groups(self, worker_hwid: int, groups: Iterable[str]):
         groups = list(groups)
@@ -1207,4 +1208,4 @@ class UIProtocolSocketClient:
         for group in groups:
             w.write_string(group)
         w.flush()
-        assert r.read(1) == b'\1'
+        assert r.readexactly(1) == b'\1'
