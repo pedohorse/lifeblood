@@ -21,3 +21,7 @@ class WorkerNotAvailable(RuntimeError):
 
 class ProcessInitializationError(RuntimeError):
     pass
+
+
+class IncompleteReadError(ConnectionError):
+    pass
