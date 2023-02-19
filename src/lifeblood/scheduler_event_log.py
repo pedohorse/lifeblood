@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class SchedulerEventLog:
     def __init__(self, *, log_time_length_max: Optional[float], log_event_count_max: Optional[int]):
-        self.__max_time = log_time_length_max
+        self.__max_time_ns = int(log_time_length_max * 10**9) if log_time_length_max is not None else None
         self.__max_count = log_event_count_max
         if log_event_count_max is None and log_time_length_max is None:
             raise ValueError('at least one of log_time_length_max or log_event_count_max must be not none')
@@ -20,25 +20,31 @@ class SchedulerEventLog:
         self.__internal_event_counter_next = 0
 
     def __find_index_below_timestamp(self, timestamp):
+        return self.__find_index_below('timestamp', timestamp)
+
+    def __find_index_below_id(self, event_id):
+        return self.__find_index_below('event_id', event_id)
+
+    def __find_index_below(self, property_name, value):
         if len(self.__events) < 8:
             for i, event in enumerate(self.__events):
-                if event.timestamp > timestamp:
+                if getattr(event, property_name) > value:
                     return i - 1
             return len(self.__events) - 1
 
-        def _find_bin(l: List[SchedulerEvent], timestamp):
+        def _find_bin(l: List[SchedulerEvent], value):
             if len(l) == 1:
-                return -1 if timestamp < l[0].timestamp else 0
-            if timestamp < l[0].timestamp:
+                return -1 if value < getattr(l[0], property_name) else 0
+            if value < getattr(l[0], property_name):
                 return -1
-            elif timestamp > l[-1].timestamp:
+            elif value > getattr(l[-1], property_name):
                 return len(l)-1
             si = len(l) // 2
-            if (i := _find_bin(l[si:], timestamp)) > -1:
+            if (i := _find_bin(l[si:], value)) > -1:
                 return i + si
-            return _find_bin(l[:si], timestamp)
+            return _find_bin(l[:si], value)
 
-        return _find_bin(self.__events, timestamp)
+        return _find_bin(self.__events, value)
 
     def add_event(self, event: SchedulerEvent, do_trim=True):
         # first check the trivial case
@@ -65,28 +71,37 @@ class SchedulerEventLog:
     def trim(self):
         if len(self.__events) == 0:
             return
-        if self.__max_time is not None:
-            threshold = self.__events[-1].timestamp - self.__max_time
-            if (self.__max_count is None or len(self.__events) < self.__max_count) and self.__events[0].timestamp > threshold:
-                return
-            trimpos = self.__find_index_below_timestamp(threshold)+1
-            for event in self.__events[:trimpos]:
-                self.__event_id_to_event.pop(event.event_id)
-            self.__events = self.__events[trimpos:]
+        if self.__max_time_ns is not None:
+            threshold = self.__events[-1].timestamp - self.__max_time_ns
+            if self.__events[0].timestamp <= threshold:
+                trimpos = self.__find_index_below_timestamp(threshold)+1
+                for event in self.__events[:trimpos]:
+                    self.__event_id_to_event.pop(event.event_id)
+                self.__events = self.__events[trimpos:]
 
-        if self.__max_count is not None:
+        if self.__max_count is not None and len(self.__events) > self.__max_count:
             for event in self.__events[:-self.__max_count]:
                 self.__event_id_to_event.pop(event.event_id)
             self.__events = self.__events[-self.__max_count:]
 
-    def get_since_timestamp(self, timestamp):
-        return tuple(self.__events[self.__find_index_below_timestamp(timestamp)+1:])
+    def get_since_timestamp(self, timestamp: float):
+        """
+        get events since given timestamp
+        :param timestamp: timestamp is given as EPOCH time in floating seconds
+        :return:
+        """
+        timestamp_ns = int(timestamp) * 10**9 + int(timestamp % 1.0 * 10**9)
+        return self.get_since_timestamp_ns(timestamp_ns)
+
+    def get_since_timestamp_ns(self, timestamp_ns: int):
+        return tuple(self.__events[self.__find_index_below_timestamp(timestamp_ns)+1:])
 
     def get_since_event(self, event_id: int):
 
-        # elaborate way of just getting the id of the event
-        e_index = self.__find_index_below_timestamp(self.__event_id_to_event[event_id].timestamp)
-        assert self.__events[e_index].event_id == event_id
+        # if event was already removed from the list (assume it was old)
+        e_index = self.__find_index_below_id(event_id)
+        if 0 <= e_index < len(self.__events):
+            assert self.__events[e_index].event_id <= event_id  # in case event_id does not exist  - found event_id will be smaller
         # we will return all events since e_index, not since it's timestamp cuz we relay in incrementing event_ids
         # and want to avoid extra search by timestamp, since the result should be the exact same
         return tuple(self.__events[e_index+1:])

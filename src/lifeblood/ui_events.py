@@ -8,7 +8,8 @@ from typing import Union
 
 @dataclass
 class SchedulerEvent:
-    timestamp: float = field(default_factory=lambda: time.time(), init=False)
+    # some OS (like windows) do not have proper time() resolution, so time_ns is used instead
+    timestamp: float = field(default_factory=lambda: time.time_ns(), init=False)
     event_id: int
     event_type: UIEventType
 

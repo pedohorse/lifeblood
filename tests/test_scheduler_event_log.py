@@ -11,45 +11,56 @@ class Tests(TestCase):
 
         self.assertEqual(0, len(log))
 
-        startstamp = time.time()
+        startstamp = time.time_ns()
         log.add_event(SchedulerEvent(2, UIEventType.UPDATE))
         self.assertEqual(1, len(log))
         log.add_event(SchedulerEvent(3, UIEventType.UPDATE))
         self.assertEqual(2, len(log))
         log.add_event(SchedulerEvent(5, UIEventType.UPDATE))
         self.assertEqual(3, len(log))
-        test_timestamp0 = time.time()       # test timestamp 0
+        test_timestamp0 = time.time_ns()       # test timestamp 0
         log.add_event(SchedulerEvent(6, UIEventType.UPDATE))
         self.assertEqual(4, len(log))
         missed_event0 = SchedulerEvent(10, UIEventType.UPDATE)
         log.add_event(SchedulerEvent(16, UIEventType.UPDATE))
         self.assertEqual(5, len(log))
-        self.assertEqual((2, 3, 5, 6, 16), tuple(x.event_id for x in log.get_since_timestamp(startstamp)))
-        self.assertEqual((6, 16), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp0)))
+
+        evs = log.get_since_event(1)  # non existing events should work properly
+        print(f'start:{startstamp} ev0:{evs[0].timestamp} ev-1:{evs[-1].timestamp} end:{time.time_ns()}')
+        self.assertEqual(5, len(evs))
+        evs = log.get_since_event(2)
+        self.assertEqual(4, len(evs))
+        evs = log.get_since_event(4)  # non existing events should work properly
+        self.assertEqual(3, len(evs))
+        evs = log.get_since_event(9)  # non existing events should work properly
+        self.assertEqual(1, len(evs))
+
+        self.assertEqual((2, 3, 5, 6, 16), tuple(x.event_id for x in log.get_since_timestamp_ns(startstamp)))
+        self.assertEqual((6, 16), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp0)))
         log.add_event(SchedulerEvent(22, UIEventType.UPDATE))
         self.assertEqual(6, len(log))
-        test_timestamp1 = time.time()       # test timestamp 1
+        test_timestamp1 = time.time_ns()       # test timestamp 1
         log.add_event(SchedulerEvent(23, UIEventType.UPDATE))
         self.assertEqual(6, len(log))
         missed_event1 = SchedulerEvent(24, UIEventType.UPDATE)
         event = SchedulerEvent(25, UIEventType.UPDATE)
         log.add_event(event)
         self.assertEqual(6, len(log))
-        self.assertEqual((5, 6, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp(startstamp)))
-        self.assertEqual((6, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp0)))
-        self.assertEqual((23, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp1)))
+        self.assertEqual((5, 6, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(startstamp)))
+        self.assertEqual((6, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp0)))
+        self.assertEqual((23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp1)))
 
         log.add_event(missed_event0)
         self.assertEqual(6, len(log))
-        self.assertEqual((6, 10, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp(startstamp)))
-        self.assertEqual((6, 10, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp0)))
-        self.assertEqual((23, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp1)))
+        self.assertEqual((6, 10, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(startstamp)))
+        self.assertEqual((6, 10, 16, 22, 23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp0)))
+        self.assertEqual((23, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp1)))
 
         log.add_event(missed_event1)
         self.assertEqual(6, len(log))
-        self.assertEqual((10, 16, 22, 23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp(startstamp)))
-        self.assertEqual((10, 16, 22, 23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp0)))
-        self.assertEqual((23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp(test_timestamp1)))
+        self.assertEqual((10, 16, 22, 23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(startstamp)))
+        self.assertEqual((10, 16, 22, 23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp0)))
+        self.assertEqual((23, 24, 25), tuple(x.event_id for x in log.get_since_timestamp_ns(test_timestamp1)))
 
         log.add_event(event)  # should not raise, but give warning
         self.assertRaises(RuntimeError, log.add_event, SchedulerEvent(25, UIEventType.UPDATE))  # timestamp different - should raise
