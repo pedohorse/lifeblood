@@ -155,3 +155,18 @@ class Tests(TestCase):
 
     def test_benchmark3(self):
         self._test_benchmark(None, None)
+
+    def test_auto_ids(self):
+        log = SchedulerEventLog(log_time_length_max=None, log_event_count_max=100)
+        for _ in range(100):
+            log.add_event(SchedulerEvent(-1, UIEventType.UPDATE))
+        evs = log.get_since_timestamp(0)
+        self.assertEqual(100, len(evs))
+        for i, ev in enumerate(evs):
+            self.assertEqual(i, ev.event_id)
+        for _ in range(100):
+            log.add_event(SchedulerEvent(-1, UIEventType.UPDATE))
+        evs = log.get_since_timestamp(0)
+        self.assertEqual(100, len(evs))
+        for i, ev in enumerate(evs):
+            self.assertEqual(100+i, ev.event_id)
