@@ -1,3 +1,5 @@
+import io
+
 import lz4.frame
 import struct
 import asyncio
@@ -363,7 +365,7 @@ class TaskGroupBatchData(IBufferSerializable):
 
 
 @dataclass
-class UiData(IBufferSerializable):
+class UiData(IBufferSerializable):  # Deprecated, should not be used any more
     db_uid: int
     graph_data: Optional[NodeGraphStructureData]
     tasks: Optional[TaskBatchData]
@@ -386,12 +388,13 @@ class UiData(IBufferSerializable):
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "UiData":
         buffer = BytesIO(lz4.frame.decompress(stream.readexactly(struct.unpack('>Q', stream.readexactly(8))[0])))
+        reader = BufferedReader(io.BufferedReader(buffer), 8192)
 
-        db_uid, = struct.unpack('>Q', buffer.read(8))
+        db_uid, = struct.unpack('>Q', reader.readexactly(8))
         datas = []
         for data_type in (NodeGraphStructureData, TaskBatchData, WorkerBatchData, TaskGroupBatchData):
-            if struct.unpack('>?', buffer.read(1))[0]:
-                datas.append(data_type.deserialize(buffer))
+            if struct.unpack('>?', reader.readexactly(1))[0]:
+                datas.append(data_type.deserialize(reader))
             else:
                 datas.append(None)
 
