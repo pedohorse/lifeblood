@@ -26,7 +26,7 @@ import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
 #from PySide2.QtGui import QPoin
 
-from typing import Optional, Set, List, Union, Dict, Iterable
+from typing import Callable, Optional, Set, List, Union, Dict, Iterable
 
 
 logger = logging.get_logger('viewer')
@@ -57,10 +57,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_created = Signal(int, str, str, QPointF, object)
     nodes_copied = Signal(dict, QPointF)
 
+    graph_and_tasks_update_interval = 1000
+    groups_update_interval = 5000
+    workers_update_interval = 2000
+
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
         self.__started = False
-        self.__timer = None
+        self.__timer_graph_and_tasks = None
+        self.__timer_groups = None
+        self.__timer_workers = None
         self.__to_stop = False
         self.__task_group_filter: Optional[Set[str]] = None
         # self.__conn: Optional[socket.socket] = None
@@ -88,10 +94,72 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         """
         assert self.thread() == QThread.currentThread()
         self.__started = True
-        self.__timer = PySide2.QtCore.QTimer(self)
-        self.__timer.setInterval(1000)
-        self.__timer.timeout.connect(self.check_scheduler)
-        self.__timer.start()
+        self.__start_graph_and_tasks_timer()
+        self.__start_task_groups_timer()
+        self.__start_workers_timer()
+
+    #
+    ####
+    #
+
+    def __start_graph_and_tasks_timer(self):
+        if self.__timer_graph_and_tasks is not None:
+            return
+        self.__timer_graph_and_tasks = PySide2.QtCore.QTimer(self)
+        self.__timer_graph_and_tasks.setInterval(self.graph_and_tasks_update_interval)
+        self.__timer_graph_and_tasks.timeout.connect(self._check_graph_and_tasks)
+        self.__timer_graph_and_tasks.start()
+
+    @Slot()
+    def poke_graph_and_tasks_update(self):
+        self.__timer_graph_and_tasks.start()  # restart the timer
+        self._check_graph_and_tasks()
+
+    def __stop_graph_and_tasks_timer(self):
+        self.__timer_graph_and_tasks.stop()
+        self.__timer_graph_and_tasks = None
+
+    #
+
+    def __start_workers_timer(self):
+        if self.__timer_workers is not None:
+            return
+        self.__timer_workers = PySide2.QtCore.QTimer(self)
+        self.__timer_workers.setInterval(self.workers_update_interval)
+        self.__timer_workers.timeout.connect(self._check_workers)
+        self.__timer_workers.start()
+
+    @Slot()
+    def poke_workers_update(self):
+        self.__timer_workers.start()  # restart the timer
+        self._check_workers()
+
+    def __stop_workers_timer(self):
+        self.__timer_workers.stop()
+        self.__timer_workers = None
+
+    #
+
+    def __start_task_groups_timer(self):
+        if self.__timer_groups is not None:
+            return
+        self.__timer_groups = PySide2.QtCore.QTimer(self)
+        self.__timer_groups.setInterval(self.groups_update_interval)
+        self.__timer_groups.timeout.connect(self._check_task_groups)
+        self.__timer_groups.start()
+
+    @Slot()
+    def poke_task_groups_update(self):
+        self.__timer_groups.start()  # restart the timer
+        self._check_task_groups()
+
+    def __stop_task_groups_timer(self):
+        self.__timer_groups.stop()
+        self.__timer_groups = None
+
+    #
+    ####
+    #
 
     @Slot()
     def finish(self):
@@ -100,7 +168,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         after this out thread will probably never enter the event loop again
         :return:
         """
-        self.__timer.stop()
+        self.__stop_graph_and_tasks_timer()
+        self.__stop_task_groups_timer()
+        self.__stop_workers_timer()
 
     @Slot(set)
     def set_task_group_filter(self, groups: Set[str]):
@@ -196,47 +266,112 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def set_skip_archived_groups(self, do_skip: bool) -> None:
         self.__skip_archived_groups = do_skip
 
-    @Slot()
-    def check_scheduler(self):
-        if self.interruption_requested():
-            self.__timer.stop()
-            if self.__client is not None:
-                self.__client.close()
-            self.__client = None
-            self.__latest_graph_update_id = -1
-            return
+    # some decorators
 
-        if not self.ensure_connected():
-            return
+    def _interrupt_checker(noop=None):  # defined decorator this way to avoid pycharm spamming warnings...
+        def _decorator(func: Callable):
+            def _inner(self, *args, **kwargs):
+                if self.interruption_requested():
+                    self.__timer.stop()
+                    if self.__client is not None:
+                        self.__client.close()
+                    self.__client = None
+                    self.__latest_graph_update_id = -1
+                    return
+                return func(self, *args, **kwargs)
+            return _inner
+        return _decorator
 
-        assert self.__client is not None
+    def _catch_connection_errors(noop=None):  # defined decorator this way to avoid pycharm spamming warnings...
+        def _decorator(func: Callable):
+            def _inner(self, *args, **kwargs):
+                if not self.ensure_connected():
+                    return
+                assert self.__client is not None
+                try:
+                    return func(self, *args, **kwargs)
+                except ConnectionError as e:
+                    logger.error(f'connection reset {e}')
+                    logger.error('scheduler connection lost')
+                    self.__client = None
+                    return
+                except Exception:
+                    logger.exception('problems in network operations')
+                    self.__client = None
+                    return
+            return _inner
+        return _decorator
 
-        try:
-            latest_id = self.__client.get_ui_graph_state_update_id()
-            if latest_id > self.__latest_graph_update_id:
-                graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
-                self.graph_update.emit(graph_state)
+    # end decorators
 
-            tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
-            self.tasks_update.emit(tasks_state)
+    @Slot(name="_check_graph_and_tasks")
+    @_interrupt_checker()
+    @_catch_connection_errors()
+    def _check_graph_and_tasks(self):
+        latest_id = self.__client.get_ui_graph_state_update_id()
+        if latest_id > self.__latest_graph_update_id:
+            graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
+            self.graph_update.emit(graph_state)
 
-            workers_state = self.__client.get_ui_workers_state()
-            self.workers_update.emit(workers_state)
+        tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
+        self.tasks_update.emit(tasks_state)
 
-            if time.time() - self.__last_groups_checked_timestamp > 5.0:  # TODO: to config with it!
-                groups_state = self.__client.get_ui_task_groups(self.__skip_archived_groups)
-                self.__last_groups_checked_timestamp = time.time()
-                self.groups_update.emit(groups_state)
+    @Slot(name="_check_task_groups")
+    @_interrupt_checker()
+    @_catch_connection_errors()
+    def _check_task_groups(self):
+        groups_state = self.__client.get_ui_task_groups(self.__skip_archived_groups)
+        self.__last_groups_checked_timestamp = time.time()
+        self.groups_update.emit(groups_state)
 
-        except ConnectionError as e:
-            logger.error(f'connection reset {e}')
-            logger.error('scheduler connection lost')
-            self.__client = None
-            return
-        except Exception:
-            logger.exception('problems in network operations')
-            self.__client = None
-            return
+    @Slot(name="_check_workers")
+    @_interrupt_checker()
+    @_catch_connection_errors()
+    def _check_workers(self):
+        workers_state = self.__client.get_ui_workers_state()
+        self.workers_update.emit(workers_state)
+
+    # @Slot()
+    # def check_scheduler(self):
+    #     if self.interruption_requested():
+    #         self.__timer.stop()
+    #         if self.__client is not None:
+    #             self.__client.close()
+    #         self.__client = None
+    #         self.__latest_graph_update_id = -1
+    #         return
+    #
+    #     if not self.ensure_connected():
+    #         return
+    #
+    #     assert self.__client is not None
+    #
+    #     try:  # TODO: if sched closes connection - need to handle this case without logging a general exception
+    #         latest_id = self.__client.get_ui_graph_state_update_id()
+    #         if latest_id > self.__latest_graph_update_id:
+    #             graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
+    #             self.graph_update.emit(graph_state)
+    #
+    #         tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
+    #         self.tasks_update.emit(tasks_state)
+    #
+    #         workers_state = self.__client.get_ui_workers_state()
+    #         self.workers_update.emit(workers_state)
+    #
+    #         if time.time() - self.__last_groups_checked_timestamp > 5.0:  # TODO: to config with it!
+    #             groups_state = self.__client.get_ui_task_groups(self.__skip_archived_groups)
+    #             self.__last_groups_checked_timestamp = time.time()
+    #             self.groups_update.emit(groups_state)
+    #
+    #     except ConnectionError as e:
+    #         logger.error(f'connection reset {e}')
+    #         logger.error('scheduler connection lost')
+    #         self.__client = None
+    #         return
+    #     except Exception:
+    #         logger.exception('problems in network operations')
+    #         self.__client = None
+    #         return
 
     @Slot(int)
     def get_invocation_metadata(self, task_id: int):
