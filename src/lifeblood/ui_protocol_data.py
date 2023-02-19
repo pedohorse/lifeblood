@@ -2,7 +2,7 @@ import lz4.frame
 import struct
 import asyncio
 from io import BytesIO, BufferedIOBase
-import pickle
+from .buffered_connection import BufferedReader
 from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState
 from dataclasses import dataclass
 
@@ -15,9 +15,9 @@ def _serialize_string(s: str, stream: BufferedIOBase) -> int:
     return stream.write(bstr)
 
 
-def _deserialize_string(stream: BufferedIOBase) -> str:
-    bsize, = struct.unpack('>Q', stream.read(8))
-    return bytes(stream.read(bsize)).decode('UTF-8')
+def _deserialize_string(stream: BufferedReader) -> str:
+    bsize, = struct.unpack('>Q', stream.readexactly(8))
+    return bytes(stream.readexactly(bsize)).decode('UTF-8')
 
 
 class IBufferSerializable:
@@ -25,7 +25,7 @@ class IBufferSerializable:
         raise NotImplementedError()
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase):
+    def deserialize(cls, stream: BufferedReader):
         raise NotImplementedError()
 
     async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
@@ -76,26 +76,26 @@ class TaskData(IBufferSerializable):
             _serialize_string(group, stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "TaskData":
+    def deserialize(cls, stream: BufferedReader) -> "TaskData":
         offset = 106  # 8 + 1 + 8*3 + 4 + 1 + 8*3 + 1+8 + 1+8 + 1+8 + 1+8 + 8
         task_id, has_parent_id, task_parent_id, task_children_count, task_active_children_count, \
             task_state_value, task_paused, task_node_id, task_split_level, task_work_data_invocation_attempt, \
             has_progress, progress, \
             has_task_split_origin_task_id, task_split_origin_task_id, \
             has_task_split_id, task_split_id, \
-            has_task_invocation_id, task_invocation_id, group_count = struct.unpack('>Q?QQQI?QQQ?d?Q?Q?QQ', stream.read(offset))
+            has_task_invocation_id, task_invocation_id, group_count = struct.unpack('>Q?QQQI?QQQ?d?Q?Q?QQ', stream.readexactly(offset))
 
-        has_state_details, = struct.unpack('>?', stream.read(1))
+        has_state_details, = struct.unpack('>?', stream.readexactly(1))
         if has_state_details:
             state_details = _deserialize_string(stream)
         else:
             state_details = None
-        has_node_input_name, = struct.unpack('>?', stream.read(1))
+        has_node_input_name, = struct.unpack('>?', stream.readexactly(1))
         if has_node_input_name:
             node_input_name = _deserialize_string(stream)
         else:
             node_input_name = None
-        has_node_output_name, = struct.unpack('>?', stream.read(1))
+        has_node_output_name, = struct.unpack('>?', stream.readexactly(1))
         if has_node_output_name:
             node_output_name = _deserialize_string(stream)
         else:
@@ -128,7 +128,7 @@ class TaskBatchData(IBufferSerializable):
 
     @classmethod
     def deserialize(cls, stream: BufferedIOBase) -> "TaskBatchData":
-        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.readexactly(16))
         tasks = {}
         for i in range(tasks_count):
             task_data = TaskData.deserialize(stream)
@@ -148,8 +148,8 @@ class NodeData(IBufferSerializable):
         _serialize_string(self.type, stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "NodeData":
-        node_id, = struct.unpack('>Q', stream.read(8))
+    def deserialize(cls, stream: BufferedReader) -> "NodeData":
+        node_id, = struct.unpack('>Q', stream.readexactly(8))
         node_name = _deserialize_string(stream)
         node_type = _deserialize_string(stream)
         return NodeData(node_id, node_name, node_type)
@@ -170,8 +170,8 @@ class NodeConnectionData(IBufferSerializable):
         _serialize_string(self.out_name, stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "NodeConnectionData":
-        connection_id, in_id, out_id = struct.unpack('>QQQ', stream.read(24))
+    def deserialize(cls, stream: BufferedReader) -> "NodeConnectionData":
+        connection_id, in_id, out_id = struct.unpack('>QQQ', stream.readexactly(24))
         in_name = _deserialize_string(stream)
         out_name = _deserialize_string(stream)
         return NodeConnectionData(connection_id, in_id, in_name, out_id, out_name)
@@ -191,8 +191,8 @@ class NodeGraphStructureData(IBufferSerializable):
             connection.serialize(stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "NodeGraphStructureData":
-        db_uid, nodes_count, connections_count = struct.unpack('>QQQ', stream.read(24))
+    def deserialize(cls, stream: BufferedReader) -> "NodeGraphStructureData":
+        db_uid, nodes_count, connections_count = struct.unpack('>QQQ', stream.readexactly(24))
         nodes = {}
         connections = {}
         for i in range(nodes_count):
@@ -220,9 +220,9 @@ class WorkerResources(IBufferSerializable):
                                  self.gpu_count, self.total_gpu_count, self.gpu_mem, self.total_gpu_mem))
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "WorkerResources":
+    def deserialize(cls, stream: BufferedReader) -> "WorkerResources":
         cpu_count, total_cpu_count, cpu_mem, total_cpu_mem, \
-        gpu_count, total_gpu_count, gpu_mem, total_gpu_mem = struct.unpack('>ddQQddQQ', stream.read(64))
+        gpu_count, total_gpu_count, gpu_mem, total_gpu_mem = struct.unpack('>ddQQddQQ', stream.readexactly(64))
         return WorkerResources(cpu_count, total_cpu_count, cpu_mem, total_cpu_mem,
                                gpu_count, total_gpu_count, gpu_mem, total_gpu_mem)
 
@@ -256,13 +256,13 @@ class WorkerData(IBufferSerializable):
             _serialize_string(group, stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "WorkerData":
+    def deserialize(cls, stream: BufferedReader) -> "WorkerData":
         worker_id, last_seen_timestamp, state_value, type_value, \
             has_current_invocation_node_id, current_invocation_node_id, \
             has_current_invocation_task_id, current_invocation_task_id, \
             has_current_invocation_id, current_invocation_id, \
             has_current_invocation_progress, current_invocation_progress, \
-            groups_count = struct.unpack('>QQII?Q?Q?Q?dQ', stream.read(68))
+            groups_count = struct.unpack('>QQII?Q?Q?Q?dQ', stream.readexactly(68))
         if not has_current_invocation_node_id:
             current_invocation_node_id = None
         if not has_current_invocation_task_id:
@@ -292,8 +292,8 @@ class WorkerBatchData(IBufferSerializable):
             task.serialize(stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "WorkerBatchData":
-        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
+    def deserialize(cls, stream: BufferedReader) -> "WorkerBatchData":
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.readexactly(16))
         workers = {}
         for i in range(tasks_count):
             task_data = WorkerData.deserialize(stream)
@@ -309,11 +309,11 @@ class TaskGroupStatisticsData(IBufferSerializable):
     tasks_total: int
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQQQ', self.tasks_done, self.tasks_in_progress, self.tasks_with_error, self.tasks_total))
+        stream.write(struct.pack('>QQQQ', self.tasks_done or 0, self.tasks_in_progress or 0, self.tasks_with_error or 0, self.tasks_total or 0))
 
     @classmethod
-    def deserialize(cls, stream) -> "TaskGroupStatisticsData":
-        tasks_done, tasks_in_progress, tasks_with_error, tasks_total = struct.unpack('>QQQQ', stream.read(32))
+    def deserialize(cls, stream: BufferedReader) -> "TaskGroupStatisticsData":
+        tasks_done, tasks_in_progress, tasks_with_error, tasks_total = struct.unpack('>QQQQ', stream.readexactly(32))
         return TaskGroupStatisticsData(tasks_done, tasks_in_progress, tasks_with_error, tasks_total)
 
 
@@ -328,11 +328,12 @@ class TaskGroupData(IBufferSerializable):
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>QId?', self.creation_timestamp, self.state.value, self.priority, self.statistics is not None))
         _serialize_string(self.name, stream)
-        self.statistics.serialize(stream)
+        if self.statistics is not None:
+            self.statistics.serialize(stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "TaskGroupData":
-        ctimestamp, state_value, priority, has_statistics = struct.unpack('>QId?', stream.read(21))
+    def deserialize(cls, stream: BufferedReader) -> "TaskGroupData":
+        ctimestamp, state_value, priority, has_statistics = struct.unpack('>QId?', stream.readexactly(21))
         name = _deserialize_string(stream)
         if has_statistics:
             statistics = TaskGroupStatisticsData.deserialize(stream)
@@ -348,12 +349,12 @@ class TaskGroupBatchData(IBufferSerializable):
 
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>QQ', self.db_uid, len(self.task_groups)))
-        for task in self.task_groups.values():
-            task.serialize(stream)
+        for task_group in self.task_groups.values():
+            task_group.serialize(stream)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "TaskGroupBatchData":
-        db_uid, tasks_count, = struct.unpack('>QQ', stream.read(16))
+    def deserialize(cls, stream: BufferedReader) -> "TaskGroupBatchData":
+        db_uid, tasks_count, = struct.unpack('>QQ', stream.readexactly(16))
         task_groups = {}
         for i in range(tasks_count):
             group_data = TaskGroupData.deserialize(stream)
@@ -383,8 +384,8 @@ class UiData(IBufferSerializable):
         stream.write(lzdata)
 
     @classmethod
-    def deserialize(cls, stream: BufferedIOBase) -> "UiData":
-        buffer = BytesIO(lz4.frame.decompress(stream.read(struct.unpack('>Q', stream.read(8))[0])))
+    def deserialize(cls, stream: BufferedReader) -> "UiData":
+        buffer = BytesIO(lz4.frame.decompress(stream.readexactly(struct.unpack('>Q', stream.readexactly(8))[0])))
 
         db_uid, = struct.unpack('>Q', buffer.read(8))
         datas = []
