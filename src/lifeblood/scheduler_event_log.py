@@ -48,7 +48,9 @@ class SchedulerEventLog:
 
     def add_event(self, event: SchedulerEvent, do_trim=True):
         # first check the trivial case
-        if len(self.__events) == 0 or event.event_id > self.__events[-1].event_id and event.timestamp > self.__events[-1].timestamp:
+        if event.event_id < 0:
+            event.event_id = self.__internal_event_counter_next
+        if len(self.__events) == 0 or event.event_id > self.__events[-1].event_id and event.timestamp >= self.__events[-1].timestamp:
             i = len(self.__events)
         else:
             if event.event_id in self.__event_id_to_event:
@@ -60,8 +62,6 @@ class SchedulerEventLog:
             if i > 0 and self.__events[i-1].event_id >= event.event_id \
                     or i < len(self.__events) - 1 and self.__events[i+1].event_id <= event.event_id:  # sanity checks
                 raise RuntimeError('event IDs are expected to be sorted the same way as their timestamps')
-        if event.event_id < 0:
-            event.event_id = self.__internal_event_counter_next
         self.__events.insert(i, event)
         self.__event_id_to_event[event.event_id] = event
         self.__internal_event_counter_next = max(self.__internal_event_counter_next, event.event_id) + 1
