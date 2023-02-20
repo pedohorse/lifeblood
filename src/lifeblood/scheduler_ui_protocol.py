@@ -81,6 +81,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             state = await self.__scheduler.ui_state_access.get_tasks_ui_state(groups, not include_dead)
             await state.serialize_to_streamwriter(writer)
 
+        async def comm_request_task_events():  # request_task_events
+            include_dead, num_groups, logging_time = struct.unpack('>?Qd', await reader.readexactly(17))
+            groups = []
+            for _ in range(num_groups):
+                groups.append(await read_string())
+            events = await self.__scheduler.ui_state_access.subscribe_to_task_events_for_groups(groups, not include_dead, logging_time)
+            writer.write(struct.pack('>Q', len(events)))
+            for event in events:
+                await event.serialize_to_streamwriter(writer)
+
         async def comm_get_ui_workers_state():  # get_ui_workers_state
             state = await self.__scheduler.ui_state_access.get_workers_ui_state()
             await state.serialize_to_streamwriter(writer)
@@ -570,6 +580,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'get_ui_graph_state': comm_get_ui_graph_state,
                     'get_ui_task_groups': comm_get_ui_task_groups,
                     'get_ui_tasks_state': comm_get_ui_tasks_state,
+                    'request_task_events': comm_request_task_events,
                     'get_ui_workers_state': comm_get_ui_workers_state,
                     'getinvocmeta': comm_get_invoc_meta,
                     'getlog': comm_get_log,
