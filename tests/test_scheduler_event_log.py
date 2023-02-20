@@ -23,6 +23,7 @@ class Tests(TestCase):
         self.assertEqual(3, len(log))
         time.sleep(0.000001)
         test_timestamp0 = time.time_ns()       # test timestamp 0
+        time.sleep(0.000001)
         log.add_event(SchedulerEvent(6, UIEventType.UPDATE))
         self.assertEqual(4, len(log))
         time.sleep(0.000001)
@@ -51,6 +52,7 @@ class Tests(TestCase):
         self.assertEqual(6, len(log))
         time.sleep(0.000001)
         test_timestamp1 = time.time_ns()       # test timestamp 1
+        time.sleep(0.000001)
         log.add_event(SchedulerEvent(23, UIEventType.UPDATE))
         self.assertEqual(6, len(log))
         time.sleep(0.000001)
