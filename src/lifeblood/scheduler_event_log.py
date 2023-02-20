@@ -1,14 +1,15 @@
 import logging
 from .ui_events import SchedulerEvent
+from .enums import UIEventType
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 
 logger = logging.getLogger(__name__)
 
 
 class SchedulerEventLog:
-    def __init__(self, *, log_time_length_max: Optional[float], log_event_count_max: Optional[int]):
+    def __init__(self, *, log_time_length_max: Optional[float] = None, log_event_count_max: Optional[int] = None):
         self.__max_time_ns = int(log_time_length_max * 10**9) if log_time_length_max is not None else None
         self.__max_count = log_event_count_max
         if log_event_count_max is None and log_time_length_max is None:
@@ -16,21 +17,26 @@ class SchedulerEventLog:
 
         self.__events: List[SchedulerEvent] = []  # will be kept sorted
         self.__event_id_to_event: Dict[int, SchedulerEvent] = {}
+        self.__full_state_events: List[SchedulerEvent] = []
 
         self.__internal_event_counter_next = 0
 
     def __find_index_below_timestamp(self, timestamp):
-        return self.__find_index_below('timestamp', timestamp)
+        return self.__find_index_below(self.__events, 'timestamp', timestamp)
 
     def __find_index_below_id(self, event_id):
-        return self.__find_index_below('event_id', event_id)
+        return self.__find_index_below(self.__events, 'event_id', event_id)
 
-    def __find_index_below(self, property_name, value):
-        if len(self.__events) < 8:
-            for i, event in enumerate(self.__events):
+    def __find_full_state_index_below_id(self, event_id):
+        return self.__find_index_below(self.__full_state_events, 'event_id', event_id)
+
+    @classmethod
+    def __find_index_below(cls, event_list, property_name, value):
+        if len(event_list) < 8:
+            for i, event in enumerate(event_list):
                 if getattr(event, property_name) > value:
                     return i - 1
-            return len(self.__events) - 1
+            return len(event_list) - 1
 
         def _find_bin(l: List[SchedulerEvent], value):
             if len(l) == 1:
@@ -44,7 +50,7 @@ class SchedulerEventLog:
                 return i + si
             return _find_bin(l[:si], value)
 
-        return _find_bin(self.__events, value)
+        return _find_bin(event_list, value)
 
     def add_event(self, event: SchedulerEvent, do_trim=True):
         # first check the trivial case
@@ -64,6 +70,12 @@ class SchedulerEventLog:
                 raise RuntimeError('event IDs are expected to be sorted the same way as their timestamps')
         self.__events.insert(i, event)
         self.__event_id_to_event[event.event_id] = event
+        if event.event_type == UIEventType.FULL_STATE:
+            if len(self.__full_state_events) == 0 or i == len(self.__events) - 1:
+                self.__full_state_events.append(event)
+            else:
+                self.__full_state_events.insert(self.__find_full_state_index_below_id(event.event_id) + 1, event)
+
         self.__internal_event_counter_next = max(self.__internal_event_counter_next, event.event_id) + 1
         if do_trim:
             self.trim()
@@ -76,12 +88,18 @@ class SchedulerEventLog:
             if self.__events[0].timestamp <= threshold:
                 trimpos = self.__find_index_below_timestamp(threshold)+1
                 for event in self.__events[:trimpos]:
-                    self.__event_id_to_event.pop(event.event_id)
+                    deleted_event = self.__event_id_to_event.pop(event.event_id)
+                    if deleted_event.event_type == UIEventType.FULL_STATE:
+                        # since we delete always last - we are guaranteed to have full events in the same order
+                        assert deleted_event.event_id == self.__full_state_events.pop(0).event_id
                 self.__events = self.__events[trimpos:]
 
         if self.__max_count is not None and len(self.__events) > self.__max_count:
             for event in self.__events[:-self.__max_count]:
-                self.__event_id_to_event.pop(event.event_id)
+                deleted_event = self.__event_id_to_event.pop(event.event_id)
+                if deleted_event.event_type == UIEventType.FULL_STATE:
+                    # since we delete always last - we are guaranteed to have full events in the same order
+                    assert deleted_event.event_id == self.__full_state_events.pop(0).event_id
             self.__events = self.__events[-self.__max_count:]
 
     def get_since_timestamp(self, timestamp: float):
@@ -96,9 +114,13 @@ class SchedulerEventLog:
     def get_since_timestamp_ns(self, timestamp_ns: int):
         return tuple(self.__events[self.__find_index_below_timestamp(timestamp_ns)+1:])
 
-    def get_since_event(self, event_id: int):
+    def get_since_event(self, event_id: int, truncate_before_full_state=False):
 
         # if event was already removed from the list (assume it was old)
+        if truncate_before_full_state and len(self.__full_state_events) > 0:
+            possible_full_state_i = self.__find_full_state_index_below_id(event_id) + 1
+            if possible_full_state_i < len(self.__full_state_events):
+                event_id = self.__full_state_events[possible_full_state_i].event_id - 1
         e_index = self.__find_index_below_id(event_id)
         if 0 <= e_index < len(self.__events):
             assert self.__events[e_index].event_id <= event_id  # in case event_id does not exist  - found event_id will be smaller
