@@ -2,9 +2,9 @@ import io
 
 import lz4.frame
 import struct
-import asyncio
 from io import BytesIO, BufferedIOBase
 from .buffered_connection import BufferedReader
+from .buffer_serializable import IBufferSerializable
 from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState
 from dataclasses import dataclass
 
@@ -20,18 +20,6 @@ def _serialize_string(s: str, stream: BufferedIOBase) -> int:
 def _deserialize_string(stream: BufferedReader) -> str:
     bsize, = struct.unpack('>Q', stream.readexactly(8))
     return bytes(stream.readexactly(bsize)).decode('UTF-8')
-
-
-class IBufferSerializable:
-    def serialize(self, stream: BufferedIOBase):
-        raise NotImplementedError()
-
-    @classmethod
-    def deserialize(cls, stream: BufferedReader):
-        raise NotImplementedError()
-
-    async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
-        await asyncio.get_event_loop().run_in_executor(None, self.serialize, stream)
 
 
 @dataclass
