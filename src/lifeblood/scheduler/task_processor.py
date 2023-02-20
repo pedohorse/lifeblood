@@ -292,7 +292,7 @@ class TaskProcessor(SchedulerComponentBase):
                         await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
                     await submit_transaction.commit()
 
-        awaiter_executor = ThreadPoolExecutor()  # TODO: max_workers= set from config
+        awaiter_executor = ThreadPoolExecutor(thread_name_prefix='awaiter')  # TODO: max_workers= set from config
         # this will hold references to tasks created with asyncio.create_task
         tasks_to_wait = set()
         stop_task = asyncio.create_task(self._stop_event.wait())
