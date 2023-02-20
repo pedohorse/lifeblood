@@ -74,4 +74,4 @@ class ProcessPriorityAdjustment(Enum):
 class UIEventType(Enum):
     UPDATE = 0
     DELETE = 1
-
+    FULL_STATE = 2  # represents a checkpoint in the log that represents the full state, so events before are irrelevant
