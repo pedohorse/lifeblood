@@ -13,22 +13,38 @@ class SchedulerEvent:
     event_id: int
     event_type: UIEventType
 
-
-@dataclass
-class TaskEvent(SchedulerEvent):
-    task_data: Union[TaskData, int]  # task data, or task_id depending on UIEventType
+    def __hash__(self):
+        return hash((self.event_id, self.timestamp, self.event_type))
 
 
-@dataclass
-class DataUpdateEvent(SchedulerEvent):
-    ui_data: UiData
+class SchedulerEventAutoId(SchedulerEvent):
+    event_id: int = field(default=-1, init=False)
 
 
 @dataclass
-class TaskGroupFullUpdate(SchedulerEvent):
-    task_batch_data: TaskBatchData
+class TaskEvent(SchedulerEventAutoId):
+    pass
 
 
 @dataclass
-class TaskGraphUpdate(SchedulerEvent):
-    task_batch_data: TaskBatchData
+class TaskFullState(TaskEvent):
+    task_data: TaskBatchData
+    event_type: UIEventType = field(default=UIEventType.FULL_STATE, init=False)
+
+
+@dataclass
+class TaskUpdate(TaskEvent):
+    task_data: TaskData
+    event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
+
+
+@dataclass
+class TasksUpdate(TaskEvent):
+    task_data: TaskBatchData
+    event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
+
+
+@dataclass
+class TaskDeleted(TaskEvent):
+    task_data: int  # task data, or task_id depending on UIEventType
+    event_type: UIEventType = field(default=UIEventType.DELETE, init=False)
