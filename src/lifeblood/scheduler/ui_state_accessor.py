@@ -1,14 +1,30 @@
 import asyncio
 import aiosqlite
 from datetime import datetime
+from dataclasses import dataclass
+import time
 from ..logging import get_logger
 from ..misc import atimeit, aperformance_measurer
-from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType
+from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
+from ..scheduler_event_log import SchedulerEventLog
+from ..ui_events import TaskEvent, TaskFullState
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData
 from .data_access import DataAccess
 
-from typing import Iterable, Optional
+from typing import Dict, Iterable, List, Optional, Tuple, Union
+
+
+class NotSubscribedError(RuntimeError):
+    pass
+
+@dataclass
+class LogSubscription:
+    expiration_timestamp: float
+    event_log: SchedulerEventLog
+
+    def is_expired(self) -> bool:
+        return time.time() >= self.expiration_timestamp
 
 
 class UIStateAccessor:
@@ -21,6 +37,7 @@ class UIStateAccessor:
         self.__latest_graph_ui_state: Optional[NodeGraphStructureData] = None
         self.__latest_graph_ui_event_id = 0
         #
+        self.__task_group_event_logs: Dict[Tuple[str, ...], LogSubscription] = {}
 
     @property
     def graph_update_id(self):
@@ -29,6 +46,9 @@ class UIStateAccessor:
     def bump_graph_update_id(self):
         self.__latest_graph_ui_state = None
         self.__latest_graph_ui_event_id += 1
+
+    def prune_event_subscriptions(self):
+        self.__task_group_event_logs = {k: v for k, v in self.__task_group_event_logs.items() if not v.is_expired()}
 
     @atimeit(0.005)
     async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
@@ -251,6 +271,40 @@ class UIStateAccessor:
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
 
         return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers)
+
+    async def subscribe_to_task_events_for_groups(self, task_groups: Iterable[str], skip_dead: bool, subscribe_for_seconds: float) -> List[TaskEvent]:
+        """
+
+
+        :param task_groups:
+        :param skip_dead:
+        :param subscribe_for_seconds:
+        :return:
+        """
+        group_key = tuple(sorted(task_groups)) + (skip_dead,)
+        if group_key in self.__task_group_event_logs:  # if so - update
+            self.__task_group_event_logs[group_key].expiration_timestamp = time.time() + subscribe_for_seconds
+        else:
+            self.__task_group_event_logs[group_key] = LogSubscription(time.time() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
+
+        log = self.__task_group_event_logs[group_key].event_log
+        events = log.get_since_event(-1, truncate_before_full_state=True)  # try to see if we already have a chain of events starting with full state update
+
+        if len(events) > 0 and events[0].event_type == UIEventType.FULL_STATE:  # so if we have a set of events starting with full state
+            return events
+
+        state = await self.get_tasks_ui_state(task_groups, skip_dead)
+        state_event = TaskFullState(state)  # if pycharm warns here - it shouldn't, looks like it cannot parse dataclass inheritance
+        log.add_event(state_event)
+        return [state_event]
+
+    def get_events_for_groups_since_event_id(self, task_groups: Iterable[str], last_known_event_id: int):
+        group_key = tuple(sorted(task_groups))
+        if group_key not in self.__task_group_event_logs:
+            raise NotSubscribedError()
+        log = self.__task_group_event_logs[group_key].event_log
+        events = log.get_since_event(last_known_event_id, truncate_before_full_state=True)
+        return events
 
 
 # scheduler helpers
