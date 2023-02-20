@@ -450,60 +450,6 @@ class Scheduler:
             need_commit = need_commit or await self._update_worker_resouce_usage(worker_id, connection=con)
         return need_commit
 
-    ###
-
-    async def split_task(self, task_id: int, into: int, con: aiosqlite.Connection) -> List[int]:
-        """
-        con is expected to be a opened db connection with dict factory
-        :param into:
-        :param con:
-        :return:
-        """
-        if into < 1:
-            raise ValueError('cant split into less than 1 part')
-
-        if not con.in_transaction:
-            await con.execute('BEGIN IMMEDIATE')
-        # even first selects are only safe to do within a transaction
-
-        async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
-            task_row = await cur.fetchone()
-        new_split_level = task_row['split_level'] + 1
-
-        async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
-            next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
-        await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                          (TaskState.SPLITTED.value, task_id))
-        # await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
-        #                   (next_split_id, task_row['id'], 0, into, task_id))
-        all_split_ids = []
-        for split_element in range(into):
-            async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
-                                   '"node_input_name", "node_output_name", '
-                                   '"work_data", "environment_resolver_data", "name", "attributes", "split_level") '
-                                   'VALUES (?,?,?,?,?,?,?,?,?,?)',
-                                   (None, task_row['state'], task_row['node_id'],
-                                    task_row['node_input_name'], task_row['node_output_name'],
-                                    task_row['work_data'], task_row['environment_resolver_data'], task_row['name'], task_row['attributes'], new_split_level)) \
-                    as insert_cur:
-                new_task_id = insert_cur.lastrowid
-
-            # copy groups  # TODO:SQL OPTIMIZE
-            async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as gcur:
-                groups = [x['group'] for x in await gcur.fetchall()]
-            if len(groups) > 0:
-                await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
-                                      zip(itertools.repeat(new_task_id, len(groups)), groups))
-
-            all_split_ids.append(new_task_id)
-            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
-                              (next_split_id, new_task_id, split_element, into, task_id))
-        # now increase number of children to the parent of the task being splitted
-
-        assert into == len(all_split_ids)
-        self.wake()
-        return all_split_ids
-
     #
     # invocation consistency checker
     async def invocation_consistency_checker(self):

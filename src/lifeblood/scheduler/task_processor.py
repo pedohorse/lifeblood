@@ -1,6 +1,7 @@
 import sys
 import traceback
 import json
+import itertools
 import threading  # for bugfix
 from concurrent.futures import ThreadPoolExecutor
 import aiosqlite
@@ -19,7 +20,7 @@ from ..config import get_config
 
 from .scheduler_component_base import SchedulerComponentBase
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler import Scheduler
@@ -192,19 +193,23 @@ class TaskProcessor(SchedulerComponentBase):
 
                 # print(f'spawn: {time.perf_counter() - _bla1}')
                 # _bla1 = time.perf_counter()
+                new_tasks_created = []
                 if process_result._split_attribs is not None:
                     split_count = len(process_result._split_attribs)
-                    for attr_dict, split_task_id in zip(process_result._split_attribs, await self.scheduler.split_task(task_id, split_count, con)):
+                    for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
                         async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                             split_task_dict = await cur.fetchone()
                         assert split_task_dict is not None
                         split_task_attrs = json.loads(split_task_dict['attributes'])  # TODO: run in executor
                         split_task_attrs.update(attr_dict)
                         await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
+                        new_tasks_created.append(splited_task_id)
                 # print(f'split: {time.perf_counter()-_bla1}')
 
                 # _precum = time.perf_counter()-_blo
                 await con.commit(self.poke)
+                if new_tasks_created:  # REPORT EVENT TO UI
+                    await self.scheduler.ui_state_access.scheduler_reports_tasks_added(new_tasks_created)
                 # print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
         # submitter
@@ -544,6 +549,7 @@ class TaskProcessor(SchedulerComponentBase):
                     # means task is done being processed by current node,
                     # now it should be passed to the next node
                     elif task_state == TaskState.DONE or task_state == TaskState.SPAWNED:
+                        new_tasks_created = []
                         for task_row in all_task_rows:
                             if task_row['state'] == TaskState.DONE.value:
                                 out_plug_name = task_row['node_output_name'] or 'main'
@@ -561,12 +567,13 @@ class TaskProcessor(SchedulerComponentBase):
                                                       (wire['node_id_in'], wire['in_name'], TaskState.WAITING.value, None, task_row['id']))
                                     total_state_changes += 1
                                 else:
-                                    for i, splited_task_id in enumerate(await self.scheduler.split_task(task_row['id'], wire_count, con)):
+                                    for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
                                         await con.execute('UPDATE tasks SET node_id = ?, node_input_name = ?, state = ?, work_data = ?'
                                                           'WHERE "id" = ?',
                                                           (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
                                                            splited_task_id))
                                         total_state_changes += 1
+                                        new_tasks_created.append(splited_task_id)
                                     total_state_changes += 1  # this is for original (for split) task changing state to SPLITTED
 
                             else:
@@ -577,6 +584,8 @@ class TaskProcessor(SchedulerComponentBase):
                                 await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
 
                         await con.commit()
+                        if new_tasks_created:  # REPORT EVENT TO UI
+                            await self.scheduler.ui_state_access.scheduler_reports_tasks_added(new_tasks_created)
 
                     self.__logger.debug(f'{task_state.name} took: {time.perf_counter() - _debug_pstart}')
 
@@ -591,7 +600,7 @@ class TaskProcessor(SchedulerComponentBase):
                             self.__logger.debug('no useful tasks seem to be available')
                             self.sleep()
                 else:
-                    self.wake()
+                    self.scheduler.wake()
 
             processing_time = time.perf_counter() - _debug_con
             if processing_time > 1.0:
@@ -619,3 +628,58 @@ class TaskProcessor(SchedulerComponentBase):
         if len(tasks_to_wait) > 0:
             await asyncio.wait(tasks_to_wait, return_when=asyncio.ALL_COMPLETED)
         self.__logger.info('task processor finished')
+
+    # helpers
+
+    async def split_task(self, task_id: int, into: int, con: aiosqlite.Connection) -> List[int]:
+        """
+        con is expected to be a opened db connection with dict factory
+        :param task_id
+        :param into:
+        :param con:
+        :return:
+        """
+        if into < 1:
+            raise ValueError('cant split into less than 1 part')
+
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
+        # even first selects are only safe to do within a transaction
+
+        async with con.execute('SELECT * FROM tasks WHERE "id" = ?', (task_id,)) as cur:
+            task_row = await cur.fetchone()
+        new_split_level = task_row['split_level'] + 1
+
+        async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
+            next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)
+        await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                          (TaskState.SPLITTED.value, task_id))
+        # await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
+        #                   (next_split_id, task_row['id'], 0, into, task_id))
+        all_split_ids = []
+        for split_element in range(into):
+            async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
+                                   '"node_input_name", "node_output_name", '
+                                   '"work_data", "environment_resolver_data", "name", "attributes", "split_level") '
+                                   'VALUES (?,?,?,?,?,?,?,?,?,?)',
+                                   (None, task_row['state'], task_row['node_id'],
+                                    task_row['node_input_name'], task_row['node_output_name'],
+                                    task_row['work_data'], task_row['environment_resolver_data'], task_row['name'], task_row['attributes'], new_split_level)) \
+                    as insert_cur:
+                new_task_id = insert_cur.lastrowid
+
+            # copy groups  # TODO:SQL OPTIMIZE
+            async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (task_id,)) as gcur:
+                groups = [x['group'] for x in await gcur.fetchall()]
+            if len(groups) > 0:
+                await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                                      zip(itertools.repeat(new_task_id, len(groups)), groups))
+
+            all_split_ids.append(new_task_id)
+            await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
+                              (next_split_id, new_task_id, split_element, into, task_id))
+        # now increase number of children to the parent of the task being splitted
+
+        assert into == len(all_split_ids)
+        self.scheduler.wake()  # do we need it here?
+        return all_split_ids
