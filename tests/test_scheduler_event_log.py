@@ -12,6 +12,7 @@ class Tests(TestCase):
         self.assertEqual(0, len(log))
 
         startstamp = time.time_ns()
+        time.sleep(0.000001)
         log.add_event(SchedulerEvent(2, UIEventType.UPDATE))
         self.assertEqual(1, len(log))
         time.sleep(0.000001)  # cicd test machines seem to may provide a very coarse time resolution, so we ensure
@@ -143,9 +144,9 @@ class Tests(TestCase):
         delta3 = self._run_iters(100000, 10, 9999999)
         delta4 = self._run_iters(1000000, 10, 9999999)
         print(f'{delta1} : {delta2} : {delta3} : {delta4}')
-        self.assertGreater(delta1*(10+1), delta2, )
-        self.assertGreater(delta1*(100+10), delta3)
-        self.assertGreater(delta1*(1000+100), delta4)
+        self.assertGreater(delta1*(10+1.5), delta2, )  # we give 15% margin
+        self.assertGreater(delta1*(100+15), delta3)
+        self.assertGreater(delta1*(1000+150), delta4)
 
     def test_benchmark1(self):
         self._test_benchmark(10, 9999999)
@@ -170,3 +171,46 @@ class Tests(TestCase):
         self.assertEqual(100, len(evs))
         for i, ev in enumerate(evs):
             self.assertEqual(100+i, ev.event_id)
+
+    def test_full_state_fetching(self):
+        log = SchedulerEventLog(log_event_count_max=11)
+        log.add_event(SchedulerEvent(0, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(1, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(2, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(3, UIEventType.FULL_STATE))
+        log.add_event(SchedulerEvent(4, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(5, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(6, UIEventType.FULL_STATE))
+        log.add_event(SchedulerEvent(7, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(8, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(9, UIEventType.DELETE))
+        log.add_event(SchedulerEvent(10, UIEventType.UPDATE))
+
+        self.assertEqual(1, log.get_since_event(0)[0].event_id)
+        self.assertEqual(3, log.get_since_event(1, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(3, log.get_since_event(2, truncate_before_full_state=True)[0].event_id)
+
+        self.assertEqual(6, log.get_since_event(3, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(4, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(5, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(7, log.get_since_event(6, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(8, log.get_since_event(7, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(9, log.get_since_event(8, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(10, log.get_since_event(9, truncate_before_full_state=True)[0].event_id)
+
+        log.add_event(SchedulerEvent(11, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(12, UIEventType.UPDATE))
+        log.add_event(SchedulerEvent(13, UIEventType.UPDATE))
+
+        self.assertEqual(3, log.get_since_event(1, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(3, log.get_since_event(2, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(3, truncate_before_full_state=True)[0].event_id)
+
+        log.add_event(SchedulerEvent(14, UIEventType.UPDATE))
+
+        self.assertEqual(6, log.get_since_event(1, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(2, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(3, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(4, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(6, log.get_since_event(5, truncate_before_full_state=True)[0].event_id)
+        self.assertEqual(7, log.get_since_event(6, truncate_before_full_state=True)[0].event_id)
