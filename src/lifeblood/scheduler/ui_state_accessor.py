@@ -12,7 +12,7 @@ from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBa
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData
 from .data_access import DataAccess
 
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Set, Union
 
 
 class NotSubscribedError(RuntimeError):
@@ -37,7 +37,15 @@ class UIStateAccessor:
         self.__latest_graph_ui_state: Optional[NodeGraphStructureData] = None
         self.__latest_graph_ui_event_id = 0
         #
-        self.__task_group_event_logs: Dict[Tuple[str, ...], LogSubscription] = {}
+        # the logic here: ui may request updates for (g1, g2, skip_dead) - so that's our key for the log,
+        # full updates go there.
+        # but individual task events may go to multiple logs, e.g. to (g1, g2), (g1,), (g0, g1) ...
+        self.__task_group_event_logs: Dict[Tuple[Tuple[str, ...], bool], LogSubscription] = {}  # maps keys as requested by viewer to logs
+        self.__task_group_to_logs: Dict[str, List[LogSubscription]] = {}  # maps task group to list of corresponding logs
+        self.__pruning_tasks = []  # TODO: these tasks need to be cancelled clearly on stop
+        #
+        self.__task_group_mapping: Dict[int, Set[str]] = {}
+        self.__task_group_mapping_update_alock = asyncio.Lock()
 
     @property
     def graph_update_id(self):
@@ -48,118 +56,122 @@ class UIStateAccessor:
         self.__latest_graph_ui_event_id += 1
 
     def prune_event_subscriptions(self):
-        self.__task_group_event_logs = {k: v for k, v in self.__task_group_event_logs.items() if not v.is_expired()}
+        for k, v in list(self.__task_group_event_logs.items()):
+            if v.is_expired():
+                self.remove_task_event_subscription(k)
 
-    @atimeit(0.005)
-    async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
-        self.__logger.debug(f'full update for {task_groups}')
-        now = datetime.now()
-        group_totals_update_interval = 5
-        async with self.__data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
-                all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
-            async with con.execute('SELECT * FROM "node_connections"') as cur:
-                all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
-            if not task_groups:  # None or []
-                all_tasks = dict()
-                # async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
-                #                        'FROM "tasks" '
-                #                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
-                #                        'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
-                #                        'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
-                #                        'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value) as cur:
-                #     all_tasks_rows = await cur.fetchall()
-                # for task_row in all_tasks_rows:
-                #     task = dict(task_row)
-                #     if task['groups'] is None:
-                #         task['groups'] = set()
-                #     else:
-                #         task['groups'] = set(task['groups'].split(','))  # TODO: enforce no commas (,) in group names
-                #     all_tasks[task['id']] = task
-            else:
-                all_tasks = dict()
-                for group in task_groups:
-                    # _dbg = time.perf_counter()
-                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
-                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
-                                           'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
-                                           'FROM "tasks" '
-                                           'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
-                                           'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
-                                           'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
-                                           'WHERE task_groups."group" == ? AND tasks.dead {dodead} '
-                                           'GROUP BY tasks."id"'.format(dodead=f'== 0' if skip_dead else 'IN (0,1)'),
-                                           (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
-                        grp_tasks = await cur.fetchall()
-                    # print(f'fetch groups: {time.perf_counter() - _dbg}')
-                    for task_row in grp_tasks:
-                        task = dict(task_row)
-                        task['progress'] = self.__data_access.mem_cache_invocations.get(task['invoc_id'], {}).get('progress', None)
-                        task['groups'] = set(task['groups'].split(','))
-                        if task['id'] in all_tasks:
-                            all_tasks[task['id']]['groups'].update(task['groups'])
-                        else:
-                            all_tasks[task['id']] = task
-            # _dbg = time.perf_counter()
-            #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
+    # @atimeit(0.005)
+    # async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
+    #     self.__logger.debug(f'full update for {task_groups}')
+    #     now = datetime.now()
+    #     group_totals_update_interval = 5
+    #     async with self.__data_access.data_connection() as con:
+    #         con.row_factory = aiosqlite.Row
+    #         async with con.execute('SELECT "id", "type", "name" FROM "nodes"') as cur:
+    #             all_nodes = {x['id']: dict(x) for x in await cur.fetchall()}
+    #         async with con.execute('SELECT * FROM "node_connections"') as cur:
+    #             all_conns = {x['id']: dict(x) for x in await cur.fetchall()}
+    #         if not task_groups:  # None or []
+    #             all_tasks = dict()
+    #             # async with con.execute('SELECT tasks.*, task_splits.origin_task_id, task_splits.split_id, GROUP_CONCAT(task_groups."group") as groups, invocations.progress '
+    #             #                        'FROM "tasks" '
+    #             #                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id AND tasks.split_level=task_splits.split_level '
+    #             #                        'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
+    #             #                        'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = %d '
+    #             #                        'GROUP BY tasks."id"' % InvocationState.IN_PROGRESS.value) as cur:
+    #             #     all_tasks_rows = await cur.fetchall()
+    #             # for task_row in all_tasks_rows:
+    #             #     task = dict(task_row)
+    #             #     if task['groups'] is None:
+    #             #         task['groups'] = set()
+    #             #     else:
+    #             #         task['groups'] = set(task['groups'].split(','))  # TODO: enforce no commas (,) in group names
+    #             #     all_tasks[task['id']] = task
+    #         else:
+    #             all_tasks = dict()
+    #             for group in task_groups:
+    #                 # _dbg = time.perf_counter()
+    #                 async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
+    #                                        'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
+    #                                        'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
+    #                                        'FROM "tasks" '
+    #                                        'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id AND task_groups."group" == ?'
+    #                                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
+    #                                        'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
+    #                                        'WHERE task_groups."group" == ? AND tasks.dead {dodead} '
+    #                                        'GROUP BY tasks."id"'.format(dodead=f'== 0' if skip_dead else 'IN (0,1)'),
+    #                                        (group, InvocationState.IN_PROGRESS.value, group)) as cur:  # NOTE: if you change = to LIKE - make sure to GROUP_CONCAT groups too
+    #                     grp_tasks = await cur.fetchall()
+    #                 # print(f'fetch groups: {time.perf_counter() - _dbg}')
+    #                 for task_row in grp_tasks:
+    #                     task = dict(task_row)
+    #                     task['progress'] = self.__data_access.mem_cache_invocations.get(task['invoc_id'], {}).get('progress', None)
+    #                     task['groups'] = set(task['groups'].split(','))
+    #                     if task['id'] in all_tasks:
+    #                         all_tasks[task['id']]['groups'].update(task['groups'])
+    #                     else:
+    #                         all_tasks[task['id']] = task
+    #         # _dbg = time.perf_counter()
+    #         #async with con.execute('SELECT DISTINCT task_groups."group", task_group_attributes.ctime FROM task_groups LEFT JOIN task_group_attributes ON task_groups."group" = task_group_attributes."group"') as cur:
+    #
+    #         # some things are updated onlt once in a while, not on every update
+    #         need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
+    #         #async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
+    #         if need_group_totals_update:
+    #             sqlexpr =  'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
+    #                        'LEFT JOIN ' \
+    #                       f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
+    #                        f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
+    #                        f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
+    #                        f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
+    #                        'ON "grp"==task_group_attributes."group" ' \
+    #                        + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+    #         else:
+    #             sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
+    #         async with con.execute(sqlexpr) as cur:
+    #             all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
+    #         if need_group_totals_update:
+    #             self.__ui_cache['last_update_time'] = now
+    #             self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
+    #         else:
+    #             for group in all_task_groups:
+    #                 all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
+    #
+    #         # print(f'distinct groups: {time.perf_counter() - _dbg}')
+    #         # _dbg = time.perf_counter()
+    #         async with con.execute('SELECT workers."id", '
+    #                                'cpu_count, '
+    #                                'total_cpu_count, '
+    #                                'cpu_mem, '
+    #                                'total_cpu_mem, '
+    #                                'gpu_count, '
+    #                                'total_gpu_count, '
+    #                                'gpu_mem, '
+    #                                'total_gpu_mem, '
+    #                                'workers."hwid", '
+    #                                'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
+    #                                'GROUP_CONCAT(worker_groups."group") as groups '
+    #                                'FROM workers '
+    #                                'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
+    #                                'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
+    #                                'LEFT JOIN resources ON workers.hwid == resources.hwid '
+    #                                'GROUP BY workers."id"') as cur:
+    #             all_workers = {x['id']: x for x in ({**dict(x),
+    #                                                  'last_seen': self.__data_access.mem_cache_workers_state[x['id']]['last_seen'],
+    #                                                  'progress': self.__data_access.mem_cache_invocations.get(x['invoc_id'], {}).get('progress', None)
+    #                                                  } for x in await cur.fetchall())}
+    #             for worker_data in all_workers.values():
+    #                 worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
+    #         # print(f'workers: {time.perf_counter() - _dbg}')
+    #     return await asyncio.get_event_loop().run_in_executor(None, _create_uidata_from_raw_noasync,
+    #                                                           self.__data_access.db_uid,
+    #                                                           all_nodes,
+    #                                                           all_conns,
+    #                                                           all_tasks,
+    #                                                           all_workers,
+    #                                                           all_task_groups)
 
-            # some things are updated onlt once in a while, not on every update
-            need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
-            #async with con.execute('SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')) as cur:
-            if need_group_totals_update:
-                sqlexpr =  'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
-                           'LEFT JOIN ' \
-                          f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
-                           f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
-                           f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
-                           f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
-                           'ON "grp"==task_group_attributes."group" ' \
-                           + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
-            else:
-                sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
-            async with con.execute(sqlexpr) as cur:
-                all_task_groups = {x['group']: dict(x) for x in await cur.fetchall()}
-            if need_group_totals_update:
-                self.__ui_cache['last_update_time'] = now
-                self.__ui_cache['groups'] = {group: {k: attrs[k] for k in ('tdone', 'tprog', 'terr', 'tall')} for group, attrs in all_task_groups.items()}
-            else:
-                for group in all_task_groups:
-                    all_task_groups[group].update(self.__ui_cache['groups'].get(group, {}))
-
-            # print(f'distinct groups: {time.perf_counter() - _dbg}')
-            # _dbg = time.perf_counter()
-            async with con.execute('SELECT workers."id", '
-                                   'cpu_count, '
-                                   'total_cpu_count, '
-                                   'cpu_mem, '
-                                   'total_cpu_mem, '
-                                   'gpu_count, '
-                                   'total_gpu_count, '
-                                   'gpu_mem, '
-                                   'total_gpu_mem, '
-                                   'workers."hwid", '
-                                   'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
-                                   'GROUP_CONCAT(worker_groups."group") as groups '
-                                   'FROM workers '
-                                   'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
-                                   'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
-                                   'LEFT JOIN resources ON workers.hwid == resources.hwid '
-                                   'GROUP BY workers."id"') as cur:
-                all_workers = {x['id']: x for x in ({**dict(x),
-                                                     'last_seen': self.__data_access.mem_cache_workers_state[x['id']]['last_seen'],
-                                                     'progress': self.__data_access.mem_cache_invocations.get(x['invoc_id'], {}).get('progress', None)
-                                                     } for x in await cur.fetchall())}
-                for worker_data in all_workers.values():
-                    worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
-            # print(f'workers: {time.perf_counter() - _dbg}')
-        return await asyncio.get_event_loop().run_in_executor(None, _create_uidata_from_raw_noasync,
-                                                              self.__data_access.db_uid,
-                                                              all_nodes,
-                                                              all_conns,
-                                                              all_tasks,
-                                                              all_workers,
-                                                              all_task_groups)
+    # ui query functions
 
     async def get_task_groups_ui_state(self, fetch_statistics=False, skip_archived_groups=True, offset=0, limit=-1) -> TaskGroupBatchData:
         self.__logger.debug(f'tasks groups update for offset={offset}, limit={"unlim" if limit < 0 else limit}')
@@ -272,20 +284,100 @@ class UIStateAccessor:
 
         return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers)
 
+    #
+    # task group mapping related crap
+    #
+
+    def force_refresh_task_group_mapping(self):
+        """
+        call this if you know task groups changed.
+         you DON'T NEED TO call this if tasks were added or removed together with their groups -
+         because calls to scheduler_reports_task_added scheduler_reports_task_deleted will call this method anyway
+        """
+        self.__task_group_mapping = None
+
+    async def __refetch_groups(self):
+        """
+        refetch __task_group_mapping from database
+        """
+        async with self.__task_group_mapping_update_alock:
+            async with self.__data_access.data_connection() as con, \
+                    aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
+                con.row_factory = aiosqlite.Row
+                async with con.execute('SELECT task_id "group" FROM task_groups') as cur:
+                    rows = await cur.fetchall()
+
+            def _do():
+                d = {}
+                for row in rows:
+                    d.setdefault(row['task_id'], set()).add(row['group'])
+                return d
+
+            self.__task_group_mapping = await asyncio.get_event_loop().run_in_executor(None, _do)
+
+    async def _get_task_groups(self, task_id) -> Set[str]:
+        if self.__task_group_mapping is None:
+            await self.__refetch_groups()
+        return self.__task_group_mapping.get(task_id) or set()
+
+    async def scheduler_reports_tasks_added(self, task_ids: List[int]):
+        """
+        task info will be queried from DB
+        """
+        self.force_refresh_task_group_mapping()
+        raise NotImplementedError('not yet')
+
+    async def scheduler_reports_task_added(self, task_id: int, task_raw: Optional[dict]):
+        """
+        if task_raw is None - it will be fetched from DB
+        """
+        self.force_refresh_task_group_mapping()
+        if len(self.__task_group_event_logs) == 0:
+            return
+        if task_raw is None:
+            return await self.scheduler_reports_tasks_added([task_id])
+        raise NotImplementedError('not yet')
+
+    async def scheduler_reports_tasks_updated(self, task_ids: List[int], task_raws: List[dict], *, prev_state: Optional[TaskState], prev_node_id: Optional[int]):
+        if len(self.__task_group_event_logs) == 0:
+            return
+
+    async def scheduler_reports_task_updated(self, task_id: int, task_raw: dict, *, prev_state: Optional[TaskState], prev_node_id: Optional[int]):
+        if len(self.__task_group_event_logs) == 0:
+            return
+
+        groups = await self._get_task_groups(task_id)
+        if len(groups) == 0:  # technically legal, though unlikely to happen in normal work since default UI always creates a group
+            return
+
+
+        if key0 not in self.__task_group_event_logs and key1 not in self.__task_group_event_logs:
+            return  # no matching logs exist
+
+        task_data = _pack_task_data(task_id, task_raw)
+
+    async def scheduler_reports_task_deleted(self, task_id: int):
+        self.force_refresh_task_group_mapping()
+        if len(self.__task_group_event_logs) == 0:
+            return
+        raise NotImplementedError('not yet')
+
     async def subscribe_to_task_events_for_groups(self, task_groups: Iterable[str], skip_dead: bool, subscribe_for_seconds: float) -> List[TaskEvent]:
         """
-
 
         :param task_groups:
         :param skip_dead:
         :param subscribe_for_seconds:
         :return:
         """
-        group_key = tuple(sorted(task_groups)) + (skip_dead,)
+        group_key = (tuple(sorted(task_groups)), skip_dead)
         if group_key in self.__task_group_event_logs:  # if so - update
             self.__task_group_event_logs[group_key].expiration_timestamp = time.time() + subscribe_for_seconds
         else:
-            self.__task_group_event_logs[group_key] = LogSubscription(time.time() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
+            log_sub = LogSubscription(time.time() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
+            self.__task_group_event_logs[group_key] = log_sub
+            for group in task_groups:
+                self.__task_group_to_logs.setdefault(group, []).append(log_sub)
 
         log = self.__task_group_event_logs[group_key].event_log
         events = log.get_since_event(-1, truncate_before_full_state=True)  # try to see if we already have a chain of events starting with full state update
@@ -296,7 +388,21 @@ class UIStateAccessor:
         state = await self.get_tasks_ui_state(task_groups, skip_dead)
         state_event = TaskFullState(state)  # if pycharm warns here - it shouldn't, looks like it cannot parse dataclass inheritance
         log.add_event(state_event)
+
+        async def _timed_prune():
+            await asyncio.sleep(subscribe_for_seconds * 1.1)  # 1.1 just cuz
+            self.remove_task_event_subscription(group_key)
+
+        self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
         return [state_event]
+
+    def remove_task_event_subscription(self, key: tuple):
+        if (log := self.__task_group_event_logs.get(key)) and log is not None and log.is_expired():
+            self.__task_group_event_logs.pop(key)
+            for group in key[1]:
+                self.__task_group_to_logs[group].remove(log)
+                if len(self.__task_group_to_logs[group]) == 0:
+                    self.__task_group_to_logs.pop(group)
 
     def get_events_for_groups_since_event_id(self, task_groups: Iterable[str], last_known_event_id: int):
         group_key = tuple(sorted(task_groups))
@@ -346,15 +452,19 @@ def _pack_nodes_connections_data(db_uid: int, ui_nodes, ui_connections) -> "Node
     return NodeGraphStructureData(db_uid, nodes, connections)
 
 
+def _pack_task_data(task_id, task_raw: dict) -> "TaskData":
+    return TaskData(task_id, task_raw['parent_id'], task_raw['children_count'], task_raw['active_children_count'],
+           TaskState(task_raw['state']), task_raw['state_details'], task_raw['paused'] != 0, task_raw['node_id'],
+           task_raw['node_input_name'], task_raw['node_output_name'], task_raw['name'], task_raw['split_level'],
+           task_raw['work_data_invocation_attempt'], task_raw['progress'], task_raw['origin_task_id'],
+           task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
+
+
 def _pack_tasks_data(db_uid: int, ui_tasks) -> "TaskBatchData":
     tasks = {}
     for task_id, task_raw in ui_tasks.items():
         assert task_id == task_raw['id']
-        task_data = TaskData(task_id, task_raw['parent_id'], task_raw['children_count'], task_raw['active_children_count'],
-                             TaskState(task_raw['state']), task_raw['state_details'], task_raw['paused'] != 0, task_raw['node_id'],
-                             task_raw['node_input_name'], task_raw['node_output_name'], task_raw['name'], task_raw['split_level'],
-                             task_raw['work_data_invocation_attempt'], task_raw['progress'], task_raw['origin_task_id'],
-                             task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
+        task_data = _pack_task_data(task_id, task_raw)
         tasks[task_id] = task_data
 
     return TaskBatchData(db_uid, tasks)
