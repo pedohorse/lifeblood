@@ -47,14 +47,14 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         #
         #
         # commands
-        async def comm_get_full_state():  # if command == b'getfullstate':
-            task_groups = []
-            skip_dead, skip_archived_groups = struct.unpack('>??', await reader.readexactly(2))
-            for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
-                task_groups.append(await read_string())
-
-            uidata = await self.__scheduler.ui_state_access.get_full_ui_state(task_groups, skip_dead=skip_dead, skip_archived_groups=skip_archived_groups)
-            await uidata.serialize_to_streamwriter(writer)
+        # async def comm_get_full_state():  # if command == b'getfullstate':
+        #     task_groups = []
+        #     skip_dead, skip_archived_groups = struct.unpack('>??', await reader.readexactly(2))
+        #     for i in range(struct.unpack('>I', await reader.readexactly(4))[0]):
+        #         task_groups.append(await read_string())
+        #
+        #     uidata = await self.__scheduler.ui_state_access.get_full_ui_state(task_groups, skip_dead=skip_dead, skip_archived_groups=skip_archived_groups)
+        #     await uidata.serialize_to_streamwriter(writer)
 
         async def comm_get_db_uid():
             writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
@@ -574,7 +574,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         #
         #
-        commands = {'getfullstate': comm_get_full_state,
+        commands = {#'getfullstate': comm_get_full_state,
                     'get_db_uid': comm_get_db_uid,
                     'get_ui_graph_state_update_id': comm_get_ui_graph_state_update_id,
                     'get_ui_graph_state': comm_get_ui_graph_state,
@@ -708,12 +708,12 @@ class UIProtocolSocketClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def get_full_state(self, skip_dead, skip_archived_groups) -> UiData:
-        r, w = self.__connection.get_rw_pair()
-        w.write_string('getfullstate')
-        w.write(struct.pack('>??', skip_dead, skip_archived_groups))
-        w.flush()
-        return UiData.deserialize(r)
+    # def get_full_state(self, skip_dead, skip_archived_groups) -> UiData:
+    #     r, w = self.__connection.get_rw_pair()
+    #     w.write_string('getfullstate')
+    #     w.write(struct.pack('>??', skip_dead, skip_archived_groups))
+    #     w.flush()
+    #     return UiData.deserialize(r)
 
     def get_db_uid(self) -> int:
         """
