@@ -64,9 +64,9 @@ class SchedulerEventLog:
                     raise RuntimeError('attempting to add event with the same id, but different data')
                 logger.warning(f'ignoring event as it is already in the log: {event}')
                 return
-            i = self.__find_index_below_timestamp(event.timestamp) + 1
-            if i > 0 and self.__events[i-1].event_id >= event.event_id \
-                    or i < len(self.__events) - 1 and self.__events[i+1].event_id <= event.event_id:  # sanity checks
+            i = self.__find_index_below_id(event.event_id) + 1
+            if i > 0 and (self.__events[i-1].event_id >= event.event_id) or (self.__events[i-1].timestamp > event.timestamp) \
+                    or i < len(self.__events) - 1 and (self.__events[i].event_id <= event.event_id) or (self.__events[i].timestamp < event.timestamp):  # sanity checks
                 raise RuntimeError('event IDs are expected to be sorted the same way as their timestamps')
         self.__events.insert(i, event)
         self.__event_id_to_event[event.event_id] = event
