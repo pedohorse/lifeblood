@@ -1,5 +1,6 @@
 import asyncio
 import aiosqlite
+from functools import partial
 from typing import Optional, Dict, List, Callable
 from .config import get_config
 from .logging import get_logger
@@ -36,9 +37,11 @@ class ConnectionPoolEntry:
     def total_usages(self) -> int:
         return self.__total_usages
 
-    def add_close_callback(self, callback: Callable) -> None:
+    def add_close_callback(self, callback: Callable, *args, **kwargs) -> None:
         if self.__close_callbacks is None:
             self.__close_callbacks = []
+        if len(args) or len(kwargs):
+            callback = partial(callback, *args, **kwargs)
         self.__close_callbacks.append(callback)
 
     def add_close_callback_if_not_in(self, callback: Callable) -> None:
