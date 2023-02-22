@@ -31,6 +31,7 @@ from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, Wo
 from ..config import get_config
 from ..misc import atimeit, alocking
 from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
+from .. import aiosqlite_overlay
 
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
@@ -354,6 +355,7 @@ class Scheduler:
         self.__stop_event.set()  # this will stop things including task_processor
         self.__pinger.stop()
         self.__task_processor.stop()
+        self.ui_state_access.stop()
         self.__worker_pool.stop()
         self.__server_closing_task = asyncio.create_task(_server_closer())  # we ensure worker pool stops BEFORE server, so workers have chance to report back
         self.__cleanup_tasks = [asyncio.create_task(_db_cache_writeback())]
@@ -393,10 +395,12 @@ class Scheduler:
             self.__broadcasting_server = await self.__broadcasting_server_coro
         self.__task_processor.start()
         self.__pinger.start()
+        self.ui_state_access.start()
         # run
         self.__all_components = \
               asyncio.gather(self.__task_processor.wait_till_stops(),
                              self.__pinger.wait_till_stops(),
+                             self.ui_state_access.wait_till_stops(),
                              self.__server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
                              self.__ui_server.wait_closed(),
                              self.__worker_pool.wait_till_stops())
@@ -1242,7 +1246,7 @@ class Scheduler:
     #
     # spawning new task callback
     @alocking()
-    async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite.Connection] = None) -> Union[Tuple[SpawnStatus, Optional[int]], Tuple[Tuple[SpawnStatus, Optional[int]], ...]]:
+    async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite_overlay.ConnectionWithCallbacks] = None) -> Union[Tuple[SpawnStatus, Optional[int]], Tuple[Tuple[SpawnStatus, Optional[int]], ...]]:
         """
 
         :param newtasks:
@@ -1315,6 +1319,13 @@ class Scheduler:
                         #  but then we need to insert those guys in correct order (first in attributes table, then groups)
                         #  then smth like FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
                 result.append((SpawnStatus.SUCCEEDED, new_id))
+
+            # callbacks for ui events
+            new_tids = []
+            for _, tid in stuff:
+                if tid is not None:
+                    new_tids.append(tid)
+            con.add_after_commit_callback(lambda: self.ui_state_access.scheduler_reports_tasks_added(new_tids))
             return tuple(result)
 
         return_single = False
