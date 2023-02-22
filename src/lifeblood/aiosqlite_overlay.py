@@ -5,7 +5,7 @@ from warnings import warn
 from aiosqlite import *
 from .logging import get_logger
 
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 
 logger = get_logger('aiosqlite_overlay')
@@ -14,16 +14,16 @@ logger = get_logger('aiosqlite_overlay')
 class ConnectionWithCallbacks(Connection):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__callbacks: List[Callable] = []
+        self.__callbacks: List[Tuple[Callable, tuple, dict]] = []
 
-    def add_after_commit_callback(self, callable: Callable):
-        self.__callbacks.append(callable)
+    def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
+        self.__callbacks.append((callable, args, kwargs))
 
     async def commit(self):
         await super().commit()
-        for callback in self.__callbacks:
+        for callback, args, kwargs in self.__callbacks:
             try:
-                callback()
+                callback(*args, **kwargs)
             except Exception as e:
                 logger.exception(f'failed to call post-commit callback {e}')
 
