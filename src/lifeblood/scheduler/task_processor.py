@@ -71,6 +71,7 @@ class TaskProcessor(SchedulerComponentBase):
                 async with awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
                     await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                       (abort_state.value, task_id))
+                    con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, task_id)
                     await con.commit(self.poke)
                 return
             except Exception as e:
@@ -83,6 +84,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                    'exception_str': str(e),
                                                    'exception_type': str(type(e))})
                                        , task_id))
+                    con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, task_id)
                     await con.commit(self.poke)
                     self.__logger.exception('error happened %s %s', type(e), e)
                 return
@@ -203,6 +205,7 @@ class TaskProcessor(SchedulerComponentBase):
                         await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
                 # print(f'split: {time.perf_counter()-_bla1}')
 
+                con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, task_id)
                 await con.commit(self.poke)
                 # print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
@@ -229,6 +232,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                        (WorkerState.IDLE.value, worker_row['id']))
                     # unset resource usage
                     await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=con)
+                    skipwork_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, task_row['id'])
                     await skipwork_transaction.commit()
                     return
 
@@ -289,6 +293,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                          (invocation_id,))
                         # update resource usage to none
                         await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
+                    submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, task_row['id'])
                     await submit_transaction.commit()
 
         awaiter_executor = ThreadPoolExecutor(thread_name_prefix='awaiter')  # TODO: max_workers= set from config
@@ -404,6 +409,7 @@ class TaskProcessor(SchedulerComponentBase):
                     if task_state == TaskState.WAITING:
                         awaiters = []
                         set_to_stuff = []
+                        updated_task_ids = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
@@ -411,6 +417,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.ERROR.value, task_row['id']))
                                 set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
                             else:
                                 # note that ready_to_process_task is ran not inside the read lock
                                 # as it's expected that:
@@ -426,10 +433,17 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
 
                                 awaiters.append(_awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
                         if set_to_stuff:
+                            # ui event
+                            if updated_task_ids:
+                                con.add_after_commit_callback(
+                                    self.scheduler.ui_state_access.scheduler_reports_tasks_updated, updated_task_ids
+                                )
+                            #
                             await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
                             await con.commit()
                         self.__logger.debug('loop done, creating tasks')
@@ -440,6 +454,7 @@ class TaskProcessor(SchedulerComponentBase):
                     elif task_state == TaskState.POST_WAITING:
                         awaiters = []
                         set_to_stuff = []
+                        updated_task_ids = []
                         for task_row in all_task_rows:
                             if task_row['node_type'] not in pluginloader.plugins:
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
@@ -447,6 +462,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.ERROR.value, task_row['id']))
                                 set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
                             else:
                                 if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
                                     continue
@@ -455,10 +471,17 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.POST_GENERATING.value, task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
 
                                 awaiters.append(_awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
                                                          abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
                         if set_to_stuff:
+                            # ui event
+                            if updated_task_ids:
+                                con.add_after_commit_callback(
+                                    self.scheduler.ui_state_access.scheduler_reports_tasks_updated, updated_task_ids
+                                )
+                            #
                             await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
                             await con.commit()
                         for coro in awaiters:
@@ -471,6 +494,7 @@ class TaskProcessor(SchedulerComponentBase):
                         # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
                         where_empty_cache = set()
                         for task_row in all_task_rows:
+                            updated_task_ids = []
                             # check max attempts first
                             if task_row['work_data_invocation_attempt'] >= self.__invocation_attempts:
                                 await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
@@ -482,6 +506,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                                'limit_value': task_row['work_data_invocation_attempt']}),
                                                    task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
                                 self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
                                 continue
                             #
@@ -508,6 +533,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                                'exception_type': str(type(e))}),
                                                    task_row['id']))
                                 total_state_changes += 1
+                                updated_task_ids.append(task_row['id'])
                                 self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
                                 continue
                             if worker is None:  # nothing available
@@ -525,6 +551,7 @@ class TaskProcessor(SchedulerComponentBase):
                             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                                 (TaskState.INVOKING.value, task_row['id']))
                             total_state_changes += 1
+                            updated_task_ids.append(task_row['id'])  # for ui event
                             await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                                 (WorkerState.INVOKING.value, worker['id']))
                             # set resource usage straight away
@@ -536,6 +563,12 @@ class TaskProcessor(SchedulerComponentBase):
 
                             submitters.append(_submitter(dict(task_row), dict(worker)))
                             self.__logger.debug('submitter scheduled')
+                        # ui event
+                        if updated_task_ids:
+                            con.add_after_commit_callback(
+                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, updated_task_ids
+                            )
+                        #
                         await con.commit()
                         for coro in submitters:
                             tasks_to_wait.add(asyncio.create_task(coro))
@@ -582,7 +615,7 @@ class TaskProcessor(SchedulerComponentBase):
                         # ui event
                         if updated_task_ids:
                             con.add_after_commit_callback(
-                                lambda: self.scheduler.ui_state_access.scheduler_reports_tasks_updated(updated_task_ids)
+                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, updated_task_ids
                             )
                         #
                         await con.commit()
@@ -681,6 +714,6 @@ class TaskProcessor(SchedulerComponentBase):
         # now increase number of children to the parent of the task being splitted
 
         assert into == len(all_split_ids)
-        con.add_after_commit_callback(lambda: self.scheduler.ui_state_access.scheduler_reports_tasks_added(all_split_ids))
+        con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_added, all_split_ids)
         self.scheduler.wake()  # do we need it here?
         return all_split_ids
