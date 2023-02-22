@@ -10,13 +10,18 @@ from ..scheduler_event_log import SchedulerEventLog
 from ..ui_events import TaskEvent, TaskFullState
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData
+from .scheduler_component_base import SchedulerComponentBase
 from .data_access import DataAccess
 
-from typing import Dict, Iterable, List, Optional, Tuple, Set, Union
+from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
+
+if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
+    from .scheduler import Scheduler
 
 
 class NotSubscribedError(RuntimeError):
     pass
+
 
 @dataclass
 class LogSubscription:
@@ -27,11 +32,15 @@ class LogSubscription:
         return time.time() >= self.expiration_timestamp
 
 
-class UIStateAccessor:
-    def __init__(self, data_accessor: DataAccess):
+class UIStateAccessor(SchedulerComponentBase):
+    def __init__(self, scheduler: "Scheduler"):
+        super().__init__(scheduler)
         self.__logger = get_logger('scheduler.ui_state_accessor')
-        self.__data_access = data_accessor
+        self.__data_access = scheduler.data_access
         self.__ui_cache = {'groups': {}, 'last_update_time': None}
+
+        # config
+        self.__housekeeping_interval = 60
 
         # for ui
         self.__latest_graph_ui_state: Optional[NodeGraphStructureData] = None
@@ -47,6 +56,55 @@ class UIStateAccessor:
         self.__task_group_mapping: Dict[int, Set[str]] = {}
         self.__task_group_mapping_update_alock = asyncio.Lock()
 
+    # scheduler component impl
+
+    def _main_task(self):
+        return self.house_keeping()
+
+    # housekeeping
+
+    # main task
+
+    async def house_keeping(self):
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        wakeup_task = None
+
+        while not self._stop_event.is_set():
+
+            self.prune_event_subscriptions()
+            if len(self.__pruning_tasks) > 0:  # prune the pruners
+                pruned_tasks = []
+                for task in self.__pruning_tasks:
+                    if task.done():
+                        await task
+                    else:
+                        pruned_tasks.append(task)
+                self.__pruning_tasks = pruned_tasks
+
+            ##
+
+            if wakeup_task is None:
+                wakeup_task = asyncio.create_task(self._poke_event.wait())
+            sleeping_tasks = (stop_task, wakeup_task)
+
+            done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__housekeeping_interval, return_when=asyncio.FIRST_COMPLETED)
+            if wakeup_task in done:
+                self._reset_poke_event()
+                wakeup_task = None
+
+            # end when stop is set
+            if stop_task in done:
+                break
+
+    def prune_event_subscriptions(self):
+        for k, v in list(self.__task_group_event_logs.items()):
+            if v.is_expired():
+                self.remove_task_event_subscription(k)
+
+    #
+
+    #
+
     @property
     def graph_update_id(self):
         return self.__latest_graph_ui_event_id
@@ -54,11 +112,6 @@ class UIStateAccessor:
     def bump_graph_update_id(self):
         self.__latest_graph_ui_state = None
         self.__latest_graph_ui_event_id += 1
-
-    def prune_event_subscriptions(self):
-        for k, v in list(self.__task_group_event_logs.items()):
-            if v.is_expired():
-                self.remove_task_event_subscription(k)
 
     # @atimeit(0.005)
     # async def get_full_ui_state(self, task_groups: Optional[Iterable[str]] = None, skip_dead=True, skip_archived_groups=True) -> UiData:
@@ -315,10 +368,13 @@ class UIStateAccessor:
 
             self.__task_group_mapping = await asyncio.get_event_loop().run_in_executor(None, _do)
 
-    async def _get_task_groups(self, task_id) -> Set[str]:
+    async def _get_tasks_groups(self, task_ids: List[int]) -> List[Set[str]]:
         if self.__task_group_mapping is None:
             await self.__refetch_groups()
-        return self.__task_group_mapping.get(task_id) or set()
+        ret = []
+        for task_id in task_ids:
+            ret.append(self.__task_group_mapping.get(task_id) or set())
+        return ret
 
     async def scheduler_reports_tasks_added(self, task_ids: List[int]):
         """
@@ -341,6 +397,7 @@ class UIStateAccessor:
     async def scheduler_reports_tasks_updated(self, task_ids: List[int], task_raws: List[dict], *, prev_state: Optional[TaskState], prev_node_id: Optional[int]):
         if len(self.__task_group_event_logs) == 0:
             return
+        raise NotImplementedError('not yet')
 
     async def scheduler_reports_task_updated(self, task_id: int, task_raw: dict, *, prev_state: Optional[TaskState], prev_node_id: Optional[int]):
         if len(self.__task_group_event_logs) == 0:
@@ -355,6 +412,7 @@ class UIStateAccessor:
             return  # no matching logs exist
 
         task_data = _pack_task_data(task_id, task_raw)
+        raise NotImplementedError('not yet')
 
     async def scheduler_reports_task_deleted(self, task_id: int):
         self.force_refresh_task_group_mapping()
