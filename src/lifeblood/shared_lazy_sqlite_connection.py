@@ -152,6 +152,12 @@ class SharedLazyAiosqliteConnection:
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
 
+    def add_after_commit_callback(self, callable: Callable):
+        entry = self.__pool.connection_cache.get(self.__cache_key)
+        if entry is None:
+            raise RuntimeError('cannot add callback to already closed and finalized lazy transactions')
+        entry.add_close_callback(callable)
+
     async def commit(self, callback=None):
         """
         optional callback argument for convenience.
