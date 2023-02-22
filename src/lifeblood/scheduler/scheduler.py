@@ -98,7 +98,7 @@ class Scheduler:
 
         self.__pinger: Pinger = Pinger(self)
         self.__task_processor: TaskProcessor = TaskProcessor(self)
-        self.ui_state_access: UIStateAccessor = UIStateAccessor(self.data_access)
+        self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
         if server_addr is None:
             server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
