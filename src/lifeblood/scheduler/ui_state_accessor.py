@@ -74,11 +74,14 @@ class UIStateAccessor(SchedulerComponentBase):
     # scheduler component impl
 
     def _main_task(self):
-        return self.house_keeping()
+        return self.main_task()
 
     # housekeeping
 
     # main task
+
+    async def main_task(self):
+        await asyncio.gather(self.house_keeping(), self.process_event_queue())
 
     async def house_keeping(self):
         stop_task = asyncio.create_task(self._stop_event.wait())
