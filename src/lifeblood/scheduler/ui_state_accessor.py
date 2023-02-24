@@ -52,6 +52,8 @@ class UIStateAccessor(SchedulerComponentBase):
         self.__data_access = scheduler.data_access
         self.__ui_cache = {'groups': {}, 'last_update_time': None}
 
+        self.__global_next_event_id = 0  # "atomic" counter of events
+
         # config
         self.__housekeeping_interval = 60
 
@@ -71,6 +73,14 @@ class UIStateAccessor(SchedulerComponentBase):
         self.__task_group_mapping: Dict[int, Set[str]] = {}
         self.__task_group_mapping_update_alock = asyncio.Lock()
 
+    def _get_next_event_id(self):
+        """
+        get and inc counter
+        """
+        eid = self.__global_next_event_id
+        self.__global_next_event_id += 1
+        return eid
+
     # scheduler component impl
 
     def _main_task(self):
@@ -81,7 +91,9 @@ class UIStateAccessor(SchedulerComponentBase):
     # main task
 
     async def main_task(self):
+        self.__logger.info('ui state accessor started')
         await asyncio.gather(self.house_keeping(), self.process_event_queue())
+        self.__logger.info('ui state accessor finished')
 
     async def house_keeping(self):
         stop_task = asyncio.create_task(self._stop_event.wait())
@@ -124,11 +136,11 @@ class UIStateAccessor(SchedulerComponentBase):
             if stop_task in done:
                 break
 
-            queue_event_type, queue_element_type, element_data = await get_task
+            queue_event_type, queue_element_type, (event_id, event_timestamp, element_data) = await get_task
             if len(self.__task_group_event_logs) == 0:
                 continue
 
-            if queue_event_type == QueueElementType.TASK_GROUP:
+            if queue_element_type == QueueElementType.TASK_GROUP:
                 # if group - convert it to task ids
                 assert isinstance(element_data, str)
                 async with self.__data_access.data_connection() as con:
@@ -170,12 +182,15 @@ class UIStateAccessor(SchedulerComponentBase):
             else:
                 raise NotImplementedError('IMPOSSIBRU!')
 
+            # force given event_id, ensure correct ids and timestamps
+            event.event_id = event_id
+            event.timestamp = event_timestamp
             #  put event into logs
             for log in affected_logs:
                 log.event_log.add_event(event)
 
     def prune_event_subscriptions(self):
-        for k, v in list(self.__task_group_event_logs.items()):
+        for k, v in list(self.__task_group_event_logs.items()):  # type: Tuple[Tuple[str, ...], bool], LogSubscription
             if v.is_expired():
                 self.remove_task_event_subscription(k)
 
@@ -463,7 +478,9 @@ class UIStateAccessor(SchedulerComponentBase):
         self.force_refresh_task_group_mapping()
         if len(self.__task_group_event_logs) == 0:
             return
-        self.__task_event_preprocess_queue.put((QueueEventType.ADDED, QueueElementType.TASK_ID_LIST, task_ids))
+        eid = self._get_next_event_id()
+        ets = time.time_ns()
+        self.__task_event_preprocess_queue.put((QueueEventType.ADDED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
 
     def scheduler_reports_task_added(self, task_id: int):
         """
@@ -474,12 +491,16 @@ class UIStateAccessor(SchedulerComponentBase):
     def scheduler_reports_tasks_updated(self, task_ids: List[int]):
         if len(self.__task_group_event_logs) == 0:
             return
-        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_ID_LIST, task_ids))
+        eid = self._get_next_event_id()
+        ets = time.time_ns()
+        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
 
     def scheduler_reports_tasks_updated_group(self, task_group: str):
         if len(self.__task_group_event_logs) == 0:
             return
-        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_GROUP, task_group))
+        eid = self._get_next_event_id()
+        ets = time.time_ns()
+        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_GROUP, (eid, ets, task_group)))
 
     def scheduler_reports_task_updated(self, task_id: int):
         self.scheduler_reports_tasks_updated([task_id])
@@ -525,7 +546,9 @@ class UIStateAccessor(SchedulerComponentBase):
             return events
 
         state = await self.get_tasks_ui_state(task_groups, skip_dead)
-        state_event = TaskFullState(state)  # if pycharm warns here - it shouldn't, looks like it cannot parse dataclass inheritance
+        state_event = TaskFullState(state)
+        state_event.event_id = self._get_next_event_id()
+        # even though there might be older events in the queue - since we have strict global event id - the state_event will be put into a proper place
         log.add_event(state_event)
 
         async def _timed_prune():
@@ -535,10 +558,10 @@ class UIStateAccessor(SchedulerComponentBase):
         self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
         return [state_event]
 
-    def remove_task_event_subscription(self, key: tuple):
+    def remove_task_event_subscription(self, key: Tuple[Tuple[str, ...], bool]):
         if (log := self.__task_group_event_logs.get(key)) and log is not None and log.is_expired():
             self.__task_group_event_logs.pop(key)
-            for group in key[1]:
+            for group in key[0]:
                 self.__task_group_to_logs[group].remove(log)
                 if len(self.__task_group_to_logs[group]) == 0:
                     self.__task_group_to_logs.pop(group)
