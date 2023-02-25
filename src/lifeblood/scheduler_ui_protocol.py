@@ -6,7 +6,9 @@ from asyncio.exceptions import IncompleteReadError
 from . import logging
 from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
 from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData
+from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
+from .exceptions import NotSubscribedError
 from . import pluginloader
 from .invocationjob import InvocationJob
 from .net_classes import NodeTypeMetadata
@@ -81,7 +83,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             state = await self.__scheduler.ui_state_access.get_tasks_ui_state(groups, not include_dead)
             await state.serialize_to_streamwriter(writer)
 
-        async def comm_request_task_events():  # request_task_events
+        # ui events
+
+        async def comm_request_subscribe_to_task_events():  # request_task_events
             include_dead, num_groups, logging_time = struct.unpack('>?Qd', await reader.readexactly(17))
             groups = []
             for _ in range(num_groups):
@@ -90,6 +94,23 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(struct.pack('>Q', len(events)))
             for event in events:
                 await event.serialize_to_streamwriter(writer)
+
+        async def comm_request_task_events_since_id():  # task_events_since_id
+            include_dead, num_groups, last_known_event_id = struct.unpack('>?QQ', await reader.readexactly(16))
+            groups = []
+            for _ in range(num_groups):
+                groups.append(await read_string())
+            try:
+                events = await self.__scheduler.ui_state_access.get_events_for_groups_since_event_id(groups, not include_dead, last_known_event_id)
+            except NotSubscribedError:
+                writer.write(struct.pack('>?', False))
+                return
+
+            writer.write(struct.pack('>?Q', True, len(events)))
+            for event in events:
+                await event.serialize_to_streamwriter(writer)
+
+        # end of ui events
 
         async def comm_get_ui_workers_state():  # get_ui_workers_state
             state = await self.__scheduler.ui_state_access.get_workers_ui_state()
@@ -580,7 +601,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'get_ui_graph_state': comm_get_ui_graph_state,
                     'get_ui_task_groups': comm_get_ui_task_groups,
                     'get_ui_tasks_state': comm_get_ui_tasks_state,
-                    'request_task_events': comm_request_task_events,
+                    'request_task_events': comm_request_subscribe_to_task_events,
+                    'task_events_since_id': comm_request_task_events_since_id,
                     'get_ui_workers_state': comm_get_ui_workers_state,
                     'getinvocmeta': comm_get_invoc_meta,
                     'getlog': comm_get_log,
@@ -767,6 +789,45 @@ class UIProtocolSocketClient:
         w.flush()
         data = TaskBatchData.deserialize(r)
         return data
+
+    # task subscription
+    def request_subscribe_to_task_events(self, groups: Iterable[str], include_dead: bool, request_for_seconds: float = 10.0) -> List[TaskEvent]:
+        r, w = self.__connection.get_rw_pair()
+        if not isinstance(groups, (list, tuple)):
+            groups = list(groups)
+        w.write_string('request_task_events')
+        w.write(struct.pack('>?Qd', include_dead, len(groups), request_for_seconds))
+        for group in groups:
+            w.write_string(group)
+        w.flush()
+        num_events, = struct.unpack('>Q', r.readexactly(8))
+        events = []
+        for i in range(num_events):
+            events.append(TaskEvent.deserialize(r))
+        return events
+
+    def request_task_events_since_id(self, groups: Iterable[str], include_dead: bool, last_known_event_id: int) -> Optional[List[TaskEvent]]:
+        """
+        returns None if there is no valid subscription with given parameters,
+        returns list of task events otherwise
+        """
+        r, w = self.__connection.get_rw_pair()
+        if not isinstance(groups, (list, tuple)):
+            groups = list(groups)
+        w.write_string('task_events_since_id')
+        w.write(struct.pack('>?QQ', include_dead, len(groups), last_known_event_id))
+        for group in groups:
+            w.write_string(group)
+        w.flush()
+        good, = struct.unpack('>?', r.readexactly(1))
+        if not good:
+            return None
+        num_events, = struct.unpack('>Q', r.readexactly(8))
+        events = []
+        for i in range(num_events):
+            events.append(TaskEvent.deserialize(r))
+        return events
+    #
 
     def get_ui_workers_state(self) -> WorkerBatchData:
         r, w = self.__connection.get_rw_pair()
