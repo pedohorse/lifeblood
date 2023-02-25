@@ -2,7 +2,7 @@ import logging
 from .ui_events import SchedulerEvent
 from .enums import UIEventType
 
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class SchedulerEventLog:
     def get_since_timestamp_ns(self, timestamp_ns: int):
         return tuple(self.__events[self.__find_index_below_timestamp(timestamp_ns)+1:])
 
-    def get_since_event(self, event_id: int, truncate_before_full_state=False):
+    def get_since_event(self, event_id: int, truncate_before_full_state=False) -> Tuple[SchedulerEvent]:
 
         # if event was already removed from the list (assume it was old)
         if truncate_before_full_state and len(self.__full_state_events) > 0:
