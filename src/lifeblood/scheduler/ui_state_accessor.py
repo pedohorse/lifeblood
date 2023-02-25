@@ -1,5 +1,6 @@
 import asyncio
 import aiosqlite
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from dataclasses import dataclass
 import time
@@ -8,6 +9,7 @@ from queue import Queue
 from ..logging import get_logger
 from ..misc import atimeit, aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
+from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
 from ..ui_events import TaskEvent, TaskFullState, TaskUpdated, TasksUpdated, TasksDeleted
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
@@ -19,11 +21,6 @@ from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Un
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler import Scheduler
-
-
-class NotSubscribedError(RuntimeError):
-    pass
-
 
 class QueueEventType(Enum):
     ADDED = 0
@@ -73,6 +70,12 @@ class UIStateAccessor(SchedulerComponentBase):
         self.__task_group_mapping: Dict[int, Set[str]] = {}
         self.__task_group_mapping_update_alock = asyncio.Lock()
 
+        # a pool of pools to execute log commands in. the point is to ensure log always runs on ONE SAME THREAD
+        # running log methods on ONE SAME THREAD will ensure lockless race-free work
+        self.__pool_list = []
+        for i in range(4):  # TODO: config!
+            self.__pool_list.append(ThreadPoolExecutor(max_workers=1))
+
     def _get_next_event_id(self):
         """
         get and inc counter
@@ -85,6 +88,18 @@ class UIStateAccessor(SchedulerComponentBase):
 
     def _main_task(self):
         return self.main_task()
+
+    def _my_sleep(self):
+        pass
+
+    def _my_wake(self):
+        pass
+
+    def sleep(self):  # we don't have concept of sleep here
+        pass
+
+    def wake(self):  # we don't have concept of sleep here
+        pass
 
     # housekeeping
 
@@ -187,7 +202,8 @@ class UIStateAccessor(SchedulerComponentBase):
             event.timestamp = event_timestamp
             #  put event into logs
             for log in affected_logs:
-                log.event_log.add_event(event)
+                executor = self.__get_executor_for_log(log)
+                await asyncio.get_event_loop().run_in_executor(executor, log.event_log.add_event, event)
 
     def prune_event_subscriptions(self):
         for k, v in list(self.__task_group_event_logs.items()):  # type: Tuple[Tuple[str, ...], bool], LogSubscription
@@ -522,7 +538,10 @@ class UIStateAccessor(SchedulerComponentBase):
 
     #
 
-    async def subscribe_to_task_events_for_groups(self, task_groups: Iterable[str], skip_dead: bool, subscribe_for_seconds: float) -> List[TaskEvent]:
+    def __get_executor_for_log(self, log) -> ThreadPoolExecutor:
+        return self.__pool_list[hash(log) % len(self.__pool_list)]
+
+    async def subscribe_to_task_events_for_groups(self, task_groups: Iterable[str], skip_dead: bool, subscribe_for_seconds: float) -> Tuple[TaskEvent, ...]:
         """
 
         :param task_groups:
@@ -540,7 +559,8 @@ class UIStateAccessor(SchedulerComponentBase):
                 self.__task_group_to_logs.setdefault(group, []).append(log_sub)
 
         log = self.__task_group_event_logs[group_key].event_log
-        events = log.get_since_event(-1, truncate_before_full_state=True)  # try to see if we already have a chain of events starting with full state update
+        executor = self.__get_executor_for_log(log)
+        events = await asyncio.get_event_loop().run_in_executor(executor, log.get_since_event, -1, True)  # try to see if we already have a chain of events starting with full state update
 
         if len(events) > 0 and events[0].event_type == UIEventType.FULL_STATE:  # so if we have a set of events starting with full state
             return events
@@ -549,29 +569,30 @@ class UIStateAccessor(SchedulerComponentBase):
         state_event = TaskFullState(state)
         state_event.event_id = self._get_next_event_id()
         # even though there might be older events in the queue - since we have strict global event id - the state_event will be put into a proper place
-        log.add_event(state_event)
+        await asyncio.get_event_loop().run_in_executor(executor, log.add_event, state_event)
 
         async def _timed_prune():
             await asyncio.sleep(subscribe_for_seconds * 1.1)  # 1.1 just cuz
             self.remove_task_event_subscription(group_key)
 
         self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
-        return [state_event]
+        return state_event,
 
     def remove_task_event_subscription(self, key: Tuple[Tuple[str, ...], bool]):
-        if (log := self.__task_group_event_logs.get(key)) and log is not None and log.is_expired():
+        if (log_sub := self.__task_group_event_logs.get(key)) and log_sub is not None and log_sub.is_expired():
             self.__task_group_event_logs.pop(key)
             for group in key[0]:
-                self.__task_group_to_logs[group].remove(log)
+                self.__task_group_to_logs[group].remove(log_sub)
                 if len(self.__task_group_to_logs[group]) == 0:
                     self.__task_group_to_logs.pop(group)
 
-    def get_events_for_groups_since_event_id(self, task_groups: Iterable[str], last_known_event_id: int):
-        group_key = tuple(sorted(task_groups))
+    async def get_events_for_groups_since_event_id(self, task_groups: Iterable[str], skip_dead: bool, last_known_event_id: int) -> Tuple[TaskEvent, ...]:
+        group_key = (tuple(sorted(task_groups)), skip_dead)
         if group_key not in self.__task_group_event_logs:
             raise NotSubscribedError()
         log = self.__task_group_event_logs[group_key].event_log
-        events = log.get_since_event(last_known_event_id, truncate_before_full_state=True)
+        executor = self.__get_executor_for_log(log)
+        events = await asyncio.get_event_loop().run_in_executor(executor, log.get_since_event, last_known_event_id, True)
         return events
 
 
