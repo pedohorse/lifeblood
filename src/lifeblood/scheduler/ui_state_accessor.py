@@ -162,12 +162,12 @@ class UIStateAccessor(SchedulerComponentBase):
                     async with con.execute('SELECT "id" FROM tasks '
                                            'LEFT JOIN task_groups ON tasks.id==task_groups.task_id '
                                            'WHERE task_groups."group" == ?', element_data) as cur:
-                        element_data = list(await cur.fetchall())
+                        element_data = [x[0] for x in await cur.fetchall()]
 
             # elif queue_element_type == QueueElementType.TASK_ID_LIST:
             # so at this point element_data is a list of task ids
             assert isinstance(element_data, list)
-            group_sets =await self._get_tasks_groups(element_data)
+            group_sets = await self._get_tasks_groups(element_data)
             affected_logs = []
             for group_set in group_sets:
                 for group in group_set:
@@ -182,18 +182,26 @@ class UIStateAccessor(SchedulerComponentBase):
                 event = TasksDeleted(tuple(element_data))
             elif queue_event_type in (QueueEventType.UPDATED, QueueEventType.ADDED):
                 async with self.__data_access.data_connection() as con:
-                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, '
-                                           'tasks.node_id, tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.attributes, tasks.split_level, '
-                                           'tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, tasks.environment_resolver_data, '
-                                           'nodes.id as node_id, '
-                                           'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
-                                           'FROM tasks '
-                                           'INNER JOIN nodes ON tasks.node_id==nodes.id '
-                                           'LEFT JOIN task_splits ON tasks.id==task_splits.task_id '
-                                           f'WHERE tasks.id IN ({",".join(str(x) for x in element_data)})') as cur:
+                    con.row_factory = aiosqlite.Row
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
+                                           'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
+                                           'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id, GROUP_CONCAT(task_groups."group") as groups '
+                                           'FROM "tasks" '
+                                           'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
+                                           'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
+                                           'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
+                                           f'WHERE tasks.id IN ({",".join(str(x) for x in element_data)})', (InvocationState.IN_PROGRESS.value,)) as cur:
                         task_rows = await cur.fetchall()
-
-                event = TasksUpdated(_pack_tasks_data(self.__data_access.db_uid, task_rows))
+                all_tasks = {}
+                for task_row in task_rows:
+                    task = dict(task_row)
+                    task['progress'] = self.__data_access.mem_cache_invocations.get(task['invoc_id'], {}).get('progress', None)
+                    task['groups'] = set(task['groups'].split(','))
+                    if task['id'] in all_tasks:
+                        all_tasks[task['id']]['groups'].update(task['groups'])
+                    else:
+                        all_tasks[task['id']] = task
+                event = TasksUpdated(await asyncio.get_event_loop().run_in_executor(None, _pack_tasks_data, self.__data_access.db_uid, all_tasks))
             else:
                 raise NotImplementedError('IMPOSSIBRU!')
 
@@ -202,7 +210,7 @@ class UIStateAccessor(SchedulerComponentBase):
             event.timestamp = event_timestamp
             #  put event into logs
             for log in affected_logs:
-                executor = self.__get_executor_for_log(log)
+                executor = self.__get_executor_for_log(log.event_log)
                 await asyncio.get_event_loop().run_in_executor(executor, log.event_log.add_event, event)
 
     def prune_event_subscriptions(self):
@@ -466,7 +474,7 @@ class UIStateAccessor(SchedulerComponentBase):
             async with self.__data_access.data_connection() as con, \
                     aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
                 con.row_factory = aiosqlite.Row
-                async with con.execute('SELECT task_id "group" FROM task_groups') as cur:
+                async with con.execute('SELECT task_id, "group" FROM task_groups') as cur:
                     rows = await cur.fetchall()
 
             def _do():
@@ -496,9 +504,9 @@ class UIStateAccessor(SchedulerComponentBase):
             return
         eid = self._get_next_event_id()
         ets = time.time_ns()
-        self.__task_event_preprocess_queue.put((QueueEventType.ADDED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
+        self.__task_event_preprocess_queue.put_nowait((QueueEventType.ADDED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
 
-    def scheduler_reports_task_added(self, task_id: int):
+    async def scheduler_reports_task_added(self, task_id: int):
         """
         if task_raw is None - it will be fetched from DB
         """
@@ -509,19 +517,19 @@ class UIStateAccessor(SchedulerComponentBase):
             return
         eid = self._get_next_event_id()
         ets = time.time_ns()
-        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
+        self.__task_event_preprocess_queue.put_nowait((QueueEventType.UPDATED, QueueElementType.TASK_ID_LIST, (eid, ets, task_ids)))
 
     def scheduler_reports_tasks_updated_group(self, task_group: str):
         if len(self.__task_group_event_logs) == 0:
             return
         eid = self._get_next_event_id()
         ets = time.time_ns()
-        self.__task_event_preprocess_queue.put((QueueEventType.UPDATED, QueueElementType.TASK_GROUP, (eid, ets, task_group)))
+        self.__task_event_preprocess_queue.put_nowait((QueueEventType.UPDATED, QueueElementType.TASK_GROUP, (eid, ets, task_group)))
 
     def scheduler_reports_task_updated(self, task_id: int):
         self.scheduler_reports_tasks_updated([task_id])
 
-    async def scheduler_reports_task_deleted(self, task_id: int):
+    def scheduler_reports_task_deleted(self, task_id: int):
         self.force_refresh_task_group_mapping()
         if len(self.__task_group_event_logs) == 0:
             return
@@ -643,12 +651,18 @@ def _pack_task_data(task_id, task_raw: dict) -> "TaskData":
            task_raw['split_id'], task_raw['invoc_id'], task_raw['groups'])
 
 
-def _pack_tasks_data(db_uid: int, ui_tasks) -> "TaskBatchData":
+def _pack_tasks_data(db_uid: int, ui_tasks: Union[dict, List[dict]]) -> "TaskBatchData":
     tasks = {}
-    for task_id, task_raw in ui_tasks.items():
-        assert task_id == task_raw['id']
-        task_data = _pack_task_data(task_id, task_raw)
-        tasks[task_id] = task_data
+    if isinstance(ui_tasks, dict):
+        for task_id, task_raw in ui_tasks.items():
+            assert task_id == task_raw['id']
+            task_data = _pack_task_data(task_id, task_raw)
+            tasks[task_id] = task_data
+    elif isinstance(ui_tasks, list):
+        for task_raw in ui_tasks:
+            task_id = task_raw['id']
+            task_data = _pack_task_data(task_id, task_raw)
+            tasks[task_id] = task_data
 
     return TaskBatchData(db_uid, tasks)
 
