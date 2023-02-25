@@ -87,7 +87,7 @@ class TaskFullState(TaskEvent):
 
 
 @dataclass
-class TaskUpdated(TaskEvent):
+class TaskUpdated(TaskEvent):  # TODO: remove and always use TasksUpdated ?
     task_data: TaskData
     event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
 
