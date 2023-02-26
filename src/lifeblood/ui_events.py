@@ -125,7 +125,7 @@ class TasksUpdated(TaskEvent):
 
 
 @dataclass
-class TasksDeleted(TaskEvent):
+class TasksRemoved(TaskEvent):
     task_ids: Tuple[int, ...]  # task data, or task_id depending on UIEventType
     event_type: UIEventType = field(default=UIEventType.DELETE, init=False)
 
@@ -136,14 +136,14 @@ class TasksDeleted(TaskEvent):
             stream.write(struct.pack('>Q', task_id))
 
     @classmethod
-    def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TasksDeleted":
+    def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TasksRemoved":
         task_count, = struct.unpack('>Q', stream.readexactly(8))
         task_ids = struct.unpack('>' + 'Q' * task_count, stream.readexactly(8 * task_count))
-        event = TasksDeleted(task_ids)
+        event = TasksRemoved(task_ids)
         assert event.event_type == base_event.event_type == UIEventType.DELETE
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
         return event
 
 
-TaskEvent.register_subclasses([TaskFullState, TaskUpdated, TasksUpdated, TasksDeleted])
+TaskEvent.register_subclasses([TaskFullState, TaskUpdated, TasksUpdated, TasksRemoved])
