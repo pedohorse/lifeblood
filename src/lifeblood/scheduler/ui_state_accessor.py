@@ -11,7 +11,7 @@ from ..misc import atimeit, aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
 from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
-from ..ui_events import TaskEvent, TaskFullState, TaskUpdated, TasksUpdated, TasksDeleted
+from ..ui_events import TaskEvent, TaskFullState, TaskUpdated, TasksUpdated, TasksRemoved
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData
 from .scheduler_component_base import SchedulerComponentBase
@@ -22,10 +22,11 @@ from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Un
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler import Scheduler
 
+
 class QueueEventType(Enum):
     ADDED = 0
     UPDATED = 1
-    DELETED = 2
+    REMOVED = 2
 
 
 class QueueElementType(Enum):
@@ -164,22 +165,26 @@ class UIStateAccessor(SchedulerComponentBase):
                                            'WHERE task_groups."group" == ?', element_data) as cur:
                         element_data = [x[0] for x in await cur.fetchall()]
 
-            # elif queue_element_type == QueueElementType.TASK_ID_LIST:
-            # so at this point element_data is a list of task ids
-            assert isinstance(element_data, list)
-            group_sets = await self._get_tasks_groups(element_data)
-            affected_logs = []
+            # only in case of removed - we need to know previous groups
+            if queue_event_type == QueueEventType.REMOVED:
+                _, groups = element_data
+                group_sets = (set(groups),)
+            else:  # otherwise we take fresh groups
+                group_sets = await self._get_tasks_groups(element_data)
+
+            affected_logs = set()
             for group_set in group_sets:
                 for group in group_set:
                     if group not in self.__task_group_to_logs:
                         continue
-                    affected_logs.extend(self.__task_group_to_logs[group])
+                    affected_logs.update(x.event_log for x in self.__task_group_to_logs[group])
             if len(affected_logs) == 0:
                 continue
 
             # time to fetch info and build event
-            if queue_event_type == QueueEventType.DELETED:
-                event = TasksDeleted(tuple(element_data))
+            if queue_event_type == QueueEventType.REMOVED:
+                task_ids, _ = element_data
+                event = TasksRemoved(task_ids)
             elif queue_event_type in (QueueEventType.UPDATED, QueueEventType.ADDED):
                 async with self.__data_access.data_connection() as con:
                     con.row_factory = aiosqlite.Row
@@ -190,7 +195,8 @@ class UIStateAccessor(SchedulerComponentBase):
                                            'LEFT JOIN "task_groups" ON tasks.id=task_groups.task_id '
                                            'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
                                            'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
-                                           f'WHERE tasks.id IN ({",".join(str(x) for x in element_data)})', (InvocationState.IN_PROGRESS.value,)) as cur:
+                                           f'WHERE tasks.id IN ({", ".join(str(x) for x in element_data)}) '
+                                           'GROUP BY tasks."id"', (InvocationState.IN_PROGRESS.value,)) as cur:
                         task_rows = await cur.fetchall()
                 all_tasks = {}
                 for task_row in task_rows:
@@ -210,8 +216,8 @@ class UIStateAccessor(SchedulerComponentBase):
             event.timestamp = event_timestamp
             #  put event into logs
             for log in affected_logs:
-                executor = self.__get_executor_for_log(log.event_log)
-                await asyncio.get_event_loop().run_in_executor(executor, log.event_log.add_event, event)
+                executor = self.__get_executor_for_log(log)
+                await asyncio.get_event_loop().run_in_executor(executor, log.add_event, event)
 
     def prune_event_subscriptions(self):
         for k, v in list(self.__task_group_event_logs.items()):  # type: Tuple[Tuple[str, ...], bool], LogSubscription
@@ -462,7 +468,7 @@ class UIStateAccessor(SchedulerComponentBase):
         """
         call this if you know task groups changed.
          you DON'T NEED TO call this if tasks were added or removed together with their groups -
-         because calls to scheduler_reports_task_added scheduler_reports_task_deleted will call this method anyway
+         because calls to scheduler_reports_task_added scheduler_reports_task_removed_from_group will call this method anyway
         """
         self.__task_group_mapping = None
 
@@ -529,19 +535,21 @@ class UIStateAccessor(SchedulerComponentBase):
     def scheduler_reports_task_updated(self, task_id: int):
         self.scheduler_reports_tasks_updated([task_id])
 
-    def scheduler_reports_task_deleted(self, task_id: int):
+    def scheduler_reports_tasks_removed_from_group(self, task_ids: List[int], groups: Iterable[str]):
         self.force_refresh_task_group_mapping()
         if len(self.__task_group_event_logs) == 0:
             return
-        raise NotImplementedError('not yet')
+        eid = self._get_next_event_id()
+        ets = time.time_ns()
+        self.__task_event_preprocess_queue.put_nowait((QueueEventType.REMOVED, QueueElementType.TASK_ID_LIST, (eid, ets, (task_ids, groups))))
 
-    def scheduler_reports_task_group_added(self, group):
+    def scheduler_reports_task_groups_added(self, groups):
         self.force_refresh_task_group_mapping()
 
-    def scheduler_reports_task_group_changed(self, group):
+    def scheduler_reports_task_groups_changed(self, groups):
         self.force_refresh_task_group_mapping()
 
-    def scheduler_reports_task_group_removed(self, group):
+    def scheduler_reports_task_groups_removed(self, groups):
         self.force_refresh_task_group_mapping()
 
     #
@@ -603,6 +611,8 @@ class UIStateAccessor(SchedulerComponentBase):
         events = await asyncio.get_event_loop().run_in_executor(executor, log.get_since_event, last_known_event_id, True)
         return events
 
+    def subscriptions_count(self):
+        return len(self.__task_group_event_logs)
 
 # scheduler helpers
 
