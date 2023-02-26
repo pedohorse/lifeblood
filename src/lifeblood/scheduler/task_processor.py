@@ -611,6 +611,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 # so we need to somehow prevent them from being amilessly processed
                                 # this is a testing desicion, TODO: test and see if thes is a good way to deal with the problem
                                 await con.execute('UPDATE "tasks" SET "paused" = 1 WHERE "id" = ?', (task_row['id'],))
+                                updated_task_ids.append(task_row['id'])
 
                         # ui event
                         if updated_task_ids:
