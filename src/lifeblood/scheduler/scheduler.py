@@ -1003,9 +1003,11 @@ class Scheduler:
 
             for group_name in groups_to_set:
                 await con.execute('INSERT INTO task_groups (task_id, "group") VALUES (?, ?)', (task_id, group_name))
-                await con.execute('INSERT OR ABORT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, int(datetime.utcnow().timestamp())))
+                await con.execute('INSERT OR IGNORE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, int(datetime.utcnow().timestamp())))
             for group_name in groups_to_del:
                 await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_removed_from_group, [task_id], groups_to_del)  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups_to_set)  # ui event
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
             await con.commit()
 
@@ -1303,6 +1305,7 @@ class Scheduler:
                     async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
                         groups = [x['group'] for x in await gcur.fetchall()]
                     if len(groups) > 0:
+                        con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
                         await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                               zip(itertools.repeat(new_id, len(groups)), groups))
                 else:  # parent_task_id is None
@@ -1316,11 +1319,13 @@ class Scheduler:
                     if newtask.default_priority() is not None:
                         await con.execute('UPDATE task_group_attributes SET "priority" = ? WHERE "group" = ?',
                                           (newtask.default_priority(), new_group))
+                    con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, (new_group,))  # ui event
                     #
                 if newtask.extra_group_names():
                     groups = newtask.extra_group_names()
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                           zip(itertools.repeat(new_id, len(groups)), groups))
+                    con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
                     for group in groups:
                         async with con.execute('SELECT "group" FROM task_group_attributes WHERE "group" == ?', (group,)) as gcur:
                             need_create = await gcur.fetchone() is None
