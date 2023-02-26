@@ -26,6 +26,7 @@ class ConnectionWithCallbacks(Connection):
                 callback(*args, **kwargs)
             except Exception as e:
                 logger.exception(f'failed to call post-commit callback {e}')
+        self.__callbacks = []
 
 
 #
