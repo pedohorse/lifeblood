@@ -154,7 +154,7 @@ class EventQueueTest(IsolatedAsyncioTestCase):
 
         events = await ui_state_access.get_events_for_groups_since_event_id(('test_group1',), True, last_known_id)
         # for now - best case scenario there will be 4+3*2=10 events, but may be more if _awaitors finish not at the same time
-        self.assertGreaterEqual(4 + 3*2, len(events))  # note - bad check: this count is implementation-specific and may change without affecting anything
+        self.assertLessEqual(4 + 3*2, len(events))  # note - bad check: this count is implementation-specific and may change without affecting anything
         # TODO: instead of event count - check that in total there are all tasks going over all 5 states
         check_states = {task1_id: (TaskState.WAITING, True),
                         task2_id: (TaskState.WAITING, True),
