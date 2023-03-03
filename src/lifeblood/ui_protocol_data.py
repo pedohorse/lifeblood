@@ -8,8 +8,7 @@ from .buffer_serializable import IBufferSerializable
 from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState
 from dataclasses import dataclass
 
-from typing import Dict, List, Tuple, Optional, Set
-
+from typing import Dict, List, Tuple, Type, Optional, Set, Union
 
 def _serialize_string(s: str, stream: BufferedIOBase) -> int:
     bstr = s.encode('UTF-8')
@@ -20,6 +19,198 @@ def _serialize_string(s: str, stream: BufferedIOBase) -> int:
 def _deserialize_string(stream: BufferedReader) -> str:
     bsize, = struct.unpack('>Q', stream.readexactly(8))
     return bytes(stream.readexactly(bsize)).decode('UTF-8')
+
+
+class DataNotSet:
+    pass
+
+
+@dataclass
+class TaskDelta(IBufferSerializable):
+    id: int
+    parent_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
+    children_count: Union[int, Type[DataNotSet]] = DataNotSet
+    active_children_count: Union[int, Type[DataNotSet]] = DataNotSet
+    state: Union[TaskState, Type[DataNotSet]] = DataNotSet
+    state_details: Union[Optional[str], Type[DataNotSet]] = DataNotSet
+    paused: Union[bool, Type[DataNotSet]] = DataNotSet
+    node_id: Union[int, Type[DataNotSet]] = DataNotSet
+    node_input_name: Union[Optional[str], Type[DataNotSet]] = DataNotSet
+    node_output_name: Union[Optional[str], Type[DataNotSet]] = DataNotSet
+    name: Union[str, Type[DataNotSet]] = DataNotSet
+    split_level: Union[int, Type[DataNotSet]] = DataNotSet
+    work_data_invocation_attempt: Union[int, Type[DataNotSet]] = DataNotSet
+    progress: Union[Optional[float], Type[DataNotSet]] = DataNotSet
+    split_origin_task_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
+    split_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
+    invocation_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
+    groups: Union[Set[str], Type[DataNotSet]] = DataNotSet
+
+    def serialize(self, stream: BufferedIOBase):
+        data_has = struct.pack(
+            '>?????????????????',
+            *(x is not DataNotSet for x in
+              (self.parent_id, self.children_count, self.active_children_count, self.state, self.state_details,
+               self.paused, self.node_id, self.node_input_name, self.node_output_name, self.name, self.split_level,
+               self.work_data_invocation_attempt, self.progress, self.split_origin_task_id, self.split_id,
+               self.invocation_id, self.groups)))
+        stream.write(data_has)
+
+        pattern_parts = ['>Q']
+        pack_stuff = [self.id]
+        if self.parent_id is not DataNotSet:
+            pattern_parts.append('?Q')
+            pack_stuff.extend([self.parent_id is not None, self.parent_id or 0])
+        if self.children_count is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(self.children_count)
+        if self.active_children_count is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(self.active_children_count)
+        if self.state is not DataNotSet:
+            pattern_parts.append('I')
+            pack_stuff.append(self.state.value)
+        if self.paused is not DataNotSet:
+            pattern_parts.append('?')
+            pack_stuff.append(self.paused)
+        if self.node_id is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(self.node_id)
+        if self.split_level is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(self.split_level)
+        if self.work_data_invocation_attempt is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(self.work_data_invocation_attempt)
+        if self.progress is not DataNotSet:
+            pattern_parts.append('?d')
+            pack_stuff.extend([self.progress is not None, self.progress or 0.0])
+        if self.split_origin_task_id is not DataNotSet:
+            pattern_parts.append('?Q')
+            pack_stuff.extend([self.split_origin_task_id is not None, self.split_origin_task_id or 0])
+        if self.split_id is not DataNotSet:
+            pattern_parts.append('?Q')
+            pack_stuff.extend([self.split_id is not None, self.split_id or 0])
+        if self.invocation_id is not DataNotSet:
+            pattern_parts.append('?Q')
+            pack_stuff.extend([self.invocation_id is not None, self.invocation_id or 0])
+        if self.groups is not DataNotSet:
+            pattern_parts.append('Q')
+            pack_stuff.append(len(self.groups))
+
+        data = struct.pack(''.join(pattern_parts), *pack_stuff)
+        stream.write(data)
+
+        if self.state_details is not DataNotSet:
+            stream.write(struct.pack('>?', self.state_details is not None))
+            if self.state_details is not None:
+                _serialize_string(self.state_details, stream)
+        if self.node_input_name is not DataNotSet:
+            stream.write(struct.pack('>?', self.node_input_name is not None))
+            if self.node_input_name is not None:
+                _serialize_string(self.node_input_name, stream)
+        if self.node_output_name is not DataNotSet:
+            stream.write(struct.pack('>?', self.node_output_name is not None))
+            if self.node_output_name is not None:
+                _serialize_string(self.node_output_name, stream)
+        if self.name is not DataNotSet:
+            _serialize_string(self.name, stream)
+        if self.groups is not DataNotSet:
+            for group in self.groups:
+                _serialize_string(group, stream)
+
+    @classmethod
+    def deserialize(cls, stream: BufferedReader):
+        has_parent_id, has_children_count, \
+            has_active_children_count, has_state, has_state_details, has_paused, has_node_id, has_node_input_name, \
+            has_node_output_name, has_name, has_split_level, has_work_data_invocation_attempt, \
+            has_progress, has_split_origin_task_id, has_split_id, has_invocation_id, has_groups = \
+                struct.unpack('>?????????????????', stream.readexactly(17))
+
+        task_id, = struct.unpack('>Q', stream.readexactly(8))
+        parent_id = DataNotSet
+        if has_parent_id:
+            is_not_none, parent_id = struct.unpack('>?Q', stream.readexactly(9))
+            if not is_not_none:
+                parent_id = None
+        children_count = DataNotSet
+        if has_children_count:
+            children_count, = struct.unpack('>Q', stream.readexactly(8))
+        active_children_count = DataNotSet
+        if has_active_children_count:
+            active_children_count, = struct.unpack('>Q', stream.readexactly(8))
+        state = DataNotSet
+        if has_state:
+            _state_raw, = struct.unpack('>I', stream.readexactly(4))
+            state = TaskState(_state_raw)
+        paused = DataNotSet
+        if has_paused:
+            paused, = struct.unpack('>?', stream.readexactly(1))
+        node_id = DataNotSet
+        if has_node_id:
+            node_id, = struct.unpack('>Q', stream.readexactly(8))
+        split_level = DataNotSet
+        if has_split_level:
+            split_level, = struct.unpack('>Q', stream.readexactly(8))
+        work_data_invocation_attempt = DataNotSet
+        if has_work_data_invocation_attempt:
+            work_data_invocation_attempt, = struct.unpack('>Q', stream.readexactly(8))
+        progress = DataNotSet
+        if has_progress:
+            is_not_none, progress = struct.unpack('>?d', stream.readexactly(9))
+            if not is_not_none:
+                progress = None
+        split_origin_task_id = DataNotSet
+        if has_split_origin_task_id:
+            is_not_none, split_origin_task_id = struct.unpack('>?Q', stream.readexactly(9))
+            if not is_not_none:
+                split_origin_task_id = None
+        split_id = DataNotSet
+        if has_split_id:
+            is_not_none, split_id = struct.unpack('>?Q', stream.readexactly(9))
+            if not is_not_none:
+                split_id = None
+        invocation_id = DataNotSet
+        if has_invocation_id:
+            is_not_none, invocation_id = struct.unpack('>?Q', stream.readexactly(9))
+            if not is_not_none:
+                invocation_id = None
+        group_count = 0
+        if has_groups:
+            group_count, = struct.unpack('>Q', stream.readexactly(8))
+
+        state_details = DataNotSet
+        if has_state_details:
+            state_details = None
+            is_not_none, = struct.unpack('>?', stream.readexactly(1))
+            if is_not_none:
+                state_details = _deserialize_string(stream)
+
+        node_input_name = DataNotSet
+        if has_node_input_name:
+            node_input_name = None
+            has_node_input_name, = struct.unpack('>?', stream.readexactly(1))
+            if has_node_input_name:
+                node_input_name = _deserialize_string(stream)
+        node_output_name = DataNotSet
+        if has_node_output_name:
+            node_output_name = None
+            has_node_output_name, = struct.unpack('>?', stream.readexactly(1))
+            if has_node_output_name:
+                node_output_name = _deserialize_string(stream)
+        task_name = DataNotSet
+        if has_name:
+            task_name = _deserialize_string(stream)
+        groups = DataNotSet
+        if has_groups:
+            groups = set()
+            for i in range(group_count):
+                group_name = _deserialize_string(stream)
+                groups.add(group_name)
+
+        return TaskDelta(task_id, parent_id, children_count, active_children_count, state, state_details, paused,
+                         node_id, node_input_name, node_output_name, task_name, split_level, work_data_invocation_attempt,
+                         progress, split_origin_task_id, split_id, invocation_id, groups)
 
 
 @dataclass
