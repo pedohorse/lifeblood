@@ -3,11 +3,11 @@ from io import BufferedIOBase
 import struct
 from dataclasses import dataclass, field
 from .buffered_connection import BufferedReader
-from .ui_protocol_data import TaskData, TaskBatchData, UiData
+from .ui_protocol_data import TaskData, TaskDelta, TaskBatchData, UiData
 from .buffer_serializable import IBufferSerializable
 from .enums import UIEventType
 
-from typing import ClassVar, Dict, Iterable, Tuple, Type, Union
+from typing import ClassVar, Dict, Iterable, List, Tuple, Type, Union
 
 
 @dataclass
@@ -87,6 +87,30 @@ class TaskFullState(TaskEvent):
 
 
 @dataclass
+class TasksChanged(TaskEvent):
+    task_deltas: List[TaskDelta]
+    event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
+
+    def serialize(self, stream: BufferedIOBase):
+        super().serialize(stream)
+        stream.write(struct.pack('>Q', len(self.task_deltas)))
+        for task_delta in self.task_deltas:
+            task_delta.serialize(stream)
+
+    @classmethod
+    def _deserialize_part(cls, base_event: "TaskEvent", stream: BufferedReader) -> "TaskEvent":
+        task_deltas = []
+        num_deltas, = struct.unpack('>Q', stream.readexactly(8))
+        for _ in range(num_deltas):
+            task_deltas.append(TaskDelta.deserialize(stream))
+        event = TasksChanged(task_deltas)
+        assert event.event_type == base_event.event_type == UIEventType.UPDATE
+        event.timestamp = base_event.timestamp
+        event.event_id = base_event.event_id
+        return event
+
+
+@dataclass
 class TaskUpdated(TaskEvent):  # TODO: remove and always use TasksUpdated ?
     task_data: TaskData
     event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
@@ -146,4 +170,4 @@ class TasksRemoved(TaskEvent):
         return event
 
 
-TaskEvent.register_subclasses([TaskFullState, TaskUpdated, TasksUpdated, TasksRemoved])
+TaskEvent.register_subclasses([TaskFullState, TasksChanged, TaskUpdated, TasksUpdated, TasksRemoved])
