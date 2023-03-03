@@ -28,6 +28,9 @@ class ConnectionWithCallbacks(Connection):
                 logger.exception(f'failed to call post-commit callback {e}')
         self.__callbacks = []
 
+    async def rollback(self) -> None:
+        await super().rollback()
+        self.__callbacks = []
 
 #
 # the function below is a direct copy from aiosqlite with the change of Connection class
