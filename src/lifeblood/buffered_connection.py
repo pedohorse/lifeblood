@@ -77,6 +77,10 @@ class BufferedWriter(io.BufferedWriter):
 
 class BufferedReaderWrapper(BufferedReader):
     def __init__(self, stuff_to_wrap: io.BufferedReader, buffering=None):
+        if buffering is None:
+            buffering = -1
+        if buffering < 0:
+            buffering = io.DEFAULT_BUFFER_SIZE
         super().__init__(stuff_to_wrap.raw, buffering)
         self.__wrapped = stuff_to_wrap
 
