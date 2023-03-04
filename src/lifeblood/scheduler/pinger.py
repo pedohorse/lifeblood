@@ -4,6 +4,7 @@ import time
 from .. import logging
 from ..worker_task_protocol import WorkerTaskClient, WorkerPingReply
 from ..enums import WorkerState, InvocationState, WorkerPingState, SchedulerMode
+from ..ui_protocol_data import TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
 
 from typing import Any, Optional, TYPE_CHECKING
@@ -135,14 +136,16 @@ class Pinger(SchedulerComponentBase):
             elif ping_code == WorkerPingReply.BUSY:
                 # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
-                async with con.execute('SELECT "id" FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
-                    inv_id = await invcur.fetchone()
-                    if inv_id is not None:
-                        inv_id = inv_id['id']
+                async with con.execute('SELECT "id", task_id FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
+                    inv_row = await invcur.fetchone()
+                    if inv_row is not None:
+                        inv_id = inv_row['id']
+                        task_id = inv_row['task_id']
                 if inv_id is not None:
                     if inv_id not in self.scheduler.data_access.mem_cache_invocations:
                         self.scheduler.data_access.mem_cache_invocations[inv_id] = {}
                     self.scheduler.data_access.mem_cache_invocations[inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
+                    self.scheduler.ui_state_access.scheduler_reports_task_updated(TaskDelta(task_id, progress=pvalue))
                     # Therefore additional cleanup needed later - still better than lock things or check too hard
 
             else:
