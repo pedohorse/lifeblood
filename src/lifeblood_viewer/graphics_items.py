@@ -7,7 +7,7 @@ from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
-from lifeblood.ui_protocol_data import TaskData
+from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
@@ -1147,7 +1147,7 @@ class Task(NetworkItemWithUI):
     def set_name(self, name: str):
         if name == self.__raw_data.name:
             return
-        self.__raw_data.name= name
+        self.__raw_data.name = name
         self.refresh_ui()
 
     def state(self) -> TaskState:
@@ -1196,14 +1196,16 @@ class Task(NetworkItemWithUI):
         self.__raw_data.state_details = state_details
         self.__state_details_cached = None
 
-    def set_state(self, state: TaskState, paused: bool):
-        if state == self.__raw_data.state and self.__raw_data.paused == paused:
+    def set_state(self, state: Optional[TaskState], paused: Optional[bool]):
+        if (state is None or state == self.__raw_data.state) and (paused is None or self.__raw_data.paused == paused):
             return
-        self.__raw_data.state = state
-        self.set_state_details(None)
-        self.__raw_data.paused = paused
-        if state != TaskState.IN_PROGRESS:
-            self.__raw_data.progress = None
+        if state is not None:
+            self.__raw_data.state = state
+            self.set_state_details(None)
+            if state != TaskState.IN_PROGRESS:
+                self.__raw_data.progress = None
+        if paused is not None:
+            self.__raw_data.paused = paused
         if self.__node:
             self.__node.task_state_changed(self)
         self.update()
@@ -1211,7 +1213,52 @@ class Task(NetworkItemWithUI):
 
     def set_task_data(self, raw_data: TaskData):
         self.__state_details_cached = None
+        state_changed = self.__raw_data.state != raw_data.state
         self.__raw_data = raw_data
+        if state_changed and self.__node:
+            self.__node.task_state_changed(self)
+            self.update()
+            self.refresh_ui()
+
+    def apply_task_delta(self, task_delta: TaskDelta):
+        if task_delta.paused is not DataNotSet:
+            self.set_state(None, task_delta.paused)
+        if task_delta.state is not DataNotSet:
+            self.set_state(task_delta.state, None)
+        if task_delta.name is not DataNotSet:
+            self.set_name(task_delta.name)
+        if task_delta.node_id is not DataNotSet:
+            node = self.scene().get_node(task_delta.node_id)
+            if node is not None:
+                node.add_task(self)
+        if task_delta.work_data_invocation_attempt is not DataNotSet:
+            self.__raw_data.work_data_invocation_attempt = task_delta.work_data_invocation_attempt
+        if task_delta.node_output_name is not DataNotSet:
+            self.__raw_data.node_output_name = task_delta.node_output_name
+        if task_delta.node_input_name is not DataNotSet:
+            self.__raw_data.node_input_name = task_delta.node_input_name
+        if task_delta.invocation_id is not DataNotSet:
+            self.__raw_data.invocation_id = task_delta.invocation_id
+        if task_delta.split_id is not DataNotSet:
+            self.__raw_data.split_id = task_delta.split_id
+        if task_delta.children_count is not DataNotSet:
+            self.__raw_data.children_count = task_delta.children_count
+        if task_delta.active_children_count is not DataNotSet:
+            self.__raw_data.active_children_count = task_delta.active_children_count
+        if task_delta.groups is not DataNotSet:
+            self.set_groups(task_delta.groups)
+        if task_delta.split_origin_task_id is not DataNotSet:
+            self.__raw_data.split_origin_task_id = task_delta.split_origin_task_id
+        if task_delta.split_level is not DataNotSet:
+            self.__raw_data.split_level = task_delta.split_level
+        if task_delta.progress is not DataNotSet:
+            self.__raw_data.progress = task_delta.progress
+        if task_delta.parent_id is not DataNotSet:
+            self.__raw_data.parent_id = task_delta.parent_id
+        if task_delta.state_details is not DataNotSet:
+            self.set_state_details(task_delta.state_details)
+        self.update()
+        self.update_ui()
 
     def set_progress(self, progress: float):
         self.__raw_data.progress = progress
