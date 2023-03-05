@@ -606,12 +606,13 @@ class QGraphicsImguiScene(QGraphicsScene):
     @Slot(object)
     def tasks_process_events(self, events: List[TaskEvent]):
         for event in events:
+            logger.debug(f'event: {event.tiny_repr()}')
             if event.database_uid != self.__db_uid:
                 logger.warning(f'received event with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {event.database_uid}')
                 continue
 
             if isinstance(event, TaskFullState):
-                return self.tasks_full_update(event.task_data)
+                self.tasks_full_update(event.task_data)
             elif isinstance(event, TasksUpdated):
                 self.tasks_update(event.task_data)
             elif isinstance(event, TasksChanged):
