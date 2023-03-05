@@ -65,10 +65,10 @@ class UIStateAccessor(SchedulerComponentBase):
 
         self.__task_event_preprocess_queue = asyncio.Queue()
         #
-        self.__task_group_mapping: Dict[int, Set[str]] = {}
-        self.__group_task_mapping: Dict[str, Set[id]] = {}
+        self.__task_group_mapping: Optional[Dict[int, Set[str]]] = None
+        self.__group_task_mapping: Optional[Dict[str, Set[id]]] = None
         self.__task_group_mapping_update_alock = asyncio.Lock()
-        self.__requested_task_group_force_refresh = False
+        self.__requested_task_group_force_refresh = True
 
         # a pool of pools to execute log commands in. the point is to ensure log always runs on ONE SAME THREAD
         # running log methods on ONE SAME THREAD will ensure lockless race-free work
@@ -160,9 +160,10 @@ class UIStateAccessor(SchedulerComponentBase):
                 _, groups = element_data
                 group_sets = (set(groups),)
             elif queue_event_type in (QueueEventType.REMOVED, QueueEventType.ADDED):
-                task_datas, groups = element_data
+                task_datas, groups = element_data  # type: List[TaskData], Optional[Set[str]]
                 if groups is None:
-                    group_sets = await self._get_tasks_groups([x.id for x in task_datas])
+                    group_sets = [x.groups for x in task_datas]
+                    # group_sets = await self._get_tasks_groups([x.id for x in task_datas])
                 else:
                     group_sets = (set(groups),)
             else:  # otherwise we take fresh groups
