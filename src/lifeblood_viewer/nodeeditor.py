@@ -8,7 +8,7 @@ from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItem
 from .db_misc import sql_init_script_nodes
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.uidata import NodeUi, Parameter
-from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData
+from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
@@ -18,6 +18,7 @@ from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
+from lifeblood.ui_events import TaskEvent, TasksRemoved, TasksUpdated, TasksChanged, TaskFullState
 
 from lifeblood.text import generate_name
 
@@ -38,7 +39,7 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 import grandalf.graphs
 import grandalf.layouts
 
-from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
+from typing import TYPE_CHECKING, Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
 
 logger = logging.get_logger('viewer')
 
@@ -261,8 +262,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         self.__long_operations: Dict[int, LongOperation] = {}
 
-        self.__ui_connection_worker.graph_update.connect(self.graph_update)
-        self.__ui_connection_worker.tasks_update.connect(self.tasks_update)
+        self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update)
+        self.__ui_connection_worker.tasks_full_update.connect(self.tasks_full_update)
+        self.__ui_connection_worker.tasks_events_arrived.connect(self.tasks_process_events)
         self.__ui_connection_worker.db_uid_update.connect(self.db_uid_update)
         self.__ui_connection_worker.log_fetched.connect(self.log_fetched)
         self.__ui_connection_worker.nodeui_fetched.connect(self.nodeui_fetched)
@@ -520,7 +522,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @timeit(0.05)
     @Slot(object)
-    def graph_update(self, graph_data: NodeGraphStructureData):
+    def graph_full_update(self, graph_data: NodeGraphStructureData):
         if self.__db_uid != graph_data.db_uid:
             logger.warning(f'received node graph update with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {graph_data.db_uid}')
             return
@@ -602,7 +604,42 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @timeit(0.05)
     @Slot(object)
-    def tasks_update(self, tasks_data: TaskBatchData):
+    def tasks_process_events(self, events: List[TaskEvent]):
+        for event in events:
+            if event.database_uid != self.__db_uid:
+                logger.warning(f'received event with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {event.database_uid}')
+                continue
+
+            if isinstance(event, TaskFullState):
+                return self.tasks_full_update(event.task_data)
+            elif isinstance(event, TasksUpdated):
+                self.tasks_update(event.task_data)
+            elif isinstance(event, TasksChanged):
+                self.tasks_deltas_apply(event.task_deltas)
+            elif isinstance(event, TasksRemoved):
+                existing_tasks = dict(self.tasks_dict())
+                for task_id in event.task_ids:
+                    if task_id in existing_tasks:
+                        self.removeItem(existing_tasks[task_id])
+                        existing_tasks.pop(task_id)
+
+    def tasks_deltas_apply(self, task_deltas: List[TaskDelta]):
+        for task_delta in task_deltas:
+            task_id = task_delta.id
+            task = self.get_task(task_id)
+            if task is None:  # this would be unusual
+                logger.warning(f'cannot apply task delta: task {task_id} does not exist')
+                continue
+            if task_delta.node_id is not DataNotSet:
+                node = self.get_node(task_delta.node_id)
+                if node is None:
+                    logger.warning('node not found during task delta processing, this will probably be fixed during next update')
+                    self.__tasks_to_try_reparent_during_node_update[task_id] = task_delta.node_id
+            task.apply_task_delta(task_delta)
+
+    @timeit(0.05)
+    @Slot(object)
+    def tasks_full_update(self, tasks_data: TaskBatchData):
         if self.__db_uid != tasks_data.db_uid:
             logger.warning(f'received node graph update with a differend db uid. Maybe a ghost if scheduler has just switched db. Ignoring. expect: {self.__db_uid}, got: {tasks_data.db_uid}')
             return
@@ -611,16 +648,15 @@ class QGraphicsImguiScene(QGraphicsScene):
         to_del_tasks = {}
         existing_task_ids: Dict[int, Task] = {}
 
-        for item in self.items():
-            if isinstance(item, Task):
-                if item.get_id() not in tasks_data.tasks:
-                    to_del.append(item)
-                    if item.node() is not None:
-                        if not item.node() in to_del_tasks:
-                            to_del_tasks[item.node()] = []
-                        to_del_tasks[item.node()].append(item)
-                    continue
-                existing_task_ids[item.get_id()] = item
+        for item in self.tasks():
+            if item.get_id() not in tasks_data.tasks:
+                to_del.append(item)
+                if item.node() is not None:
+                    if not item.node() in to_del_tasks:
+                        to_del_tasks[item.node()] = []
+                    to_del_tasks[item.node()].append(item)
+                continue
+            existing_task_ids[item.get_id()] = item
 
         for node, tasks in to_del_tasks.items():
             node.remove_tasks(tasks)
@@ -628,25 +664,39 @@ class QGraphicsImguiScene(QGraphicsScene):
         for item in to_del:
             self.removeItem(item)
 
-        # removing items might cascade things, like removing node will remove connections to that node
-        # so now we need to recheck existing items validity
-        # though not consistent scene states should not come in uidata at all
-        for item_id, item in tuple(existing_task_ids.items()):
-            if item.scene() != self:
-                del existing_task_ids[item_id]
+        # we don't need that cuz scene already takes care of upkeeping task dict
+        # # removing items might cascade things, like removing node will remove connections to that node
+        # # so now we need to recheck existing items validity
+        # # though not consistent scene states should not come in uidata at all
+        # for item_id, item in tuple(existing_task_ids.items()):
+        #     if item.scene() != self:
+        #         del existing_task_ids[item_id]
+
+        self.tasks_update(tasks_data)
+
+    def tasks_update(self, tasks_data: TaskBatchData):
+        """
+        unlike tasks_full_update - this ONLY applies updates, does not delete anything
+
+        :param tasks_data:
+        :param existing_tasks:  optional already computed dict of existing tasks. if none - it will be computed
+        :return:
+        """
+
+        existing_tasks = dict(self.tasks_dict())
 
         for id, new_task_data in tasks_data.tasks.items():
-            if id not in existing_task_ids:
+            if id not in existing_tasks:
                 new_task = Task(new_task_data)
-                existing_task_ids[id] = new_task
-                if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
-                    origin_task = existing_task_ids[new_task_data.split_origin_task_id]
+                existing_tasks[id] = new_task
+                if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_tasks:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
+                    origin_task = existing_tasks[new_task_data.split_origin_task_id]
                     new_task.setPos(origin_task.scenePos())
-                elif new_task_data.parent_id is not None and new_task_data.parent_id in existing_task_ids:
-                    origin_task = existing_task_ids[new_task_data.parent_id]
+                elif new_task_data.parent_id is not None and new_task_data.parent_id in existing_tasks:
+                    origin_task = existing_tasks[new_task_data.parent_id]
                     new_task.setPos(origin_task.scenePos())
                 self.addItem(new_task)
-            task = existing_task_ids[id]
+            task = existing_tasks[id]
             existing_node = self.get_node(new_task_data.node_id)
             if existing_node:
                 existing_node.add_task(task)
@@ -1067,6 +1117,9 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def tasks(self) -> Tuple[Task]:
         return tuple(self.__task_dict.values())
+
+    def tasks_dict(self) -> Mapping[int, Task]:
+        return MappingProxyType(self.__task_dict)
 
     def start(self):
         if self.__ui_connection_thread is None:
