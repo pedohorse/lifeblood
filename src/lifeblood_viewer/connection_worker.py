@@ -163,6 +163,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self._check_workers()
 
     def __stop_workers_timer(self):
+        if self.__timer_workers is None:
+            return
         self.__timer_workers.stop()
         self.__timer_workers = None
 
@@ -182,7 +184,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         self._check_task_groups()
 
     def __stop_task_groups_timer(self):
-        self.__timer_groups.stop()
+        if self.__timer_groups is None:
+            return
         self.__timer_groups = None
 
     #
@@ -313,7 +316,10 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         def _decorator(func: Callable):
             def _inner(self, *args, **kwargs):
                 if self.interruption_requested():
-                    self.__timer.stop()
+                    self.__stop_tasks_timer()
+                    self.__stop_graph_timer()
+                    self.__stop_workers_timer()
+                    self.__stop_task_groups_timer()
                     if self.__client is not None:
                         self.__client.close()
                     self.__client = None
@@ -333,12 +339,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 try:
                     return func(self, *args, **kwargs)
                 except ConnectionError as e:
-                    logger.error(f'connection reset {e}')
-                    logger.error('scheduler connection lost')
+                    logger.error(f'[{func.__name__}] connection reset {e}')
+                    logger.error(f'[{func.__name__}] scheduler connection lost')
                     self.__client = None
                     return
                 except Exception:
-                    logger.exception('problems in network operations')
+                    logger.exception(f'[{func.__name__}] problems in network operations')
                     self.__client = None
                     return
             return _inner
