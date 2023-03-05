@@ -18,6 +18,8 @@ def _serialize_string(s: str, stream: BufferedIOBase) -> int:
 
 def _deserialize_string(stream: BufferedReader) -> str:
     bsize, = struct.unpack('>Q', stream.readexactly(8))
+    if bsize == 0:
+        return ''
     return bytes(stream.readexactly(bsize)).decode('UTF-8')
 
 

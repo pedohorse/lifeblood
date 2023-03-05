@@ -648,6 +648,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def read_string() -> str:
             strlen = struct.unpack('>Q', await reader.readexactly(8))[0]
+            if strlen == 0:
+                return ''
             return (await reader.readexactly(strlen)).decode('UTF-8')
 
         async def write_string(s: str):

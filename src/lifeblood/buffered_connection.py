@@ -86,6 +86,8 @@ class BufferedReaderWrapper(BufferedReader):
 
     def read_string(self):
         data_len, = struct.unpack('>Q', self.readexactly(8))
+        if data_len == 0:
+            return ''
         return self.readexactly(data_len).decode('UTF-8')
 
     def close(self) -> None:
