@@ -5,7 +5,8 @@ from lifeblood.enums import TaskState, WorkerType, WorkerState, TaskGroupArchive
 from lifeblood.buffered_connection import BufferedReaderWrapper
 from lifeblood.ui_protocol_data import UiData, NodeGraphStructureData, \
     NodeData, NodeConnectionData, TaskBatchData, TaskData, WorkerData, WorkerResources, WorkerBatchData, \
-    TaskGroupData, TaskGroupStatisticsData, TaskGroupBatchData
+    TaskGroupData, TaskGroupStatisticsData, TaskGroupBatchData, TaskDelta
+from lifeblood.ui_events import TasksChanged, TasksUpdated, TasksRemoved, TaskFullState, TaskEvent
 
 
 class Tests(TestCase):
@@ -65,3 +66,57 @@ class Tests(TestCase):
         buffer.seek(0)
         returned_data = TaskGroupBatchData.deserialize(BufferedReaderWrapper(io.BufferedReader(buffer), 128))
         self.assertEqual(batch_data, returned_data)
+
+    def test_delta_serialization_simple(self):
+        def _do_check(task_delta):
+            buffer = BytesIO()
+            task_delta.serialize(buffer)
+            buffer.seek(0)
+            rtd = TaskDelta.deserialize(BufferedReaderWrapper(io.BufferedReader(buffer), ))
+            self.assertEqual(task_delta, rtd)
+
+        _do_check(TaskDelta(123, children_count=3, state=TaskState.POST_GENERATING, name='sdfa'))
+        _do_check(TaskDelta(124,))
+        _do_check(TaskDelta(125, parent_id=None, children_count=44, active_children_count=33, state=TaskState.GENERATING,
+                            state_details=None, paused=True, node_id=932, node_input_name=None, node_output_name=None,
+                            name='barfoo', split_level=5, work_data_invocation_attempt=13, progress=None,
+                            split_origin_task_id=None, split_id=None, invocation_id=None, groups=set()))
+        _do_check(TaskDelta(126, parent_id=23, children_count=44, active_children_count=33, state=TaskState.GENERATING,
+                            state_details='shmetails', paused=True, node_id=932, node_input_name='lil', node_output_name='squeak',
+                            name='barfoo', split_level=5, work_data_invocation_attempt=13, progress=45.7123,
+                            split_origin_task_id=74, split_id=19, invocation_id=83712, groups={'foo', 'bar', 'car'}))
+
+    def test_event_serialization(self):
+        te0 = TasksChanged(146, [TaskDelta(9382, paused=True, node_id=74)])
+        te1 = TasksUpdated(247754321, TaskBatchData(247754321,
+                                                    {434: TaskData(434, 2, 1, 0, TaskState.ERROR, 'woof', True,
+                                                                   412, 'moon', 'boom', 'falafel', 2, 1, 3.45264, 1,
+                                                                   928122, 958285, {'foo', 'bar', 'wood'})}))
+        te2 = TasksRemoved(83159, (2, 3, 4, 5, 912, 3495983, 838111, 943821))
+        te3 = TaskFullState(91803834, TaskBatchData(91803834,
+                                                    {379: TaskData(379, 1, 2, 2, TaskState.WAITING, '1woof', False,
+                                                                   812, 'shamoon', 'boomash', 'falafel2', 5, 12, 13.46718, 0,
+                                                                   64788, 9911, {'1foo', '1bar', 'woody'})}))
+
+        te0.event_id = 123
+        te1.event_id = 1234
+        te2.event_id = 12345
+        te3.event_id = 123456
+
+        buffer = BytesIO()
+        te0.serialize(buffer)
+        te1.serialize(buffer)
+        te2.serialize(buffer)
+        te3.serialize(buffer)
+
+        buffer.seek(0)
+        reader = BufferedReaderWrapper(io.BufferedReader(buffer))
+        e0 = TaskEvent.deserialize(reader)
+        e1 = TaskEvent.deserialize(reader)
+        e2 = TaskEvent.deserialize(reader)
+        e3 = TaskEvent.deserialize(reader)
+
+        self.assertEqual(te0, e0)
+        self.assertEqual(te1, e1)
+        self.assertEqual(te2, e2)
+        self.assertEqual(te3, e3)
