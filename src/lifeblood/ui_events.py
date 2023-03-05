@@ -68,6 +68,9 @@ class TaskEvent(SchedulerEventAutoId):
     def _deserialize_part(cls, base_event: "TaskEvent", stream: BufferedReader) -> "TaskEvent":
         raise NotImplementedError()
 
+    def tiny_repr(self) -> str:
+        return f'<{type(self).__name__}:{self.event_id}.{self.event_type.name}'
+
 
 @dataclass
 class TaskFullState(TaskEvent):
@@ -86,6 +89,9 @@ class TaskFullState(TaskEvent):
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
         return event
+
+    def tiny_repr(self) -> str:
+        return super().tiny_repr() + f':{self.task_data.tiny_repr()}>'
 
 
 @dataclass
@@ -111,6 +117,10 @@ class TasksChanged(TaskEvent):
         event.event_id = base_event.event_id
         return event
 
+    def tiny_repr(self) -> str:
+        return super().tiny_repr() + f':[{",".join(str(x.id) for x in self.task_deltas)}]>'
+
+
 @dataclass
 class TasksUpdated(TaskEvent):
     task_data: TaskBatchData
@@ -129,6 +139,8 @@ class TasksUpdated(TaskEvent):
         event.event_id = base_event.event_id
         return event
 
+    def tiny_repr(self) -> str:
+        return super().tiny_repr() + f':{self.task_data.tiny_repr()}>'
 
 @dataclass
 class TasksRemoved(TaskEvent):
@@ -150,6 +162,9 @@ class TasksRemoved(TaskEvent):
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
         return event
+
+    def tiny_repr(self) -> str:
+        return super().tiny_repr() + f':{self.task_ids}>'
 
 
 TaskEvent.register_subclasses([TaskFullState, TasksChanged, TasksUpdated, TasksRemoved])
