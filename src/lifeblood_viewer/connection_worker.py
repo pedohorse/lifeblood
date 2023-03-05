@@ -21,6 +21,7 @@ from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.defaults import ui_port
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.scheduler_ui_protocol import UIProtocolSocketClient
+from lifeblood.ui_protocol_data import TaskBatchData
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
@@ -35,10 +36,11 @@ logger = logging.get_logger('viewer')
 class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     full_update = Signal(object)
     db_uid_update = Signal(object)
-    graph_update = Signal(object)
-    tasks_update = Signal(object)
-    groups_update = Signal(object)
-    workers_update = Signal(object)
+    graph_full_update = Signal(object)
+    tasks_full_update = Signal(object)
+    tasks_events_arrived = Signal(object)
+    groups_full_update = Signal(object)
+    workers_full_update = Signal(object)
 
     log_fetched = Signal(int, dict)
     nodeui_fetched = Signal(int, NodeUi)
@@ -57,14 +59,11 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_created = Signal(int, str, str, QPointF, object)
     nodes_copied = Signal(dict, QPointF)
 
-    graph_and_tasks_update_interval = 1000
-    groups_update_interval = 5000
-    workers_update_interval = 2000
-
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
         self.__started = False
-        self.__timer_graph_and_tasks = None
+        self.__timer_graph = None
+        self.__timer_tasks = None
         self.__timer_groups = None
         self.__timer_workers = None
         self.__to_stop = False
@@ -73,9 +72,19 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         # self.__filter_dead = True
         self.__skip_dead = False
         self.__skip_archived_groups = True
+        self.__do_event_subscription = True  # TODO: config!
+
+        self.subscription_time = 10.0
+        self.graph_update_interval = 1000
+        self.tasks_update_interval = 500 if self.__do_event_subscription else 1000
+        self.groups_update_interval = 5000
+        self.workers_update_interval = 2000
 
         self.__latest_graph_update_id = -1
+        self.__last_known_event_id = -1
+        self.__last_known_db_uid = None
         self.__last_groups_checked_timestamp = 0
+        self.__event_filter_changed = False
 
         self.__client: Optional[UIProtocolSocketClient] = None
 
@@ -94,7 +103,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         """
         assert self.thread() == QThread.currentThread()
         self.__started = True
-        self.__start_graph_and_tasks_timer()
+        self.__start_graph_timer()
+        self.__start_tasks_timer()
         self.__start_task_groups_timer()
         self.__start_workers_timer()
 
@@ -102,22 +112,40 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     ####
     #
 
-    def __start_graph_and_tasks_timer(self):
-        if self.__timer_graph_and_tasks is not None:
+    def __start_tasks_timer(self):
+        if self.__timer_tasks is not None:
             return
-        self.__timer_graph_and_tasks = PySide2.QtCore.QTimer(self)
-        self.__timer_graph_and_tasks.setInterval(self.graph_and_tasks_update_interval)
-        self.__timer_graph_and_tasks.timeout.connect(self._check_graph_and_tasks)
-        self.__timer_graph_and_tasks.start()
+        self.__timer_tasks = PySide2.QtCore.QTimer(self)
+        self.__timer_tasks.setInterval(self.tasks_update_interval)
+        self.__timer_tasks.timeout.connect(self._check_tasks)
+        self.__timer_tasks.start()
+
+    def __start_graph_timer(self):
+        if self.__timer_graph is not None:
+            return
+        self.__timer_graph = PySide2.QtCore.QTimer(self)
+        self.__timer_graph.setInterval(self.graph_update_interval)
+        self.__timer_graph.timeout.connect(self._check_graph)
+        self.__timer_graph.start()
 
     @Slot()
     def poke_graph_and_tasks_update(self):
-        self.__timer_graph_and_tasks.start()  # restart the timer
-        self._check_graph_and_tasks()
+        self.__timer_graph.start()  # restart the timer
+        self.__timer_tasks.start()  # restart the timer
+        self._check_graph()
+        self._check_tasks()
 
-    def __stop_graph_and_tasks_timer(self):
-        self.__timer_graph_and_tasks.stop()
-        self.__timer_graph_and_tasks = None
+    def __stop_tasks_timer(self):
+        if self.__timer_tasks is None:
+            return
+        self.__timer_tasks.stop()
+        self.__timer_tasks = None
+
+    def __stop_graph_timer(self):
+        if self.__timer_graph is None:
+            return
+        self.__timer_graph.stop()
+        self.__timer_graph = None
 
     #
 
@@ -168,14 +196,18 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         after this out thread will probably never enter the event loop again
         :return:
         """
-        self.__stop_graph_and_tasks_timer()
+        self.__stop_tasks_timer()
+        self.__stop_graph_timer()
         self.__stop_task_groups_timer()
         self.__stop_workers_timer()
 
     @Slot(set)
     def set_task_group_filter(self, groups: Set[str]):
+        if self.__task_group_filter == groups:
+            return
         self.__task_group_filter = groups
-        # TODO: force update
+        self.__event_filter_changed = True
+        self.poke_graph_and_tasks_update()
 
     def ensure_connected(self) -> bool:
         if self.__client is not None:
@@ -236,6 +268,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__client.initialize()
                 db_uid_update = self.__client.get_db_uid()
                 self.__latest_graph_update_id = -1
+                self.__last_known_event_id = -1
+                self.__last_known_db_uid = db_uid_update
                 self.db_uid_update.emit(db_uid_update)
             except ConnectionError:
                 logger.debug('ui connection refused, retrying...')
@@ -260,11 +294,18 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     @Slot(bool)
     def set_skip_dead(self, do_skip: bool) -> None:
+        if self.__skip_dead == do_skip:
+            return
         self.__skip_dead = do_skip
+        self.__event_filter_changed = True
+        self.poke_graph_and_tasks_update()
 
     @Slot(bool)
     def set_skip_archived_groups(self, do_skip: bool) -> None:
+        if self.__skip_archived_groups == do_skip:
+            return
         self.__skip_archived_groups = do_skip
+        self.poke_task_groups_update()
 
     # some decorators
 
@@ -277,6 +318,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                         self.__client.close()
                     self.__client = None
                     self.__latest_graph_update_id = -1
+                    self.__last_known_event_id = -1
                     return
                 return func(self, *args, **kwargs)
             return _inner
@@ -304,17 +346,43 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     # end decorators
 
-    @Slot(name="_check_graph_and_tasks")
+    @Slot(name="_check_tasks")
     @_interrupt_checker()
     @_catch_connection_errors()
-    def _check_graph_and_tasks(self):
+    def _check_tasks(self):
+        if self.__do_event_subscription:
+            if self.__event_filter_changed:
+                logger.debug(f'event filter changed: {self.__task_group_filter}, skip_dead: {self.__skip_dead}')
+                self.__last_known_event_id = -1  # this will cause call to resubscribe and ensure FullState event
+                self.__event_filter_changed = False
+                if not self.__task_group_filter:  # if nothing got selected - send an empty full state
+                    assert self.__last_known_db_uid is not None
+                    self.tasks_full_update.emit(TaskBatchData(self.__last_known_db_uid, {}))
+
+            if not self.__task_group_filter:
+                return
+            task_events = None
+            if self.__last_known_event_id >= 0:
+                task_events = self.__client.request_task_events_since_id(self.__task_group_filter, not self.__skip_dead, self.__last_known_event_id)
+            if task_events is None:  # need to resubscribe
+                task_events = self.__client.request_subscribe_to_task_events(self.__task_group_filter, not self.__skip_dead, self.subscription_time)
+                assert len(task_events) > 0  # on subscription there MUST be at least a single event
+
+            if len(task_events) > 0:
+                self.__last_known_event_id = task_events[-1].event_id
+                self.tasks_events_arrived.emit(task_events)
+        else:
+            tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
+            self.tasks_full_update.emit(tasks_state)
+
+    @Slot(name="_check_graph")
+    @_interrupt_checker()
+    @_catch_connection_errors()
+    def _check_graph(self):
         latest_id = self.__client.get_ui_graph_state_update_id()
         if latest_id > self.__latest_graph_update_id:
             graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
-            self.graph_update.emit(graph_state)
-
-        tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
-        self.tasks_update.emit(tasks_state)
+            self.graph_full_update.emit(graph_state)
 
     @Slot(name="_check_task_groups")
     @_interrupt_checker()
@@ -322,14 +390,14 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def _check_task_groups(self):
         groups_state = self.__client.get_ui_task_groups(self.__skip_archived_groups)
         self.__last_groups_checked_timestamp = time.time()
-        self.groups_update.emit(groups_state)
+        self.groups_full_update.emit(groups_state)
 
     @Slot(name="_check_workers")
     @_interrupt_checker()
     @_catch_connection_errors()
     def _check_workers(self):
         workers_state = self.__client.get_ui_workers_state()
-        self.workers_update.emit(workers_state)
+        self.workers_full_update.emit(workers_state)
 
     # @Slot()
     # def check_scheduler(self):
@@ -350,18 +418,18 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     #         latest_id = self.__client.get_ui_graph_state_update_id()
     #         if latest_id > self.__latest_graph_update_id:
     #             graph_state, self.__latest_graph_update_id = self.__client.get_ui_graph_state()
-    #             self.graph_update.emit(graph_state)
+    #             self.graph_full_update.emit(graph_state)
     #
     #         tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
-    #         self.tasks_update.emit(tasks_state)
+    #         self.tasks_full_update.emit(tasks_state)
     #
     #         workers_state = self.__client.get_ui_workers_state()
-    #         self.workers_update.emit(workers_state)
+    #         self.workers_full_update.emit(workers_state)
     #
     #         if time.time() - self.__last_groups_checked_timestamp > 5.0:  # TODO: to config with it!
     #             groups_state = self.__client.get_ui_task_groups(self.__skip_archived_groups)
     #             self.__last_groups_checked_timestamp = time.time()
-    #             self.groups_update.emit(groups_state)
+    #             self.groups_full_update.emit(groups_state)
     #
     #     except ConnectionError as e:
     #         logger.error(f'connection reset {e}')
@@ -740,7 +808,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             else:
                 if isinstance(task_ids_or_group, int):
                     task_ids_or_group = [task_ids_or_group]
-                self.__client.pause_tasks(task_ids_or_group)
+                self.__client.pause_tasks(task_ids_or_group, paused)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
