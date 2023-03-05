@@ -13,7 +13,7 @@ from ..misc import atimeit, aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
 from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
-from ..ui_events import TaskEvent, TaskFullState, TaskUpdated, TasksUpdated, TasksRemoved, TasksChanged
+from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, TasksChanged
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
@@ -158,8 +158,14 @@ class UIStateAccessor(SchedulerComponentBase):
             if queue_event_type == QueueEventType.REMOVED:
                 _, groups = element_data
                 group_sets = (set(groups),)
+            elif queue_event_type in (QueueEventType.REMOVED, QueueEventType.ADDED):
+                task_datas, groups = element_data
+                if groups is None:
+                    group_sets = await self._get_tasks_groups([x.id for x in task_datas])
+                else:
+                    group_sets = (set(groups),)
             else:  # otherwise we take fresh groups
-                group_sets = await self._get_tasks_groups(element_data)
+                group_sets = await self._get_tasks_groups([x.id for x in element_data])
 
             affected_logs = set()
             for group_set in group_sets:
@@ -170,14 +176,16 @@ class UIStateAccessor(SchedulerComponentBase):
             if len(affected_logs) == 0:
                 continue
 
+            dbuid = self.__data_access.db_uid
             # time to fetch info and build event
             if queue_event_type == QueueEventType.REMOVED:
                 task_ids, _ = element_data
-                event = TasksRemoved(task_ids)
+                event = TasksRemoved(dbuid, task_ids)
             elif queue_event_type == QueueEventType.ADDED:
-                event = TasksUpdated(element_data)
+                task_datas, _ = element_data
+                event = TasksUpdated(dbuid, TaskBatchData(dbuid, {x.id: x for x in task_datas}))
             elif queue_event_type == QueueEventType.UPDATED:
-                event = TasksChanged(element_data)
+                event = TasksChanged(dbuid, element_data)
             else:
                 raise NotImplementedError('IMPOSSIBRU!')
 
@@ -478,7 +486,7 @@ class UIStateAccessor(SchedulerComponentBase):
         return self.__group_task_mapping.get(group, None)
     #
 
-    def scheduler_reports_tasks_added(self, task_datas: List[TaskData]):
+    def scheduler_reports_tasks_added(self, task_datas: List[TaskData], added_where: Optional[Set[str]] = None):
         """
         task info will be queried from DB
         """
@@ -487,13 +495,13 @@ class UIStateAccessor(SchedulerComponentBase):
             return
         eid = self._get_next_event_id()
         ets = time.time_ns()
-        self.__task_event_preprocess_queue.put_nowait((QueueEventType.ADDED, eid, ets, task_datas))
+        self.__task_event_preprocess_queue.put_nowait((QueueEventType.ADDED, eid, ets, (task_datas, added_where)))
 
-    async def scheduler_reports_task_added(self, task_data: TaskData):
+    def scheduler_reports_task_added(self, task_data: TaskData, added_where: Optional[Set[str]] = None):
         """
         if task_raw is None - it will be fetched from DB
         """
-        self.scheduler_reports_tasks_added([task_data])
+        self.scheduler_reports_tasks_added([task_data], added_where)
 
     def scheduler_reports_tasks_updated(self, task_deltas: List[TaskDelta]):
         if len(self.__task_group_event_logs) == 0:
@@ -516,7 +524,7 @@ class UIStateAccessor(SchedulerComponentBase):
     def scheduler_reports_task_groups_added(self, groups):
         self.force_refresh_task_group_mapping()
 
-    def scheduler_reports_task_groups_changed(self, groups):
+    def scheduler_reports_task_groups_changed(self, groups):  # TODO: this has to be changed, for now it's way too broad
         self.force_refresh_task_group_mapping()
 
     def scheduler_reports_task_groups_removed(self, groups):
@@ -552,7 +560,7 @@ class UIStateAccessor(SchedulerComponentBase):
             return events
 
         state = await self.get_tasks_ui_state(task_groups, skip_dead)
-        state_event = TaskFullState(state)
+        state_event = TaskFullState(self.__data_access.db_uid, state)
         state_event.event_id = self._get_next_event_id()
         # even though there might be older events in the queue - since we have strict global event id - the state_event will be put into a proper place
         await asyncio.get_event_loop().run_in_executor(executor, log.add_event, state_event)
