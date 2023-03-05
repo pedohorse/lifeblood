@@ -195,7 +195,7 @@ class WorkerModel(QAbstractTableModel):
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
-    def workers_update(self, workers_data: WorkerBatchData):
+    def workers_full_update(self, workers_data: WorkerBatchData):
         with performance_measurer() as pm:
             new_workers = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
             new_keys = set(new_workers.keys())
@@ -264,7 +264,7 @@ class WorkerModel(QAbstractTableModel):
                                 f'{_perf_remove:04f}:\tremove')
 
     def start(self):
-        self.__scheduler_worker.workers_update.connect(self.workers_update)
+        self.__scheduler_worker.workers_full_update.connect(self.workers_full_update)
         self.group_update_requested.connect(self.__scheduler_worker.set_worker_groups)
         self.cancel_invocation_for_worker.connect(self.__scheduler_worker.cancel_task_for_worker)
 
