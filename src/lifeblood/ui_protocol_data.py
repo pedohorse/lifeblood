@@ -214,6 +214,17 @@ class TaskDelta(IBufferSerializable):
                          node_id, node_input_name, node_output_name, task_name, split_level, work_data_invocation_attempt,
                          progress, split_origin_task_id, split_id, invocation_id, groups)
 
+    def __repr__(self):
+        parts = []
+        for field, val in self.__dict__.items():
+            if val is DataNotSet:
+                continue
+            parts.append(f'{field}={val}')
+        return f'TaskDelta({", ".join(parts)})'
+
+    def tiny_repr(self):
+        return f'{type(self).__name__}:[{self.id}]'
+
 
 @dataclass
 class TaskData(IBufferSerializable):
@@ -298,6 +309,9 @@ class TaskData(IBufferSerializable):
                         task_split_id if has_task_split_id else None,
                         task_invocation_id if has_task_invocation_id else None, groups)
 
+    def tiny_repr(self):
+        return f'{type(self).__name__}:[{self.id}]'
+
 
 @dataclass
 class TaskBatchData(IBufferSerializable):
@@ -317,6 +331,9 @@ class TaskBatchData(IBufferSerializable):
             task_data = TaskData.deserialize(stream)
             tasks[task_data.id] = task_data
         return TaskBatchData(db_uid, tasks)
+
+    def tiny_repr(self):
+        return f'{type(self).__name__}:[{",".join(str(x) for x in self.tasks.keys())}]'
 
 
 @dataclass
