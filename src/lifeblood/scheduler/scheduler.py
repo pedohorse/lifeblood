@@ -32,6 +32,7 @@ from ..config import get_config
 from ..misc import atimeit, alocking
 from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 from .. import aiosqlite_overlay
+from ..ui_protocol_data import TaskData, TaskDelta
 
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
@@ -505,22 +506,27 @@ class Scheduler:
             if task.invocation_id() in self.data_access.mem_cache_invocations:
                 del self.data_access.mem_cache_invocations[task.invocation_id()]
 
+            ui_task_delta = TaskDelta(invocation['task_id'])  # for ui event
             if task.finished_needs_retry():  # max retry count will be checked by task processor
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
+                ui_task_delta.state = TaskState.READY  # for ui event
             elif task.finished_with_error():
-                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                                  (TaskState.ERROR.value, invocation['task_id']))
-                await con.execute('UPDATE tasks SET "state_details" = ? WHERE "id" = ?',
-                                  (json.dumps({'message': f'see invocation #{invocation["id"]} log for details',
-                                               'happened_at': TaskState.IN_PROGRESS.value,
-                                               'type': 'invocation'})
-                                   , invocation['task_id']))
+                state_details = json.dumps({'message': f'see invocation #{invocation["id"]} log for details',
+                                            'happened_at': TaskState.IN_PROGRESS.value,
+                                            'type': 'invocation'})
+                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                  (TaskState.ERROR.value,
+                                   state_details,
+                                   invocation['task_id']))
+                ui_task_delta.state = TaskState.ERROR  # for ui event
+                ui_task_delta.state_details = state_details  # for ui event
             else:
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.POST_WAITING.value, invocation['task_id']))
+                ui_task_delta.state = TaskState.POST_WAITING  # for ui event
 
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, invocation['task_id'])  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, ui_task_delta)  # ui event
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
@@ -576,7 +582,7 @@ class Scheduler:
                 tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.WAITING.value, invocation['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, invocation['task_id'])  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.WAITING))  # ui event
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
@@ -782,7 +788,8 @@ class Scheduler:
             await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.WAITING.value, x["task_id"]) for x in invocations))
             await self._update_worker_resouce_usage(wid, hwid=hwid, connection=con)
             del self.data_access.mem_cache_workers_resources[wid]  # remove from cache
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [x["task_id"] for x in invocations])  # ui event
+            if len(invocations) > 0:
+                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(x["task_id"], state=TaskState.WAITING) for x in invocations])  # ui event
             await con.commit()
         self.__logger.debug(f'finished worker reported stopped: {addr}')
 
@@ -848,7 +855,7 @@ class Scheduler:
                 con.row_factory = aiosqlite.Row
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('UPDATE tasks SET "node_id" = ? WHERE "id" = ?', (node_id, task_id))
-                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
+                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, node_id=node_id))  # ui event
                 await con.commit()
         except aiosqlite.IntegrityError:
             self.__logger.error('could not remove node connection because of database integrity check')
@@ -877,19 +884,19 @@ class Scheduler:
             for task_id in task_ids:
                 await con.execute('BEGIN IMMEDIATE')
                 async with con.execute('SELECT "state" FROM tasks WHERE "id" = ?', (task_id,)) as cur:
-                    state = await cur.fetchone()
-                    if state is None:
+                    cur_state = await cur.fetchone()
+                    if cur_state is None:
                         await con.rollback()
                         continue
-                    state = TaskState(state[0])
-                if state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
-                    self.__logger.warning(f'forcing task out of state {state} is not currently implemented')
+                    cur_state = TaskState(cur_state[0])
+                if cur_state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
+                    self.__logger.warning(f'forcing task out of state {cur_state} is not currently implemented')
                     await con.rollback()
                     continue
 
                 await con.execute(query, (task_id,))
                 #await con.executemany(query, ((x,) for x in task_ids))
-                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
+                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=state))  # ui event
                 await con.commit()  # TODO: this can be optimized into a single transaction
         #print('boop')
         self.wake()
@@ -902,7 +909,8 @@ class Scheduler:
             async with self.data_access.data_connection() as con:
                 await con.execute('UPDATE tasks SET "paused" = ? WHERE "id" IN (SELECT "task_id" FROM task_groups WHERE "group" = ?)',
                                   (int(paused), task_ids_or_group))
-                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated_group, task_ids_or_group)  # ui event
+                ui_task_ids = await self.ui_state_access._get_group_tasks(task_ids_or_group)  # ui event
+                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(ui_task_id, paused=paused) for ui_task_id in ui_task_ids])  # ui event
                 await con.commit()
             self.wake()
             self.poke_task_processor()
@@ -912,7 +920,7 @@ class Scheduler:
         query = 'UPDATE tasks SET "paused" = %d WHERE "id" = ?' % int(paused)
         async with self.data_access.data_connection() as con:
             await con.executemany(query, ((x,) for x in task_ids_or_group))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, task_ids_or_group)  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(ui_task_id, paused=paused) for ui_task_id in task_ids_or_group])  # ui event
             await con.commit()
         self.wake()
         self.poke_task_processor()
@@ -923,7 +931,8 @@ class Scheduler:
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
             await con.execute('UPDATE task_group_attributes SET state=? WHERE "group"==?', (state.value, task_group_name))  # this triggers all task deadness | 2, so potentially it can be long, beware
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated_group, task_group_name)  # ui event
+            # task's dead field's 2nd bit is set, but we currently do not track it
+            # so no event needed
             await con.commit()
             if state == TaskGroupArchivedState.NOT_ARCHIVED:
                 self.poke_task_processor()  # unarchived, so kick task processor, just in case
@@ -985,7 +994,7 @@ class Scheduler:
     async def set_task_name(self, task_id: int, new_name: str):
         async with self.data_access.data_connection() as con:
             await con.execute('UPDATE tasks SET "name" = ? WHERE "id" = ?', (new_name, task_id))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, name=new_name))  # ui event
             await con.commit()
 
     #
@@ -1008,7 +1017,32 @@ class Scheduler:
                 await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_removed_from_group, [task_id], groups_to_del)  # ui event
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups_to_set)  # ui event
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
+            #
+            # ui event
+            if len(groups_to_set) > 0:
+                async with con.execute(
+                        'SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, tasks.state_details, tasks.paused, tasks.node_id, '
+                        'tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, tasks.work_data_invocation_attempt, '
+                        'task_splits.origin_task_id, task_splits.split_id, invocations."id" as invoc_id '
+                        'FROM "tasks" '
+                        'LEFT JOIN "task_splits" ON tasks.id=task_splits.task_id '
+                        'LEFT JOIN "invocations" ON tasks.id=invocations.task_id AND invocations.state = ? '
+                        'WHERE tasks."id" == ?',
+                        (InvocationState.IN_PROGRESS.value, task_id)) as cur:
+                    task_row = await cur.fetchone()
+                if task_row is not None:
+                    progress = self.data_access.mem_cache_invocations.get(task_row['invoc_id'], {}).get('progress', None)
+                    con.add_after_commit_callback(
+                        self.ui_state_access.scheduler_reports_task_added,
+                        TaskData(task_id, task_row['parent_id'], task_row['children_count'], task_row['active_children_count'], TaskState(task_row['state']),
+                                 task_row['state_details'], bool(task_row['paused']), task_row['node_id'], task_row['node_input_name'], task_row['node_output_name'],
+                                 task_row['name'], task_row['split_level'], task_row['work_data_invocation_attempt'], progress,
+                                 task_row['origin_task_id'], task_row['split_id'], task_row['invoc_id'], group_names),
+                        groups_to_set
+                    )  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, groups=group_names))  # ui event
+            #
+            #
             await con.commit()
 
     #
@@ -1029,8 +1063,7 @@ class Scheduler:
                 if name in attributes:
                     del attributes[name]
             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
-                                                                                        task_id))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
+                                                                                   task_id))
             await con.commit()
 
     #
@@ -1041,7 +1074,6 @@ class Scheduler:
             await con.execute('UPDATE tasks SET "environment_resolver_data" = ? WHERE "id" = ?',
                               (await env_res.serialize_async() if env_res is not None else None,
                                task_id))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, task_id)  # ui event
             await con.commit()
 
     #
@@ -1271,6 +1303,7 @@ class Scheduler:
 
         async def _inner_shit() -> Tuple[Tuple[SpawnStatus, Optional[int]], ...]:
             result = []
+            new_tasks = []
             current_timestamp = int(datetime.utcnow().timestamp())
             for newtask in newtasks:
                 if newtask.source_invocation_id() is not None:
@@ -1294,6 +1327,7 @@ class Scheduler:
                                         newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:
                     new_id = newcur.lastrowid
 
+                all_groups = set()
                 if parent_task_id is not None:  # inherit all parent's groups
                     # check and inherit parent's environment wrapper arguments
                     if newtask.environment_arguments() is None:
@@ -1304,6 +1338,7 @@ class Scheduler:
                     # inherit groups
                     async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
                         groups = [x['group'] for x in await gcur.fetchall()]
+                    all_groups.update(groups)
                     if len(groups) > 0:
                         con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
                         await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
@@ -1312,6 +1347,7 @@ class Scheduler:
                     # in this case we create a default group for the task.
                     # task should not be left without groups at all - otherwise it will be impossible to find in UI
                     new_group = '{name}#{id:d}'.format(name=newtask.name(), id=new_id)
+                    all_groups.add(new_group)
                     await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                       (new_id, new_group))
                     await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
@@ -1323,6 +1359,7 @@ class Scheduler:
                     #
                 if newtask.extra_group_names():
                     groups = newtask.extra_group_names()
+                    all_groups.update(groups)
                     await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
                                           zip(itertools.repeat(new_id, len(groups)), groups))
                     con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
@@ -1337,10 +1374,13 @@ class Scheduler:
                         #  but then we need to insert those guys in correct order (first in attributes table, then groups)
                         #  then smth like FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
                 result.append((SpawnStatus.SUCCEEDED, new_id))
+                new_tasks.append(TaskData(new_id, parent_task_id, 0, 0,
+                                          TaskState.SPAWNED if newtask.create_as_spawned() else TaskState.WAITING, '',
+                                          False, node_id, 'main', newtask.node_output_name(), newtask.name(), 0, 0, None, None, None, None,
+                                          all_groups))
 
             # callbacks for ui events
-            new_tids = [tid for _, tid in result if tid is not None]
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_added, new_tids)
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_added, new_tasks)
             return tuple(result)
 
         return_single = False
