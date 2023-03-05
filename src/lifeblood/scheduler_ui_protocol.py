@@ -96,7 +96,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 await event.serialize_to_streamwriter(writer)
 
         async def comm_request_task_events_since_id():  # task_events_since_id
-            include_dead, num_groups, last_known_event_id = struct.unpack('>?QQ', await reader.readexactly(16))
+            include_dead, num_groups, last_known_event_id = struct.unpack('>?QQ', await reader.readexactly(17))
             groups = []
             for _ in range(num_groups):
                 groups.append(await read_string())
