@@ -453,7 +453,7 @@ class TaskProcessor(SchedulerComponentBase):
                         if set_to_stuff:
                             # ui event
                             con.add_after_commit_callback(
-                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(_task_id, state=_new_state) for _new_state, _task_id in set_to_stuff]
+                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(_task_id, state=TaskState(_new_state)) for _new_state, _task_id in set_to_stuff]
                             )
                             #
                             await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
@@ -487,7 +487,7 @@ class TaskProcessor(SchedulerComponentBase):
                         if set_to_stuff:
                             # ui event
                             con.add_after_commit_callback(
-                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(_task_id, state=_new_state) for _new_state, _task_id in set_to_stuff]
+                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(_task_id, state=TaskState(_new_state)) for _new_state, _task_id in set_to_stuff]
                             )
                             #
                             await con.executemany('UPDATE tasks SET "state" = ? WHERE "id" = ?', set_to_stuff)
@@ -543,7 +543,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                    state_details,
                                                    task_row['id']))
                                 total_state_changes += 1
-                                ui_task_deltas.append(TaskDelta(task_row['id'], state = TaskState.ERROR, state_details=state_details))  # for ui event
+                                ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
                                 self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
                                 continue
                             if worker is None:  # nothing available
@@ -605,7 +605,7 @@ class TaskProcessor(SchedulerComponentBase):
                                     total_state_changes += 1
                                     # ui event
                                     ui_task_deltas.append(TaskDelta(task_row['id'], node_id=wire['node_id_in'], node_input_name=wire['in_name'],
-                                                                 state=TaskState.WAITING))  # for ui event
+                                                                    state=TaskState.WAITING))  # for ui event
                                     #
                                 else:
                                     for i, splited_task_id in enumerate(await self.split_task(task_row['id'], wire_count, con)):
@@ -614,7 +614,7 @@ class TaskProcessor(SchedulerComponentBase):
                                                           (all_wires[i]['node_id_in'], all_wires[i]['in_name'], TaskState.WAITING.value, None,
                                                            splited_task_id))
                                         ui_task_deltas.append(TaskDelta(splited_task_id, node_id=all_wires[i]['node_id_in'], node_input_name=all_wires[i]['in_name'],
-                                                                     state=TaskState.WAITING))  # for ui event
+                                                                        state=TaskState.WAITING))  # for ui event
                                         total_state_changes += 1
                                     total_state_changes += 1  # this is for original (for split) task changing state to SPLITTED
 
