@@ -16,9 +16,11 @@ class SchedulerEvent(IBufferSerializable):
     timestamp: float = field(default_factory=lambda: time.time_ns(), init=False)
     event_id: int
     event_type: UIEventType
+    database_uid: int
 
     def __hash__(self):
         return hash((self.event_id, self.timestamp, self.event_type))
+
 
 @dataclass
 class SchedulerEventAutoId(SchedulerEvent):
@@ -46,21 +48,21 @@ class TaskEvent(SchedulerEventAutoId):
         """
         we serialize only the part that we know
         """
-        stream.write(struct.pack('>BQQI', self.__subclass_to_id[type(self)], self.event_id, self.timestamp, self.event_type.value))
+        stream.write(struct.pack('>BQQQI', self.__subclass_to_id[type(self)], self.database_uid, self.event_id, self.timestamp, self.event_type.value))
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "TaskEvent":
         """
         unlike all other deserializations, here we will deserialize into a subclass
         """
-        sid, event_id, timestamp, event_type_raw = struct.unpack('>BQQI', stream.readexactly(20))
+        sid, dbuid, event_id, timestamp, event_type_raw = struct.unpack('>BQQQI', stream.readexactly(29))
         event_type = UIEventType(event_type_raw)
-        base_event = TaskEvent(event_type)
+        base_event = TaskEvent(event_type, dbuid)
         base_event.event_id = event_id
         base_event.timestamp = timestamp
 
         subclass = cls.__id_to_subclass[sid]
-        subclass._deserialize_part(base_event, stream)
+        return subclass._deserialize_part(base_event, stream)
 
     @classmethod
     def _deserialize_part(cls, base_event: "TaskEvent", stream: BufferedReader) -> "TaskEvent":
@@ -79,7 +81,7 @@ class TaskFullState(TaskEvent):
     @classmethod
     def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TaskFullState":
         task_data = TaskBatchData.deserialize(stream)
-        event = TaskFullState(task_data)
+        event = TaskFullState(base_event.database_uid, task_data)
         assert event.event_type == base_event.event_type == UIEventType.FULL_STATE
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
@@ -103,31 +105,11 @@ class TasksChanged(TaskEvent):
         num_deltas, = struct.unpack('>Q', stream.readexactly(8))
         for _ in range(num_deltas):
             task_deltas.append(TaskDelta.deserialize(stream))
-        event = TasksChanged(task_deltas)
+        event = TasksChanged(base_event.database_uid, task_deltas)
         assert event.event_type == base_event.event_type == UIEventType.UPDATE
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
         return event
-
-
-@dataclass
-class TaskUpdated(TaskEvent):  # TODO: remove and always use TasksUpdated ?
-    task_data: TaskData
-    event_type: UIEventType = field(default=UIEventType.UPDATE, init=False)
-
-    def serialize(self, stream: BufferedIOBase):
-        super().serialize(stream)
-        self.task_data.serialize(stream)
-
-    @classmethod
-    def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TaskUpdated":
-        task_data = TaskData.deserialize(stream)
-        event = TaskUpdated(task_data)
-        assert event.event_type == base_event.event_type == UIEventType.UPDATE
-        event.timestamp = base_event.timestamp
-        event.event_id = base_event.event_id
-        return event
-
 
 @dataclass
 class TasksUpdated(TaskEvent):
@@ -141,7 +123,7 @@ class TasksUpdated(TaskEvent):
     @classmethod
     def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TasksUpdated":
         task_data = TaskBatchData.deserialize(stream)
-        event = TasksUpdated(task_data)
+        event = TasksUpdated(base_event.database_uid, task_data)
         assert event.event_type == base_event.event_type == UIEventType.UPDATE
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
@@ -163,11 +145,11 @@ class TasksRemoved(TaskEvent):
     def _deserialize_part(cls, base_event: TaskEvent, stream: BufferedReader) -> "TasksRemoved":
         task_count, = struct.unpack('>Q', stream.readexactly(8))
         task_ids = struct.unpack('>' + 'Q' * task_count, stream.readexactly(8 * task_count))
-        event = TasksRemoved(task_ids)
+        event = TasksRemoved(base_event.database_uid, task_ids)
         assert event.event_type == base_event.event_type == UIEventType.DELETE
         event.timestamp = base_event.timestamp
         event.event_id = base_event.event_id
         return event
 
 
-TaskEvent.register_subclasses([TaskFullState, TasksChanged, TaskUpdated, TasksUpdated, TasksRemoved])
+TaskEvent.register_subclasses([TaskFullState, TasksChanged, TasksUpdated, TasksRemoved])
