@@ -136,6 +136,7 @@ class Pinger(SchedulerComponentBase):
             elif ping_code == WorkerPingReply.BUSY:
                 # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
                 # TODO: think, can there be race condition here so that worker is already doing something else?
+                inv_id = None
                 async with con.execute('SELECT "id", task_id FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
                     inv_row = await invcur.fetchone()
                     if inv_row is not None:
