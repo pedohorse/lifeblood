@@ -29,20 +29,20 @@ class DataNotSet:
 class TaskDelta(IBufferSerializable):
     id: int
     parent_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
-    children_count: Union[int, Type[DataNotSet]] = DataNotSet
-    active_children_count: Union[int, Type[DataNotSet]] = DataNotSet
-    state: Union[TaskState, Type[DataNotSet]] = DataNotSet
-    state_details: Union[Optional[str], Type[DataNotSet]] = DataNotSet
+    children_count: Union[int, Type[DataNotSet]] = DataNotSet                   # TODO: remove, add to getting individual task details
+    active_children_count: Union[int, Type[DataNotSet]] = DataNotSet            # TODO: remove, add to getting individual task details
+    state: Union[TaskState, Type[DataNotSet]] = DataNotSet                      # TODO: remove, add to getting individual task details
+    state_details: Union[Optional[str], Type[DataNotSet]] = DataNotSet          # TODO: remove, add to getting individual task details
     paused: Union[bool, Type[DataNotSet]] = DataNotSet
     node_id: Union[int, Type[DataNotSet]] = DataNotSet
     node_input_name: Union[Optional[str], Type[DataNotSet]] = DataNotSet
     node_output_name: Union[Optional[str], Type[DataNotSet]] = DataNotSet
     name: Union[str, Type[DataNotSet]] = DataNotSet
-    split_level: Union[int, Type[DataNotSet]] = DataNotSet
-    work_data_invocation_attempt: Union[int, Type[DataNotSet]] = DataNotSet
+    split_level: Union[int, Type[DataNotSet]] = DataNotSet                      # TODO: is this needed for UI?
+    work_data_invocation_attempt: Union[int, Type[DataNotSet]] = DataNotSet     # TODO: remove, add to getting individual task details
     progress: Union[Optional[float], Type[DataNotSet]] = DataNotSet
-    split_origin_task_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
-    split_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
+    split_origin_task_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet   # used by UI to draw new tasks from the split_origin_task_id task
+    split_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet               # TODO: is this needed for UI?
     invocation_id: Union[Optional[int], Type[DataNotSet]] = DataNotSet
     groups: Union[Set[str], Type[DataNotSet]] = DataNotSet
 
