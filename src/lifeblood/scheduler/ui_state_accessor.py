@@ -68,6 +68,7 @@ class UIStateAccessor(SchedulerComponentBase):
         self.__task_group_mapping: Dict[int, Set[str]] = {}
         self.__group_task_mapping: Dict[str, Set[id]] = {}
         self.__task_group_mapping_update_alock = asyncio.Lock()
+        self.__requested_task_group_force_refresh = False
 
         # a pool of pools to execute log commands in. the point is to ensure log always runs on ONE SAME THREAD
         # running log methods on ONE SAME THREAD will ensure lockless race-free work
@@ -448,6 +449,7 @@ class UIStateAccessor(SchedulerComponentBase):
          you DON'T NEED TO call this if tasks were added or removed together with their groups -
          because calls to scheduler_reports_task_added scheduler_reports_task_removed_from_group will call this method anyway
         """
+        self.__requested_task_group_force_refresh = True
         self.__task_group_mapping = None
         self.__group_task_mapping = None
 
@@ -455,22 +457,24 @@ class UIStateAccessor(SchedulerComponentBase):
         """
         refetch __task_group_mapping from database
         """
-        async with self.__task_group_mapping_update_alock:
-            async with self.__data_access.data_connection() as con, \
-                    aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
-                con.row_factory = aiosqlite.Row
-                async with con.execute('SELECT task_id, "group" FROM task_groups') as cur:
-                    rows = await cur.fetchall()
+        while self.__requested_task_group_force_refresh:  # if it was set again during awaits inside
+            self.__requested_task_group_force_refresh = False
+            async with self.__task_group_mapping_update_alock:
+                async with self.__data_access.data_connection() as con, \
+                        aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
+                    con.row_factory = aiosqlite.Row
+                    async with con.execute('SELECT task_id, "group" FROM task_groups') as cur:
+                        rows = await cur.fetchall()
 
-            def _do():
-                d = {}
-                di = {}
-                for row in rows:
-                    d.setdefault(row['task_id'], set()).add(row['group'])
-                    di.setdefault(row['group'], set()).add(row['task_id'])
-                return d, di
+                def _do():
+                    d = {}
+                    di = {}
+                    for row in rows:
+                        d.setdefault(row['task_id'], set()).add(row['group'])
+                        di.setdefault(row['group'], set()).add(row['task_id'])
+                    return d, di
 
-            self.__task_group_mapping, self.__group_task_mapping = await asyncio.get_event_loop().run_in_executor(None, _do)
+                self.__task_group_mapping, self.__group_task_mapping = await asyncio.get_event_loop().run_in_executor(None, _do)
 
     async def _get_tasks_groups(self, task_ids: List[int]) -> List[Set[str]]:
         if self.__task_group_mapping is None:
