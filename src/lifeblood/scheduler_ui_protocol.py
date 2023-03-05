@@ -1170,6 +1170,7 @@ class UIProtocolSocketClient:
         w.write_string('tpausegrp')
         w.write(struct.pack('>?', paused))
         w.write_string(task_group_name)
+        w.flush()
         assert r.readexactly(1) == b'\1'
 
     def archive_task_group(self, archived_state: TaskGroupArchivedState, task_group_name: str):
