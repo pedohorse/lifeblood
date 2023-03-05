@@ -7,7 +7,8 @@ from lifeblood.enums import TaskState
 from lifeblood.exceptions import NotSubscribedError
 from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
-from lifeblood.ui_events import TaskFullState, TaskUpdated, TasksUpdated, TasksRemoved
+from lifeblood.ui_events import TaskFullState, TasksChanged, TasksUpdated, TasksRemoved
+from lifeblood.ui_protocol_data import DataNotSet
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 
@@ -21,17 +22,24 @@ class EventQueueTest(IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         set_default_loglevel(logging.DEBUG)
-        purge_db('test_uilog.db')
 
     @classmethod
     def tearDownClass(cls) -> None:
         purge_db('test_uilog.db')
 
-    async def test_event_log_basics(self):
+    async def asyncSetUp(self) -> None:
         purge_db('test_uilog.db')
+        self.sched = Scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        await self.sched.start()
 
-        sched = Scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
-        await sched.start()
+    async def asyncTearDown(self) -> None:
+        self.sched.stop()
+        await self.sched.wait_till_stops()
+
+    async def test_event_log_basics(self):
+
+        sched = self.sched
+
         ui_state_access = sched.ui_state_access
 
         node_id = await sched.add_node('null', 'test_null')
@@ -54,29 +62,32 @@ class EventQueueTest(IsolatedAsyncioTestCase):
 
         events = await ui_state_access.get_events_for_groups_since_event_id(('test_group1',), True, last_known_id)
         self.assertEqual(1, len(events))
-        self.assertIsInstance(events[0], TasksUpdated)
+        self.assertIsInstance(events[0], TasksChanged)
         event = events[0]
         last_known_id = event.event_id
         print(event)
 
         await asyncio.sleep(1.0)  # random slee
         # next change
-        await sched.set_task_environment_resolver_arguments(task1_id, EnvironmentResolverArguments('blee', {'foo': 'bar'}))
+        await sched.set_task_environment_resolver_arguments(task1_id, EnvironmentResolverArguments('blee', {'foo': 'bar'}))  # this does NOT generate events
+        await sched.set_task_name(task1_id, 'even newer name')
         await sched.set_task_groups(task1_id, ('borkers',))
         await asyncio.sleep(0.5)  # all task processing should be done
 
         events = await ui_state_access.get_events_for_groups_since_event_id(('test_group1',), True, last_known_id)
         self.assertEqual(2, len(events))
         event0, event1 = events
-        self.assertIsInstance(event0, TasksUpdated)
+        self.assertIsInstance(event0, TasksChanged)
         self.assertIsInstance(event1, TasksRemoved)
         print(event0)
         print(event1)
-        self.assertEqual(1, len(event0.task_data.tasks))
-        self.assertIn(task1_id, event0.task_data.tasks)
+        self.assertEqual(1, len(event0.task_deltas))
+        self.assertEqual(task1_id, event0.task_deltas[0].id)
         self.assertEqual(1, len(event1.task_ids))
         self.assertIn(task1_id, event1.task_ids)
-        self.assertSetEqual({'test_group1', f'testtask1#{task1_id}'}, event0.task_data.tasks[task1_id].groups)
+        self.assertEqual('even newer name', event0.task_deltas[0].name)
+        self.assertEqual(DataNotSet, event0.task_deltas[0].groups)
+        #self.assertSetEqual({'test_group1', f'testtask1#{task1_id}'}, event0.task_deltas[0].groups)
         last_known_id = event1.event_id
 
         await sched.set_task_name(task1_id, 'testtask1_newname11')
@@ -88,13 +99,20 @@ class EventQueueTest(IsolatedAsyncioTestCase):
         await sched.set_task_groups(task1_id, ('borkers', 'test_group1'))  # return group back
         await asyncio.sleep(0.5)  # all task processing should be done
         events = await ui_state_access.get_events_for_groups_since_event_id(('test_group1',), True, last_known_id)
-        self.assertEqual(1, len(events))
-        event0 = events[0]
+        print('---')
+        for event in events:
+            print(event)
+        self.assertEqual(2, len(events))
+        # event that task was added to the group (task updated)
+        # event that task groups changed - will also arrive in this log
+        event0, event1 = events
         self.assertIsInstance(event0, TasksUpdated)
+        self.assertIsInstance(event1, TasksChanged)
         self.assertEqual(1, len(event0.task_data.tasks))
         self.assertEqual('testtask1_newname11', event0.task_data.tasks[task1_id].name)
         self.assertSetEqual({'borkers', 'test_group1'}, event0.task_data.tasks[task1_id].groups)
-        last_known_id = event0.event_id
+        self.assertSetEqual({'borkers', 'test_group1'}, event1.task_deltas[0].groups)
+        last_known_id = event1.event_id
 
         await asyncio.sleep(1.0)  # random slee
         events = await ui_state_access.get_events_for_groups_since_event_id(('test_group1',), True, last_known_id)
@@ -139,9 +157,10 @@ class EventQueueTest(IsolatedAsyncioTestCase):
         self.assertEqual(3, len(events))
         _ids = set()
         for event in events:
-            self.assertIsInstance(event, TasksUpdated)
-            self.assertEqual(TaskState.WAITING, list(event.task_data.tasks.values())[0].state)
-            _ids.update(event.task_data.tasks.keys())
+            self.assertIsInstance(event, TasksChanged)
+            self.assertEqual(1, len(event.task_deltas))
+            self.assertEqual(TaskState.WAITING, event.task_deltas[0].state)
+            _ids.add(event.task_deltas[0].id)
         self.assertIn(task1_id, _ids)
         self.assertIn(task2_id, _ids)
         self.assertIn(task3_id, _ids)
@@ -159,50 +178,35 @@ class EventQueueTest(IsolatedAsyncioTestCase):
         check_states = {task1_id: (TaskState.WAITING, True),
                         task2_id: (TaskState.WAITING, True),
                         task3_id: (TaskState.WAITING, True)}
-        # NOTE: currently event implementation is lazy:
-        #  that means event is reported, but no data is queried at this point
-        #  as data query is considered to be expensive operation
-        #  instead, data query will happen later asynchronously when events are processed
-        #  This is cuz we don't care THAT much about UI, as we care about fast processing
-        #  Therefore tasks may jump states in the test below, and several update events may contain the same data
-        #   (as they were queried together after task's state actually changed)
+
         for event in events:
             print(event.event_id)
-            self.assertIsInstance(event, TasksUpdated)
-            for task_id, task_data in event.task_data.tasks.items():
-                print(task_data)
+            self.assertIsInstance(event, TasksChanged)
+            for task_delta in event.task_deltas:
+                print(task_delta)
+                task_id = task_delta.id
                 self.assertIn(task_id, check_states)
                 if check_states[task_id] == (TaskState.WAITING, True):
-                    self.assertIn(task_data.state,
-                                  (TaskState.WAITING, TaskState.GENERATING, TaskState.POST_WAITING, TaskState.POST_GENERATING, TaskState.DONE))
+                    self.assertEqual(task_delta.paused, False)
                 elif check_states[task_id] == (TaskState.WAITING, False):
-                    self.assertIn(task_data.state,
-                                  (TaskState.WAITING, TaskState.GENERATING, TaskState.POST_WAITING, TaskState.POST_GENERATING, TaskState.DONE))
+                    self.assertEqual(task_delta.state, TaskState.GENERATING)
                 elif check_states[task_id] == (TaskState.GENERATING, False):
-                    self.assertIn(task_data.state,
-                                  (TaskState.GENERATING, TaskState.POST_WAITING, TaskState.POST_GENERATING, TaskState.DONE))
+                    self.assertEqual(task_delta.state, TaskState.POST_WAITING)
                 elif check_states[task_id] == (TaskState.POST_WAITING, False):
-                    self.assertIn(task_data.state, (TaskState.POST_WAITING, TaskState.POST_GENERATING, TaskState.DONE))
+                    self.assertEqual(task_delta.state, TaskState.POST_GENERATING)
                 elif check_states[task_id] == (TaskState.POST_GENERATING, False):
-                    self.assertIn(task_data.state, (TaskState.POST_GENERATING, TaskState.DONE))
+                    self.assertEqual(task_delta.state, TaskState.DONE)
                 elif check_states[task_id] == (TaskState.DONE, False):
-                    self.assertIn(task_data.state, (TaskState.DONE,))
-                elif check_states[task_id] == (TaskState.DONE, True):
-                    self.assertIn(task_data.state, (TaskState.DONE,))
+                    self.assertEqual(task_delta.paused, True)
                 else:
                     print(check_states[task_id])
                     print(event)
                     self.fail('something wrong with events')
 
-                if task_data.state == TaskState.DONE:
-                    if check_states[task_id][1]:  # if already paused - cannot get unpaused
-                        self.assertTrue(task_data.paused)
-                else:
-                    self.assertFalse(task_data.paused)
-                check_states[task_id] = task_data.state, task_data.paused
+                if task_delta.state is not DataNotSet:
+                    check_states[task_id] = (task_delta.state, check_states[task_id][1])
+                if task_delta.paused is not DataNotSet:
+                    check_states[task_id] = (check_states[task_id][0], task_delta.paused)
 
         for state in check_states.values():
             self.assertEqual((TaskState.DONE, True), state)
-
-        sched.stop()
-        await sched.wait_till_stops()
