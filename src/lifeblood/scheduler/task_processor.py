@@ -182,7 +182,7 @@ class TaskProcessor(SchedulerComponentBase):
             # print(f'splitrem: {time.perf_counter() - _bla1}')
             # _bla1 = time.perf_counter()
             if process_result.attributes_to_set:  # not None or {}
-                attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'])
+                attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'] or '{}')
                 attributes.update(process_result.attributes_to_set)
                 for k, v in process_result.attributes_to_set.items():
                     if v is None:
@@ -211,7 +211,7 @@ class TaskProcessor(SchedulerComponentBase):
                     async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                         split_task_dict = await cur.fetchone()
                     assert split_task_dict is not None
-                    split_task_attrs = json.loads(split_task_dict['attributes'])  # TODO: run in executor
+                    split_task_attrs = await asyncio.get_event_loop().run_in_executor(None, json.loads, split_task_dict['attributes'])
                     split_task_attrs.update(attr_dict)
                     await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
             # print(f'split: {time.perf_counter()-_bla1}')
@@ -232,19 +232,20 @@ class TaskProcessor(SchedulerComponentBase):
             self.__logger.error('error addres converting during unexpected here. ping should have cought it')
             ip, port = None, None  # set to invalid values to exit in error-checking if a bit below
 
-        ui_task_delta = TaskDelta(task_row['id'])  # for ui event
+        task_id = task_row['id']
+        ui_task_delta = TaskDelta(task_id)  # for ui event
         work_data = task_row['work_data']
         assert work_data is not None
         task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
         if not task.args() or ip is None:  # TODO: wait, wtf am i skipping work if ip is None ??
             async with self.awaiter_lock, self.scheduler.data_access.data_connection() as skipwork_transaction:
                 await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                   (TaskState.POST_WAITING.value, task_row['id']))
+                                                   (TaskState.POST_WAITING.value, task_id))
                 await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                    (WorkerState.IDLE.value, worker_row['id']))
                 # unset resource usage
                 await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=skipwork_transaction)
-                skipwork_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_row['id'], state=TaskState.POST_WAITING))
+                skipwork_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=TaskState.POST_WAITING))
                 await skipwork_transaction.commit()
                 return
 
@@ -254,13 +255,15 @@ class TaskProcessor(SchedulerComponentBase):
             async with self.awaiter_lock:
                 async with submit_transaction.execute(
                         'INSERT INTO invocations ("task_id", "worker_id", "state", "node_id") VALUES (?, ?, ?, ?)',
-                        (task_row['id'], worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
+                        (task_id, worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
                     invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
                 await submit_transaction.commit()
 
             task._set_invocation_id(invocation_id)
-            task._set_task_id(task_row['id'])
-            task._set_task_attributes(json.loads(task_row['attributes']))  # TODO: run in executor
+            task._set_task_id(task_id)
+            async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
+                task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
+            task._set_task_attributes(await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw))
             self.__logger.debug(f'submitting task to {addr}')
             try:
                 # this is potentially a long operation - db must NOT be locked during it
@@ -288,9 +291,9 @@ class TaskProcessor(SchedulerComponentBase):
                     await submit_transaction.execute('UPDATE tasks SET state = ?, '
                                                      '"work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 '
                                                      'WHERE "id" = ?',
-                                                     (TaskState.IN_PROGRESS.value, task_row['id']))
+                                                     (TaskState.IN_PROGRESS.value, task_id))
                     ui_task_delta.state = TaskState.IN_PROGRESS  # for ui event
-                    async with submit_transaction.execute('SELECT "work_data_invocation_attempt" FROM tasks WHERE "id" == ?', (task_row['id'],)) as tmpcur:  # TODO: remove this extra query!  # ui event
+                    async with submit_transaction.execute('SELECT "work_data_invocation_attempt" FROM tasks WHERE "id" == ?', (task_id,)) as tmpcur:  # TODO: remove this extra query!  # ui event
                         ui_task_delta.work_data_invocation_attempt = (await tmpcur.fetchone())['work_data_invocation_attempt']  # TODO: maybe remove work_data_invocation_attempt from generic ui events/data at all  # ui event
                     await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                      (WorkerState.BUSY.value, worker_row['id']))
@@ -300,7 +303,7 @@ class TaskProcessor(SchedulerComponentBase):
                     self.__logger.debug(f'submitter failed, rolling back for wid {worker_row["id"]}')
                     await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                      (TaskState.READY.value,
-                                                      task_row['id']))
+                                                      task_id))
                     ui_task_delta.state = TaskState.READY  # for ui event
                     await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                                      (WorkerState.IDLE.value if worker_state != WorkerState.OFF else WorkerState.OFF.value,
@@ -395,17 +398,21 @@ class TaskProcessor(SchedulerComponentBase):
 
                 for task_state in (TaskState.WAITING, TaskState.READY, TaskState.DONE, TaskState.POST_WAITING, TaskState.SPAWNED):
                     _debug_sel = time.perf_counter()
-                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, '
-                                           'tasks.node_id, tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.attributes, tasks.split_level, '
-                                           'tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, tasks.environment_resolver_data, '
-                                           'nodes.type as node_type, nodes.name as node_name, nodes.id as node_id, '
+                    async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, {attrs}'
+                                           'tasks.node_id, tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
+                                           'tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, '
+                                           'nodes.type as node_type, nodes.id as node_id, '
                                            'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                            'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
                                            'LEFT JOIN task_splits ON tasks.id=task_splits.task_id '
                                            'WHERE (state = ?) '
                                            'AND paused = 0 '
                                            'AND dead = 0 '
-                                           'ORDER BY {} RANDOM()'.format('tasks.priority DESC, ' if task_state == TaskState.READY else ''),
+                                           'ORDER BY {prio_sort} RANDOM()'.format(
+                            prio_sort='tasks.priority DESC, ' if task_state == TaskState.READY else '',
+                            attrs='attributes, environment_resolver_data, ' if task_state in (TaskState.WAITING, TaskState.POST_WAITING) else ''
+                            ),
+
                                            (task_state.value,)) as cur:
                         all_task_rows = await cur.fetchall()  # we dont want to iterate reading over changing rows - easy to deadlock yourself (as already happened)
                         # if too much tasks here - consider adding LIMIT to execute and work on portions only
@@ -447,7 +454,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
-
+                                # NOTE: awaiters are NOT started here, just coroutines created
                                 awaiters.append(self._awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                               abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
                         if set_to_stuff:
@@ -727,7 +734,7 @@ class TaskProcessor(SchedulerComponentBase):
             all_split_ids.append(new_task_id)
             await con.execute('INSERT INTO "task_splits" ("split_id", "task_id", "split_element", "split_count", "origin_task_id") VALUES (?,?,?,?,?)',
                               (next_split_id, new_task_id, split_element, into, task_id))
-            all_split_data.append(TaskData(new_task_id, None, 0, 0, task_row['state'], '', False, task_row['node_id'],
+            all_split_data.append(TaskData(new_task_id, None, 0, 0, TaskState(task_row['state']), '', False, task_row['node_id'],
                                            task_row['node_input_name'], task_row['node_output_name'], task_row['name'],
                                            new_split_level, 0, None, task_id, next_split_id, None, set(groups)))
         # now increase number of children to the parent of the task being splitted
