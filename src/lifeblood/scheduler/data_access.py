@@ -47,7 +47,7 @@ class DataAccess:
         return self.__db_uid
 
     def data_connection(self) -> aiosqlite_overlay.ConnectionWithCallbacks:
-        return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout)
+        return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
 
     def lazy_data_transaction(self, key_name: str):
         return SharedLazyAiosqliteConnection(None, self.db_path, key_name, timeout=self.db_timeout)
