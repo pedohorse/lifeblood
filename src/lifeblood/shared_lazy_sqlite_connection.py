@@ -85,6 +85,7 @@ class ConnectionPool:
                 await self._closer_inner(key)
 
     async def _closer_inner(self, key):
+        self.__logger.debug('CLOSING !')
         assert self.pool_lock.locked()  # cannot quite check if it's locked specifically for us, so this sanity check is partial at best
         entry = self.connection_cache[key]
         try:
@@ -148,10 +149,12 @@ class SharedLazyAiosqliteConnection:
             await self.__con
             await self.__con.execute('PRAGMA synchronous=NORMAL')  # TODO: take this from config
             self.__con.row_factory = aiosqlite.Row
+            get_logger('shared_aiosqlite_connection').debug(f'aenter: pool lock releasing')  # DELETE ME
             return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         async with self.__pool.pool_lock:
+            get_logger('shared_aiosqlite_connection').debug(f'aexit: pool lock')  # DELETE ME
             entry = self.__pool.connection_cache[self.__cache_key]
             entry.count -= 1
             assert entry.count >= 0
@@ -162,6 +165,7 @@ class SharedLazyAiosqliteConnection:
             get_logger('shared_aiosqlite_connection').debug(f'closing is: {entry.do_close}, need commit: {entry.need_to_commit}')  # remove me!
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
+            get_logger('shared_aiosqlite_connection').debug(f'aexit: pool lock releasing')  # DELETE ME
 
     def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
         entry = self.__pool.connection_cache.get(self.__cache_key)
