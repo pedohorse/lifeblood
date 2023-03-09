@@ -141,6 +141,7 @@ class SharedLazyAiosqliteConnection:
             self.__pool.connection_cache[self.__cache_key].count = 1
             self.__pool.connection_cache[self.__cache_key].closer_task = asyncio.create_task(self.__pool.connection_closer(self.__cache_key))
             await self.__con
+            await self.__con.execute('PRAGMA synchronous=NORMAL')  # TODO: take this from config
             self.__con.row_factory = aiosqlite.Row
             return self
 
