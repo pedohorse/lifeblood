@@ -10,6 +10,8 @@ from lifeblood.taskspawn import NewTask
 from lifeblood.ui_events import TaskFullState, TasksChanged, TasksUpdated, TasksRemoved
 from lifeblood.ui_protocol_data import DataNotSet
 from lifeblood.environment_resolver import EnvironmentResolverArguments
+from lifeblood.shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
+from lifeblood.logging import get_logger
 
 
 def purge_db(testdbpath):
@@ -28,6 +30,11 @@ class EventQueueTest(IsolatedAsyncioTestCase):
         purge_db('test_uilog.db')
 
     async def asyncSetUp(self) -> None:
+        get_logger('shared_aiosqlite_connection').setLevel('DEBUG')
+        if SharedLazyAiosqliteConnection.connection_pool is not None:
+            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection.connection_pool is not None. how? was it initialized in another test? Noning it now.')
+        SharedLazyAiosqliteConnection.connection_pool = None
+
         purge_db('test_uilog.db')
         self.sched = Scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await self.sched.start()
