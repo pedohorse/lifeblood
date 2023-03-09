@@ -72,6 +72,7 @@ class TaskAnimation(QAbstractAnimation):
         self.__pos2 = pos2
         self.__duration = max(duration, 1)
         self.__started = False
+        self.__anim_type = 0 if self.__node1 is self.__node2 else 1
 
     def duration(self) -> int:
         return self.__duration
@@ -89,7 +90,14 @@ class TaskAnimation(QAbstractAnimation):
             pos2 = self.__node2.mapToScene(pos2)
 
         t = currentTime / self.duration()
-        self.__task.setPos(pos1*(1-t) + pos2*t)
+        if self.__anim_type == 0:  # linear
+            pos = pos1 * (1 - t) + pos2 * t
+        else:  # cubic
+            curv = min((pos2-pos1).manhattanLength() * 2, 1000)  # 1000 is kinda derivative
+            a = QPointF(0, curv) - (pos2-pos1)
+            b = QPointF(0, -curv) + (pos2-pos1)
+            pos = pos1*(1-t) + pos2*t + t*(1-t)*(a*(1-t) + b*t)
+        self.__task.setPos(pos)
 
 
 class Node(NetworkItemWithUI):
@@ -361,18 +369,25 @@ class Node(NetworkItemWithUI):
     #     print('aqwe')
     #     #self.moveBy(*(event.screenPos() - event.lastScreenPos()).toTuple())
 
-    def add_task(self, task: "Task"):
+    def add_task(self, task: "Task", animated=True):
         if task in self.__tasks:
             return
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
         self.update()  # cuz node displays task number - we should redraw
         pos_id = len(self.__tasks)
-        if task.node() is None:
+        if task.node() is None or not animated:
             task.set_node(self, *self.get_task_pos(task, pos_id))
         else:
             task.set_node_animated(self, *self.get_task_pos(task, pos_id))
 
-        self.__tasks.append(task)
+        insert_at = self._find_insert_index_for_task(task, prefer_back=True)
+
+        self.__tasks.append(None)  # temporary placeholder, it'll be eliminated either in the loop, or after if task is last
+        for i in reversed(range(insert_at + 1, len(self.__tasks))):
+            self.__tasks[i] = self.__tasks[i-1]  # TODO: animated param should affect below!
+            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+        self.__tasks[insert_at] = task
+        self.__tasks[insert_at].set_node_animated(self, *self.get_task_pos(task, insert_at))
         task._Task__node = self
 
     def remove_tasks(self, tasks_to_remove: Iterable["Task"]):
@@ -432,21 +447,44 @@ class Node(NetworkItemWithUI):
         y += (y_shift % h)
         return QPointF(x, y), int(y_shift / h)
 
+    def _find_insert_index_for_task(self, task, prefer_back=False):
+        if task.state() == TaskState.IN_PROGRESS and not prefer_back:
+            return 0
+
+        if task.state() != TaskState.IN_PROGRESS and prefer_back:
+            return len(self.__tasks)
+
+        # now fun thing: we either have IN_PROGRESS and prefer_back, or NOT IN_PROGRESS and NOT prefer_back
+        #  and both cases have the same logic for position finding
+        for i, task in enumerate(self.__tasks):
+            if task.state() != TaskState.IN_PROGRESS:
+                return i
+        else:
+            return len(self.__tasks)
+
     def task_state_changed(self, task):
         """
         here node might decide to highlight the task that changed state one way or another
         """
         if task.state() not in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
             return
-        idx = self.__tasks.index(task)
-        if idx == 0:
+
+        # find a place
+        append_at = self._find_insert_index_for_task(task)
+
+        if append_at == len(self.__tasks):  # this is impossible case (in current impl of _find_insert_index_for_task) (cuz task is in __tasks, and it's not in IN_PROGRESS)
             return
-        the_one = self.__tasks[idx]
-        for i in reversed(range(1, idx+1)):
+
+        idx = self.__tasks.index(task)
+        if idx <= append_at:  # already in place (and ignore moving further
+            return
+
+        # place where it has to be
+        for i in reversed(range(append_at + 1, idx+1)):
             self.__tasks[i] = self.__tasks[i-1]
-            self.__tasks[i].set_node_animated(self, *self.get_task_pos(task, i))
-        self.__tasks[0] = the_one
-        self.__tasks[0].set_node_animated(self, *self.get_task_pos(task, 0))
+            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+        self.__tasks[append_at] = task
+        self.__tasks[append_at].set_node_animated(self, *self.get_task_pos(task, append_at))
 
     #
     # interface
@@ -1220,7 +1258,7 @@ class Task(NetworkItemWithUI):
             self.update()
             self.refresh_ui()
 
-    def apply_task_delta(self, task_delta: TaskDelta):
+    def apply_task_delta(self, task_delta: TaskDelta, animated=True):
         if task_delta.paused is not DataNotSet:
             self.set_state(None, task_delta.paused)
         if task_delta.state is not DataNotSet:
@@ -1230,7 +1268,7 @@ class Task(NetworkItemWithUI):
         if task_delta.node_id is not DataNotSet:
             node = self.scene().get_node(task_delta.node_id)
             if node is not None:
-                node.add_task(self)
+                node.add_task(self, animated)
         if task_delta.work_data_invocation_attempt is not DataNotSet:
             self.__raw_data.work_data_invocation_attempt = task_delta.work_data_invocation_attempt
         if task_delta.node_output_name is not DataNotSet:
@@ -1334,7 +1372,8 @@ class Task(NetworkItemWithUI):
         if animgroup is None:
             animgroup = QSequentialAnimationGroup(self.scene())
             animgroup.finished.connect(self._clear_animation_group)
-        new_animation = TaskAnimation(self, node, pos, duration=int(ldist / 1.0), parent=animgroup)
+        anim_speed = max(1.0, animgroup.animationCount())
+        new_animation = TaskAnimation(self, node, pos, duration=max(1, int(ldist / anim_speed)), parent=animgroup)
         if self.__animation_group is None:
             self.setParentItem(None)
             self.__animation_group = animgroup
