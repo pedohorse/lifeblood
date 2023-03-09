@@ -64,6 +64,9 @@ class TaskProcessor(SchedulerComponentBase):
         # _blo = time.perf_counter()
         task_id = task_row['id']
         loop = asyncio.get_event_loop()
+
+        self.__logger.debug('AWAITER: started')  # delete debug
+
         try:
             async with self.scheduler.get_node_lock_by_id(task_row['node_id']).reader_lock:
                 process_result: ProcessingResult = await loop.run_in_executor(self.awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
@@ -90,6 +93,9 @@ class TaskProcessor(SchedulerComponentBase):
                 self.__logger.exception('error happened %s %s', type(e), e)
             return
 
+
+        self.__logger.debug('AWAITER: processed')  # delete debug
+
         # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
         async with self.awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
             # con.row_factory = aiosqlite.Row
@@ -97,6 +103,9 @@ class TaskProcessor(SchedulerComponentBase):
             # print(f'up till block: {time.perf_counter() - _blo}')
             ui_task_delta = TaskDelta(task_id)  # for ui event
             ui_task_delta_split = None
+
+
+            self.__logger.debug('AWAITER: in con')  # delete debug
 
             if not con.in_transaction:
                 await con.execute('BEGIN IMMEDIATE')
@@ -107,6 +116,9 @@ class TaskProcessor(SchedulerComponentBase):
                 ui_task_delta.node_output_name = process_result.output_name  # for ui event
             # _blo = time.perf_counter()
             # _bla1 = time.perf_counter()
+
+
+            self.__logger.debug('AWAITER: set out name')  # delete debug
 
             # note: this may be not obvious, but ALL branches of the next if result in implicit transaction start
             if process_result.do_kill_task:
@@ -146,6 +158,9 @@ class TaskProcessor(SchedulerComponentBase):
                                        task_id))
                     ui_task_delta.work_data_invocation_attempt = 0  # for ui event
                     ui_task_delta.state = TaskState.READY  # for ui event
+
+                self.__logger.debug('AWAITER: set invoc')  # delete debug
+
             # print(f'kill/invoc: {time.perf_counter() - _bla1}')
             # _bla1 = time.perf_counter()
             if process_result.do_split_remove:  # TODO: check that there is no race conditions among splitted tasks to remove the split
@@ -179,6 +194,9 @@ class TaskProcessor(SchedulerComponentBase):
                             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                               (result_serialized, task_row['split_origin_task_id']))
 
+
+            self.__logger.debug('AWAITER: after split rem')  # delete debug
+
             # print(f'splitrem: {time.perf_counter() - _bla1}')
             # _bla1 = time.perf_counter()
             if process_result.attributes_to_set:  # not None or {}
@@ -191,10 +209,16 @@ class TaskProcessor(SchedulerComponentBase):
                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                   (result_serialized, task_id))
 
+
+            self.__logger.debug('AWAITER: after attr set')  # delete debug
+
             # process environment resolver arguments if provided
             if (envargs := process_result._environment_resolver_arguments) is not None:
                 await con.execute('UPDATE tasks SET environment_resolver_data = ? WHERE "id" = ?',
                                   (await envargs.serialize_async(), task_id))
+
+
+            self.__logger.debug('AWAITER: after env arg set')  # delete debug
 
             # spawning new tasks after all attributes were set, so children inherit
             # spawn
@@ -203,6 +227,9 @@ class TaskProcessor(SchedulerComponentBase):
                     # we do NOT allow spawning children anywhere else but in the same node, and with the task as parent
                     spawn.force_set_node_task_id(task_row['node_id'], task_row['id'])
                 await self.scheduler.spawn_tasks(process_result.spawn_list, con=con)
+
+
+            self.__logger.debug('AWAITER: after spawn')  # delete debug
 
             # splits
             if process_result._split_attribs is not None:
@@ -216,8 +243,18 @@ class TaskProcessor(SchedulerComponentBase):
                     await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
             # print(f'split: {time.perf_counter()-_bla1}')
 
+
+            self.__logger.debug('AWAITER: after split')  # delete debug
+
             con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [ui_task_delta] if ui_task_delta_split is None else [ui_task_delta, ui_task_delta_split])  # ui event
+
+            self.__logger.debug('AWAITER: added callback')  # delete debug
+
             await con.commit(self.poke)
+
+            self.__logger.debug('AWAITER: commited!')  # delete debug
+        self.__logger.debug('AWAITER: out of it!')  # delete debug
+
             # print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
 
     # submitter
