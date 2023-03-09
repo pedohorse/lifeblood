@@ -75,7 +75,9 @@ class ConnectionPool:
         await asyncio.sleep(self.keep_open_period)
         self.__logger.debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
+            self.__logger.debug('con_closer: pool lock acq')  # DELETE ME
             entry = self.connection_cache[key]
+            self.__logger.debug(f'con_closer: entry count: {entry.count}')  # DELETE ME
             if entry.count > 0:
                 entry.do_close = True
                 self.__logger.debug('active connections present, will close after last one exits')
@@ -133,6 +135,7 @@ class SharedLazyAiosqliteConnection:
         #  then that closer task can delete connection_cache entry, keeping it internaly till everyone exits
         #  then new transaction with same key will not see existing cache and create a new entry.
         async with self.__pool.pool_lock:
+            self.__logger.debug(f'aenter: pool lock')  # DELETE ME
             if self.__cache_key in self.__pool.connection_cache:
                 self.__con = self.__pool.connection_cache[self.__cache_key].con
                 self.__pool.connection_cache[self.__cache_key].count += 1
