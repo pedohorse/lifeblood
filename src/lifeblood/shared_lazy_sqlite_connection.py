@@ -63,22 +63,22 @@ class ConnectionPoolEntry:
 
 class ConnectionPool:
     default_period = get_config('scheduler').get_option_noasync('shared_connection.keep_open_period', 0.0125)
-    logger = get_logger('lazy_connection_pool')
-    logger.debug(f'using default open period: {default_period}')
+    get_logger('lazy_connection_pool').debug(f'using default open period: {default_period}')
 
     def __init__(self):
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
         self.pool_lock = asyncio.Lock()
         self.keep_open_period = self.default_period
+        self.__logger = get_logger('shared_aiosqlite_connection')
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
-        self.logger.debug('shared connection lifetime reached, will close')
+        self.__logger.debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
             entry = self.connection_cache[key]
             if entry.count > 0:
                 entry.do_close = True
-                self.logger.debug('active connections present, will close after last one exits')
+                self.__logger.debug('active connections present, will close after last one exits')
             else:  # only == 0 possible
                 await self._closer_inner(key)
 
@@ -153,8 +153,10 @@ class SharedLazyAiosqliteConnection:
             entry.count -= 1
             assert entry.count >= 0
             if entry.count > 0:
+                get_logger('shared_aiosqlite_connection').debug(f'count = {entry.count}')  # remove me!
                 return
             # so here only count == 0
+            get_logger('shared_aiosqlite_connection').debug(f'closing is: {entry.do_close}, need commit: {entry.need_to_commit}')  # remove me!
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
 
