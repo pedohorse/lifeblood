@@ -12,12 +12,20 @@ logger = get_logger('aiosqlite_overlay')
 
 
 class ConnectionWithCallbacks(Connection):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, pragmas_after_connect=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.__callbacks: List[Tuple[Callable, tuple, dict]] = []
+        self.__post_connect_pragmas = pragmas_after_connect
 
     def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
         self.__callbacks.append((callable, args, kwargs))
+
+    async def __aenter__(self) -> Connection:
+        con = await super().__aenter__()
+        if self.__post_connect_pragmas is not None:
+            for statement in self.__post_connect_pragmas:
+                await con.execute(f'PRAGMA {statement}')
+        return con
 
     async def commit(self):
         await super().commit()
@@ -40,6 +48,7 @@ def connect(
     *,
     iter_chunk_size=64,
     loop: Optional[asyncio.AbstractEventLoop] = None,
+    pragmas_after_connect=None,
     **kwargs: Any
 ) -> ConnectionWithCallbacks:
     """Create and return a connection proxy to the sqlite database."""
@@ -60,4 +69,4 @@ def connect(
 
         return sqlite3.connect(loc, **kwargs)
 
-    return ConnectionWithCallbacks(connector, iter_chunk_size)
+    return ConnectionWithCallbacks(connector, iter_chunk_size, pragmas_after_connect=pragmas_after_connect)
