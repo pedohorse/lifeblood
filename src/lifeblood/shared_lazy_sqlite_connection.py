@@ -63,7 +63,8 @@ class ConnectionPoolEntry:
 
 class ConnectionPool:
     default_period = get_config('scheduler').get_option_noasync('shared_connection.keep_open_period', 0.0125)
-    get_logger('lazy_connection_pool').debug(f'using default open period: {default_period}')
+    logger = get_logger('lazy_connection_pool')
+    logger.debug(f'using default open period: {default_period}')
 
     def __init__(self):
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
@@ -72,11 +73,12 @@ class ConnectionPool:
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
-        get_logger('shared_aiosqlite_connection').debug('shared connection lifetime reached, will close')
+        self.logger.debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
             entry = self.connection_cache[key]
             if entry.count > 0:
                 entry.do_close = True
+                self.logger.debug('active connections present, will close after last one exits')
             else:  # only == 0 possible
                 await self._closer_inner(key)
 
