@@ -135,7 +135,7 @@ class SharedLazyAiosqliteConnection:
         #  then that closer task can delete connection_cache entry, keeping it internaly till everyone exits
         #  then new transaction with same key will not see existing cache and create a new entry.
         async with self.__pool.pool_lock:
-            self.__logger.debug(f'aenter: pool lock')  # DELETE ME
+            get_logger('shared_aiosqlite_connection').debug(f'aenter: pool lock')  # DELETE ME
             if self.__cache_key in self.__pool.connection_cache:
                 self.__con = self.__pool.connection_cache[self.__cache_key].con
                 self.__pool.connection_cache[self.__cache_key].count += 1
