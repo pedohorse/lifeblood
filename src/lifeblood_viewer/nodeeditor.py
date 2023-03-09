@@ -603,8 +603,14 @@ class QGraphicsImguiScene(QGraphicsScene):
             self.layout_nodes(nodes_to_layout)
 
     @timeit(0.05)
-    @Slot(object)
-    def tasks_process_events(self, events: List[TaskEvent]):
+    @Slot(object, bool)
+    def tasks_process_events(self, events: List[TaskEvent], first_time_getting_events: bool):
+        """
+
+        :param events:
+        :param first_time_getting_events: True if it's a first event batch since filter change
+        :return:
+        """
         for event in events:
             logger.debug(f'event: {event.tiny_repr()}')
             if event.database_uid != self.__db_uid:
@@ -616,7 +622,7 @@ class QGraphicsImguiScene(QGraphicsScene):
             elif isinstance(event, TasksUpdated):
                 self.tasks_update(event.task_data)
             elif isinstance(event, TasksChanged):
-                self.tasks_deltas_apply(event.task_deltas)
+                self.tasks_deltas_apply(event.task_deltas, animated=not first_time_getting_events)
             elif isinstance(event, TasksRemoved):
                 existing_tasks = dict(self.tasks_dict())
                 for task_id in event.task_ids:
@@ -624,7 +630,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                         self.removeItem(existing_tasks[task_id])
                         existing_tasks.pop(task_id)
 
-    def tasks_deltas_apply(self, task_deltas: List[TaskDelta]):
+    def tasks_deltas_apply(self, task_deltas: List[TaskDelta], animated: bool = True):
         for task_delta in task_deltas:
             task_id = task_delta.id
             task = self.get_task(task_id)
@@ -636,7 +642,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 if node is None:
                     logger.warning('node not found during task delta processing, this will probably be fixed during next update')
                     self.__tasks_to_try_reparent_during_node_update[task_id] = task_delta.node_id
-            task.apply_task_delta(task_delta)
+            task.apply_task_delta(task_delta, animated=animated)
 
     @timeit(0.05)
     @Slot(object)
