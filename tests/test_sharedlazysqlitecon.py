@@ -12,9 +12,10 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         get_logger('shared_aiosqlite_connection').setLevel('DEBUG')
-        if SharedLazyAiosqliteConnection.connection_pool is not None:
-            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection.connection_pool is not None. how? was it initialized in another test? Noning it now.')
-        SharedLazyAiosqliteConnection.connection_pool = None
+        loop = asyncio.get_running_loop()
+        if SharedLazyAiosqliteConnection.connection_pools.get(loop) is not None:
+            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection connection_pool for current loop is not None. how? was it initialized in another test? Noning it now.')
+            SharedLazyAiosqliteConnection.connection_pools.pop(loop)
 
     async def test_one(self):
         fd, dbpath = tempfile.mkstemp(suffix='.db')
@@ -74,7 +75,7 @@ class SharedAsyncSqliteConnectionTest(IsolatedAsyncioTestCase):
             print('stoppen!')
             await check_task
 
-            pool = SharedLazyAiosqliteConnection.connection_pool
+            pool = SharedLazyAiosqliteConnection.connection_pools[asyncio.get_running_loop()]
             await asyncio.sleep(pool.keep_open_period * 1.1)
             self.assertEqual(0, len(pool.connection_cache))
 

@@ -31,9 +31,10 @@ class EventQueueTest(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         get_logger('shared_aiosqlite_connection').setLevel('DEBUG')
-        if SharedLazyAiosqliteConnection.connection_pool is not None:
-            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection.connection_pool is not None. how? was it initialized in another test? Noning it now.')
-        SharedLazyAiosqliteConnection.connection_pool = None
+        loop = asyncio.get_running_loop()
+        if SharedLazyAiosqliteConnection.connection_pools.get(loop) is not None:
+            get_logger('shared_aiosqlite_connection').warning('SharedLazyAiosqliteConnection connection_pool for current loop is not None. how? was it initialized in another test? Noning it now.')
+            SharedLazyAiosqliteConnection.connection_pools.pop(loop)
 
         purge_db('test_uilog.db')
         self.sched = Scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
