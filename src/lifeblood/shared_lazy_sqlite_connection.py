@@ -70,14 +70,21 @@ class ConnectionPool:
         self.pool_lock = asyncio.Lock()
         self.keep_open_period = self.default_period
         self.__logger = get_logger('shared_aiosqlite_connection')
+        self.__my_loop = asyncio.get_running_loop()
+
+    def is_in_this_loop(self, loop=None):
+        """
+        check if given loop is the one this object was created in
+        :param loop: loop or None - then current loop is checked
+        :return:
+        """
+        return self.__my_loop == loop or asyncio.get_running_loop()
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
         self.__logger.debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
-            self.__logger.debug('con_closer: pool lock acq')  # DELETE ME
             entry = self.connection_cache[key]
-            self.__logger.debug(f'con_closer: entry count: {entry.count}')  # DELETE ME
             if entry.count > 0:
                 entry.do_close = True
                 self.__logger.debug('active connections present, will close after last one exits')
@@ -85,7 +92,6 @@ class ConnectionPool:
                 await self._closer_inner(key)
 
     async def _closer_inner(self, key):
-        self.__logger.debug('CLOSING !')
         assert self.pool_lock.locked()  # cannot quite check if it's locked specifically for us, so this sanity check is partial at best
         entry = self.connection_cache[key]
         try:
@@ -109,15 +115,16 @@ class SharedLazyAiosqliteConnection:
     NOTE! To avoid confusion - row_factory of new connection is always set to ROW
     Be VERY mindful of what uses these shared connections!
     """
-    connection_pool = None
+    connection_pools = {}
 
     def __init__(self, conn_pool, db_path: str, cache_name: str, *args, **kwargs):
         if conn_pool is not None:
             raise NotImplementedError()
-        if conn_pool is None and SharedLazyAiosqliteConnection.connection_pool is None:
-            SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()
+        loop = asyncio.get_running_loop()
+        if conn_pool is None and SharedLazyAiosqliteConnection.connection_pools.get(loop) is None:
+            SharedLazyAiosqliteConnection.connection_pools[loop] = ConnectionPool()
             get_logger('shared_aiosqlite_connection').debug('default connection pool created')
-        self.__pool = SharedLazyAiosqliteConnection.connection_pool
+        self.__pool = SharedLazyAiosqliteConnection.connection_pools[loop]
 
         self.__db_path = db_path
         self.__con_args = args
@@ -136,7 +143,6 @@ class SharedLazyAiosqliteConnection:
         #  then that closer task can delete connection_cache entry, keeping it internaly till everyone exits
         #  then new transaction with same key will not see existing cache and create a new entry.
         async with self.__pool.pool_lock:
-            get_logger('shared_aiosqlite_connection').debug(f'aenter: pool lock')  # DELETE ME
             if self.__cache_key in self.__pool.connection_cache:
                 self.__con = self.__pool.connection_cache[self.__cache_key].con
                 self.__pool.connection_cache[self.__cache_key].count += 1
@@ -149,23 +155,18 @@ class SharedLazyAiosqliteConnection:
             await self.__con
             await self.__con.execute('PRAGMA synchronous=NORMAL')  # TODO: take this from config
             self.__con.row_factory = aiosqlite.Row
-            get_logger('shared_aiosqlite_connection').debug(f'aenter: pool lock releasing')  # DELETE ME
             return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         async with self.__pool.pool_lock:
-            get_logger('shared_aiosqlite_connection').debug(f'aexit: pool lock')  # DELETE ME
             entry = self.__pool.connection_cache[self.__cache_key]
             entry.count -= 1
             assert entry.count >= 0
             if entry.count > 0:
-                get_logger('shared_aiosqlite_connection').debug(f'count = {entry.count}')  # remove me!
                 return
             # so here only count == 0
-            get_logger('shared_aiosqlite_connection').debug(f'closing is: {entry.do_close}, need commit: {entry.need_to_commit}')  # remove me!
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
-            get_logger('shared_aiosqlite_connection').debug(f'aexit: pool lock releasing')  # DELETE ME
 
     def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
         entry = self.__pool.connection_cache.get(self.__cache_key)
