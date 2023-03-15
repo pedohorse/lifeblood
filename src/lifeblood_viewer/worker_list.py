@@ -1,11 +1,10 @@
 from datetime import datetime
-from lifeblood.uidata import UiData
+from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
-from lifeblood.misc import timeit
+from lifeblood.misc import timeit, performance_measurer
 from .connection_worker import SchedulerConnectionWorker
-from .utils import performance_measurer
 
 from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView, QMenu
 from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QPoint
@@ -73,7 +72,7 @@ class WorkerModel(QAbstractTableModel):
         super(WorkerModel, self).__init__(parent)
         self.__logger = get_logger('viewer.worker_model')
         self.__scheduler_worker = worker
-        self.__workers: Dict[str, dict] = {}  # address is the key
+        self.__workers: Dict[str, WorkerData] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
         self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
@@ -114,12 +113,13 @@ class WorkerModel(QAbstractTableModel):
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
-        raw_data = self.__workers[self.__order[row]][col_name]
-        if role == self.SORT_ROLE:  # for sorting
-            return raw_data
+        worker = self.__workers[self.__order[row]]
 
+        if col_name == 'id':
+            raw_data = worker.id
+            return raw_data
         if col_name == 'state':
-            data = WorkerState(raw_data)
+            data = worker.state
             if role == Qt.DisplayRole:
                 return data.name
             elif role == Qt.BackgroundRole:
@@ -132,18 +132,31 @@ class WorkerModel(QAbstractTableModel):
                 if data == WorkerState.ERROR:
                     return QColor.fromRgb(255, 0, 0, 64)
                 return None
+            elif role == self.SORT_ROLE:  # for sorting
+                return data.value
         if col_name == 'progress':
-            if self.__workers[self.__order[row]]['state'] == WorkerState.BUSY.value and raw_data is not None:
-                return f'{raw_data}%'
+            data = worker.current_invocation_progress
+            if role == self.SORT_ROLE:  # for sorting
+                return data
+            if worker.state == WorkerState.BUSY and data is not None:
+                return f'{data}%'
             return ''
+        if col_name == 'task_id':
+            return worker.current_invocation_task_id
+        if col_name == 'last_address':
+            return worker.last_address
+        if col_name == 'groups':
+            return ', '.join(worker.groups)
         if col_name == 'last_seen':
-            return datetime.fromtimestamp(raw_data).strftime('%H:%M:%S %d.%m.%Y')
+            if role == self.SORT_ROLE:  # for sorting
+                return worker.last_seen_timestamp
+            return datetime.fromtimestamp(worker.last_seen_timestamp).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
-            return WorkerType(raw_data).name
+            return worker.type.name
 
-        raw_data = format_display(col_name, raw_data)
+        raw_data = 'none'
         if col_name in self.__cols_with_totals:  # if there's total - make value in format if val/total, like 20/32
-            raw_data = f'{raw_data}/{format_display(col_name, self.__workers[self.__order[row]][f"total_{col_name}"])}'
+            raw_data = f'{format_display(col_name, getattr(worker.worker_resources, col_name))}/{format_display(col_name, getattr(worker.worker_resources, f"total_{col_name}"))}'
 
         return raw_data
 
@@ -182,9 +195,9 @@ class WorkerModel(QAbstractTableModel):
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
-    def full_update(self, uidata: UiData):
+    def workers_full_update(self, workers_data: WorkerBatchData):
         with performance_measurer() as pm:
-            new_workers = {x['last_address']: x for x in uidata.workers()}  # TODO: maybe use id instead of last_address?
+            new_workers = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
             new_keys = set(new_workers.keys())
             old_keys = set(self.__workers.keys())
         _perf_preinit = pm.elapsed()
@@ -195,9 +208,10 @@ class WorkerModel(QAbstractTableModel):
             minrow, maxrow = self.rowCount(), -1
             for worker_key in old_keys.intersection(new_keys):
                 # self.__workers[wroker_key].update(new_workers[worker_key])
-                for key, value in new_workers[worker_key].items():
-                    if self.__workers[worker_key].get(key) != value:
-                        self.__workers[worker_key][key] = value
+                for field in WorkerData.__dict__['__dataclass_fields__']:
+                    value = getattr(new_workers[worker_key], field)
+                    if getattr(self.__workers[worker_key], field) != value:
+                        setattr(self.__workers[worker_key], field, value)
                         row = self.__inv_order[worker_key]
                         if minrow > row:
                             minrow = row
@@ -250,7 +264,7 @@ class WorkerModel(QAbstractTableModel):
                                 f'{_perf_remove:04f}:\tremove')
 
     def start(self):
-        self.__scheduler_worker.full_update.connect(self.full_update)
+        self.__scheduler_worker.workers_full_update.connect(self.workers_full_update)
         self.group_update_requested.connect(self.__scheduler_worker.set_worker_groups)
         self.cancel_invocation_for_worker.connect(self.__scheduler_worker.cancel_task_for_worker)
 

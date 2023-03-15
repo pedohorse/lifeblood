@@ -5,7 +5,7 @@ import time
 
 from .logging import get_logger
 
-from typing import Any, AnyStr
+from typing import Any, AnyStr, Tuple
 
 
 class BaseFeeder:
@@ -171,3 +171,4 @@ class TimeCachedData:
                 self.__creation_time = time.time()
                 self.__expiration_time = self.__creation_time + self.__valid_period
         return self.__data
+

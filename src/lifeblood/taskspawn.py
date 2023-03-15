@@ -25,7 +25,7 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, source_invocation_id: Optional[int] = None, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None):
+    def __init__(self, name: str, source_invocation_id: Optional[int] = None, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None, extra_groups: Iterable[str] = None):
         """
 
         :param name:
@@ -40,7 +40,7 @@ class TaskSpawn:
         self.__from_invocation_id = source_invocation_id
         self.__output = 'spawned'
         self._create_as_spawned = True
-        self.__extra_groups = []
+        self.__extra_groups = list(extra_groups) if extra_groups is not None else []
         self.__default_priority = None
 
     def create_as_spawned(self):
@@ -136,8 +136,8 @@ class TaskSpawn:
 
 
 class NewTask(TaskSpawn):
-    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: Optional[dict] = None, priority: float = 50.0):
-        super(NewTask, self).__init__(name, None, env_args, task_attributes)
+    def __init__(self, name: str, node_id: int, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: Optional[dict] = None, priority: float = 50.0, extra_groups: Iterable[str] = None):
+        super(NewTask, self).__init__(name, None, env_args, task_attributes, extra_groups)
         self.set_node_output_name('main')
         self.force_set_node_task_id(node_id, None)
         self._create_as_spawned = False

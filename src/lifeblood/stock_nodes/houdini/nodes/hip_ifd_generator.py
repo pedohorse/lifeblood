@@ -127,7 +127,7 @@ class HipIfdGenerator(BaseNodeWithTaskRequirements):
             f'    else:\n' \
             f'        print("rendering frame %d" % frame)\n' \
             f'        node.render(frame_range=(frame, frame))\n'
-        if spawnlines is not None:
+        if spawnlines:
             script += \
                 f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n' \
                 f'{spawnlines}'

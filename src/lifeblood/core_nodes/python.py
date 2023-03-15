@@ -107,7 +107,7 @@ class Python(BaseNodeWithTaskRequirements):
         if do_schedule:
             inv = InvocationJob(['python', ':/main_invocation.py'])
             inok_task_attributes = {k: task_helper[k] for k in task_helper.attribute_names()}
-
+            # TODO: task here is not the same! no __getattr__ !
             inv.set_extra_file('main_invocation.py', f'task = {repr(inok_task_attributes)}\n{context.param_value("invoke")}')
         else:
             inv = None

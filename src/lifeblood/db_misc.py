@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS "node_connections" (
 	"in_name"	TEXT NOT NULL DEFAULT 'main',
 	"out_name"	TEXT NOT NULL DEFAULT 'main',
 	FOREIGN KEY("node_id_out") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE CASCADE,
-	FOREIGN KEY("node_id_in") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE CASCADE
+	FOREIGN KEY("node_id_in") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE CASCADE,
+	UNIQUE(node_id_in, node_id_out, in_name, out_name)
 );
 CREATE TABLE IF NOT EXISTS "nodes" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

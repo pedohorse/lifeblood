@@ -3,9 +3,10 @@ from unittest import IsolatedAsyncioTestCase
 from lifeblood import broadcasting
 from lifeblood import nethelpers
 
+from typing import Optional
+
 
 class InterfaceTests(IsolatedAsyncioTestCase):
-
     async def test_broadcast(self):
         async def _broad_receiver():
             nonlocal msg_received

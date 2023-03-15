@@ -1,4 +1,3 @@
-import lz4.frame
 import asyncio
 import pickle
 import os
@@ -14,10 +13,6 @@ from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tup
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
-
-
-async def create_uidata(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-    return await asyncio.get_event_loop().run_in_executor(None, UiData, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups)
 
 
 class ParameterExpressionError(Exception):
@@ -44,61 +39,6 @@ class LayoutError(RuntimeError):
 
 class LayoutReadonlyError(LayoutError):
     pass
-
-
-class UiData:
-    def __init__(self, db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-        self.__nodes = ui_nodes
-        self.__conns = ui_connections
-        self.__tasks = ui_tasks
-        self.__workers = ui_workers
-        self.__task_groups = all_task_groups
-        self.__db_uid = db_uid
-        # self.__conns = {}
-        # for conn in raw_connections:
-        #     id_out = conn['node_id_out']
-        #     id_in = conn['node_id_in']
-        #     if id_out not in self.__conns:
-        #         self.__conns[id_out] = {}
-        #     if id_in not in self.__conns[id_out]:
-        #         self.__conns[id_out][id_in] = []
-        #     self.__conns[id_out][id_in].append(dict(conn))
-
-    def nodes(self):
-        return self.__nodes
-
-    def connections(self):
-        return self.__conns
-
-    def tasks(self):
-        return self.__tasks
-
-    def workers(self):
-        return self.__workers
-
-    def task_groups(self):
-        return self.__task_groups
-
-    def db_uid(self) -> int:
-        return self.__db_uid
-
-    async def serialize(self, compress=False) -> bytes:
-        res = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
-        if not compress:
-            return b'\0\0\0' + res
-        return b'lz4' + await asyncio.get_event_loop().run_in_executor(None, lz4.frame.compress, res)
-
-    def __repr__(self):
-        return f'{self.__nodes} :::: {self.__conns}'
-
-    @classmethod
-    def deserialize_noasync(cls, data: bytes) -> "UiData":
-        cmp = data[:3]
-        if cmp == b'lz4':
-            return pickle.loads(lz4.frame.decompress(data[3:]))
-        elif cmp == b'\0\0\0':
-            return pickle.loads(data[3:])
-        raise NotImplementedError(f'data compression format {repr(cmp)} is not implemented')
 
 
 # if TYPE_CHECKING:

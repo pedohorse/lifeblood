@@ -1,5 +1,6 @@
 import asyncio
 import aiosqlite
+from functools import partial
 from typing import Optional, Dict, List, Callable
 from .config import get_config
 from .logging import get_logger
@@ -36,9 +37,11 @@ class ConnectionPoolEntry:
     def total_usages(self) -> int:
         return self.__total_usages
 
-    def add_close_callback(self, callback: Callable) -> None:
+    def add_close_callback(self, callback: Callable, *args, **kwargs) -> None:
         if self.__close_callbacks is None:
             self.__close_callbacks = []
+        if len(args) or len(kwargs):
+            callback = partial(callback, *args, **kwargs)
         self.__close_callbacks.append(callback)
 
     def add_close_callback_if_not_in(self, callback: Callable) -> None:
@@ -66,14 +69,25 @@ class ConnectionPool:
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
         self.pool_lock = asyncio.Lock()
         self.keep_open_period = self.default_period
+        self.__logger = get_logger('shared_aiosqlite_connection')
+        self.__my_loop = asyncio.get_running_loop()
+
+    def is_in_this_loop(self, loop=None):
+        """
+        check if given loop is the one this object was created in
+        :param loop: loop or None - then current loop is checked
+        :return:
+        """
+        return self.__my_loop == loop or asyncio.get_running_loop()
 
     async def connection_closer(self, key):
         await asyncio.sleep(self.keep_open_period)
-        get_logger('shared_aiosqlite_connection').debug('shared connection lifetime reached, will close')
+        self.__logger.debug('shared connection lifetime reached, will close')
         async with self.pool_lock:
             entry = self.connection_cache[key]
             if entry.count > 0:
                 entry.do_close = True
+                self.__logger.debug('active connections present, will close after last one exits')
             else:  # only == 0 possible
                 await self._closer_inner(key)
 
@@ -101,15 +115,16 @@ class SharedLazyAiosqliteConnection:
     NOTE! To avoid confusion - row_factory of new connection is always set to ROW
     Be VERY mindful of what uses these shared connections!
     """
-    connection_pool = None
+    connection_pools = {}
 
     def __init__(self, conn_pool, db_path: str, cache_name: str, *args, **kwargs):
         if conn_pool is not None:
             raise NotImplementedError()
-        if conn_pool is None and SharedLazyAiosqliteConnection.connection_pool is None:
-            SharedLazyAiosqliteConnection.connection_pool = ConnectionPool()
+        loop = asyncio.get_running_loop()
+        if conn_pool is None and SharedLazyAiosqliteConnection.connection_pools.get(loop) is None:
+            SharedLazyAiosqliteConnection.connection_pools[loop] = ConnectionPool()
             get_logger('shared_aiosqlite_connection').debug('default connection pool created')
-        self.__pool = SharedLazyAiosqliteConnection.connection_pool
+        self.__pool = SharedLazyAiosqliteConnection.connection_pools[loop]
 
         self.__db_path = db_path
         self.__con_args = args
@@ -138,6 +153,7 @@ class SharedLazyAiosqliteConnection:
             self.__pool.connection_cache[self.__cache_key].count = 1
             self.__pool.connection_cache[self.__cache_key].closer_task = asyncio.create_task(self.__pool.connection_closer(self.__cache_key))
             await self.__con
+            await self.__con.execute('PRAGMA synchronous=NORMAL')  # TODO: take this from config
             self.__con.row_factory = aiosqlite.Row
             return self
 
@@ -151,6 +167,12 @@ class SharedLazyAiosqliteConnection:
             # so here only count == 0
             if entry.do_close:  # so closer task has already finished, and we need to do it's job here
                 await self.__pool._closer_inner(self.__cache_key)
+
+    def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
+        entry = self.__pool.connection_cache.get(self.__cache_key)
+        if entry is None:
+            raise RuntimeError('cannot add callback to already closed and finalized lazy transactions')
+        entry.add_close_callback(callable, *args, **kwargs)
 
     async def commit(self, callback=None):
         """

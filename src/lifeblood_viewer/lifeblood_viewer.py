@@ -6,6 +6,7 @@ from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
+from lifeblood.ui_protocol_data import TaskGroupBatchData
 from lifeblood import paths
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
@@ -30,7 +31,7 @@ class GroupsModel(QAbstractItemModel):
 
     def __init__(self, parent):
         super(GroupsModel, self).__init__(parent=parent)
-        self.__items = {}
+        self.__items: Dict[str, TaskGroupData] = {}
         self.__items_order = []
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
@@ -56,7 +57,7 @@ class GroupsModel(QAbstractItemModel):
         return 4
 
     def is_archived(self, index) -> bool:
-        return self.__items[self.__items_order[index.row()]].get('state', 0) > 0
+        return self.__items[self.__items_order[index.row()]].state == TaskGroupArchivedState.ARCHIVED
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         if role == Qt.ForegroundRole:
@@ -64,10 +65,10 @@ class GroupsModel(QAbstractItemModel):
             if archived:
                 return QColor.fromRgbF(0.5, 0.5, 0.5)
             item = self.__items[self.__items_order[index.row()]]
-            done_count = item.get('tdone', 0)
-            prog_count = item.get('tprog', 0)
-            err_count = item.get('terr', 0)
-            total_count = item.get('tall', 0)
+            done_count = item.statistics.tasks_done
+            prog_count = item.statistics.tasks_in_progress
+            err_count = item.statistics.tasks_with_error
+            total_count = item.statistics.tasks_total
             if done_count == total_count:
                 return QColor.fromRgbF(0.65, 1.0, 0.65)
             elif err_count > 0:
@@ -80,14 +81,14 @@ class GroupsModel(QAbstractItemModel):
             return self.__items_order[index.row()]
         elif index.column() == 1:  # creation time
             if role == Qt.DisplayRole:
-                return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].get('ctime', 0) or 0).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
+                return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].creation_timestamp).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
-                return self.__items[self.__items_order[index.row()]].get('ctime', -1)
+                return self.__items[self.__items_order[index.row()]].creation_timestamp
         elif index.column() == 2:  # priority
-            return self.__items[self.__items_order[index.row()]].get('priority', None)
+            return self.__items[self.__items_order[index.row()]].priority
         elif index.column() == 3:  # completion progress
             item = self.__items[self.__items_order[index.row()]]
-            return f"{item.get('tprog', 0)}:{item.get('terr', 0)}:{item.get('tdone', 0)}/{item.get('tall', 0)}"
+            return f"{item.statistics.tasks_in_progress}:{item.statistics.tasks_with_error}:{item.statistics.tasks_done}/{item.statistics.tasks_total}"
 
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
         if parent is None:
@@ -99,10 +100,10 @@ class GroupsModel(QAbstractItemModel):
         return QModelIndex()
 
     @Slot(list)
-    def update_groups(self, groups: Dict[str, dict]):
+    def update_groups(self, groups: TaskGroupBatchData):
         self.beginResetModel()
-        self.__items = groups
-        self.__items_order = sorted(list(groups.keys()), key=lambda x: self.__items[x].get('ctime', -1) or -1, reverse=True)
+        self.__items = groups.task_groups
+        self.__items_order = sorted(list(groups.task_groups.keys()), key=lambda x: self.__items[x].creation_timestamp, reverse=True)
         self.endResetModel()
 
 
@@ -257,7 +258,7 @@ class LifebloodViewer(QMainWindow):
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiScene)
-        scene.task_groups_updated.connect(self.update_groups)
+        self.__ui_connection_worker.groups_full_update.connect(self.update_groups)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
         self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
@@ -281,7 +282,7 @@ class LifebloodViewer(QMainWindow):
         get_config('viewer').set_option_noasync('viewer.nodeeditor.display_dead_tasks', show)
         self.__node_editor.set_dead_shown(show)
 
-    def update_groups(self, groups):
+    def update_groups(self, groups: TaskGroupBatchData):
         do_select = self.__model_main.rowCount() == 0
         self.__model_main.update_groups(groups)
         if do_select and self.__model_main.rowCount() > 0:

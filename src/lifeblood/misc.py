@@ -4,6 +4,8 @@ import random
 import uuid
 import time
 import psutil
+from time import perf_counter
+from contextlib import contextmanager, asynccontextmanager
 from .logging import get_logger, logging
 
 from typing import List, Optional, Union
@@ -138,3 +140,42 @@ def get_unique_machine_id() -> int:
 
         __stashed_machine_uuid &= (1 << 63) - 1  # sqlite eats signed 64b integers, so we leave single bit. though we could still cast and use it...
     return __stashed_machine_uuid
+
+
+class _TimeMeasurer:
+    def __init__(self):
+        self.__start = None
+        self.__stop = None
+
+    def start(self):
+        self.__start = perf_counter()
+
+    def stop(self):
+        self.__stop = perf_counter()
+
+    def elapsed(self):
+        return self.__stop - self.__start
+
+
+@contextmanager
+def performance_measurer(threshold_to_report=None, name=None):
+    tm = _TimeMeasurer()
+    tm.start()
+    try:
+        yield tm
+    finally:
+        tm.stop()
+        if threshold_to_report and tm.elapsed() > threshold_to_report:
+            logging.debug(f'ran {name} in {tm.elapsed()}s')
+
+
+@asynccontextmanager
+async def aperformance_measurer(threshold_to_report=None, name=None):
+    tm = _TimeMeasurer()
+    tm.start()
+    try:
+        yield tm
+    finally:
+        tm.stop()
+        if threshold_to_report and tm.elapsed() > threshold_to_report:
+            logging.debug(f'ran {name} in {tm.elapsed()}s')

@@ -64,7 +64,7 @@ class ProcessingContext:
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
         self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
         sanitized_name = re.sub(r'\W', lambda m: f'x{ord(m.group(0))}', node.type_name())
-        self.__env_args = EnvironmentResolverArguments.deserialize(task_dict['environment_resolver_data']) if task_dict['environment_resolver_data'] is not None else None
+        self.__env_args = EnvironmentResolverArguments.deserialize(task_dict.get('environment_resolver_data')) if task_dict.get('environment_resolver_data') is not None else None
         self.__conf_wrapper = ProcessingContext.ConfigWrapper(sanitized_name)
         self.__node = node
 

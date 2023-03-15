@@ -21,3 +21,14 @@ class WorkerNotAvailable(RuntimeError):
 
 class ProcessInitializationError(RuntimeError):
     pass
+
+
+class IncompleteReadError(ConnectionError):
+    pass
+
+
+class NotSubscribedError(RuntimeError):
+    """
+    UI State Accessor related exception: signifies that there is no subscription for the requested group
+    """
+    pass
