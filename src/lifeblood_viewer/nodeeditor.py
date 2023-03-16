@@ -289,7 +289,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_task_ui_attributes_has_been_requested.connect(self.__ui_connection_worker.get_task_attribs)
         self._signal_node_has_parameter_requested.connect(self.__ui_connection_worker.send_node_has_parameter)
         self._signal_node_parameter_change_requested.connect(self.__ui_connection_worker.send_node_parameter_change)
-        self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameter_expression_change)
+        self._signal_node_parameter_expression_change_requested.connect(self.__ui_connection_worker.send_node_parameters_change)
         self._signal_node_parameters_change_requested.connect(self.__ui_connection_worker.send_node_parameters_change)
         self._signal_node_apply_settings_requested.connect(self.__ui_connection_worker.apply_node_settings)
         self._signal_node_save_custom_settings_requested.connect(self.__ui_connection_worker.node_save_custom_settings)
@@ -347,7 +347,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_node_parameter_change_requested.emit(node_id, param, operation_data)
 
     def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
-        self._signal_node_parameter_expression_change_requested.emit(node_id, param, operation_data)
+        self._signal_node_parameter_expression_change_requested.emit(node_id, [param], operation_data)
 
     def send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameters_change_requested.emit(node_id, params, operation_data)
