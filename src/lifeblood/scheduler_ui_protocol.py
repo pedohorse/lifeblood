@@ -233,11 +233,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(b'\0')
 
         async def comm_set_node_param():  # elif command == b'setnodeparam':
-            node_id, param_type, has_expression = struct.unpack('>QI?', await reader.readexactly(16))
-            param_name = read_string()
+            node_id, param_type, has_expression = struct.unpack('>QI?', await reader.readexactly(13))
+            param_name = await read_string()
             param_expr = None
             if has_expression:
-                param_expr = read_string()
+                param_expr = await read_string()
             if param_type == NodeParameterType.FLOAT.value:
                 param_value = struct.unpack('>d', await reader.readexactly(8))[0]
             elif param_type == NodeParameterType.INT.value:
@@ -259,7 +259,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                         await asyncio.get_event_loop().run_in_executor(None, param.set_expression, param_expr)
                     # TODO: if error happens below - we'll end up with half set parameter... not nice
                     # then set value (value can be set independent, remember)
-                    await asyncio.get_event_loop().run_in_executor(None, param.set_value, param_name, param_value)
+                    await asyncio.get_event_loop().run_in_executor(None, param.set_value, param_value)
                     value = param.unexpanded_value()
             except ParameterReadonly:
                 self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
