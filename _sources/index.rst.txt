@@ -19,6 +19,7 @@ where tasks that travel from node to node and may produce workload to be execute
     installation
     usage
     tutorials
+    nodes
     components/index
 
 Indices and tables
