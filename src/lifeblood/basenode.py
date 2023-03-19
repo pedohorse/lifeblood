@@ -245,9 +245,10 @@ class BaseNode:
     #
     # Plugin info
     #
-    def my_plugin(self) -> Optional[PluginInfo]:
+    @classmethod
+    def my_plugin(cls) -> Optional[PluginInfo]:
         from . import pluginloader
-        type_name = self.type_name()
+        type_name = cls.type_name()
         if type_name not in pluginloader.plugins:
             return None
         return pluginloader.plugins[type_name]._plugin_info
