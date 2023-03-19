@@ -27,6 +27,7 @@ Check :ref:`overview <overview-scheduler>` to learn basic components of Lifebloo
 
 Also check the :ref:`tutorial section <tutorials_installation>`
 
+Matrix Notifier installation is described in :ref:`matrix notifier help page <nodes/stock/matrixnotifier>`
 
 Simplest: Installation scripts
 ==============================
