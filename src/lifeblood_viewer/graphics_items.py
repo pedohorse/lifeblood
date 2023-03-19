@@ -705,31 +705,33 @@ class Node(NetworkItemWithUI):
                 event.ignore()
                 return
 
-            for input in self.__inputs:
-                inpos = self.get_input_position(input)
-                if QPointF.dotProduct(inpos - pos, inpos - pos) <= r2 and node_viewer.request_ui_focus(self):
-                    snap_points = [y for x in self.scene().nodes() if x != self for y in x.output_snap_points()]
-                    displayer = NodeConnectionCreatePreview(None, self, '', input, snap_points, 15, self._ui_interactor_finished)
-                    self.scene().addItem(displayer)
-                    self.__ui_interactor = displayer
-                    self.__ui_grabbed_conn = input
-                    self.__ui_widget = node_viewer
-                    event.accept()
-                    self.__ui_interactor.mousePressEvent(event)
-                    return
+            if self.__inputs:  # may be None if first nodes update hasn't arrived before mouse event
+                for input in self.__inputs:
+                    inpos = self.get_input_position(input)
+                    if QPointF.dotProduct(inpos - pos, inpos - pos) <= r2 and node_viewer.request_ui_focus(self):
+                        snap_points = [y for x in self.scene().nodes() if x != self for y in x.output_snap_points()]
+                        displayer = NodeConnectionCreatePreview(None, self, '', input, snap_points, 15, self._ui_interactor_finished)
+                        self.scene().addItem(displayer)
+                        self.__ui_interactor = displayer
+                        self.__ui_grabbed_conn = input
+                        self.__ui_widget = node_viewer
+                        event.accept()
+                        self.__ui_interactor.mousePressEvent(event)
+                        return
 
-            for output in self.__outputs:
-                outpos = self.get_output_position(output)
-                if QPointF.dotProduct(outpos - pos, outpos - pos) <= r2 and node_viewer.request_ui_focus(self):
-                    snap_points = [y for x in self.scene().nodes() if x != self for y in x.input_snap_points()]
-                    displayer = NodeConnectionCreatePreview(self, None, output, '', snap_points, 15, self._ui_interactor_finished)
-                    self.scene().addItem(displayer)
-                    self.__ui_interactor = displayer
-                    self.__ui_grabbed_conn = output
-                    self.__ui_widget = node_viewer
-                    event.accept()
-                    self.__ui_interactor.mousePressEvent(event)
-                    return
+            if self.__outputs:
+                for output in self.__outputs:
+                    outpos = self.get_output_position(output)
+                    if QPointF.dotProduct(outpos - pos, outpos - pos) <= r2 and node_viewer.request_ui_focus(self):
+                        snap_points = [y for x in self.scene().nodes() if x != self for y in x.input_snap_points()]
+                        displayer = NodeConnectionCreatePreview(self, None, output, '', snap_points, 15, self._ui_interactor_finished)
+                        self.scene().addItem(displayer)
+                        self.__ui_interactor = displayer
+                        self.__ui_grabbed_conn = output
+                        self.__ui_widget = node_viewer
+                        event.accept()
+                        self.__ui_interactor.mousePressEvent(event)
+                        return
 
             if not self._get_nodeshape().contains(event.pos()):
                 event.ignore()
