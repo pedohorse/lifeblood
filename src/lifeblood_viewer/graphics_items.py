@@ -1444,8 +1444,8 @@ class Task(NetworkItemWithUI):
             for invoc_id, invoc_dict in invocs.items():
                 if invoc_dict is None:
                     continue
-                if not isinstance(invoc_dict, InvocationLogData) \
-                        or invoc_dict.invocation_state != InvocationState.FINISHED and invoc_id in self.__requested_invocs_while_selected:
+                if (isinstance(invoc_dict, IncompleteInvocationLogData)
+                        or invoc_dict.invocation_state != InvocationState.FINISHED) and invoc_id in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.remove(invoc_id)
 
         # # if task is in progress - we find that invocation of it that is not finished and null it to force update
