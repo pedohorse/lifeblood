@@ -120,9 +120,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             # if command == b'getinvocmeta':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             all_meta = await self.__scheduler.get_invocation_metadata(task_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_meta)
-            writer.write(struct.pack('>I', len(data)))
-            writer.write(data)
+            writer.write(struct.pack('>Q', len(all_meta)))
+            for node_id, invoc_list in all_meta.items():
+                writer.write(struct.pack('>QQ', node_id, len(invoc_list)))
+                for log in invoc_list:
+                    await log.serialize_to_streamwriter(writer)
 
         async def comm_get_log():
             # elif command == b'getlog':
@@ -827,14 +829,21 @@ class UIProtocolSocketClient:
         data = WorkerBatchData.deserialize(r)
         return data
 
-    def get_invoc_meta(self, task_id) -> Dict[int, Dict[int, IncompleteInvocationLogData]]:
+    def get_invoc_meta(self, task_id) -> Dict[int, List[IncompleteInvocationLogData]]:
         r, w = self.__connection.get_rw_pair()
         w.write_string('getinvocmeta')
         w.write(struct.pack('>Q', task_id))
         w.flush()
-        rcvsize, = struct.unpack('>I', r.readexactly(4))
-        invocmeta = pickle.loads(r.readexactly(rcvsize))
-        return invocmeta
+
+        ret: Dict[int, List[IncompleteInvocationLogData]] = {}
+        node_count, = struct.unpack('>Q', r.readexactly(8))
+        for _ in range(node_count):
+            node_id, invoc_count = struct.unpack('>QQ', r.readexactly(16))
+            for _ in range(invoc_count):
+                log = IncompleteInvocationLogData.deserialize(r)
+                ret.setdefault(node_id, []).append(log)
+
+        return ret
 
     def get_log(self, invocation_id) -> Optional[InvocationLogData]:
         r, w = self.__connection.get_rw_pair()
