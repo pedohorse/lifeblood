@@ -457,12 +457,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__client is not None
         try:
             invocmeta = self.__client.get_invoc_meta(task_id)
+            invoc_data = {}
+            for node_id, invoc_list in invocmeta.items():
+                invoc_data[node_id] = {x.invocation_id: x for x in invoc_list}
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.log_fetched.emit(task_id, invocmeta)
+            self.log_fetched.emit(task_id, invoc_data)
 
     @Slot(int, object)
     def get_task_attribs(self, task_id: int, data=None):
