@@ -5,7 +5,7 @@ import asyncio
 from asyncio.exceptions import IncompleteReadError
 from . import logging
 from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
-from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData
+from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData, InvocationLogData, IncompleteInvocationLogData
 from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from .exceptions import NotSubscribedError
@@ -126,21 +126,11 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_get_log():
             # elif command == b'getlog':
-            task_id, node_id, invocation_id = struct.unpack('>QQQ', await reader.readexactly(24))
-            all_logs = await self.__scheduler.get_logs(task_id, node_id, invocation_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
-            writer.write(struct.pack('>I', len(data)))
-            writer.write(data)
-
-        async def comm_get_log_all():
-            # elif command == b'getalllog':
-            # TODO: instead of getting all invocation logs first get invocation list
-            # TODO: then bring in logs only for required invocation
-            task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
-            all_logs = await self.__scheduler.get_logs(task_id, node_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, all_logs)
-            writer.write(struct.pack('>I', len(data)))
-            writer.write(data)
+            invocation_id, = struct.unpack('>Q', await reader.readexactly(8))
+            log = await self.__scheduler.get_log(invocation_id)
+            writer.write(struct.pack('>?', log is not None))
+            if log is not None:
+                await log.serialize_to_streamwriter(writer)
 
         # brings in interface data for one particular node
         async def comm_get_node_interface():  # elif command == b'getnodeinterface':
@@ -606,7 +596,6 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'get_ui_workers_state': comm_get_ui_workers_state,
                     'getinvocmeta': comm_get_invoc_meta,
                     'getlog': comm_get_log,
-                    'getalllog': comm_get_log_all,
                     'getnodeinterface': comm_get_node_interface,
                     'gettaskattribs': comm_get_task_attribs,
                     'gettaskinvoc': comm_get_task_invocation,
@@ -838,7 +827,7 @@ class UIProtocolSocketClient:
         data = WorkerBatchData.deserialize(r)
         return data
 
-    def get_invoc_meta(self, task_id) -> Dict[int, Dict[int, dict]]:
+    def get_invoc_meta(self, task_id) -> Dict[int, Dict[int, IncompleteInvocationLogData]]:
         r, w = self.__connection.get_rw_pair()
         w.write_string('getinvocmeta')
         w.write(struct.pack('>Q', task_id))
@@ -847,14 +836,16 @@ class UIProtocolSocketClient:
         invocmeta = pickle.loads(r.readexactly(rcvsize))
         return invocmeta
 
-    def get_log(self, task_id, node_id, invocation_id) -> Dict[int, Dict[int, dict]]:
+    def get_log(self, invocation_id) -> Optional[InvocationLogData]:
         r, w = self.__connection.get_rw_pair()
         w.write_string('getlog')
-        w.write(struct.pack('>QQQ', task_id, node_id, invocation_id))
+        w.write(struct.pack('>Q', invocation_id))
         w.flush()
-        rcvsize = struct.unpack('>I', r.readexactly(4))[0]
-        alllogs = pickle.loads(r.readexactly(rcvsize))
-        return alllogs
+        has_data, = struct.unpack('>?', r.readexactly(1))
+        log = None
+        if has_data:
+            log = InvocationLogData.deserialize(r)
+        return log
 
     def get_log_all(self, task_id, node_id):
         raise NotImplementedError()
