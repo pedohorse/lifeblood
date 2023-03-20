@@ -42,7 +42,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     groups_full_update = Signal(object)
     workers_full_update = Signal(object)
 
-    log_fetched = Signal(int, dict)
+    log_fetched = Signal(int, object)
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, tuple, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
@@ -494,20 +494,23 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         else:
             self.task_invocation_job_fetched.emit(task_id, invoc)
 
-    @Slot(int, int, int)
-    def get_log(self, task_id: int, node_id: int, invocation_id: int):
+    @Slot(int)
+    def get_log(self, invocation_id: int):
         if not self.ensure_connected():
             return
 
         assert self.__client is not None
         try:
-            alllogs = self.__client.get_log(task_id, node_id, invocation_id)
+            log = self.__client.get_log(invocation_id)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.log_fetched.emit(task_id, alllogs)
+            if log is None:
+                logger.warning(f'no log found for invocation {invocation_id}')
+                return
+            self.log_fetched.emit(log.task_id, {log.node_id: {log.invocation_id: log}})
 
     @Slot()
     def get_nodeui(self, node_id: int):

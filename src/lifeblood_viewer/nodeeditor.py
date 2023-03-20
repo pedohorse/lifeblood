@@ -8,7 +8,7 @@ from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItem
 from .db_misc import sql_init_script_nodes
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.uidata import NodeUi, Parameter
-from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet
+from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
@@ -185,7 +185,7 @@ class LongOperationData:
 
 class QGraphicsImguiScene(QGraphicsScene):
     # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
-    _signal_log_has_been_requested = Signal(int, int, int)
+    _signal_log_has_been_requested = Signal(int)
     _signal_log_meta_has_been_requested = Signal(int)
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int, object)
@@ -325,8 +325,8 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_poke_task_groups_update.connect(self.__ui_connection_worker.poke_task_groups_update)
         self._signal_poke_workers_update.connect(self.__ui_connection_worker.poke_workers_update)
 
-    def request_log(self, task_id: int, node_id: int, invocation_id: int):
-        self._signal_log_has_been_requested.emit(task_id, node_id, invocation_id)
+    def request_log(self, invocation_id: int):
+        self._signal_log_has_been_requested.emit(invocation_id)
 
     def request_log_meta(self, task_id: int):
         self._signal_log_meta_has_been_requested.emit(task_id)
@@ -868,10 +868,10 @@ class QGraphicsImguiScene(QGraphicsScene):
                          f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object)
-    def log_fetched(self, task_id: int, log: dict):
+    def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]]):
         task = self.get_task(task_id)
         if task is None:
-            logger.warning('log fetched, but task not found!')
+            logger.warning(f'log fetched, but task not found! {task_id}')
             return
         task.update_log(log)
 

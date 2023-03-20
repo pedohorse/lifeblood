@@ -7,7 +7,7 @@ from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
-from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet
+from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
 from lifeblood import logging
@@ -22,7 +22,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroke
 
 import imgui
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable
+from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
 from . import nodeeditor
 
@@ -1077,7 +1077,7 @@ class Task(NetworkItemWithUI):
         self.__raw_data: TaskData = task_data
 
         # self.__groups = set() if groups is None else set(groups)
-        self.__log: dict = {}
+        self.__log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]] = {}
         self.__ui_attributes: dict = {}
         self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
         self.__requested_invocs_while_selected = set()
@@ -1306,25 +1306,25 @@ class Task(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
-    def update_log(self, alllog: Dict[int, Dict[int, dict]]):
+    def update_log(self, alllog: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]]):
         """
         This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
         :param alllog: is expected to be a dict of node_id -> (dict of invocation_id -> (invocation dict) )
         :return:
         """
-        #self.__log = alllog
         logger.debug('log updated with %s', alllog)
         # Note that we assume log deletion is not possible
         for node_id, invocs in alllog.items():
-            if self.__log.get(node_id, None) is None:
+            if node_id not in self.__log:
                 self.__log[node_id] = invocs
                 continue
             for inv_id, logs in invocs.items():
                 if inv_id in self.__log[node_id]:
-                    if logs is None:
-                        continue
-                    if logs.get('__incompletemeta__', False):
-                        self.__log[node_id][inv_id].update(logs)
+                    assert logs is not None
+                    if isinstance(logs, IncompleteInvocationLogData):  # logs.get('__incompletemeta__', False):
+                        self.__log[node_id][inv_id].invocation_id = logs.invocation_id
+                        self.__log[node_id][inv_id].worker_id = logs.worker_id
+                        self.__log[node_id][inv_id].invocation_runtime = logs.invocation_runtime
                         continue
                 self.__log[node_id][inv_id] = logs
 
@@ -1444,7 +1444,8 @@ class Task(NetworkItemWithUI):
             for invoc_id, invoc_dict in invocs.items():
                 if invoc_dict is None:
                     continue
-                if invoc_dict.get('state', None) != InvocationState.FINISHED.value and invoc_id in self.__requested_invocs_while_selected:
+                if not isinstance(invoc_dict, InvocationLogData) \
+                        or invoc_dict.invocation_state != InvocationState.FINISHED and invoc_id in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.remove(invoc_id)
 
         # # if task is in progress - we find that invocation of it that is not finished and null it to force update
@@ -1464,7 +1465,7 @@ class Task(NetworkItemWithUI):
             elif not value:
                 self.setFlag(QGraphicsItem.ItemIsSelectable, False)  # we are not selectable any more by band selection until directly clicked
                 pass
-                #self.__log = None
+
         elif change == QGraphicsItem.ItemSceneChange:
             if value is None:  # removing item from scene
                 if self.__animation_group is not None:
@@ -1554,8 +1555,6 @@ class Task(NetworkItemWithUI):
                     self._draw_dict_table(self.__ui_env_res_attributes.arguments(), 'node_task_environment_resolver_attributes')
 
         # now draw log
-        if self.__log is None:
-            return
         imgui.text('Logs:')
         for node_id, invocs in self.__log.items():
             node: Node = self.scene().get_node(node_id)
@@ -1566,33 +1565,33 @@ class Task(NetworkItemWithUI):
             node_expanded, _ = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
             if not node_expanded:  # or invocs is None:
                 continue
-            for invoc_id, invoc in invocs.items():
+            for invoc_id, invoc_log in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
                 imgui.indent(10)
                 invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
-                                                            (f', worker {invoc["worker_id"]}' if invoc.get('worker_id') is not None else '') +
-                                                            (f', time: {timedelta(seconds=round(invoc["runtime"]))}' if invoc.get('runtime') is not None else '') +
+                                                            (f', worker {invoc_log.worker_id}' if isinstance(invoc_log, InvocationLogData) is not None else '') +
+                                                            f', time: {timedelta(seconds=round(invoc_log.invocation_runtime)) if invoc_log.invocation_runtime is not None else "N/A"}' +
                                                             f'###logentry_{invoc_id}')
                 if not invoc_expanded:
                     imgui.unindent(10)
                     continue
                 if invoc_id not in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.add(invoc_id)
-                    self.scene().request_log(self.get_id(), node_id, invoc_id)
-                if invoc is None or 'stdout' not in invoc:
+                    self.scene().request_log(invoc_id)
+                if isinstance(invoc_log, IncompleteInvocationLogData):
                     imgui.text('...fetching...')
                 else:
-                    if 'stdout' in invoc and invoc['stdout']:
+                    if invoc_log.stdout:
                         if imgui.button(f'open in viewer##{invoc_id}'):
                             hl = StringParameterEditor.SyntaxHighlight.LOG
                             wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
-                            wgt.set_text(invoc.get('stdout', 'error'))
+                            wgt.set_text(invoc_log.stdout)
                             wgt.set_readonly(True)
                             wgt.set_title(f'Log: task {self.get_id()}, invocation {invoc_id}')
                             wgt.show()
 
-                        imgui.text_unformatted(invoc.get('stdout', 'error') or '...nothing here...')
-                    if invoc['state'] == InvocationState.IN_PROGRESS.value:
+                        imgui.text_unformatted(invoc_log.stdout or '...nothing here...')
+                    if invoc_log.invocation_state == InvocationState.IN_PROGRESS:
                         if imgui.button('update'):
                             logger.debug('clicked')
                             if invoc_id in self.__requested_invocs_while_selected:
