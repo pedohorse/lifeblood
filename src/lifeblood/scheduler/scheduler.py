@@ -32,7 +32,7 @@ from ..config import get_config
 from ..misc import atimeit, alocking
 from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 from .. import aiosqlite_overlay
-from ..ui_protocol_data import TaskData, TaskDelta
+from ..ui_protocol_data import TaskData, TaskDelta, IncompleteInvocationLogData, InvocationLogData
 
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
@@ -1410,7 +1410,7 @@ class Scheduler:
                 return list(x[0] for x in await cur.fetchall())
 
     #
-    async def get_invocation_metadata(self, task_id: int):
+    async def get_invocation_metadata(self, task_id: int) -> Dict[int, Dict[int, IncompleteInvocationLogData]]:
         """
         get task's log metadata - meaning which nodes it ran on and how
         :param task_id:
@@ -1426,66 +1426,79 @@ class Scheduler:
                     node_id = entry['node_id']
                     if node_id not in logs:
                         logs[node_id] = {}
-                    logs[node_id][entry['id']] = {'runtime': entry['runtime'],
-                                                  'worker_id': entry['worker_id'],
-                                                  '__incompletemeta__': True}
+                    logs[node_id][entry['id']] = IncompleteInvocationLogData(
+                        entry['id'],
+                        entry['worker_id'],
+                        entry['runtime']
+                    )
             return logs
 
-    async def get_logs(self, task_id: int, node_id: int, invocation_id: Optional[int] = None):
+    async def get_log(self, invocation_id: int) -> Optional[InvocationLogData]:
+        """
+        get logs for given task, node and invocation ids
+
+        returns a dict of node_id
+
+        :param invocation_id:
+        :return:
+        """
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
-            logs = {}
-            self.__logger.debug(f"fetching for {task_id}, {node_id} {'' if invocation_id is None else invocation_id}")
-            if invocation_id is None:  # TODO: disable this option
-                async with con.execute('SELECT * from "invocations" WHERE "task_id" = ? AND "node_id" = ?',
-                                       (task_id, node_id)) as cur:
-                    async for entry in cur:
-                        logs[entry['id']] = dict(entry)
-            else:
-                async with con.execute('SELECT * from "invocations" WHERE "task_id" = ? AND "node_id" = ? AND "id" = ?',
-                                       (task_id, node_id, invocation_id)) as cur:
-                    all_entries = await cur.fetchall()  # should be exactly 1 or 0
-                for entry in all_entries:
-                    entry = dict(entry)
-                    if entry['state'] == InvocationState.IN_PROGRESS.value:
-                        async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry['worker_id'],)) as worcur:
-                            workrow = await worcur.fetchone()
-                        if workrow is None:
-                            self.__logger.error('Worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
-                        else:
-                            try:
-                                async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
-                                    stdout, stderr = await client.get_log(invocation_id)
-                                if not self.__use_external_log:
-                                    await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',
-                                                      (stdout, stderr, invocation_id))
-                                    await con.commit()
-                                # TODO: maybe add else case? save partial log to file?
-                            except ConnectionError:
-                                self.__logger.warning('could not connect to worker to get freshest logs')
-                            else:
-                                entry['stdout'] = stdout
-                                entry['stderr'] = stderr
+            self.__logger.debug(f"fetching for {invocation_id}")
+            async with con.execute('SELECT "id", task_id, worker_id, node_id, state, return_code, log_external, runtime, stdout, stderr '
+                                   'FROM "invocations" WHERE "id" = ?',
+                                   (invocation_id,)) as cur:
+                rawentry = await cur.fetchone()  # should be exactly 1 or 0
+            if rawentry is None:
+                return None
 
-                    elif entry['state'] == InvocationState.FINISHED.value and entry['log_external'] == 1:
-                        logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
-                        stdout_path = logbasedir / 'stdout.log'
-                        stderr_path = logbasedir / 'stderr.log'
-                        try:
-                            if stdout_path.exists():
-                                async with aiofiles.open(stdout_path, 'r') as fstdout:
-                                    entry['stdout'] = await fstdout.read()
-                        except IOError:
-                            self.__logger.exception(f'could not read external stdout log for {invocation_id}')
-                        try:
-                            if stderr_path.exists():
-                                async with aiofiles.open(stderr_path, 'r') as fstderr:
-                                    entry['stderr'] = await fstderr.read()
-                        except IOError:
-                            self.__logger.exception(f'could not read external stdout log for {invocation_id}')
+            entry: InvocationLogData = InvocationLogData(rawentry['id'],
+                                                         rawentry['worker_id'],
+                                                         rawentry['runtime'],
+                                                         rawentry['task_id'],
+                                                         rawentry['node_id'],
+                                                         InvocationState(rawentry['state']),
+                                                         rawentry['return_code'],
+                                                         rawentry['stdout'],
+                                                         rawentry['stderr'])
+            if entry.invocation_state == InvocationState.IN_PROGRESS:
+                async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry.worker_id,)) as worcur:
+                    workrow = await worcur.fetchone()
+                if workrow is None:
+                    self.__logger.error('Worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
+                else:
+                    try:
+                        async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
+                            stdout, stderr = await client.get_log(invocation_id)
+                        if not self.__use_external_log:
+                            await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',  # TODO: is this really needed? if it's never really read
+                                              (stdout, stderr, invocation_id))
+                            await con.commit()
+                        # TODO: maybe add else case? save partial log to file?
+                    except ConnectionError:
+                        self.__logger.warning('could not connect to worker to get freshest logs')
+                    else:
+                        entry.stdout = stdout
+                        entry.stderr = stderr
 
-                    logs[entry['id']] = entry
-        return {node_id: logs}
+            elif entry.invocation_state == InvocationState.FINISHED and rawentry['log_external'] == 1:
+                logbasedir = self.__external_log_location / 'invocations' / f'{invocation_id}'
+                stdout_path = logbasedir / 'stdout.log'
+                stderr_path = logbasedir / 'stderr.log'
+                try:
+                    if stdout_path.exists():
+                        async with aiofiles.open(stdout_path, 'r') as fstdout:
+                            entry.stdout = await fstdout.read()
+                except IOError:
+                    self.__logger.exception(f'could not read external stdout log for {invocation_id}')
+                try:
+                    if stderr_path.exists():
+                        async with aiofiles.open(stderr_path, 'r') as fstderr:
+                            entry.stderr = await fstderr.read()
+                except IOError:
+                    self.__logger.exception(f'could not read external stdout log for {invocation_id}')
+
+        return entry
 
     def server_address(self) -> str:
         return self.__server_address
