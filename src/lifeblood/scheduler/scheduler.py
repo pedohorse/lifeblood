@@ -1410,11 +1410,11 @@ class Scheduler:
                 return list(x[0] for x in await cur.fetchall())
 
     #
-    async def get_invocation_metadata(self, task_id: int) -> Dict[int, Dict[int, IncompleteInvocationLogData]]:
+    async def get_invocation_metadata(self, task_id: int) -> Dict[int, List[IncompleteInvocationLogData]]:
         """
         get task's log metadata - meaning which nodes it ran on and how
         :param task_id:
-        :return: dict[node_id -> dict[invocation_id: None]]
+        :return: dict[node_id -> list[IncompleteInvocationLogData]]
         """
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -1424,13 +1424,11 @@ class Scheduler:
                                    (task_id, )) as cur:
                 async for entry in cur:
                     node_id = entry['node_id']
-                    if node_id not in logs:
-                        logs[node_id] = {}
-                    logs[node_id][entry['id']] = IncompleteInvocationLogData(
+                    logs.setdefault(node_id, []).append(IncompleteInvocationLogData(
                         entry['id'],
                         entry['worker_id'],
                         entry['runtime']
-                    )
+                    ))
             return logs
 
     async def get_log(self, invocation_id: int) -> Optional[InvocationLogData]:
