@@ -5,10 +5,11 @@ import struct
 from io import BytesIO, BufferedIOBase
 from .buffered_connection import BufferedReader
 from .buffer_serializable import IBufferSerializable
-from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState
+from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState, InvocationState
 from dataclasses import dataclass
 
 from typing import Dict, List, Tuple, Type, Optional, Set, Union
+
 
 def _serialize_string(s: str, stream: BufferedIOBase) -> int:
     bstr = s.encode('UTF-8')
@@ -601,3 +602,51 @@ class UiData(IBufferSerializable):  # Deprecated, should not be used any more
 
     def __repr__(self):
         return f'{self.graph_data} :::: {self.tasks}'  # TODO: this is not a good representation at all
+
+
+@dataclass
+class IncompleteInvocationLogData(IBufferSerializable):
+    invocation_id: int
+    worker_id: int
+    invocation_runtime: Optional[float]
+
+    def serialize(self, stream: BufferedIOBase):
+        stream.write(struct.pack('>QQ?d', self.invocation_id, self.worker_id, self.invocation_runtime is not None, self.invocation_runtime or 0.0))
+
+    @classmethod
+    def deserialize(cls, stream: BufferedReader):
+        i_id, w_id, has_i_rt, i_rt = struct.unpack('>QQ?d', stream.readexactly(25))
+        if not has_i_rt:
+            i_rt = None
+        return IncompleteInvocationLogData(i_id, w_id, i_rt)
+
+
+@dataclass
+class InvocationLogData(IBufferSerializable):
+    invocation_id: int
+    worker_id: int
+    invocation_runtime: Optional[float]
+    task_id: int
+    node_id: int
+    invocation_state: InvocationState
+    return_code: Optional[int]
+    stdout: str
+    stderr: str
+
+    def serialize(self, stream: BufferedIOBase):
+        stream.write(struct.pack('>QQ?dQQI?Q', self.invocation_id, self.worker_id, self.invocation_runtime is not None,
+                                 self.invocation_runtime or 0.0, self.task_id, self.node_id, self.invocation_state.value,
+                                 self.return_code is not None, self.return_code or 0))
+        _serialize_string(self.stdout, stream)
+        _serialize_string(self.stderr, stream)
+
+    @classmethod
+    def deserialize(cls, stream: BufferedReader):
+        i_id, w_id, has_i_rt, i_rt, t_id, n_id, i_s_raw, has_ret_code, ret_code = struct.unpack('>QQ?dQQI?Q', stream.readexactly(54))
+        if not has_i_rt:
+            i_rt = None
+        if not has_ret_code:
+            ret_code = None
+        stdout = _deserialize_string(stream)
+        stderr = _deserialize_string(stream)
+        return InvocationLogData(i_id, w_id, i_rt, t_id, n_id, InvocationState(i_s_raw), ret_code, stdout, stderr)
