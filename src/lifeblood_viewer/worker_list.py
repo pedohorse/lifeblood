@@ -13,6 +13,9 @@ from PySide2.QtGui import QColor
 from typing import Optional, Dict, List, Any
 
 
+_init_column_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
+
+
 class WorkerListWidget(QWidget):
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerListWidget, self).__init__(parent, Qt.Tool)
@@ -29,7 +32,17 @@ class WorkerListWidget(QWidget):
         self.__sort_model.setFilterKeyColumn(self.__worker_model.column_by_name('state'))
 
         self.__worker_list.setModel(self.__sort_model)
-        self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        # self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
+
+        ico = _init_column_order
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('id'), 64)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('state'), 64)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('progress'), 64)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('task_id'), 64)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('last_address'), 140)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('last_seen'), 135)
+        self.__worker_list.horizontalHeader().resizeSection(ico.index('worker_type'), 135)
+
         self.__worker_list.setSortingEnabled(True)
         self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
         self.__worker_list.setFocusPolicy(Qt.NoFocus)
@@ -46,7 +59,6 @@ class WorkerListWidget(QWidget):
         self.__worker_model.stop()
 
     def show_context_menu(self, pos: QPoint):
-        print('KLUAJHFKLJASHF')
         gpos = self.__worker_list.mapToGlobal(pos)
         index = self.__sort_model.mapToSource(self.__worker_list.indexAt(pos))
         if not index.isValid():
@@ -77,8 +89,8 @@ class WorkerModel(QAbstractTableModel):
         self.__inv_order: Dict[str, int] = {}
         self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
                        'gpu_count': 'gpus', 'gpu_mem': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
-                       'progress': 'task progress', 'groups': 'groups', 'task_id': 'task id'}
-        self.__cols_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
+                       'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
+        self.__cols_order = _init_column_order
         self.__colname_to_index = {k: i for i, k in enumerate(self.__cols_order)}
         assert len(self.__cols) == len(self.__cols_order)
 

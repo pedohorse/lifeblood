@@ -6,7 +6,7 @@ from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
-from lifeblood.ui_protocol_data import TaskGroupBatchData
+from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
 from lifeblood import paths
 from .nodeeditor import NodeEditor, QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
@@ -38,13 +38,13 @@ class GroupsModel(QAbstractItemModel):
         if role != Qt.DisplayRole:
             return
         if section == 0:
-            return 'name'
+            return 'group name'
         elif section == 1:
             return 'creation time'
         elif section == 2:
-            return 'prio'
+            return 'priority'
         elif section == 3:
-            return 'prog'
+            return 'summary'
 
     def rowCount(self, parent: QModelIndex = None) -> int:
         if parent is None:
@@ -161,7 +161,11 @@ class GroupsView(QTreeView):
         # some visual adjustment
         header = self.header()
         header.moveSection(3, 0)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        # header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
+        header.resizeSection(0, 200)
+        header.resizeSection(1, 128)
+        header.resizeSection(2, 32)
+        header.resizeSection(3, 80)
         # header.setSectionResizeMode(3, QHeaderView.Fixed)
         # header.resizeSection(3, 16)
 
@@ -229,10 +233,6 @@ class LifebloodViewer(QMainWindow):
 
         self.__model_main = GroupsModel(self)
         self.__group_list.setModel(self.__model_main)
-        self.__group_list.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.__group_list.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.__group_list.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.__group_list.header().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.__group_list.header().setStretchLastSection(True)
 
         self.__worker_list = WorkerListWidget(self.__ui_connection_worker, self)
