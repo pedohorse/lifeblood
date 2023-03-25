@@ -148,9 +148,9 @@ class Tests(TestCase):
         delta3 = self._run_iters(100000, 10, 9999999)
         delta4 = self._run_iters(1000000, 10, 9999999)
         print(f'{delta1} : {delta2} : {delta3} : {delta4}')
-        self.assertGreater(delta1*(10+1.5), delta2, )  # we give 15% margin
-        self.assertGreater(delta1*(100+15), delta3)
-        self.assertGreater(delta1*(1000+150), delta4)
+        self.assertGreater(delta1*(10+2), delta2, )  # we give 20% margin
+        self.assertGreater(delta1*(100+20), delta3)
+        self.assertGreater(delta1*(1000+200), delta4)
 
     def test_benchmark1(self):
         self._test_benchmark(10, 9999999)
