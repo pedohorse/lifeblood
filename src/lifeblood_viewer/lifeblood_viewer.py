@@ -8,7 +8,8 @@ from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
 from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
 from lifeblood import paths
-from .nodeeditor import NodeEditor, QGraphicsImguiScene
+from .nodeeditor import NodeEditor
+from .graphics_scene import QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .worker_list import WorkerListWidget
 

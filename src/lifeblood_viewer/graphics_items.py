@@ -22,9 +22,11 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroke
 
 import imgui
 
-from typing import Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
+from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
 from . import nodeeditor
+if TYPE_CHECKING:
+    from .graphics_scene import QGraphicsImguiScene
 
 logger = logging.get_logger('viewer')
 
@@ -176,15 +178,15 @@ class Node(NetworkItemWithUI):
         self.update_ui()
 
     def apply_settings(self, settings_name: str):
-        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene: QGraphicsImguiScene = self.scene()
         scene.request_apply_node_settings(self.get_id(), settings_name)
 
     def pause_all_tasks(self):
-        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene: QGraphicsImguiScene = self.scene()
         scene.set_tasks_paused([x.get_id() for x in self.__tasks], True)
 
     def resume_all_tasks(self):
-        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene: QGraphicsImguiScene = self.scene()
         scene.set_tasks_paused([x.get_id() for x in self.__tasks], False)
 
     def update_nodeui(self, nodeui: NodeUi):
@@ -777,7 +779,7 @@ class Node(NetworkItemWithUI):
         if snap_point is None:
             logger.debug('no change')
             return
-        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene: QGraphicsImguiScene = self.scene()
         setting_out = not snap_point.connection_is_input()
         scene.request_node_connection_add(snap_point.node().get_id() if setting_out else self.get_id(),
                                           snap_point.connection_name() if setting_out else grabbed_conn,
@@ -1036,7 +1038,7 @@ class NodeConnection(NetworkItem):
         if snap_point is None:
             logger.debug('no change')
             return
-        scene: nodeeditor.QGraphicsImguiScene = self.scene()
+        scene: QGraphicsImguiScene = self.scene()
         changing_out = not snap_point.connection_is_input()
         scene.request_node_connection_change(self.get_id(),
                                              snap_point.node().get_id() if changing_out else None,
