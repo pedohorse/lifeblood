@@ -5,6 +5,7 @@ from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
 from .graphics_scene import QGraphicsImguiScene
 from .long_op import LongOperation
+from .flashy_label import FlashyLabel
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -196,6 +197,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         # PySide's QWidget does not call super, so we call explicitly
         Shortcutable.__init__(self, 'viewer')
 
+        self.__overlay_message = FlashyLabel(self)
+
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
@@ -249,13 +252,18 @@ class NodeEditor(QGraphicsView, Shortcutable):
         return {'nodeeditor.layout_graph': self.layout_selected_nodes,
                 'nodeeditor.copy': self.copy_selected_nodes,
                 'nodeeditor.paste': self.paste_copied_nodes,
-                'nodeeditor.focus_selected': self.focuse_on_selected}
+                'nodeeditor.focus_selected': self.focus_on_selected}
 
     def default_shortcuts(self) -> Dict[str, str]:
         return {'nodeeditor.layout_graph': 'Ctrl+l',
                 'nodeeditor.copy': 'Ctrl+c',
                 'nodeeditor.paste': 'Ctrl+v',
                 'nodeeditor.focus_selected': 'f'}
+
+    def show_message(self, message: str, duration: float):
+        self.__overlay_message.show_label(message, duration)
+        self.__overlay_message.move(self.width()//2 - self.__overlay_message.width()//2, self.height()*5//6)
+        self.__overlay_message.raise_()
 
     def rescan_presets(self):
         self.__viewer_presets = {}
@@ -300,6 +308,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if not nodes:
             return
         self.__scene.layout_nodes(nodes, center=self.sceneRect().center())
+        self.show_message('Nodes auto aligned', 2)
 
     @Slot()
     def copy_selected_nodes(self):
@@ -314,6 +323,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         for node in snippet.nodes_data:
             node.name += ' copy'
         self.__editor_clipboard.set_contents(Clipboard.ClipboardContentsType.NODES, snippet)
+        self.show_message('Nodes copied', 2)
 
     @Slot()
     def preset_from_selected_nodes(self, preset_label: Optional[str] = None, file_path: Optional[str] = None):
@@ -353,6 +363,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if clipdata is None:
             return
         self.__scene.nodes_from_snippet(clipdata[1], pos)
+        self.show_message('Nodes pasted', 2)
 
     @Slot(str, str, QPointF)
     def get_snippet_from_scheduler_and_create_nodes(self, package: str, preset_name: str, pos: QPointF):
@@ -384,7 +395,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
 
     @Slot()
-    def focuse_on_selected(self):
+    def focus_on_selected(self):
         if self.__ui_panning_lastpos:  # if we are panning right now
             return
         numitems = len(self.__scene.selectedItems())
