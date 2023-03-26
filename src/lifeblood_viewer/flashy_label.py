@@ -29,6 +29,7 @@ class FlashyLabel(QLabel):
         self.__hide_timer.setInterval(self.__time*1000 // 2)
         self.__hide_timer.start()
         self.setText(label)
+        self.resize(self.sizeHint())
         self.setStyleSheet('QLabel{color: rgba(255, 255, 255, 255);}')
         self.show()
 
