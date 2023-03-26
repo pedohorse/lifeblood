@@ -1253,7 +1253,7 @@ class Scheduler:
             self.ui_state_access.bump_graph_update_id()
             return ret
 
-    async def remove_node(self, node_id: int):
+    async def remove_node(self, node_id: int) -> bool:
         try:
             async with self.data_access.data_connection() as con:
                 con.row_factory = aiosqlite.Row
@@ -1263,6 +1263,8 @@ class Scheduler:
                 self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
             self.__logger.error('could not remove node connection because of database integrity check')
+            return False
+        return True
 
     #
     # query connections
