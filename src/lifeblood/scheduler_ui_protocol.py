@@ -197,8 +197,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_remove_node():  # elif command == b'removenode':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            await self.__scheduler.remove_node(node_id)
-            writer.write(b'\1')
+            deleted = await self.__scheduler.remove_node(node_id)
+            writer.write(b'\1' if deleted else b'\0')
 
         async def comm_add_node():  # elif command == b'addnode':
             node_type = await read_string()
@@ -926,12 +926,12 @@ class UIProtocolSocketClient:
         snippet: NodeSnippetData = NodeSnippetData.deserialize(r.readexactly(btlen))
         return snippet
 
-    def remove_node(self, node_id: int):
+    def remove_node(self, node_id: int) -> bool:
         r, w = self.__connection.get_rw_pair()
         w.write_string('removenode')
         w.write(struct.pack('>Q', node_id))
         w.flush()
-        assert r.readexactly(1) == b'\1'
+        return r.readexactly(1) == b'\1'
 
     def add_node(self, node_type: str, node_name: str) -> int:
         r, w = self.__connection.get_rw_pair()
