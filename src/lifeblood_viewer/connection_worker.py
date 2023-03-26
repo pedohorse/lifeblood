@@ -57,7 +57,11 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_custom_settings_saved = Signal(str, str, object)
     node_default_settings_set = Signal(str, object, object)
     node_created = Signal(int, str, str, QPointF, object)
+    nodes_removed = Signal(list, object)
+    node_renamed = Signal(int, str, object)
     nodes_copied = Signal(dict, QPointF)
+    node_connections_removed = Signal(list, object)
+    node_connections_added = Signal(list, object)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -679,7 +683,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__client is not None
 
         try:
-            snippet = self.__client.get_node_preset(package)
+            snippet = self.__client.get_node_preset(package, preset)
             if snippet is None:
                 return
         except ConnectionError as e:
@@ -714,17 +718,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             self.node_created.emit(node_id, node_type, node_name, pos, data)
 
     @Slot()
-    def remove_node(self, node_id: int):
+    def remove_nodes(self, node_ids: List[int], data=None):
         if not self.ensure_connected():
             return
         assert self.__client is not None
 
+        deleted = []
         try:
-            self.__client.remove_node(node_id)
+            for node_id in node_ids:
+                if self.__client.remove_node(node_id):
+                    deleted.append(node_id)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
+
+        self.nodes_removed.emit(deleted, data)  # we need to emit either way to preserve the flow
 
     @Slot()
     def wipe_node(self, node_id: int):
@@ -740,7 +749,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
-    def set_node_name(self, node_id: int, node_name: str):
+    def set_node_name(self, node_id: int, node_name: str, data=None):
         if not self.ensure_connected():
             return
         assert self.__client is not None
@@ -751,6 +760,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
+        else:
+            self.node_renamed.emit(node_id, node_name, data)
 
     @Slot()
     def duplicate_nodes(self, node_ids: List[int], shift: QPointF):
@@ -781,7 +792,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
-    def add_node_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str):
+    def add_node_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str, data=None):
         if not self.ensure_connected():
             return
         assert self.__client is not None
@@ -793,19 +804,23 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
+        else:
+            self.node_connections_added.emit([(new_id, outnode_id, outname, innode_id, inname)], data)
 
     @Slot()
-    def remove_node_connection(self, connection_id: int):
+    def remove_node_connections(self, connection_ids: List[int], data=None):
         if not self.ensure_connected():
             return
         assert self.__client is not None
 
         try:
-            self.__client.remove_connection_by_id(connection_id)
+            for connection_id in connection_ids:
+                self.__client.remove_connection_by_id(connection_id)  # TODO: make func that takes a list, batching is better
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
+        self.node_connections_removed.emit(connection_ids, data)
 
     # task control things
     @Slot()

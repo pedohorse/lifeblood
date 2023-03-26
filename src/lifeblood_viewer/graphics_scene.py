@@ -8,6 +8,9 @@ from .graphics_items import Task, Node, NodeConnection
 from .db_misc import sql_init_script_nodes
 from .long_op import LongOperation, LongOperationData
 from .connection_worker import SchedulerConnectionWorker
+from .undo_stack import UndoStack, UndoableOperation
+from .ui_snippets import UiNodeSnippetData
+from .scene_ops import *
 
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.uidata import NodeUi, Parameter
@@ -25,7 +28,7 @@ from PySide2.QtWidgets import *
 from PySide2.QtCore import Slot, Signal, QThread, QRectF, QPointF
 from PySide2.QtGui import QKeyEvent
 
-from typing import Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any
+from typing import Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any, Sequence
 
 logger = logging.get_logger('viewer')
 
@@ -46,14 +49,14 @@ class QGraphicsImguiScene(QGraphicsScene):
     _signal_node_set_settings_default_requested = Signal(str, object, object)
     _signal_nodetypes_update_requested = Signal()
     _signal_nodepresets_update_requested = Signal()
-    _signal_set_node_name_requested = Signal(int, str)
+    _signal_set_node_name_requested = Signal(int, str, object)
     _signal_nodepreset_requested = Signal(str, str, object)
     _signal_create_node_requested = Signal(str, str, QPointF, object)
-    _signal_remove_node_requested = Signal(int)
+    _signal_remove_nodes_requested = Signal(list, object)
     _signal_wipe_node_requested = Signal(int)
     _signal_change_node_connection_requested = Signal(int, object, object, object, object)
-    _signal_remove_node_connection_requested = Signal(int)
-    _signal_add_node_connection_requested = Signal(int, str, int, str)
+    _signal_remove_node_connections_requested = Signal(list, object)
+    _signal_add_node_connection_requested = Signal(int, str, int, str, object)
     _signal_set_task_group_filter = Signal(set)
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], int, str]
@@ -80,13 +83,15 @@ class QGraphicsImguiScene(QGraphicsScene):
     nodepreset_received = Signal(str, str, NodeSnippetData)
     task_invocation_job_fetched = Signal(int, InvocationJob)
 
-    long_operation_progressed = Signal(object)  # do we need this signal?
+    #
+    operation_progress_updated = Signal(str, float)  # operation name, progress 0.0 - 1.0
 
     def __init__(self, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
         # to debug fuching bsp # self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.__task_dict: Dict[int, Task] = {}
         self.__node_dict: Dict[int, Node] = {}
+        self.__node_connections_dict: Dict[int, NodeConnection] = {}
         self.__db_path = db_path
         self.__nodes_table_name = None
         self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
@@ -95,6 +100,12 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__db_uid: Optional[int] = None  # this is unique id of the scheduler's db. we use this to determine where to save node positions locally, not to mix and collide
 
         self.__tasks_to_try_reparent_during_node_update = {}
+
+        self.__undo_stack = UndoStack(max_undos=100)  # TODO: config
+        self.__session_node_id_mapping = {}  # for consistent redo-undo involving node creation/deletion, as node_id will change on repetition
+        self.__session_node_id_mapping_rev = {}
+        self.__next_session_node_id = -1
+        self.__node_snapshots = {}  # for undo/redo
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -128,7 +139,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         self.__ui_connection_worker.node_custom_settings_saved.connect(self._node_custom_settings_saved)
         self.__ui_connection_worker.node_default_settings_set.connect(self._node_default_settings_set)
         self.__ui_connection_worker.node_created.connect(self._node_created)
+        self.__ui_connection_worker.nodes_removed.connect(self._nodes_removed)
+        self.__ui_connection_worker.node_renamed.connect(self._node_renamed)
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
+        self.__ui_connection_worker.node_connections_removed.connect(self._node_connections_removed)
+        self.__ui_connection_worker.node_connections_added.connect(self._node_connections_added)
 
         self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_invocation_metadata)
@@ -146,11 +161,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         self._signal_nodepreset_requested.connect(self.__ui_connection_worker.get_nodepreset)
         self._signal_set_node_name_requested.connect(self.__ui_connection_worker.set_node_name)
         self._signal_create_node_requested.connect(self.__ui_connection_worker.create_node)
-        self._signal_remove_node_requested.connect(self.__ui_connection_worker.remove_node)
+        self._signal_remove_nodes_requested.connect(self.__ui_connection_worker.remove_nodes)
         self._signal_wipe_node_requested.connect(self.__ui_connection_worker.wipe_node)
         self._signal_duplicate_nodes_requested.connect(self.__ui_connection_worker.duplicate_nodes)
         self._signal_change_node_connection_requested.connect(self.__ui_connection_worker.change_node_connection)
-        self._signal_remove_node_connection_requested.connect(self.__ui_connection_worker.remove_node_connection)
+        self._signal_remove_node_connections_requested.connect(self.__ui_connection_worker.remove_node_connections)
         self._signal_add_node_connection_requested.connect(self.__ui_connection_worker.add_node_connection)
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
@@ -217,23 +232,35 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_node_preset(self, packagename: str, presetname: str, operation_data: Optional["LongOperationData"] = None):
         self._signal_nodepreset_requested.emit(packagename, presetname, operation_data)
 
-    def request_set_node_name(self, node_id: int, name: str):
-        self._signal_set_node_name_requested.emit(node_id, name)
+    def request_set_node_name(self, node_id: int, name: str, operation_data: Optional["LongOperationData"] = None):
+        self._signal_set_node_name_requested.emit(node_id, name, operation_data)
 
     def request_node_connection_change(self,  connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
         self._signal_change_node_connection_requested.emit(connection_id, outnode_id, outname, innode_id, inname)
 
-    def request_node_connection_remove(self, connection_id: int):
-        self._signal_remove_node_connection_requested.emit(connection_id)
+    def request_node_connection_remove(self, connection_id: int, operation_data: Optional["LongOperationData"] = None):
+        self._signal_remove_node_connections_requested.emit([connection_id], operation_data)
 
-    def request_node_connection_add(self, outnode_id:int , outname: str, innode_id: int, inname: str):
-        self._signal_add_node_connection_requested.emit(outnode_id, outname, innode_id, inname)
+    def request_node_connection_add(self, outnode_id: int , outname: str, innode_id: int, inname: str,  operation_data: Optional["LongOperationData"] = None):
+        self._signal_add_node_connection_requested.emit(outnode_id, outname, innode_id, inname, operation_data)
 
     def request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional["LongOperationData"] = None):
         self._signal_create_node_requested.emit(typename, nodename, pos, operation_data)
 
-    def request_remove_node(self, node_id: int):
-        self._signal_remove_node_requested.emit(node_id)
+    def request_remove_node(self, node_id: int, operation_data: Optional["LongOperationData"] = None):
+        if operation_data is None:
+            node = self.get_node(node_id)
+            if node is not None:
+                self.__node_snapshots[node_id] = UiNodeSnippetData.from_viewer_nodes([node])
+        self._signal_remove_nodes_requested.emit([node_id], operation_data)
+
+    def request_remove_nodes(self, node_ids: List[int], operation_data: Optional["LongOperationData"] = None):
+        if operation_data is None:
+            for node_id in node_ids:
+                node = self.get_node(node_id)
+                if node is not None:
+                    self.__node_snapshots[node_id] = UiNodeSnippetData.from_viewer_nodes([node])
+        self._signal_remove_nodes_requested.emit(node_ids, operation_data)
 
     def request_wipe_node(self, node_id: int):
         self._signal_wipe_node_requested.emit(node_id)
@@ -261,7 +288,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
 
-    def request_set_task_node(self, task_id: int, node_id:int):
+    def request_set_task_node(self, task_id: int, node_id: int):
         self._signal_set_task_node_requested.emit(task_id, node_id)
 
     def request_add_task(self, new_task: NewTask):
@@ -312,11 +339,64 @@ class QGraphicsImguiScene(QGraphicsScene):
     #
     #
 
+    def _session_node_id_to_id(self, session_id: int) -> Optional[int]:
+        """
+        the whole idea of session id is to have it consistent through undo-redos
+        """
+        node_id = self.__session_node_id_mapping.get(session_id)
+        if node_id is not None and self.get_node(node_id) is None:
+            self.__session_node_id_mapping.pop(session_id)
+            self.__session_node_id_mapping_rev.pop(node_id)
+            node_id = None
+        return node_id
+
+    def _session_node_update_id(self, session_id: int, new_node_id: int):
+        prev_node_id = self.__session_node_id_mapping.get(session_id)
+        self.__session_node_id_mapping[session_id] = new_node_id
+        if prev_node_id is not None:
+            self.__session_node_id_mapping_rev.pop(prev_node_id)
+        self.__session_node_id_mapping_rev[new_node_id] = session_id
+        # TODO: self.__session_node_id_mapping should be cleared when undo stack is truncated, but so far it's a little "memory leak"
+
+    def _session_node_update_session_id(self, new_session_id: int, node_id: int):
+        if new_session_id in self.__session_node_id_mapping:
+            raise RuntimeError(f'given session id {new_session_id} is already assigned')
+        old_session_id = self.__session_node_id_mapping_rev.get(node_id)
+        self.__session_node_id_mapping_rev[node_id] = new_session_id
+        if old_session_id is not None:
+            self.__session_node_id_mapping.pop(old_session_id)
+        self.__session_node_id_mapping[new_session_id] = node_id
+
+    def _session_node_id_from_id(self, node_id: int):
+        if node_id not in self.__session_node_id_mapping_rev:
+            self._session_node_update_id(self.__next_session_node_id, node_id)
+            self.__next_session_node_id -= 1
+        return self.__session_node_id_mapping_rev[node_id]
+    #
+    #
+
+    def undo(self, count=1) -> List[UndoableOperation]:
+        return self.__undo_stack.perform_undo(count)
+
+    def undo_stack_names(self) -> List[UndoableOperation]:
+        return self.__undo_stack.operation_names()
+    #
+    #
+
     def skip_dead(self) -> bool:
         return self.__ui_connection_worker.skip_dead()  # should be fine and thread-safe in eyes of python
 
     def skip_archived_groups(self) -> bool:
         return self.__ui_connection_worker.skip_archived_groups()  # should be fine and thread-safe in eyes of python
+
+    def _nodes_were_moved(self, nodes_datas: Sequence[Tuple[Node, QPointF]]):
+        """
+        item needs to notify the scene that move operation has happened,
+        scene needs to create an undo entry for that
+        """
+        self.__undo_stack.add_operation(MoveNodesOp(self,
+                                                    ((self._session_node_id_from_id(node.get_id()), old_pos, node.pos()) for node, old_pos in nodes_datas)
+                                                    ))
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -346,6 +426,41 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def node_types(self) -> MappingProxyType:
         return MappingProxyType(self.__cached_nodetypes)
+
+    def delete_selected_nodes(self):
+        nodes: List[Node] = []
+        for item in self.selectedItems():
+            if isinstance(item, Node):
+                nodes.append(item)
+        if not nodes:
+            return
+        snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
+
+        def delop(longop):
+            node_sids = tuple(node.get_session_id() for node in nodes)
+            self.request_remove_nodes([node.get_id() for node in nodes], LongOperationData(longop))
+            yield
+            self.__undo_stack.add_operation(RemoveNodesOp(self, node_sids, snippet))
+
+        self.add_long_operation(delop)
+
+    def cut_connection(self, con_id):
+        con = self.get_node_connection(con_id)
+        if con is None:
+            return
+        cin = con.input()
+        cout = con.output()
+        cin = (cin[0].get_session_id(), cin[1])
+        cout = (cout[0].get_session_id(), cout[1])
+
+        def disconnop(longop):
+            self.request_node_connection_remove(con_id, LongOperationData(longop))
+            yield
+            self.__undo_stack.add_operation(RemoveConnectionOp(self, cout[0], cout[1], cin[0], cin[1]))
+
+        self.add_long_operation(disconnop)
+
+
 
     #
     # scheduler update events
@@ -742,7 +857,6 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = attribs
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(object, object)
     def _task_invocation_job_fetched(self, task_id: int, invjob: InvocationJob):
@@ -753,28 +867,24 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = (node_id, param_name, exists)
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object, object)
     def _node_parameter_changed(self, node_id, param, newval, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param.name(), newval)
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object, object)
     def _node_parameters_changed(self, node_id, params, newvals, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, tuple(param.name() for param in params), newvals)
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(int, object, object)
     def _node_parameter_expression_changed(self, node_id, param, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (node_id, param.name())
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)\
 
     @Slot(int, object, object)
     def _node_settings_applied(self, node_id, settings_name, data: Optional["LongOperationData"] = None):
@@ -784,21 +894,18 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = (node_id, settings_name)  # TODO: add return status here?
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(str, str, object)
     def _node_custom_settings_saved(self, type_name: str, settings_name: str, data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (type_name, settings_name)  # TODO: add return status here?
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(str, str, object)
     def _node_default_settings_set(self, type_name: str, settings_name: Optional[str], data: Optional["LongOperationData"] = None):
         if data is not None:
             data.data = (type_name, settings_name)  # TODO: add return status here?
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     @Slot(int, str, str, object, object)
     def _node_created(self, node_id, node_type, node_name, pos, data: Optional["LongOperationData"] = None):
@@ -808,7 +915,36 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = (node_id, node_type, node_name)
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
+        else:
+            node_sid = self._session_node_id_from_id(node_id)
+            self.__undo_stack.add_operation(CreateNodeOp(self, node_sid, node_type, node_name, pos))
+
+    def _nodes_removed(self, node_ids: List[int], data: Optional["LongOperationData"] = None):
+        for node_id in node_ids:
+            node = self.get_node(node_id)
+            if node is not None:
+                self.removeItem(node)
+                if data is None:
+                    snapshot = self.__node_snapshots.get(node_id)
+                    if snapshot is None:
+                        return
+                    node_sid = self._session_node_id_from_id(node_id)
+                    self.__undo_stack.add_operation(RemoveNodeOp(self, node_sid, snapshot))
+        if data is not None:
+            data.data = (node_ids,)
+            self.process_operation(data)
+
+    def _node_renamed(self, node_id: int, new_name: str, data: Optional["LongOperationData"] = None):
+        node = self.get_node(node_id)
+        if node is not None:
+            old_name = node.node_name()
+            node.set_name(new_name)
+            if data is None:
+                node_sid = self._session_node_id_from_id(node_id)
+                self.__undo_stack.add_operation(RenameNodeOp(self, node_sid, old_name, new_name))
+        if data is not None:
+            data.data = (node_id, new_name)
+            self.process_operation(data)
 
     @Slot(object, object)
     def _nodes_duplicated(self, old_to_new: Dict[int, int], shift: QPointF):
@@ -819,6 +955,30 @@ class QGraphicsImguiScene(QGraphicsScene):
                 old_pos = old_node.pos()
             self.set_node_position(new_id, old_pos + shift)
 
+    @Slot(list, object)
+    def _node_connections_removed(self, con_ids: List[int], data: Optional["LongOperationData"] = None):
+        for con_id in con_ids:
+            con = self.get_node_connection(con_id)
+            if con is not None:
+                self.removeItem(con)
+        if data is not None:
+            data.data = (con_ids,)
+            self.process_operation(data)
+
+    @Slot(list, object)
+    def _node_connections_added(self, cons: List[Tuple[int, int, str, int, str]], data: Optional["LongOperationData"] = None):
+        for new_id, outnode_id, outname, innode_id, inname in cons:
+            outnode = self.get_node(outnode_id)
+            innode = self.get_node(innode_id)
+            if outnode is None or innode is None:
+                return
+            new_conn = NodeConnection(new_id, outnode, innode, outname, inname)
+            self.addItem(new_conn)
+            if data is None:
+                self.__undo_stack.add_operation(AddConnectionOp(self, outnode.get_session_id(), outname, innode.get_session_id(), inname))
+        if data is not None:
+            data.data = ([x[0] for x in cons],)
+            self.process_operation(data)
 
     @Slot(object)
     def _nodetypes_fetched(self, nodetypes):
@@ -850,7 +1010,6 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = (package, preset, snippet)
             self.process_operation(data)
-            self.long_operation_progressed.emit(data)
 
     def addItem(self, item):
         logger.debug('adding item %s', item)
@@ -859,6 +1018,8 @@ class QGraphicsImguiScene(QGraphicsScene):
             self.__task_dict[item.get_id()] = item
         elif isinstance(item, Node):
             self.__node_dict[item.get_id()] = item
+        elif isinstance(item, NodeConnection):
+            self.__node_connections_dict[item.get_id()] = item
         logger.debug('added item')
 
     def removeItem(self, item):
@@ -873,6 +1034,9 @@ class QGraphicsImguiScene(QGraphicsScene):
         elif isinstance(item, Node):
             assert item.get_id() in self.__node_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
             del self.__node_dict[item.get_id()]
+        elif isinstance(item, NodeConnection):
+            assert item.get_id() in self.__node_connections_dict
+            self.__node_connections_dict.pop(item.get_id())
         logger.debug('item removed')
 
     def clear(self):
@@ -883,18 +1047,27 @@ class QGraphicsImguiScene(QGraphicsScene):
         logger.debug('scene cleared')
 
     @Slot(NodeSnippetData, QPointF)
-    def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF):
+    def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
         def pasteop(longop):
 
             tmp_to_new: Dict[int, int] = {}
-            nodes_to_select = []  # select delayed to ensure it happens after all changes to parameters
+            created_nodes = []  # select delayed to ensure it happens after all changes to parameters
+
+            # for ui progress
+            total_elements = len(snippet.nodes_data) + len(snippet.connections_data)
+            current_element = 0
+            opname = 'pasting nodes'
+
             for nodedata in snippet.nodes_data:
+                current_element += 1
+                if total_elements > 1:
+                    self.operation_progress_updated.emit(opname, current_element/(total_elements-1))
                 self.request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
                 # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
                 tmp_to_new[nodedata.tmpid] = node_id
-                nodes_to_select.append(node_id)
+                created_nodes.append(node_id)
 
                 proxy_params = []
                 for param_name, param_data in nodedata.parameters.items():
@@ -904,37 +1077,35 @@ class QGraphicsImguiScene(QGraphicsScene):
                     proxy_params.append(proxy_param)
                 self.send_node_parameters_change(node_id, proxy_params, LongOperationData(longop, None))
                 yield
-                # # now setting parameters.
-                # cyclestart = None
-                # done_smth_this_cycle = False
-                # parm_pairs: List[Tuple[str, UiNodeSnippetData.ParamData]] = list(nodedata.parameters.items())
-                # for param_name, param_data in parm_pairs:
-                #     self.query_node_has_parameter(node_id, param_name, LongOperationData(longop, None))
-                #     _, _, has_param = yield
-                #     if not has_param:  # ffs, i could leave some comments for myself... this seem to be dealing with multiparms. if parm instance is not there yet - wait with it
-                #         if cyclestart is None or cyclestart == param_name and done_smth_this_cycle:
-                #             parm_pairs.append((param_name, param_data))
-                #             cyclestart = param_name
-                #             done_smth_this_cycle = False
-                #             continue
-                #         else:
-                #             logger.warning(f'could not set parameter {param_name} value')  # and all potential other params in the cycle
-                #             break
-                #     done_smth_this_cycle = True
-                #     proxy_parm = Parameter(param_name, None, param_data.type, param_data.uvalue)
-                #     if param_data.expr is not None:
-                #         proxy_parm.set_expression(param_data.expr)
-                #     self.send_node_parameter_change(node_id, proxy_parm, LongOperationData(longop, None))
-                #     yield
-                #     if proxy_parm.has_expression():
-                #         self.send_node_parameter_expression_change(node_id, proxy_parm, LongOperationData(longop, None))
-                #         yield
-            for node_id in nodes_to_select:
+
+            for node_id in created_nodes:  # selecting
                 self.get_node(node_id).setSelected(True)
 
+            # assign session ids to new nodes, prefer tmp ids from the snippet
+            for tmp_id, node_id in tmp_to_new.items():
+                if self._session_node_id_to_id(tmp_id) is None:  # session id is free
+                    self._session_node_update_session_id(tmp_id, node_id)
+
             for conndata in snippet.connections_data:
-                self.request_node_connection_add(tmp_to_new[conndata.tmpout], conndata.out_name,
-                                                 tmp_to_new[conndata.tmpin], conndata.in_name)
+                current_element += 1
+                if total_elements > 1:
+                    self.operation_progress_updated.emit(opname, current_element / (total_elements - 1))
+
+                con_out = tmp_to_new.get(conndata.tmpout, self._session_node_id_to_id(conndata.tmpout))
+                con_in = tmp_to_new.get(conndata.tmpin, self._session_node_id_to_id(conndata.tmpin))
+                if con_out is None or con_in is None:
+                    logger.warning('failed to create connection during snippet creation!')
+                    continue
+                self.request_node_connection_add(con_out, conndata.out_name,
+                                                 con_in, conndata.in_name, LongOperationData(longop))
+                yield
+
+            if total_elements > 1:
+                self.operation_progress_updated.emit(opname, 1.0)
+            if containing_long_op is not None:
+                self.process_operation(LongOperationData(containing_long_op, tuple(created_nodes)))
+            else:  # add undo only if we are NOT part of a bigger op
+                self.__undo_stack.add_operation(CreateNodesOp(self, [self.get_node(x).get_session_id() for x in created_nodes]))
 
         self.clearSelection()
         self.add_long_operation(pasteop)
@@ -958,13 +1129,25 @@ class QGraphicsImguiScene(QGraphicsScene):
     def add_long_operation(self, generator_to_call):
         newop = LongOperation(generator_to_call)
         self.__long_operations[newop.opid()] = newop
-        newop._start()
+        if not newop._start():
+            del self.__long_operations[newop.opid()]
 
     def get_task(self, task_id) -> Optional[Task]:
         return self.__task_dict.get(task_id, None)
 
     def get_node(self, node_id) -> Optional[Node]:
         return self.__node_dict.get(node_id, None)
+
+    def get_node_connection(self, con_id) -> Optional[NodeConnection]:
+        return self.__node_connections_dict.get(con_id, None)
+
+    def get_node_connection_from_ends(self, out_id, out_name, in_id, in_name) -> Optional[NodeConnection]:
+        for con in self.__node_connections_dict.values():
+            onode, oname = con.output()
+            inode, iname = con.input()
+            if (onode.get_id(), oname) == (out_id, out_name) \
+               and (inode.get_id(), iname) == (in_id, in_name):
+                return con
 
     def nodes(self) -> Tuple[Node]:
         return tuple(self.__node_dict.values())

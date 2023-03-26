@@ -134,6 +134,8 @@ class Node(NetworkItemWithUI):
         self.__ui_grabbed_conn = None
 
         self.__ui_selected_tab = 0
+        self.__move_start_position = None
+        self.__move_start_selection = None
 
         # prepare default drawing tools
         self.__borderpen= QPen(QColor(96, 96, 96, 255))
@@ -158,6 +160,13 @@ class Node(NetworkItemWithUI):
         self.__vismark = ImplicitSplitVisualizer(self)
         self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
         self.__vismark.setZValue(-2)
+
+    def get_session_id(self):
+        """
+        session id is local id that should be preserved within a session even after undo/redo operations,
+        unlike simple id, that will change on undo/redo
+        """
+        return self.scene()._session_node_id_from_id(self.get_id())
 
     def prepareGeometryChange(self):
         super(Node, self).prepareGeometryChange()
@@ -688,6 +697,9 @@ class Node(NetworkItemWithUI):
                     connection.scene().removeItem(connection)
             assert len(self.__connections) == 0
         elif change == QGraphicsItem.ItemPositionChange:
+            # print(self.__move_start_position)
+            if self.__move_start_position is None:
+                self.__move_start_position = self.pos()
             for connection in self.__connections:
                 connection.prepareGeometryChange()
 
@@ -740,6 +752,12 @@ class Node(NetworkItemWithUI):
                 return
 
         super(Node, self).mousePressEvent(event)
+        self.__move_start_selection = {self}
+        self.__move_start_position = None
+        for item in self.scene().selectedItems():
+            if isinstance(item, Node):
+                self.__move_start_selection.add(item)
+                item.__move_start_position = None
 
         if event.button() == Qt.RightButton:
             # context menu time
@@ -761,6 +779,10 @@ class Node(NetworkItemWithUI):
         #     self.__ui_interactor.mouseReleaseEvent(event)
         #     return
         super(Node, self).mouseReleaseEvent(event)
+        if self.__move_start_position is not None:
+            self.scene()._nodes_were_moved([(node, node.__move_start_position) for node in self.__move_start_selection])
+            for node in self.__move_start_selection:
+                node.__move_start_position = None
 
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
@@ -785,11 +807,6 @@ class Node(NetworkItemWithUI):
                                           snap_point.connection_name() if setting_out else grabbed_conn,
                                           snap_point.node().get_id() if not setting_out else self.get_id(),
                                           snap_point.connection_name() if not setting_out else grabbed_conn)
-
-    def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Delete:
-            self.scene().request_remove_node(self.get_id())
-        event.accept()
 
 
 class NodeConnection(NetworkItem):
@@ -904,10 +921,10 @@ class NodeConnection(NetworkItem):
         # painter.drawRect(self.boundingRect())
         self.__last_drawn_path = line
 
-    def output(self) -> (Node, str):
+    def output(self) -> Tuple[Node, str]:
         return self.__nodeout, self.__outname
 
-    def input(self) -> (Node, str):
+    def input(self) -> Tuple[Node, str]:
         return self.__nodein, self.__inname
 
     def set_output(self, node: Node, output_name: str = 'main'):
@@ -1010,11 +1027,6 @@ class NodeConnection(NetworkItem):
         self.ungrabMouse()
         super(NodeConnection, self).mouseReleaseEvent(event)
 
-    def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Delete:
-            self.scene().request_node_connection_remove(self.get_id())
-        event.accept()
-
     # _dbg_shitlist = []
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
@@ -1031,7 +1043,7 @@ class NodeConnection(NetworkItem):
 
         # are we cutting the wire
         if is_cutting:
-            self.scene().request_node_connection_remove(self.get_id())
+            self.scene().cut_connection(self.get_id())
             return
 
         # actual node reconection

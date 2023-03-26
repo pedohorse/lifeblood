@@ -22,7 +22,11 @@ class LongOperation:
         and receive _progress too soon
         """
         self.__progress_callback: Generator = self.__progress_callback_factory(self)
-        next(self.__progress_callback)
+        try:
+            next(self.__progress_callback)
+        except StopIteration:
+            return False
+        return True
 
     def _progress(self, opdata) -> bool:
         try:

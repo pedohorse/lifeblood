@@ -6,6 +6,7 @@ from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItem
 from .graphics_scene import QGraphicsImguiScene
 from .long_op import LongOperation
 from .flashy_label import FlashyLabel
+from .ui_snippets import UiNodeSnippetData
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -70,67 +71,6 @@ class Clipboard:
 
     def contents(self, ctype: ClipboardContentsType) -> Tuple[Optional[int], Optional[Any]]:
         return self.__contents.get(ctype, (None, None))
-
-
-class UiNodeSnippetData(NodeSnippetData):
-    """
-    class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
-    """
-    @classmethod
-    def from_viewer_nodes(cls, nodes: Iterable[Node], preset_label: Optional[str] = None):
-        clipnodes = []
-        clipconns = []
-        old_to_tmp: Dict[int, int] = {}
-        all_clip_nodes = set()
-        tmpid = 0
-        for node in nodes:
-            if not isinstance(node, Node):
-                continue
-            all_clip_nodes.add(node)
-            params: Dict[str, "UiNodeSnippetData.ParamData"] = {}
-            old_to_tmp[node.get_id()] = tmpid
-            nodedata = UiNodeSnippetData.NodeData(tmpid,
-                                                  node.node_type(),
-                                                  node.node_name(),
-                                                  params,
-                                                  node.pos().toTuple())
-
-            tmpid += 1
-
-            nodeui = node.get_nodeui()
-            if nodeui is not None:
-                for param in nodeui.parameters():
-                    param_data = UiNodeSnippetData.ParamData(param.name(),
-                                                             param.type(),
-                                                             param.unexpanded_value(),
-                                                             param.expression())
-                    params[param.name()] = param_data
-
-            clipnodes.append(nodedata)
-
-        if len(all_clip_nodes) == 0:
-            return
-
-        # now connections
-        for node in all_clip_nodes:
-            for out_name in node.output_names():
-                for conn in node.output_connections(out_name):
-                    other_node, other_name = conn.input()
-                    if other_node not in all_clip_nodes:
-                        continue
-                    clipconns.append(UiNodeSnippetData.ConnData(old_to_tmp[conn.output()[0].get_id()], conn.output()[1],
-                                                                old_to_tmp[conn.input()[0].get_id()], conn.input()[1]))
-
-        return UiNodeSnippetData(clipnodes, clipconns, preset_label)
-
-    @classmethod
-    def from_node_snippet_data(cls, node_snippet_data: NodeSnippetData) -> "UiNodeSnippetData":
-        data = UiNodeSnippetData([], [])
-        data.__dict__.update(node_snippet_data.__dict__)
-        return data
-
-    def __init__(self, nodes_data: Iterable[NodeSnippetData.NodeData], connections_data: Iterable[NodeSnippetData.ConnData], preset_label: Optional[str] = None):
-        super(UiNodeSnippetData, self).__init__(nodes_data, connections_data, preset_label)
 
 
 class Shortcutable:
@@ -235,9 +175,11 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         self.__preset_scan_paths: List[Path] = [paths.config_path('presets', 'viewer')]
 
+        # connec
         self.__scene.nodetypes_updated.connect(self._nodetypes_updated)
         self.__scene.nodepresets_updated.connect(self._nodepresets_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
+        self.__scene.operation_progress_updated.connect(self._scene_operation_progress_updated)
 
         self.__scene.request_node_types_update()
 
@@ -252,13 +194,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
         return {'nodeeditor.layout_graph': self.layout_selected_nodes,
                 'nodeeditor.copy': self.copy_selected_nodes,
                 'nodeeditor.paste': self.paste_copied_nodes,
-                'nodeeditor.focus_selected': self.focus_on_selected}
+                'nodeeditor.focus_selected': self.focus_on_selected,
+                'nodeeditor.undo': self.undo,
+                'nodeeditor.delete': self.delete_selected}
 
     def default_shortcuts(self) -> Dict[str, str]:
         return {'nodeeditor.layout_graph': 'Ctrl+l',
                 'nodeeditor.copy': 'Ctrl+c',
                 'nodeeditor.paste': 'Ctrl+v',
-                'nodeeditor.focus_selected': 'f'}
+                'nodeeditor.focus_selected': 'f',
+                'nodeeditor.undo': 'Ctrl+z',
+                'nodeeditor.delete': 'delete'}
 
     def show_message(self, message: str, duration: float):
         self.__overlay_message.show_label(message, duration)
@@ -364,6 +310,15 @@ class NodeEditor(QGraphicsView, Shortcutable):
             return
         self.__scene.nodes_from_snippet(clipdata[1], pos)
         self.show_message('Nodes pasted', 2)
+
+    @Slot()
+    def undo(self):
+        for op in self.__scene.undo():
+            self.show_message(f'undo: {op}', 1)
+
+    @Slot()
+    def delete_selected(self):
+        self.__scene.delete_selected_nodes()
 
     @Slot(str, str, QPointF)
     def get_snippet_from_scheduler_and_create_nodes(self, package: str, preset_name: str, pos: QPointF):
@@ -638,6 +593,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         popup.show()
 
+    @Slot(str, float)
+    def _scene_operation_progress_updated(self, op_name: str, progress_normalized: float):
+        self.show_message(f'{op_name}: {round(100*progress_normalized):3g}%', 3)
+
     @Slot()
     def __unblock_imgui_input(self):
         self.__imgui_input_blocked = False
@@ -695,6 +654,14 @@ class NodeEditor(QGraphicsView, Shortcutable):
             sel[0].draw_imgui_elements(self)
 
         # close current window context
+        imgui.end()
+
+        # undo window
+        imgui.set_next_window_size(256, 300, imgui.FIRST_USE_EVER)
+        imgui.set_next_window_position(32, 32, imgui.FIRST_USE_EVER)
+        imgui.begin('op history stack')
+        for name in reversed(self.__scene.undo_stack_names()):
+            imgui.bullet_text(name)
         imgui.end()
 
         # tab menu
