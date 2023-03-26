@@ -137,7 +137,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         # PySide's QWidget does not call super, so we call explicitly
         Shortcutable.__init__(self, 'viewer')
 
-        self.__overlay_message = FlashyLabel(self)
+        self.__overlay_message = FlashyLabel(parent=self)
 
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
@@ -207,7 +207,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.delete': 'delete'}
 
     def show_message(self, message: str, duration: float):
-        self.__overlay_message.show_label(message, duration)
+        self.__overlay_message.show_label(message[:100], duration)
         self.__overlay_message.move(self.width()//2 - self.__overlay_message.width()//2, self.height()*5//6)
         self.__overlay_message.raise_()
 
@@ -661,6 +661,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         imgui.set_next_window_position(32, 32, imgui.FIRST_USE_EVER)
         imgui.begin('op history stack')
         for name in reversed(self.__scene.undo_stack_names()):
+            if len(name) > 40:
+                name = name[:40] + '...'
             imgui.bullet_text(name)
         imgui.end()
 

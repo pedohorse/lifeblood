@@ -378,7 +378,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def undo(self, count=1) -> List[UndoableOperation]:
         return self.__undo_stack.perform_undo(count)
 
-    def undo_stack_names(self) -> List[UndoableOperation]:
+    def undo_stack_names(self) -> List[str]:
         return self.__undo_stack.operation_names()
     #
     #
