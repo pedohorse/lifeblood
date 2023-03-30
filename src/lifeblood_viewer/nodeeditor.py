@@ -664,6 +664,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
             if len(name) > 40:
                 name = name[:40] + '...'
             imgui.bullet_text(name)
+            if not imgui.is_item_visible():
+                break
         imgui.end()
 
         # tab menu
