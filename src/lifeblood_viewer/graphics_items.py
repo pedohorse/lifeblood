@@ -516,7 +516,7 @@ class Node(NetworkItemWithUI):
             try:
                 if item.has_expression():
                     with imgui.colored(imgui.COLOR_FRAME_BACKGROUND, 0.1, 0.4, 0.1):
-                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), 256)
+                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
                     if expr_changed:
                         item.set_expression(newval)
                 elif item.has_menu():
@@ -548,7 +548,7 @@ class Node(NetworkItemWithUI):
                         if slider_limits[0] is not None:
                             changed, newval = imgui.slider_int('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_int('##'.join((param_label, param_name, idstr)), item.value())
+                            changed, newval = imgui.input_int('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
                         if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
                             imgui.selectable('toggle expression')
                             imgui.end_popup()
@@ -558,13 +558,13 @@ class Node(NetworkItemWithUI):
                         if slider_limits[0] is not None and slider_limits[1] is not None:
                             changed, newval = imgui.slider_float('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_float('##'.join((param_label, param_name, idstr)), item.value())
+                            changed, newval = imgui.input_float('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
                     elif param_type == NodeParameterType.STRING:
                         if item.is_text_multiline():
                             # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
                             imgui.begin_group()
                             ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
-                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT)
+                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT | imgui.INPUT_TEXT_ENTER_RETURNS_TRUE | imgui.INPUT_TEXT_CTRL_ENTER_FOR_NEW_LINE)
                             imgui.end_group()
                             if ed_butt_pressed:
                                 hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
