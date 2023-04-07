@@ -511,14 +511,19 @@ class Node(NetworkItemWithUI):
             idstr = f'_{self.get_id()}'
             assert isinstance(parent_layout, ParametersLayoutBase)
             imgui.push_item_width(imgui.get_window_width() * parent_layout.relative_size_for_child(item)[0] * 2 / 3)
+
             changed = False
             expr_changed = False
+
+            new_item_val = None
+            new_item_expression = None
+
             try:
                 if item.has_expression():
                     with imgui.colored(imgui.COLOR_FRAME_BACKGROUND, 0.1, 0.4, 0.1):
                         expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
                     if expr_changed:
-                        item.set_expression(newval)
+                        new_item_expression = newval
                 elif item.has_menu():
                     menu_order, menu_items = item.get_menu_items()
 
@@ -534,7 +539,7 @@ class Node(NetworkItemWithUI):
                     else:
                         changed, val = imgui.combo('##'.join((param_label, param_name, idstr)), menu_order_inv[menu_items_inv[item.value()]], menu_order)
                         if changed:
-                            item.set_value(menu_items[menu_order[val]])
+                            new_item_val = menu_items[menu_order[val]]
                 else:
                     if item.is_readonly():
                         imgui.text(f'{item.value()}')
@@ -575,42 +580,38 @@ class Node(NetworkItemWithUI):
                                 wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
                                 wgt.show()
                         else:
-                            changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256)
+                            changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
                     else:
                         raise NotImplementedError()
                     if changed:
-                        item.set_value(newval)
+                        new_item_val = newval
 
                 # item context menu popup
                 popupid = '##'.join((param_label, param_name, idstr))  # just to make sure no names will collide with full param imgui lables
                 if imgui.begin_popup_context_item(f'Item Context Menu##{popupid}', 2):
                     if item.can_have_expressions() and not item.has_expression():
                         if imgui.selectable(f'enable expression##{popupid}')[0]:
-                            item.set_expression(repr(item.value()))
                             expr_changed = True
+                            new_item_expression = repr(item.value())
                     if item.has_expression():
                         if imgui.selectable(f'delete expression##{popupid}')[0]:
                             try:
                                 value = item.value()
                             except ParameterExpressionError as e:
                                 value = item.default_value()
-                            item.set_expression(None)
                             expr_changed = True
-                            item.set_value(value)
                             changed = True
+                            new_item_val = value
+                            new_item_expression = None
                     imgui.end_popup()
             finally:
                 imgui.pop_item_width()
 
-            if changed:
-                self.scene().send_node_parameter_change(self.get_id(), item)
-                # see the logic is that whatever callbacks parameters may have - we rely that they will happen the same way
-                # here and on scheduler side
-                # so we just inform scheduler of the value change
-                # anyway it's scheduler side that matters
-            if expr_changed:
-                # same here.
-                self.scene().send_node_parameter_expression_change(self.get_id(), item)
+            if changed or expr_changed:
+                scene: QGraphicsImguiScene = self.scene()
+                scene.change_node_parameter(self.get_id(), item,
+                                            new_item_val if changed else ...,
+                                            new_item_expression if expr_changed else ...)
 
         elif isinstance(item, Separator):
             imgui.separator()
