@@ -1,26 +1,27 @@
 from lifeblood.logging import get_logger
 
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 
 class UndoableOperation:
-    def redo(self):
+    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         raise NotImplementedError()
 
-    def undo(self):
+    def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         raise NotImplementedError()
 
 
 class SimpleUndoableOperation(UndoableOperation):
-    def __init__(self, forward_op: Callable[[], None], backward_op: Callable[[], None]):
+    def __init__(self, forward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None], backward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None]):
+        super().__init__()
         self.__fwd_op = forward_op
         self.__bkw_op = backward_op
 
-    def redo(self):
-        self.__fwd_op()
+    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+        self.__fwd_op(callback)
 
-    def undo(self):
-        self.__bkw_op()
+    def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+        self.__bkw_op(callback)
 
 
 class UndoStack:
