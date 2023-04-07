@@ -188,7 +188,7 @@ class Parameter(ParameterHierarchyLeaf):
     def type(self) -> NodeParameterType:
         return self.__type
 
-    def unexpanded_value(self, context: Optional[ProcessingContext] = None):
+    def unexpanded_value(self, context: Optional[ProcessingContext] = None):  # TODO: why context parameter here?
         return self.__value
 
     def default_value(self):
