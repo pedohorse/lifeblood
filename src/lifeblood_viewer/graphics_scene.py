@@ -211,7 +211,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameter_expression_change_requested.emit(node_id, [param], operation_data)
 
-    def send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional["LongOperationData"] = None):
+    def _send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional["LongOperationData"] = None):
         self._signal_node_parameters_change_requested.emit(node_id, params, operation_data)
 
     def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional["LongOperationData"] = None):
@@ -372,14 +372,29 @@ class QGraphicsImguiScene(QGraphicsScene):
             self._session_node_update_id(self.__next_session_node_id, node_id)
             self.__next_session_node_id -= 1
         return self.__session_node_id_mapping_rev[node_id]
+
     #
     #
+
+    def change_node_parameter(self, node_id: int, item: Parameter, value: Any = ..., expression=...):
+        """
+
+        :param node_id:
+        :param item:
+        :param value: ... means no change
+        :param expression: ... means no change
+        :return:
+        """
+        logger.debug(f'node:{node_id}, changing "{item.name()}" to {repr(value)}/({expression})')
+        op = ParameterChangeOp(self, node_id, item.name(), value, expression)
+        op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def undo(self, count=1) -> List[UndoableOperation]:
         return self.__undo_stack.perform_undo(count)
 
     def undo_stack_names(self) -> List[str]:
         return self.__undo_stack.operation_names()
+
     #
     #
 
@@ -1075,7 +1090,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                     if param_data.expr is not None:
                         proxy_param.set_expression(param_data.expr)
                     proxy_params.append(proxy_param)
-                self.send_node_parameters_change(node_id, proxy_params, LongOperationData(longop, None))
+                self._send_node_parameters_change(node_id, proxy_params, LongOperationData(longop, None))
                 yield
 
             for node_id in created_nodes:  # selecting
