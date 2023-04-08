@@ -804,10 +804,10 @@ class Node(NetworkItemWithUI):
             return
         scene: QGraphicsImguiScene = self.scene()
         setting_out = not snap_point.connection_is_input()
-        scene.request_node_connection_add(snap_point.node().get_id() if setting_out else self.get_id(),
-                                          snap_point.connection_name() if setting_out else grabbed_conn,
-                                          snap_point.node().get_id() if not setting_out else self.get_id(),
-                                          snap_point.connection_name() if not setting_out else grabbed_conn)
+        scene.add_connection(snap_point.node().get_id() if setting_out else self.get_id(),
+                             snap_point.connection_name() if setting_out else grabbed_conn,
+                             snap_point.node().get_id() if not setting_out else self.get_id(),
+                             snap_point.connection_name() if not setting_out else grabbed_conn)
 
 
 class NodeConnection(NetworkItem):
@@ -1044,7 +1044,7 @@ class NodeConnection(NetworkItem):
 
         # are we cutting the wire
         if is_cutting:
-            self.scene().cut_connection(self.get_id())
+            self.scene().cut_connection_by_id(self.get_id())
             return
 
         # actual node reconection
