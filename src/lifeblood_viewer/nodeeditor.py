@@ -473,7 +473,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         wgt.setMinimumWidth(256)  # TODO: user-befriend this shit
         wgt.move(lpos)
         self.__imgui_input_blocked = True
-        wgt.editingFinished.connect(lambda i=node.get_id(), w=wgt: self.__scene.request_set_node_name(i, w.text()))
+        wgt.editingFinished.connect(lambda i=node.get_id(), w=wgt: self.__scene.rename_node(i, w.text()))
         wgt.editingFinished.connect(wgt.deleteLater)
         wgt.editingFinished.connect(lambda: PySide2.QtCore.QTimer.singleShot(0, self.__unblock_imgui_input))  # polish trick to make this be called after current events are processed, events where keypress might be that we need to skip
 
