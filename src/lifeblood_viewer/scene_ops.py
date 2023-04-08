@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 logger = get_logger('scene_op')
 
-__all__ = ['CreateNodeOp', 'CreateNodesOp', 'RemoveNodeOp', 'RemoveNodesOp', 'RenameNodeOp',
+__all__ = ['CreateNodeOp', 'CreateNodesOp', 'RemoveNodesOp', 'RenameNodeOp',
            'MoveNodesOp', 'AddConnectionOp', 'RemoveConnectionOp', 'ParameterChangeOp']
 
 
@@ -53,28 +53,6 @@ class CreateNodesOp(UndoableOperation):
 
     def __str__(self):
         return f'Create Nodes "{self.__node_sids}"'
-
-
-class RemoveNodeOp(UndoableOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", node_sid: int, restoration_snippet: UiNodeSnippetData):
-        self.__scene = scene
-        self.__node_sid = node_sid
-        self.__restoration_snippet = restoration_snippet
-
-    def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
-        def undoop(longop):
-            self.__scene.nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
-            created_ids = yield
-            assert len(created_ids) == 1
-            if self.__node_sid != self.__scene.get_node(created_ids[0]).get_session_id():
-                logger.warning('undo: couldn\'t restore node session id, updating it...')
-                self.__scene._session_node_update_id(self.__node_sid, created_ids[0])
-            if callback:
-                callback(self)
-        self.__scene.add_long_operation(undoop)
-
-    def __str__(self):
-        return f'Remove Node {self.__node_sid}'
 
 
 class RemoveNodesOp(UndoableOperation):

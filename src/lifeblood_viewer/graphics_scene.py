@@ -959,12 +959,6 @@ class QGraphicsImguiScene(QGraphicsScene):
             node = self.get_node(node_id)
             if node is not None:
                 self.removeItem(node)
-                if data is None:
-                    snapshot = self.__node_snapshots.get(node_id)
-                    if snapshot is None:
-                        return
-                    node_sid = self._session_node_id_from_id(node_id)
-                    self.__undo_stack.add_operation(RemoveNodeOp(self, node_sid, snapshot))
         if data is not None:
             data.data = (node_ids,)
             self.process_operation(data)
