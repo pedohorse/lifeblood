@@ -3,6 +3,10 @@ from lifeblood.logging import get_logger
 from typing import Callable, List, Optional
 
 
+class OperationError(RuntimeError):
+    pass
+
+
 class UndoableOperation:
     def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         raise NotImplementedError()

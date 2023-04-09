@@ -244,7 +244,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def _request_node_connection_add(self, outnode_id: int , outname: str, innode_id: int, inname: str,  operation_data: Optional["LongOperationData"] = None):
         self._signal_add_node_connection_requested.emit(outnode_id, outname, innode_id, inname, operation_data)
 
-    def request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional["LongOperationData"] = None):
+    def _request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional["LongOperationData"] = None):
         self._signal_create_node_requested.emit(typename, nodename, pos, operation_data)
 
     def request_remove_node(self, node_id: int, operation_data: Optional["LongOperationData"] = None):
@@ -390,11 +390,11 @@ class QGraphicsImguiScene(QGraphicsScene):
         item needs to notify the scene that move operation has happened,
         scene needs to create an undo entry for that
         """
-        self.__undo_stack.add_operation(
-            MoveNodesOp(self,
-                        ((self._session_node_id_from_id(node.get_id()), old_pos, node.pos()) for node, old_pos in nodes_datas)
-                        )
-        )
+
+        op = MoveNodesOp(self,
+                         ((node, node.pos(), old_pos) for node, old_pos in nodes_datas)
+                         )
+        op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -429,6 +429,10 @@ class QGraphicsImguiScene(QGraphicsScene):
     # async operations
     #
 
+    def create_node(self, typename: str, nodename: str, pos: QPointF):
+        op = CreateNodeOp(self, typename, nodename, pos)
+        op.do(lambda x: self.__undo_stack.add_operation(x))
+
     def delete_selected_nodes(self):
         nodes: List[Node] = []
         for item in self.selectedItems():
@@ -436,24 +440,22 @@ class QGraphicsImguiScene(QGraphicsScene):
                 nodes.append(item)
         if not nodes:
             return
-        snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
 
-        node_sids = tuple(node.get_session_id() for node in nodes)
-        op = RemoveNodesOp(self, node_sids, snippet)
+        op = RemoveNodesOp(self, nodes)
         op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def add_connection(self,  outnode_id: int, outname: str, innode_id: int, inname: str):
         outnode = self.get_node(outnode_id)
         innode = self.get_node(innode_id)
 
-        op = AddConnectionOp(self, outnode.get_session_id(), outname, innode.get_session_id(), inname)
+        op = AddConnectionOp(self, outnode, outname, innode, inname)
         op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def cut_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str):
         outnode = self.get_node(outnode_id)
         innode = self.get_node(innode_id)
 
-        op = RemoveConnectionOp(self, outnode.get_session_id(), outname, innode.get_session_id(), inname)
+        op = RemoveConnectionOp(self, outnode, outname, innode, inname)
         op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def cut_connection_by_id(self, con_id):
@@ -476,17 +478,15 @@ class QGraphicsImguiScene(QGraphicsScene):
         """
         logger.debug(f'node:{node_id}, changing "{item.name()}" to {repr(value)}/({expression})')
         node_sid = self._session_node_id_from_id(node_id)
-        op = ParameterChangeOp(self, node_sid, item.name(), value, expression)
+        op = ParameterChangeOp(self, self.get_node(node_id), item.name(), value, expression)
         op.do(lambda x: self.__undo_stack.add_operation(x))
 
     def rename_node(self, node_id: int, new_name: str):
         node = self.get_node(node_id)
         if node is None:
             logger.warning(f'cannot move node: node not found')
-        old_name = node.node_name()
 
-        node_sid = self._session_node_id_from_id(node_id)
-        op = RenameNodeOp(self, node_sid, old_name, new_name)
+        op = RenameNodeOp(self, node, new_name)
         op.do(lambda x: self.__undo_stack.add_operation(x))
 
     # undoes, also async
@@ -950,9 +950,6 @@ class QGraphicsImguiScene(QGraphicsScene):
         if data is not None:
             data.data = (node_id, node_type, node_name)
             self.process_operation(data)
-        else:
-            node_sid = self._session_node_id_from_id(node_id)
-            self.__undo_stack.add_operation(CreateNodeOp(self, node_sid, node_type, node_name, pos))
 
     def _nodes_removed(self, node_ids: List[int], data: Optional["LongOperationData"] = None):
         for node_id in node_ids:
@@ -1072,6 +1069,10 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     @Slot(NodeSnippetData, QPointF)
     def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
+        op = CreateNodesOp(self, snippet, pos)
+        op.do(lambda x: self.__undo_stack.add_operation(x))
+
+    def _request_create_nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
         def pasteop(longop):
 
             tmp_to_new: Dict[int, int] = {}
@@ -1086,7 +1087,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                 current_element += 1
                 if total_elements > 1:
                     self.operation_progress_updated.emit(opname, current_element/(total_elements-1))
-                self.request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
+                self._request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
                 # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
@@ -1128,8 +1129,6 @@ class QGraphicsImguiScene(QGraphicsScene):
                 self.operation_progress_updated.emit(opname, 1.0)
             if containing_long_op is not None:
                 self.process_operation(LongOperationData(containing_long_op, tuple(created_nodes)))
-            else:  # add undo only if we are NOT part of a bigger op
-                self.__undo_stack.add_operation(CreateNodesOp(self, [self.get_node(x).get_session_id() for x in created_nodes]))
 
         self.clearSelection()
         self.add_long_operation(pasteop)
