@@ -28,7 +28,7 @@ from PySide2.QtWidgets import *
 from PySide2.QtCore import Slot, Signal, QThread, QRectF, QPointF
 from PySide2.QtGui import QKeyEvent
 
-from typing import Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any, Sequence
+from typing import Callable, Generator, Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any, Sequence
 
 logger = logging.get_logger('viewer')
 
@@ -118,7 +118,8 @@ class QGraphicsImguiScene(QGraphicsScene):
             self.__ui_connection_thread = None
             self.__ui_connection_worker = worker
 
-        self.__long_operations: Dict[int, LongOperation] = {}
+        self.__long_operations: Dict[int, Tuple[LongOperation, Optional[str]]] = {}
+        self.__long_op_queues: Dict[str, List[Callable[["LongOperation"], Generator]]] = {}
 
         self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update)
         self.__ui_connection_worker.tasks_full_update.connect(self.tasks_full_update)
@@ -1147,13 +1148,31 @@ class QGraphicsImguiScene(QGraphicsScene):
         assert op.op.opid() in self.__long_operations
         done = op.op._progress(op.data)
         if done:
-            del self.__long_operations[op.op.opid()]
+            self.__end_long_operation(op.op.opid())
 
-    def add_long_operation(self, generator_to_call):
+    def add_long_operation(self, generator_to_call, queue_name: Optional[str] = None):
         newop = LongOperation(generator_to_call)
-        self.__long_operations[newop.opid()] = newop
+        if queue_name is not None:
+            queue = self.__long_op_queues.setdefault(queue_name, [])
+            queue.insert(0, generator_to_call)
+            if len(queue) > 1:  # if there is already something in there beside us
+                return
+        self.__long_operations[newop.opid()] = (newop, queue_name)
         if not newop._start():
-            del self.__long_operations[newop.opid()]
+            self.__end_long_operation(newop.opid())
+
+    def __end_long_operation(self, opid):
+        op, queue_name = self.__long_operations.pop(opid)
+        if queue_name is None:
+            return
+        queue = self.__long_op_queues[queue_name]
+        assert len(queue) > 0
+        queue.pop()  # popping ourserves
+        if len(queue) > 0:
+            newop = LongOperation(queue[-1])
+            self.__long_operations[newop.opid()] = (newop, queue_name)
+            if not newop._start():
+                self.__end_long_operation(newop.opid())
 
     def get_task(self, task_id) -> Optional[Task]:
         return self.__task_dict.get(task_id, None)
