@@ -649,9 +649,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         imgui.begin("Parameters")
 
         # draw text label inside of current window
-        sel = self.__scene.selectedItems()
-        if len(sel) > 0 and isinstance(sel[0], NetworkItemWithUI):
-            sel[0].draw_imgui_elements(self)
+        iitem = self.__scene.get_inspected_item()
+        if iitem and isinstance(iitem, NetworkItemWithUI):
+            iitem.draw_imgui_elements(self)
 
         # close current window context
         imgui.end()

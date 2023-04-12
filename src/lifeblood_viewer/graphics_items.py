@@ -684,7 +684,7 @@ class Node(NetworkItemWithUI):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
-            if value:   # item was just selected
+            if value and self.scene().get_inspected_item() == self:   # item was just selected, And is the first selected
                 self.scene().request_node_ui(self.get_id())
         elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
@@ -1379,7 +1379,7 @@ class Task(NetworkItemWithUI):
 
     def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
         # first try to optimize, if we move on the same node to invisible layer - dont animate
-        if node == self.__node and layer >= self.__visible_layers_count:
+        if node == self.__node and layer >= self.__visible_layers_count and self.__animation_group is None:
             return self.set_node(node, pos, layer)
         #
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())

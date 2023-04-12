@@ -1200,6 +1200,17 @@ class QGraphicsImguiScene(QGraphicsScene):
     def tasks_dict(self) -> Mapping[int, Task]:
         return MappingProxyType(self.__task_dict)
 
+    def get_inspected_item(self) -> Optional[QGraphicsItem]:
+        """
+        returns item that needs to be inspected.
+        It's parameters should be displayed
+        generally, it's the first selected item
+        """
+        sel = self.selectedItems()
+        if len(sel) == 0:
+            return None
+        return sel[0]
+
     def start(self):
         if self.__ui_connection_thread is None:
             return
