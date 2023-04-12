@@ -468,6 +468,35 @@ class QGraphicsImguiScene(QGraphicsScene):
 
         return self.cut_connection(cout[0].get_id(), cout[1], cin[0].get_id(), cin[1])
 
+    def change_connection(self, from_outnode_id: int, from_outname: str, from_innode_id: int, from_inname: str, *,
+                          to_outnode_id: Optional[int] = None, to_outname: Optional[str] = None,
+                          to_innode_id: Optional[int] = None, to_inname: Optional[str] = None):
+        # TODO: make proper ChangeConnectionOp
+        from_outnode = self.get_node(from_outnode_id)
+        from_innode = self.get_node(from_innode_id)
+        to_outnode = self.get_node(to_outnode_id) if to_outnode_id is not None else None
+        to_innode = self.get_node(to_innode_id) if to_innode_id is not None else None
+
+        op1 = RemoveConnectionOp(self, from_outnode, from_outname, from_innode, from_inname)
+        op2 = AddConnectionOp(self, to_outnode or from_outnode, to_outname or from_outname,
+                              to_innode or from_innode, to_inname or from_inname)
+
+        op = CompoundAsyncSceneOperation(self, (op1, op2))
+        op.do(lambda x: self.__undo_stack.add_operation(x))
+
+    def change_connection_by_id(self, con_id, *,
+                                to_outnode_id: Optional[int] = None, to_outname: Optional[str] = None,
+                                to_innode_id: Optional[int] = None, to_inname: Optional[str] = None):
+        con = self.get_node_connection(con_id)
+        if con is None:
+            return
+        cin = con.input()
+        cout = con.output()
+
+        return self.change_connection(cout[0].get_id(), cout[1], cin[0].get_id(), cin[1],
+                                      to_outnode_id=to_outnode_id, to_outname=to_outname,
+                                      to_innode_id=to_innode_id, to_inname=to_inname)
+
     def change_node_parameter(self, node_id: int, item: Parameter, value: Any = ..., expression=...):
         """
 

@@ -1043,11 +1043,16 @@ class NodeConnection(NetworkItem):
             return
         scene: QGraphicsImguiScene = self.scene()
         changing_out = not snap_point.connection_is_input()
-        scene.request_node_connection_change(self.get_id(),
-                                             snap_point.node().get_id() if changing_out else None,
-                                             snap_point.connection_name() if changing_out else None,
-                                             None if changing_out else snap_point.node().get_id(),
-                                             None if changing_out else snap_point.connection_name())
+        scene.change_connection_by_id(self.get_id(),
+                                      to_outnode_id=snap_point.node().get_id() if changing_out else None,
+                                      to_outname=snap_point.connection_name() if changing_out else None,
+                                      to_innode_id=None if changing_out else snap_point.node().get_id(),
+                                      to_inname=None if changing_out else snap_point.connection_name())
+        # scene.request_node_connection_change(self.get_id(),
+        #                                      snap_point.node().get_id() if changing_out else None,
+        #                                      snap_point.connection_name() if changing_out else None,
+        #                                      None if changing_out else snap_point.node().get_id(),
+        #                                      None if changing_out else snap_point.connection_name())
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
         if change == QGraphicsItem.ItemSceneChange:

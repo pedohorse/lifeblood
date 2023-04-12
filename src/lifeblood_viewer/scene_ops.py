@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 logger = get_logger('scene_op')
 
-__all__ = ['CreateNodeOp', 'CreateNodesOp', 'RemoveNodesOp', 'RenameNodeOp',
+__all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'RemoveNodesOp', 'RenameNodeOp',
            'MoveNodesOp', 'AddConnectionOp', 'RemoveConnectionOp', 'ParameterChangeOp']
 
 
@@ -48,6 +48,20 @@ class AsyncSceneOperation(UndoableOperation):
 
     def _my_undo_longop(self, longop: LongOperation):
         raise NotImplementedError()
+
+
+class CompoundAsyncSceneOperation(AsyncSceneOperation):
+    def __init__(self, scene: "QGraphicsImguiScene", operations: Iterable[AsyncSceneOperation]):
+        super().__init__(scene)
+        self.__ops = tuple(operations)
+
+    def _my_do_longop(self, longop: LongOperation):
+        for op in self.__ops:
+            yield from op._my_do_longop(longop)
+
+    def _my_undo_longop(self, longop: LongOperation):
+        for op in reversed(self.__ops):
+            yield from op._my_undo_longop(longop)
 
 
 class CreateNodeOp(AsyncSceneOperation):
