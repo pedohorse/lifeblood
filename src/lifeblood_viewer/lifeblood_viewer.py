@@ -119,10 +119,12 @@ class GroupsView(QTreeView):
         self.setSortingEnabled(True)
         self.__sorting_model = QSortFilterProxyModel(self)
         self.__stashed_selection = None
+        self.__block_selection_signals = False
 
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
-        self.selection_changed.emit(set(index.data() for index in self.selectedIndexes() if index.column() == 0))
+        if not self.__block_selection_signals:
+            self.selection_changed.emit(set(index.data(Qt.DisplayRole) for index in self.selectedIndexes() if index.column() == 0))
 
     def contextMenuEvent(self, event):
         model: QSortFilterProxyModel = self.model()
@@ -172,7 +174,7 @@ class GroupsView(QTreeView):
 
     @Slot()
     def _pre_model_reset(self):
-        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes())
+        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == 0)  # 0 is group name, but we should not hardcode numbers...
 
     @Slot()
     def _post_model_reset(self):
@@ -180,10 +182,21 @@ class GroupsView(QTreeView):
             return
         model = self.model()
         selmodel = self.selectionModel()
-        for i in range(model.rowCount(QModelIndex())):
-            idx = model.index(i, 0)
-            if idx.data(Qt.DisplayRole) in self.__stashed_selection:
-                selmodel.select(idx, QItemSelectionModel.Select|QItemSelectionModel.Rows)
+
+        _prev_blocked = self.__block_selection_signals
+        self.__block_selection_signals = True
+        try:
+            for i in range(model.rowCount(QModelIndex())):
+                idx = model.index(i, 0)  # 0 is group name, but we should not hardcode numbers...
+                if idx.data(Qt.DisplayRole) in self.__stashed_selection:
+                    selmodel.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        finally:
+            self.__block_selection_signals = _prev_blocked
+
+        # emit signal IF sel changed
+        new_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == 0)  # 0 is group name, but we should not hardcode numbers...
+        if self.__stashed_selection != new_selection:
+            self.selection_changed.emit(new_selection)
 
         self.__stashed_selection = None
 
