@@ -1270,7 +1270,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         event.wire_candidates = []
         super(QGraphicsImguiScene, self).mousePressEvent(event)
-        print('press mg=', self.mouseGrabberItem())
+        logger.debug(f'press mouse grabber={self.mouseGrabberItem()}')
         if not event.isAccepted() and len(event.wire_candidates) > 0:
             print([x[0] for x in event.wire_candidates])
             closest = min(event.wire_candidates, key=lambda x: x[0])
@@ -1278,7 +1278,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super(QGraphicsImguiScene, self).mouseReleaseEvent(event)
-        print('release mg=', self.mouseGrabberItem())
+        logger.debug(f'release mouse grabber={self.mouseGrabberItem()}')
 
     def setSelectionArea(self, *args, **kwargs):
         pass

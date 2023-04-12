@@ -477,7 +477,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         wgt.editingFinished.connect(wgt.deleteLater)
         wgt.editingFinished.connect(lambda: PySide2.QtCore.QTimer.singleShot(0, self.__unblock_imgui_input))  # polish trick to make this be called after current events are processed, events where keypress might be that we need to skip
 
-        wgt.textChanged.connect(lambda x: print('sh', self.sizeHint()))
+        wgt.textChanged.connect(lambda x: logger.debug(f'sh {self.sizeHint()}'))
         wgt.setText(node.node_name())
         wgt.show()
         wgt.setFocus()

@@ -371,15 +371,6 @@ class Node(NetworkItemWithUI):
         assert cnt > 0
         return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1), 0.5 * self.__height)
 
-    # def sceneEvent(self, event: PySide2.QtCore.QEvent) -> bool:
-    #     print('qqq', event)
-    #     #super(Node, self).sceneEvent(event)
-    #     return False
-
-    # def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-    #     print('aqwe')
-    #     #self.moveBy(*(event.screenPos() - event.lastScreenPos()).toTuple())
-
     def add_task(self, task: "Task", animated=True):
         if task in self.__tasks:
             return
@@ -698,7 +689,6 @@ class Node(NetworkItemWithUI):
                     connection.scene().removeItem(connection)
             assert len(self.__connections) == 0
         elif change == QGraphicsItem.ItemPositionChange:
-            # print(self.__move_start_position)
             if self.__move_start_position is None:
                 self.__move_start_position = self.pos()
             for connection in self.__connections:
@@ -788,7 +778,7 @@ class Node(NetworkItemWithUI):
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
         assert self.__ui_interactor is not None
-        call_later(lambda x: print('bloop', x) or x.scene().removeItem(x), self.__ui_interactor)
+        call_later(lambda x: logger.debug(f'later removing {x}') or x.scene().removeItem(x), self.__ui_interactor)
         if self.scene() is None:  # if scheduler deleted us while interacting
             return
         # NodeConnection._dbg_shitlist.append(self.__ui_interactor)
@@ -1024,7 +1014,7 @@ class NodeConnection(NetworkItem):
         #     self.__ui_interactor.mouseReleaseEvent(event)
         #     event.accept()
         # self.ungrabMouse()
-        print('ungrabbin')
+        logger.debug('ungrabbing mouse')
         self.ungrabMouse()
         super(NodeConnection, self).mouseReleaseEvent(event)
 
@@ -1032,7 +1022,7 @@ class NodeConnection(NetworkItem):
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
         assert self.__ui_interactor is not None
-        call_later(lambda x: print('bloop', x) or x.scene().removeItem(x), self.__ui_interactor)
+        call_later(lambda x: logger.debug(f'later removing {x}') or x.scene().removeItem(x), self.__ui_interactor)
         if self.scene() is None:  # if scheduler deleted us while interacting
             return
         # NodeConnection._dbg_shitlist.append(self.__ui_interactor)
