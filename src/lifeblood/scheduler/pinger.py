@@ -6,6 +6,7 @@ from ..worker_task_protocol import WorkerTaskClient, WorkerPingReply
 from ..enums import WorkerState, InvocationState, WorkerPingState, SchedulerMode
 from ..ui_protocol_data import TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
+from ..config import get_config
 
 from typing import Any, Optional, TYPE_CHECKING
 
@@ -17,10 +18,13 @@ class Pinger(SchedulerComponentBase):
     def __init__(self, scheduler: "Scheduler"):
         super().__init__(scheduler)
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
+        config = get_config('scheduler')
 
-        self.__ping_interval = 1
+        self.__ping_interval = config.get_option_noasync('scheduler.pinger.ping_interval', 1)  # inverval for active workers (workers doing work)
+        self.__ping_idle_interval = config.get_option_noasync('scheduler.pinger.ping_idle_interval', 10)  # interval for idle workers
+        self.__ping_off_interval = config.get_option_noasync('scheduler.pinger.ping_off_interval', 30)  # interval for off/errored workers  (not really used since workers need to report back first)
+        self.__dormant_mode_ping_interval_multiplier = config.get_option_noasync('scheduler.pinger.dormant_ping_multiplier', 6)
         self.__ping_interval_mult = 1
-        self.__dormant_mode_ping_interval_multiplier = 15
 
     def _main_task(self):
         return self.worker_pinger()
@@ -197,10 +201,10 @@ class Pinger(SchedulerComponentBase):
                 time_delta = nowtime - (row['last_checked'] or 0)
                 if row['state'] == WorkerState.BUSY.value:
                     tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                elif row['state'] == WorkerState.IDLE.value and time_delta > 4 * self.__ping_interval * self.__ping_interval_mult:
+                elif row['state'] == WorkerState.IDLE.value and time_delta > self.__ping_idle_interval * self.__ping_interval_mult:
                     tasks.append(asyncio.create_task(self._iter_iter_func(row)))
                 else:  # worker state is error or off
-                    if time_delta > 15 * self.__ping_interval * self.__ping_interval_mult:
+                    if time_delta > self.__ping_off_interval * self.__ping_interval_mult:
                         tasks.append(asyncio.create_task(self._iter_iter_func(row)))
 
             # now clean the list
