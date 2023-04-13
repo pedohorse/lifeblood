@@ -111,7 +111,10 @@ class Worker:
         self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
         self.__resource_db_lock = FileCoupledLock('worker_resources', self.__local_shared_dir)
         self.__resource_db_path = os.path.join(self.__local_shared_dir, 'resources.db')
-        self.__my_resources = WorkerResources()
+        self.__my_resources = WorkerResources(cpu_count=config.get_option_noasync('resources.cpu_count'),
+                                              cpu_mem=config.get_option_noasync('resources.cpu_mem'),
+                                              gpu_count=config.get_option_noasync('resources.gpu_count'),
+                                              gpu_mem=config.get_option_noasync('resources.gpu_mem'))
         self.__task_changing_state_lock = asyncio.Lock()
         self.__stop_lock = threading.Lock()
         self.__start_lock = asyncio.Lock()  # cant use threading lock in async methods - it can yeild out, and deadlock on itself
@@ -883,6 +886,15 @@ listen_to_broadcast = true
 ## this will only be used by invocation jobs that have NO environment wrappers specified
 # name = TrivialEnvironmentResolver
 # arguments = [ "project_name", "or", "config_name", "idunno", "maybe rez packages requirements?", [1,4,11] ]
+
+[resources]
+## here you can override resources that this machine has
+## if you don't specify anything - resources will be detected automatically
+## NOTE: automatic detection DOES NOT WORK FOR GPU yet, you have to specify it manually
+# cpu_count = 32    # by default treated as the number of cores 
+# cpu_mem = "128G"  # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ... 
+# gpu_count = 1     # by default treated as the number devices
+# gpu_mem = "8G"    # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ...
 '''
 
 

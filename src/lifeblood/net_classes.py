@@ -2,11 +2,52 @@ import uuid
 import psutil
 import pickle
 import copy
+import re
 from .misc import get_unique_machine_id
+from .logging import get_logger
 
-from typing import TYPE_CHECKING, Type
+from typing import Optional, TYPE_CHECKING, Type, Union
 if TYPE_CHECKING:
     from .basenode import BaseNode
+
+__logger = get_logger('worker_resources')
+
+
+__mem_parse_re = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*([BKMGTP]?)\s*$')
+
+
+def _try_parse_mem_spec(s: Union[str, int], default: Optional[int] = None):
+    if not isinstance(s, str):
+        return s
+    match = __mem_parse_re.match(s)
+    if not match:
+        __logger.warning(f'could not parse "{s}", using default')
+        return default
+    bytes_count = float(match.group(1))
+    coeff = match.group(2)
+
+    coeff_map = {'B': 1,
+                 'K': 10**3,
+                 'M': 10**6,
+                 'G': 10**9,
+                 'T': 10**12,
+                 'P': 10**15}
+
+    if coeff not in coeff_map:
+        __logger.warning(f'could not parse "{s}", wtf is "{coeff}"? using default')
+        return default
+
+    if coeff:
+        mult = coeff_map[coeff]
+
+        # this way we limit float op errors
+        if mult > 10**6:
+            mult //= 10**6
+            bytes_count = int(bytes_count * 10**6)
+
+        bytes_count = bytes_count * mult
+
+    return int(bytes_count)
 
 
 class NodeTypeMetadata:
@@ -23,16 +64,18 @@ class WorkerResources:
     __res_names = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')  # name of all main resources
     __resource_epsilon = 1e-5
 
-    def __init__(self):
+    def __init__(self,
+                 cpu_count: Union[int, float, None] = None, cpu_mem: Optional[int] = None,
+                 gpu_count: Union[int, float, None] = None, gpu_mem: Optional[int] = None):
         """
 
         NOTE: because of float resource rounding - it's not safe to rely on consistency of summing/subtracting a lot of resources
         """
         self.hwid = get_unique_machine_id()
-        self.cpu_count = psutil.cpu_count()  # note, cpu/gpu count can be float by design, but we don't like "almost" round float values
-        self.cpu_mem = psutil.virtual_memory().total
-        self.gpu_count = 0  # TODO: implement this
-        self.gpu_mem = 0
+        self.cpu_count = cpu_count if cpu_count is not None else psutil.cpu_count()  # note, cpu/gpu count can be float by design, but we don't like "almost" round float values
+        self.cpu_mem = _try_parse_mem_spec(cpu_mem) if cpu_mem is not None else psutil.virtual_memory().total
+        self.gpu_count = gpu_count if gpu_count is not None else 0  # TODO: implement GPU autodetection
+        self.gpu_mem = _try_parse_mem_spec(gpu_mem) if gpu_mem is not None else 0
         self.total_cpu_count = self.cpu_count
         self.total_cpu_mem = self.cpu_mem
         self.total_gpu_count = self.gpu_count
