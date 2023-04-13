@@ -1384,7 +1384,7 @@ class Task(NetworkItemWithUI):
         if animgroup is None:
             animgroup = QSequentialAnimationGroup(self.scene())
             animgroup.finished.connect(self._clear_animation_group)
-        anim_speed = max(1.0, animgroup.animationCount())
+        anim_speed = max(1.0, animgroup.animationCount()-2)  # -2 to start speedup only after a couple anims in queue
         new_animation = TaskAnimation(self, node, pos, duration=max(1, int(ldist / anim_speed)), parent=animgroup)
         if self.__animation_group is None:
             self.setParentItem(None)
