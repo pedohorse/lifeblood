@@ -202,7 +202,7 @@ class UIStateAccessor(SchedulerComponentBase):
     def prune_event_subscriptions(self):
         for k, v in list(self.__task_group_event_logs.items()):  # type: Tuple[Tuple[str, ...], bool], LogSubscription
             if v.is_expired():
-                self.remove_task_event_subscription(k)
+                self.remove_task_event_subscription_if_expired(k)
 
     #
 
@@ -548,42 +548,74 @@ class UIStateAccessor(SchedulerComponentBase):
         :param subscribe_for_seconds:
         :return:
         """
+        last_race_check_id = -1
         group_key = (tuple(sorted(task_groups)), skip_dead)
         if group_key in self.__task_group_event_logs:  # if so - update
             self.__task_group_event_logs[group_key].expiration_timestamp = time.time() + subscribe_for_seconds
+            self.__logger.debug(f'ui subscription to "{group_key}" was prolonged')
+
+            log = self.__task_group_event_logs[group_key].event_log
+            executor = self.__get_executor_for_log(log)
+            events = await asyncio.get_event_loop().run_in_executor(executor, log.get_since_event, -1, True)  # try to see if we already have a chain of events starting with full state update
+
+            if len(events) > 0 and events[0].event_type == UIEventType.FULL_STATE:  # so if we have a set of events starting with full state
+                return events
+            self.__logger.debug('no FULL_STATE event in log, reissuing full ui update event')
+            if len(events) > 0:
+                last_race_check_id = events[-1].event_id
         else:
             log_sub = LogSubscription(time.time() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
             self.__task_group_event_logs[group_key] = log_sub
             for group in task_groups:
                 self.__task_group_to_logs.setdefault(group, []).append(log_sub)
 
+            # now add pruning task
+            async def _timed_prune():
+                while (log_sub := self.__task_group_event_logs.get(group_key)) is not None:
+                    await asyncio.sleep((log_sub.expiration_timestamp - time.time()) * 1.1)  # 1.1 just cuz
+                    self.remove_task_event_subscription_if_expired(group_key)
+
+            self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
+            self.__logger.debug(f'ui subscription to "{group_key}" was added')
+
         log = self.__task_group_event_logs[group_key].event_log
         executor = self.__get_executor_for_log(log)
-        events = await asyncio.get_event_loop().run_in_executor(executor, log.get_since_event, -1, True)  # try to see if we already have a chain of events starting with full state update
 
-        if len(events) > 0 and events[0].event_type == UIEventType.FULL_STATE:  # so if we have a set of events starting with full state
-            return events
-
+        # there's no way i can think of to guarantee no race conditions between full state query and other events happening
+        # in such case we cannot order full update properly, no way to tell what happened first
+        # so for now we just detect (it's not even a guaranteed detect...) if other events happen during full update
+        eid = self._get_next_event_id()  # it seeeems that this will be the least destructive way. we risk having older events after full update, but at least final picture will be correct
+        ets = time.time_ns()
         state = await self.get_tasks_ui_state(task_groups, skip_dead)
+        planck_events = log.get_since_event(last_race_check_id)  # no need for executor - this should be fast, and we don't want to poke event loop yet
+        if len(planck_events) > 0:
+            self.__logger.warning(f'full state race condition detected! could not order events: {eid}, {[e.event_id for e in planck_events]}')
+
         state_event = TaskFullState(self.__data_access.db_uid, state)
-        state_event.event_id = self._get_next_event_id()
+        state_event.event_id = eid
+        state_event.timestamp = ets
         # even though there might be older events in the queue - since we have strict global event id - the state_event will be put into a proper place
         await asyncio.get_event_loop().run_in_executor(executor, log.add_event, state_event)
 
-        async def _timed_prune():
-            await asyncio.sleep(subscribe_for_seconds * 1.1)  # 1.1 just cuz
-            self.remove_task_event_subscription(group_key)
-
-        self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
         return state_event,
 
-    def remove_task_event_subscription(self, key: Tuple[Tuple[str, ...], bool]):
+    def has_task_event_subscription(self, key: Tuple[Tuple[str, ...], bool]) -> bool:
+        return key in self.__task_group_event_logs
+
+    def remove_task_event_subscription_if_expired(self, key: Tuple[Tuple[str, ...], bool]) -> bool:
+        """
+        removes subscription key ONLY if it's expired
+        returns True if subscription was indeed removed
+        """
         if (log_sub := self.__task_group_event_logs.get(key)) and log_sub is not None and log_sub.is_expired():
             self.__task_group_event_logs.pop(key)
             for group in key[0]:
                 self.__task_group_to_logs[group].remove(log_sub)
                 if len(self.__task_group_to_logs[group]) == 0:
                     self.__task_group_to_logs.pop(group)
+            self.__logger.debug(f'ui subscription to "{key}" was removed')
+            return True
+        return False
 
     async def get_events_for_groups_since_event_id(self, task_groups: Iterable[str], skip_dead: bool, last_known_event_id: int) -> Tuple[TaskEvent, ...]:
         group_key = (tuple(sorted(task_groups)), skip_dead)
