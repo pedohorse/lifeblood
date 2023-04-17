@@ -671,7 +671,10 @@ class TaskProcessor(SchedulerComponentBase):
                     # check maybe it's time to sleep
                     if len(tasks_to_wait) == 0:
                         # instead of NOT IN  here using explicit IN cuz this way db index works # async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state NOT IN (?, ?)', (TaskState.ERROR.value, TaskState.DEAD.value)) as cur:
-                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({}) AND dead = 0'.format(','.join(str(state.value) for state in TaskState if state not in (TaskState.ERROR, TaskState.DEAD)))) as cur:
+                        async with con.execute('SELECT COUNT(id) AS total FROM tasks WHERE paused = 0 AND state IN ({}) AND dead = 0'
+                                                       .format(','.join(str(state.value)
+                                                                        for state in TaskState
+                                                                        if state not in (TaskState.ERROR, TaskState.DEAD, TaskState.SPLITTED)))) as cur:
                             total = await cur.fetchone()
                         if total is None or total['total'] == 0:
                             self.__logger.debug('no useful tasks seem to be available')
