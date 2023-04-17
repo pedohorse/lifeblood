@@ -61,19 +61,22 @@ class TaskProcessor(SchedulerComponentBase):
 
     @atimeit()
     async def _awaiter(self, processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
-        # _blo = time.perf_counter()
+        _bench_point_0 = time.perf_counter()
         task_id = task_row['id']
         loop = asyncio.get_event_loop()
 
         try:
             async with self.scheduler.get_node_lock_by_id(task_row['node_id']).reader_lock:
+                time_processing_start = time.perf_counter()
                 process_result: ProcessingResult = await loop.run_in_executor(self.awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
+                self.__logger.debug(f'(post)processing for {task_row["node_id"]} took {time.perf_counter()-time_processing_start:.4f}')
         except NodeNotReadyToProcess:
             async with self.awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (abort_state.value, task_id))
                 con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=abort_state))
                 await con.commit(self.poke)
+            self.__logger.debug('node reports: not ready to process yet')
             return
         except Exception as e:
             async with self.awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
@@ -91,23 +94,25 @@ class TaskProcessor(SchedulerComponentBase):
                 self.__logger.exception('error happened %s %s', type(e), e)
             return
 
+        _bench_point_1 = time.perf_counter()
         # why is there lock? it looks locking manually is waaaay more efficient than relying on transaction locking
         async with self.awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
             # con.row_factory = aiosqlite.Row
             # This implicitly starts transaction
-            # print(f'up till block: {time.perf_counter() - _blo}')
+
+            _bench_point_2 = time.perf_counter()
             ui_task_delta = TaskDelta(task_id)  # for ui event
             ui_task_delta_split = None
 
             if not con.in_transaction:
                 await con.execute('BEGIN IMMEDIATE')
                 assert con.in_transaction
+            _bench_point_3 = time.perf_counter()
             if process_result.output_name:
                 await con.execute('UPDATE tasks SET "node_output_name" = ? WHERE "id" = ?',
                                   (process_result.output_name, task_id))
                 ui_task_delta.node_output_name = process_result.output_name  # for ui event
-            # _blo = time.perf_counter()
-            # _bla1 = time.perf_counter()
+            _bench_point_4 = time.perf_counter()
 
             # note: this may be not obvious, but ALL branches of the next if result in implicit transaction start
             if process_result.do_kill_task:
@@ -138,7 +143,7 @@ class TaskProcessor(SchedulerComponentBase):
                         if group_priority is None:
                             group_priority = 50.0  # "or" should only work in case there were no unarchived groups at all for the task
                         else:
-                            group_priority = group_priority[0]
+                            group_priority = group_priority[0] or 50.0
                     await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, '
                                       'priority = ? '
                                       'WHERE "id" = ?',
@@ -147,8 +152,8 @@ class TaskProcessor(SchedulerComponentBase):
                                        task_id))
                     ui_task_delta.work_data_invocation_attempt = 0  # for ui event
                     ui_task_delta.state = TaskState.READY  # for ui event
-            # print(f'kill/invoc: {time.perf_counter() - _bla1}')
-            # _bla1 = time.perf_counter()
+
+            _bench_point_5 = time.perf_counter()
             if process_result.do_split_remove:  # TODO: check that there is no race conditions among splitted tasks to remove the split
                 async with con.execute('SELECT split_sealed FROM task_splits WHERE split_id = ?', (task_row['split_id'],)) as sealcur:
                     res = await sealcur.fetchone()
@@ -180,8 +185,8 @@ class TaskProcessor(SchedulerComponentBase):
                             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                               (result_serialized, task_row['split_origin_task_id']))
 
-            # print(f'splitrem: {time.perf_counter() - _bla1}')
-            # _bla1 = time.perf_counter()
+            _bench_point_6 = time.perf_counter()
+            _bench_point_7 = _bench_point_6
             if process_result.attributes_to_set:  # not None or {}
                 attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'] or '{}')
                 attributes.update(process_result.attributes_to_set)
@@ -189,14 +194,17 @@ class TaskProcessor(SchedulerComponentBase):
                     if v is None:
                         del attributes[k]
                 result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                _bench_point_7 = time.perf_counter()
                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                   (result_serialized, task_id))
+            _bench_point_8 = time.perf_counter()
 
             # process environment resolver arguments if provided
             if (envargs := process_result._environment_resolver_arguments) is not None:
                 await con.execute('UPDATE tasks SET environment_resolver_data = ? WHERE "id" = ?',
                                   (await envargs.serialize_async(), task_id))
 
+            _bench_point_9 = time.perf_counter()
             # spawning new tasks after all attributes were set, so children inherit
             # spawn
             if process_result.spawn_list is not None:
@@ -205,6 +213,7 @@ class TaskProcessor(SchedulerComponentBase):
                     spawn.force_set_node_task_id(task_row['node_id'], task_row['id'])
                 await self.scheduler.spawn_tasks(process_result.spawn_list, con=con)
 
+            _bench_point_10 = time.perf_counter()
             # splits
             if process_result._split_attribs is not None:
                 split_count = len(process_result._split_attribs)
@@ -215,12 +224,24 @@ class TaskProcessor(SchedulerComponentBase):
                     split_task_attrs = await asyncio.get_event_loop().run_in_executor(None, json.loads, split_task_dict['attributes'])
                     split_task_attrs.update(attr_dict)
                     await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
-            # print(f'split: {time.perf_counter()-_bla1}')
 
+            _bench_point_11 = time.perf_counter()
             con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [ui_task_delta] if ui_task_delta_split is None else [ui_task_delta, ui_task_delta_split])  # ui event
             await con.commit(self.poke)
-
-            # print(f'_awaiter trans: {_precum} - {time.perf_counter()-_blo}')
+            _bench_point_12 = time.perf_counter()
+        self.__logger.debug(
+            f'_awaiter all: {_bench_point_12 - _bench_point_0}: '
+            f'process: {_bench_point_0 - _bench_point_1}, '
+            f'lock: {_bench_point_1 - _bench_point_2}, '
+            f'tran_begin: {_bench_point_3 - _bench_point_2},'
+            f'upd_out: {_bench_point_4 - _bench_point_3}, '
+            f'upd_rest: {_bench_point_5 - _bench_point_4},'
+            f'split_rm: {_bench_point_6 - _bench_point_5}, '
+            f'attr_set: {_bench_point_7 - _bench_point_6} + {_bench_point_8 - _bench_point_7}, '
+            f'envr_set: {_bench_point_9 - _bench_point_8}, '
+            f'spawn: {_bench_point_10 - _bench_point_9}, '
+            f'split: {_bench_point_11 - _bench_point_10}, '
+            f'commit: {_bench_point_12 - _bench_point_11}')
 
     # submitter
     @atimeit()
