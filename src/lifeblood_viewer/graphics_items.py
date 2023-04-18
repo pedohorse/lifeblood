@@ -307,6 +307,7 @@ class Node(NetworkItemWithUI):
         return bodyshape & mask
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
+        screen_rect = painter.worldTransform().mapRect(self.boundingRect())
         painter.pen().setWidthF(self.__line_width)
         nodeshape = self._get_nodeshape()
 
@@ -314,7 +315,8 @@ class Node(NetworkItemWithUI):
             assert self.scene() is not None
             self.__node_ui_for_io_requested = True
             self.scene().request_node_ui(self.get_id())
-        if self.__inputs is not None and self.__outputs is not None:
+
+        if screen_rect.width() > 40 and self.__inputs is not None and self.__outputs is not None:
             ninputs = len(self.__inputs)
             noutputs = len(self.__outputs)
             for i in range(len(self.__inputs)):
@@ -341,11 +343,13 @@ class Node(NetworkItemWithUI):
         painter.fillPath(bodyshape, self.__body_brush)
         painter.fillPath(self._get_expandbutton_shape(), self.__header_brush)
         painter.drawPath(nodeshape)
-        painter.setPen(self.__caption_pen)
-        painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
-        painter.setPen(self.__typename_pen)
-        painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.__node_type)
-        painter.drawText(headershape.boundingRect(), Qt.AlignLeft | Qt.AlignBottom, f'{len(self.__tasks)}')
+
+        if screen_rect.width() > 50:
+            painter.setPen(self.__caption_pen)
+            painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
+            painter.setPen(self.__typename_pen)
+            painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.__node_type)
+            painter.drawText(headershape.boundingRect(), Qt.AlignLeft | Qt.AlignBottom, f'{len(self.__tasks)}')
 
     def get_input_position(self, name: str = 'main') -> QPointF:
         if self.__inputs is None:
@@ -1175,6 +1179,8 @@ class Task(NetworkItemWithUI):
             return
         if self.__node is None:  # probably temporary state due to asyncronous incoming events from scheduler
             return  # or we can draw them somehow else?
+        screen_rect = painter.worldTransform().mapRect(self.boundingRect())
+
 
         path = self._get_mainpath()
         brush = self.__brushes[self.state()][self.__layer]
@@ -1188,8 +1194,10 @@ class Task(NetworkItemWithUI):
         if self.paused():
             painter.setPen(self.__paused_pen[self.__layer])
             painter.drawPath(self._get_pausedpath())
-        painter.setPen(self.__borderpen[int(self.isSelected())])
-        painter.drawPath(path)
+
+        if screen_rect.width() > 7:
+            painter.setPen(self.__borderpen[int(self.isSelected())])
+            painter.drawPath(path)
 
     def name(self):
         return self.__raw_data.name
