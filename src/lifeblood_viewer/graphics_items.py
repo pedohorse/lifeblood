@@ -1181,7 +1181,6 @@ class Task(NetworkItemWithUI):
             return  # or we can draw them somehow else?
         screen_rect = painter.worldTransform().mapRect(self.boundingRect())
 
-
         path = self._get_mainpath()
         brush = self.__brushes[self.state()][self.__layer]
         painter.fillPath(path, brush)
