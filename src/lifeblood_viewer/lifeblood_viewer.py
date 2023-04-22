@@ -12,6 +12,9 @@ from .nodeeditor import NodeEditor
 from .graphics_scene import QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
 from .ui_scene_elements import FindNodePopup
+from .nodeeditor_windows.ui_create_node_popup import CreateNodePopup
+from .nodeeditor_windows.ui_undo_window import UndoWindow
+from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .worker_list import WorkerListWidget
 
 from typing import Dict
@@ -242,7 +245,15 @@ class LifebloodViewer(QMainWindow):
 
         # initialize node editor
         find_node_window = FindNodePopup(self.__node_editor, 'Find Node')
+        create_node_popup = CreateNodePopup(self.__node_editor)
+        undo_window = UndoWindow(self.__node_editor)
+        parameters_window = ParametersWindow(self.__node_editor)
         self.__node_editor.add_action('nodeeditor.find_node', lambda: find_node_window.popup(), 'Ctrl+f')
+        self.__node_editor.add_action('nodeeditor.create_node', lambda: create_node_popup.popup(), 'Tab')
+        self.__node_editor.add_action('nodeeditor.undo_history', lambda: undo_window.popup(), 'Ctrl+u')
+        self.__node_editor.add_action('nodeeditor.parameters', lambda: parameters_window.popup(), 'Ctrl+p')
+        undo_window.popup()
+        parameters_window.popup()
 
         act: QAction = view_menu.addAction('show archived groups')
         act.setCheckable(True)
