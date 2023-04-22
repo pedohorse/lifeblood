@@ -109,6 +109,9 @@ class Node(NetworkItemWithUI):
     # actually this can be dynamic, and this cache is not used anyway, so TODO: get rid of it?
     _node_inputs_outputs_cached: Dict[str, Tuple[List[str], List[str]]] = {}
 
+    # cache node shapes
+    #_node_shapes
+
     class PseudoNode(BaseNode):
         def __init__(self, my_node: "Node"):
             super(Node.PseudoNode, self).__init__('_noname_')
@@ -123,6 +126,9 @@ class Node(NetworkItemWithUI):
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
         self.__height = self.base_height
         self.__width = self.base_width
+        self.__pivot_x = 0
+        self.__pivot_y = 0
+
         self.__input_radius = 8
         self.__line_width = 1
         self.__name = name
@@ -151,6 +157,13 @@ class Node(NetworkItemWithUI):
         self.__connections: Set[NodeConnection] = set()
         self.__expanded = False
 
+        self.__cached_bounds = None
+        self.__cached_nodeshape = None
+        self.__cached_bodymask = None
+        self.__cached_headershape = None
+        self.__cached_bodyshape = None
+        self.__cached_expandbutton_shape = None
+
         self.__inputs, self.__outputs = None, None
         self.__node_ui_for_io_requested = False
         if self.__node_type in Node._node_inputs_outputs_cached:
@@ -170,6 +183,12 @@ class Node(NetworkItemWithUI):
 
     def prepareGeometryChange(self):
         super(Node, self).prepareGeometryChange()
+        self.__cached_bounds = None
+        self.__cached_nodeshape = None
+        self.__cached_bodymask = None
+        self.__cached_headershape = None
+        self.__cached_bodyshape = None
+        self.__cached_expandbutton_shape = None
         for conn in self.__connections:
             conn.prepareGeometryChange()
 
@@ -226,9 +245,11 @@ class Node(NetworkItemWithUI):
         self.__height = self.base_height
         if expanded:
             self.__height += 225
-            self.setPos(self.pos() + QPointF(0, 225*0.5))
+            self.__pivot_y -= 225/2
+            # self.setPos(self.pos() + QPointF(0, 225*0.5))
         else:
-            self.setPos(self.pos() - QPointF(0, 225 * 0.5))  # TODO: modify painterpath getters to avoid moving nodes on expand
+            self.__pivot_y = 0
+            # self.setPos(self.pos() - QPointF(0, 225 * 0.5))  # TODO: modify painterpath getters to avoid moving nodes on expand
         self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
 
         for i, task in enumerate(self.__tasks):
@@ -269,42 +290,54 @@ class Node(NetworkItemWithUI):
         return self.__outputs or set()
 
     def boundingRect(self) -> QRectF:
-        lw = self.__width + self.__line_width
-        lh = self.__height + self.__line_width
-        return QRectF(-0.5 * lw, -0.5 * lh - self.__input_radius, lw, lh + 2 * self.__input_radius)
+        if self.__cached_bounds is None:
+            lw = self.__width + self.__line_width
+            lh = self.__height + self.__line_width
+            self.__cached_bounds = QRectF(-0.5 * lw - self.__pivot_x, -0.5 * lh - self.__input_radius - self.__pivot_y, lw, lh + 2 * self.__input_radius)
+        return self.__cached_bounds
 
     def _get_nodeshape(self):
-        lw = self.__width + self.__line_width
-        lh = self.__height + self.__line_width
-        nodeshape = QPainterPath()
-        nodeshape.addRoundedRect(QRectF(-0.5 * lw, -0.5 * lh, lw, lh), 5, 5)
-        return nodeshape
+        if self.__cached_nodeshape is None:
+            lw = self.__width + self.__line_width
+            lh = self.__height + self.__line_width
+            nodeshape = QPainterPath()
+            nodeshape.addRoundedRect(QRectF(-0.5 * lw - self.__pivot_x, -0.5 * lh - self.__pivot_y, lw, lh), 5, 5)
+            self.__cached_nodeshape = nodeshape
+        return self.__cached_nodeshape
 
     def _get_bodymask(self):
-        lw = self.__width + self.__line_width
-        lh = self.__height + self.__line_width
-        bodymask = QPainterPath()
-        bodymask.addRect(-0.5 * lw, -0.5 * lh + 32, lw, lh - 32)
-        return bodymask
+        if self.__cached_bodymask is None:
+            lw = self.__width + self.__line_width
+            lh = self.__height + self.__line_width
+            bodymask = QPainterPath()
+            bodymask.addRect(-0.5 * lw - self.__pivot_x, -0.5 * lh + 32 - self.__pivot_y, lw, lh - 32)
+            self.__cached_bodymask = bodymask
+        return self.__cached_bodymask
 
     def _get_headershape(self):
-        return self._get_nodeshape() - self._get_bodymask()
+        if self.__cached_headershape is None:
+            self.__cached_headershape = self._get_nodeshape() - self._get_bodymask()
+        return self.__cached_headershape
 
     def _get_bodyshape(self):
-        return self._get_nodeshape() & self._get_bodymask()
+        if self.__cached_bodyshape is None:
+            self.__cached_bodyshape = self._get_nodeshape() & self._get_bodymask()
+        return self.__cached_bodyshape
 
     def _get_expandbutton_shape(self):
-        bodyshape = self._get_bodyshape()
-        mask = QPainterPath()
-        body_bound = bodyshape.boundingRect()
-        corner = body_bound.bottomRight() + QPointF(15, 15)
-        top = corner + QPointF(0, -60)
-        left = corner + QPointF(-60, 0)
-        mask.moveTo(corner)
-        mask.lineTo(top)
-        mask.lineTo(left)
-        mask.lineTo(corner)
-        return bodyshape & mask
+        if self.__cached_expandbutton_shape is None:
+            bodyshape = self._get_bodyshape()
+            mask = QPainterPath()
+            body_bound = bodyshape.boundingRect()
+            corner = body_bound.bottomRight() + QPointF(15, 15)
+            top = corner + QPointF(0, -60)
+            left = corner + QPointF(-60, 0)
+            mask.moveTo(corner)
+            mask.lineTo(top)
+            mask.lineTo(left)
+            mask.lineTo(corner)
+            self.__cached_expandbutton_shape = bodyshape & mask
+        return self.__cached_expandbutton_shape
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         screen_rect = painter.worldTransform().mapRect(self.boundingRect())
@@ -321,13 +354,17 @@ class Node(NetworkItemWithUI):
             noutputs = len(self.__outputs)
             for i in range(len(self.__inputs)):
                 path = QPainterPath()
-                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(ninputs + 1), -0.5 * self.__height), self.__input_radius, self.__input_radius)
+                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(ninputs + 1) - self.__pivot_x,
+                                        -0.5 * self.__height - self.__pivot_y),
+                                self.__input_radius, self.__input_radius)
                 path -= nodeshape
                 painter.setPen(self.__borderpen)
                 painter.drawPath(path)
             for i in range(len(self.__outputs)):
                 path = QPainterPath()
-                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(noutputs + 1), 0.5 * self.__height), self.__input_radius, self.__input_radius)
+                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(noutputs + 1) - self.__pivot_x,
+                                        0.5 * self.__height - self.__pivot_y),
+                                self.__input_radius, self.__input_radius)
                 path -= nodeshape
                 painter.setPen(self.__borderpen)
                 painter.drawPath(path)
@@ -336,6 +373,15 @@ class Node(NetworkItemWithUI):
         bodyshape = self._get_bodyshape()
 
         if self.isSelected():
+            if screen_rect.width() > 100:
+                width_mult = 1
+            elif screen_rect.width() > 50:
+                width_mult = 4
+            elif screen_rect.width() > 25:
+                width_mult = 8
+            else:
+                width_mult = 16
+            self.__borderpen_selected.setWidth(self.__line_width*width_mult)
             painter.setPen(self.__borderpen_selected)
         else:
             painter.setPen(self.__borderpen)
@@ -361,7 +407,8 @@ class Node(NetworkItemWithUI):
             idx = self.__inputs.index(name)
             cnt = len(self.__inputs)
         assert cnt > 0
-        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1), -0.5 * self.__height)
+        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1) - self.__pivot_x,
+                               -0.5 * self.__height - self.__pivot_y)
 
     def get_output_position(self, name: str = 'main') -> QPointF:
         if self.__outputs is None:
@@ -373,7 +420,8 @@ class Node(NetworkItemWithUI):
             idx = self.__outputs.index(name)
             cnt = len(self.__outputs)
         assert cnt > 0
-        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1), 0.5 * self.__height)
+        return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1) - self.__pivot_x,
+                               0.5 * self.__height - self.__pivot_y)
 
     def add_task(self, task: "Task", animated=True):
         if task in self.__tasks:
@@ -1108,6 +1156,12 @@ class Task(NetworkItemWithUI):
         self.__final_layer = None
 
         self.__visible_layers_count = 2
+
+        self.__mainshape_cache = None  # NOTE: DYNAMIC SIZE OR LINE WIDTH ARE NOT SUPPORTED HERE!
+        self.__selshape_cache = None
+        self.__pausedshape_cache = None
+        self.__bound_cache = None
+
         if self.__borderpen is None:
             Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
                                 QPen(QColor(192, 192, 192, 255), self.__line_width)]
@@ -1150,29 +1204,37 @@ class Task(NetworkItemWithUI):
                 Task.__paused_pen.append(QPen(color, self.__line_width*3))
 
     def boundingRect(self) -> QRectF:
-        lw = self.__line_width
-        return QRectF(QPointF(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw)),
-                      QSizeF(self.__size + lw, self.__size + lw))
+        if self.__bound_cache is None:
+            lw = self.__line_width
+            self.__bound_cache = QRectF(QPointF(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw)),
+                                        QSizeF(self.__size + lw, self.__size + lw))
+        return self.__bound_cache
 
     def _get_mainpath(self) -> QPainterPath:
-        path = QPainterPath()
-        path.addEllipse(-0.5 * self.__size, -0.5 * self.__size,
-                        self.__size, self.__size)
-        return path
+        if self.__mainshape_cache is None:
+            path = QPainterPath()
+            path.addEllipse(-0.5 * self.__size, -0.5 * self.__size,
+                            self.__size, self.__size)
+            self.__mainshape_cache = path
+        return self.__mainshape_cache
 
     def _get_selectshapepath(self) -> QPainterPath:
-        path = QPainterPath()
-        lw = self.__line_width
-        path.addEllipse(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw),
-                        self.__size + lw, self.__size + lw)
-        return path
+        if self.__selshape_cache is None:
+            path = QPainterPath()
+            lw = self.__line_width
+            path.addEllipse(-0.5 * (self.__size + lw), -0.5 * (self.__size + lw),
+                            self.__size + lw, self.__size + lw)
+            self.__selshape_cache = path
+        return self.__selshape_cache
 
     def _get_pausedpath(self) -> QPainterPath:
-        path = QPainterPath()
-        lw = self.__line_width
-        path.addEllipse(-0.5 * self.__size + 1.5*lw, -0.5 * self.__size + 1.5*lw,
-                        self.__size - 3*lw, self.__size - 3*lw)
-        return path
+        if self.__pausedshape_cache is None:
+            path = QPainterPath()
+            lw = self.__line_width
+            path.addEllipse(-0.5 * self.__size + 1.5*lw, -0.5 * self.__size + 1.5*lw,
+                            self.__size - 3*lw, self.__size - 3*lw)
+            self.__pausedshape_cache = path
+        return self.__pausedshape_cache
 
     def paint(self, painter: PySide2.QtGui.QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         if self.__layer >= self.__visible_layers_count:
