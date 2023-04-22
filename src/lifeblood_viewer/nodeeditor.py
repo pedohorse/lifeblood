@@ -7,6 +7,7 @@ from .graphics_scene import QGraphicsImguiScene
 from .long_op import LongOperation
 from .flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
+from .ui_elements_base import ImguiWindow
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -82,7 +83,7 @@ class Shortcutable:
         defaults = self.default_shortcuts()
         self.__context_name = 'main'
 
-        for action, meth in self.shortcutable_methods().items():
+        for action, meth in self.default_shortcutable_methods().items():
             shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
             if shortcut is None:
                 continue
@@ -90,7 +91,23 @@ class Shortcutable:
             self.__shortcut_contexts[action] = {'main'}  # TODO: make a way to define shortcut context per shortcut or per action, dunno
             self.__shortcuts[action].activated.connect(meth)
 
+    def add_shortcut(self, action: str, context: str, shortcut: str, callback: Callable):
+        """
+        add shortcut
+        """
+        if action in self.__shortcuts:
+            logger.error(f'action "{action}" is already defined, ignoring')
+            return
+        self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
+        print(self.__shortcuts[action], QKeySequence(shortcut), shortcut)
+        self.__shortcut_contexts.setdefault(action, set()).add(context)
+        self.__shortcuts[action].activated.connect(callback)
+        if self.current_shortcut_context() != context:
+            self.__shortcuts[action].setEnabled(False)
+
     def change_shortcut_context(self, new_context_name: str) -> None:
+        if self.__context_name == new_context_name:
+            return
         self.disable_shortcuts()
         self.__context_name = new_context_name
         self.enable_shortcuts()
@@ -104,7 +121,7 @@ class Shortcutable:
     def shortcuts(self):
         return MappingProxyType(self.__shortcuts)
 
-    def shortcutable_methods(self) -> Dict[str, Callable]:
+    def default_shortcutable_methods(self) -> Dict[str, Callable]:
         return {}
 
     def default_shortcuts(self) -> Dict[str, str]:
@@ -160,6 +177,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
         self.__editor_clipboard = Clipboard()
+        self.__opened_windows: Set[ImguiWindow] = set()
 
         #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -190,7 +208,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.rescan_presets()
         self.update()
 
-    def shortcutable_methods(self):
+    def default_shortcutable_methods(self):
         return {'nodeeditor.layout_graph': self.layout_selected_nodes,
                 'nodeeditor.copy': self.copy_selected_nodes,
                 'nodeeditor.paste': self.paste_copied_nodes,
@@ -205,6 +223,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.focus_selected': 'f',
                 'nodeeditor.undo': 'Ctrl+z',
                 'nodeeditor.delete': 'delete'}
+
+    def add_action(self, action_name: str, action_callback: Callable, shortcut: str):
+        logger.info(f'registering action "{action_name}"')
+        self.add_shortcut(action_name, 'main', shortcut, action_callback)
 
     def show_message(self, message: str, duration: float):
         self.__overlay_message.show_label(message[:100], duration)
@@ -225,6 +247,21 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     continue
                 self.__viewer_presets[snippet.label] = snippet
                 logger.info(f'loaded preset: {snippet.label}')
+
+    # popup related
+
+    def _window_opened(self, window: ImguiWindow):
+        self.__opened_windows.add(window)
+
+    def _window_closed(self, window: ImguiWindow):
+        if window not in self.__opened_windows:
+            logger.error(f'a window reported being closed, but it wasn\'t even opened! {window}')
+            return
+
+        # this trick below is to keep iterated __opened_windows valid
+        new_set = self.__opened_windows.copy()
+        new_set.remove(window)
+        self.__opened_windows = new_set
 
     #
     # get/set settings
@@ -668,7 +705,19 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 break
         imgui.end()
 
-        # tab menu
+        # general window draw
+        any_window_focused = False
+        for window in self.__opened_windows:
+            window.draw()
+            if window.is_focused():
+                ctx = window.shortcut_context_id()
+                if ctx != self.current_shortcut_context():
+                    self.change_shortcut_context(ctx)
+                    any_window_focused = True
+        if not any_window_focused:
+            self.reset_shortcut_context()
+
+        # tab menu  # TODO: refactor this to be one of generic windows handled above
         if self.__create_menu_popup_toopen:
             imgui.open_popup('create node')
             self.__node_type_input = ''
@@ -863,6 +912,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         assert item == self.__ui_focused_item, "ui focus was released by not the item that got focus"
         self.__ui_focused_item = None
         return True
+
+    def scene(self) -> QGraphicsImguiScene:  # this function is here just for typing
+        return super().scene()
 
     def mouseDoubleClickEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
