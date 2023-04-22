@@ -11,6 +11,7 @@ from lifeblood import paths
 from .nodeeditor import NodeEditor
 from .graphics_scene import QGraphicsImguiScene
 from .connection_worker import SchedulerConnectionWorker
+from .ui_scene_elements import FindNodePopup
 from .worker_list import WorkerListWidget
 
 from typing import Dict
@@ -238,6 +239,10 @@ class LifebloodViewer(QMainWindow):
         self.set_dead_shown(show_dead)
         act.setChecked(show_dead)
         act.toggled.connect(self.set_dead_shown)
+
+        # initialize node editor
+        find_node_window = FindNodePopup(self.__node_editor, 'Find Node')
+        self.__node_editor.add_action('nodeeditor.find_node', lambda: find_node_window.popup(), 'Ctrl+f')
 
         act: QAction = view_menu.addAction('show archived groups')
         act.setCheckable(True)
