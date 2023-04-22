@@ -4,12 +4,13 @@ import pickle
 import dataclasses
 from dataclasses import dataclass
 
+from .base import TypeMetadata
 from .enums import NodeParameterType
 
 from typing import Any, Optional, Tuple, Dict, Set, Iterable
 
 
-class NodeSnippetData:
+class NodeSnippetData(TypeMetadata):
     """
     class containing enough information to reproduce a certain snippet of nodes, with parameter values and connections ofc
     """
@@ -152,7 +153,7 @@ class NodeSnippetData:
         return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
 
 
-class NodeSnippetDataPlaceholder:
+class NodeSnippetDataPlaceholder(TypeMetadata):
     """
     this is an empty metadata-only class to transfer over the net
     """

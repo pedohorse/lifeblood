@@ -3,10 +3,11 @@ import psutil
 import pickle
 import copy
 import re
+from .base import TypeMetadata
 from .misc import get_unique_machine_id
 from .logging import get_logger
 
-from typing import Optional, TYPE_CHECKING, Type, Union
+from typing import Optional, TYPE_CHECKING, Tuple, Type, Union, Set
 if TYPE_CHECKING:
     from .basenode import BaseNode
 
@@ -50,14 +51,34 @@ def _try_parse_mem_spec(s: Union[str, int], default: Optional[int] = None):
     return int(bytes_count)
 
 
-class NodeTypeMetadata:
+class NodeTypeMetadata(TypeMetadata):
     def __init__(self, node_type: Type["BaseNode"]):
         from . import pluginloader  # here cuz it should only be created from lifeblood, but can be used from viewer too
-        self.type_name = node_type.type_name()
-        self.label = node_type.label()
-        self.tags = set(node_type.tags())
-        self.description = node_type.description()
-        self.settings_names = tuple(pluginloader.nodes_settings.get(node_type.type_name(), {}).keys())
+        self.__type_name = node_type.type_name()
+        self.__label = node_type.label()
+        self.__tags = set(node_type.tags())
+        self.__description = node_type.description()
+        self.__settings_names = tuple(pluginloader.nodes_settings.get(node_type.type_name(), {}).keys())
+
+    @property
+    def type_name(self) -> str:
+        return self.__type_name
+
+    @property
+    def label(self) -> Optional[str]:
+        return self.__label
+
+    @property
+    def tags(self) -> Set[str]:
+        return self.__tags
+
+    @property
+    def description(self) -> str:
+        return self.__description
+
+    @property
+    def settings_names(self) -> Tuple[str, ...]:
+        return self.__settings_names
 
 
 class WorkerResources:
