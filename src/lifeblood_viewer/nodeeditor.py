@@ -8,6 +8,7 @@ from .long_op import LongOperation
 from .flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
+from lifeblood.base import TypeMetadata
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
@@ -178,6 +179,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         #self.__update_timer.start()
         self.__editor_clipboard = Clipboard()
         self.__opened_windows: Set[ImguiWindow] = set()
+        self.__actions: Dict[str, Callable[[], None]] = {}
 
         #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -224,9 +226,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.undo': 'Ctrl+z',
                 'nodeeditor.delete': 'delete'}
 
-    def add_action(self, action_name: str, action_callback: Callable, shortcut: str):
+    def add_action(self, action_name: str, action_callback: Callable, shortcut: Optional[str]):
         logger.info(f'registering action "{action_name}"')
-        self.add_shortcut(action_name, 'main', shortcut, action_callback)
+        if action_name in self.__actions:
+            raise RuntimeError(f'action "{action_name}" is already registered')
+        self.__actions[action_name] = action_callback
+        if shortcut:
+            self.add_shortcut(action_name, 'main', shortcut, action_callback)
 
     def show_message(self, message: str, duration: float):
         self.__overlay_message.show_label(message[:100], duration)
@@ -252,6 +258,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     def _window_opened(self, window: ImguiWindow):
         self.__opened_windows.add(window)
+        PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)  # this ensures foreground is redrawn, so window's draw is actually called
 
     def _window_closed(self, window: ImguiWindow):
         if window not in self.__opened_windows:
@@ -368,6 +375,15 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         self.__scene.add_long_operation(todoop)
 
+    def create_from_viewer_preset(self, preset_name: str, pos: QPointF):
+        self.scene().nodes_from_snippet(self.editor_widget().viewer_presets_metadata()[preset_name], pos)
+
+    def create_from_scheduler_preset(self, package_name: str, preset_name: str, pos: QPointF):
+        if isinstance(self.__scheduler_presets[package_name][preset_name], NodeSnippetDataPlaceholder):
+            self.get_snippet_from_scheduler_and_create_nodes(package_name, preset_name, pos=pos)
+        else:  # if already fetched
+            self.__scene.nodes_from_snippet(self.__scheduler_presets[package_name][preset_name], pos)
+
     @Slot(QPointF)
     def duplicate_selected_nodes(self, pos: QPointF):
         contents = self.__scene.selectedItems()
@@ -404,6 +420,16 @@ class NodeEditor(QGraphicsView, Shortcutable):
         rect.moveCenter(center)
         self.setSceneRect(rect)
         #self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * (2 ** self.__view_scale)).toTuple()))
+
+    def node_types(self) -> MappingProxyType[str, TypeMetadata]:
+        return MappingProxyType(self.__node_types)
+
+    def viewer_presets_metadata(self) -> MappingProxyType[str, TypeMetadata]:
+        return MappingProxyType(self.__viewer_presets)
+
+    def scheduler_presets_metadata(self) -> MappingProxyType[str, Dict[str, TypeMetadata]]:  # TODO: make inner dict immutable
+        return MappingProxyType(self.__scheduler_presets)
+
     #
     #
     def show_task_menu(self, task):
@@ -677,33 +703,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         # start new frame context
         imgui.new_frame()
 
-
         imgui.core.show_metrics_window()
-
-        # open new window context
-        imgui.set_next_window_size(561, 697, imgui.FIRST_USE_EVER)
-        imgui.set_next_window_position(1065, 32, imgui.FIRST_USE_EVER)
-        imgui.begin("Parameters")
-
-        # draw text label inside of current window
-        iitem = self.__scene.get_inspected_item()
-        if iitem and isinstance(iitem, NetworkItemWithUI):
-            iitem.draw_imgui_elements(self)
-
-        # close current window context
-        imgui.end()
-
-        # undo window
-        imgui.set_next_window_size(256, 300, imgui.FIRST_USE_EVER)
-        imgui.set_next_window_position(32, 32, imgui.FIRST_USE_EVER)
-        imgui.begin('op history stack')
-        for name in reversed(self.__scene.undo_stack_names()):
-            if len(name) > 40:
-                name = name[:40] + '...'
-            imgui.bullet_text(name)
-            if not imgui.is_item_visible():
-                break
-        imgui.end()
 
         # general window draw
         any_window_focused = False
@@ -711,98 +711,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
             window.draw()
             if window.is_focused():
                 ctx = window.shortcut_context_id()
-                if ctx != self.current_shortcut_context():
+                if ctx is not None and ctx != self.current_shortcut_context():
                     self.change_shortcut_context(ctx)
                     any_window_focused = True
         if not any_window_focused:
             self.reset_shortcut_context()
 
-        # tab menu  # TODO: refactor this to be one of generic windows handled above
-        if self.__create_menu_popup_toopen:
-            imgui.open_popup('create node')
-            self.__node_type_input = ''
-            self.__menu_popup_selection_id = 0
-            self.__menu_popup_selection_name = ()
-            self.__menu_popup_arrow_down = False
-
-            self.change_shortcut_context('create_node')
-
-        if imgui.begin_popup('create node'):
-            changed, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
-            if not imgui.is_item_active() and not imgui.is_mouse_down():
-                # if text input is always focused - selectable items do not work
-                imgui.set_keyboard_focus_here(-1)
-            if changed:
-                # reset selected item if filter line changed
-                self.__menu_popup_selection_id = 0
-                self.__menu_popup_selection_name = ()
-            item_number = 0
-            max_items = 32
-            for (entity_type, entity_type_label, package), (type_name, type_meta) in chain(zip(repeat(('node', None, None)), self.__node_types.items()),
-                                                                        zip(repeat(('vpreset', 'preset', None)), self.__viewer_presets.items()),
-                                                                        *(zip(repeat(('spreset', 'preset', pkg)), pkgdata.items()) for pkg, pkgdata in self.__scheduler_presets.items())):
-
-                inparts = [x.strip() for x in self.__node_type_input.split(' ')]
-                label = type_meta.label
-                tags = type_meta.tags
-                if all(x in type_name
-                       or any(t.startswith(x) for t in tags)
-                       or x in label for x in inparts):  # TODO: this can be cached
-                    selected = self.__menu_popup_selection_id == item_number
-                    if entity_type_label is not None:
-                        label += f' ({entity_type_label})'
-                    _, selected = imgui.selectable(f'{label}##popup_selectable',  selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
-                    if selected:
-                        self.__menu_popup_selection_id = item_number
-                        self.__menu_popup_selection_name = (package, type_name, label, entity_type)
-                    item_number += 1
-                    if item_number > max_items:
-                        break
-
-            imguio: imgui.core._IO = imgui.get_io()
-            if imguio.keys_down[imgui.KEY_DOWN_ARROW]:
-                if not self.__menu_popup_arrow_down:
-                    self.__menu_popup_selection_id += 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
-                    self.__menu_popup_arrow_down = True
-            elif imguio.keys_down[imgui.KEY_UP_ARROW]:
-                if not self.__menu_popup_arrow_down:
-                    self.__menu_popup_selection_id -= 1
-                    self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
-                    self.__menu_popup_arrow_down = True
-            if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
-                imgui.close_current_popup()
-                self.reset_shortcut_context()
-                # for type_name, type_meta in self.__node_types.items():
-                #     if self.__node_type_input in type_name \
-                #             or self.__node_type_input in type_meta.tags \
-                #             or self.__node_type_input in type_meta.label:
-                #         self.__node_type_input = type_name
-                #         break
-                # else:
-                #     self.__node_type_input = ''
-                if self.__menu_popup_selection_name:
-                    package, entity_name, label, entity_type = self.__menu_popup_selection_name
-                    if entity_type == 'node':
-                        self.__scene.create_node(entity_name, f'{label} {generate_name(5, 7)}', self.mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
-                    elif entity_type == 'vpreset':
-                        self.__scene.nodes_from_snippet(self.__viewer_presets[entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
-                    elif entity_type == 'spreset':
-                        if isinstance(self.__scheduler_presets[package][entity_name], NodeSnippetDataPlaceholder):
-                            self.get_snippet_from_scheduler_and_create_nodes(package, entity_name, pos=self.mapToScene(self.mapFromGlobal(QCursor.pos())))
-                        else:  # if already fetched
-                            self.__scene.nodes_from_snippet(self.__scheduler_presets[package][entity_name], self.mapToScene(self.mapFromGlobal(QCursor.pos())))
-            elif self.__menu_popup_arrow_down:
-                self.__menu_popup_arrow_down = False
-
-            elif imguio.keys_down[imgui.KEY_ESCAPE]:
-                imgui.close_current_popup()
-                self.reset_shortcut_context()
-                self.__node_type_input = ''
-                self.__menu_popup_selection_id = 0
-            imgui.end_popup()
-
-        self.__create_menu_popup_toopen = False
         # pass all drawing comands to the rendering pipeline
         # and close frame context
         imgui.render()
@@ -977,15 +891,6 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if imgui.get_io().want_capture_keyboard:
             event.accept()
         else:
-            if event.key() == Qt.Key_Tab:
-                # in case enter or escape is pressed at this time - force unpress it
-                self.imguiProcessEvents(PySide2.QtGui.QKeyEvent(QEvent.KeyRelease, Qt.Key_Return, Qt.NoModifier))
-                self.imguiProcessEvents(PySide2.QtGui.QKeyEvent(QEvent.KeyRelease, Qt.Key_Escape, Qt.NoModifier))
-
-                self.__create_menu_popup_toopen = True
-                self.__scene.request_node_types_update()
-                self.__scene.request_node_presets_update()
-                PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)
             super(NodeEditor, self).keyPressEvent(event)
 
     def keyReleaseEvent(self, event: PySide2.QtGui.QKeyEvent):
