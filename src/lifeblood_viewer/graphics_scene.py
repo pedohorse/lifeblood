@@ -1203,10 +1203,20 @@ class QGraphicsImguiScene(QGraphicsScene):
             if not newop._start():
                 self.__end_long_operation(newop.opid())
 
+    #
+    # query
+    #
+
     def get_task(self, task_id) -> Optional[Task]:
         return self.__task_dict.get(task_id, None)
 
     def get_node(self, node_id) -> Optional[Node]:
+        return self.__node_dict.get(node_id, None)
+
+    def get_node_by_session_id(self, node_session_id) -> Optional[Node]:
+        node_id = self._session_node_id_to_id(node_session_id)
+        if node_id is None:
+            return None
         return self.__node_dict.get(node_id, None)
 
     def get_node_connection(self, con_id) -> Optional[NodeConnection]:
@@ -1229,6 +1239,18 @@ class QGraphicsImguiScene(QGraphicsScene):
     def tasks_dict(self) -> Mapping[int, Task]:
         return MappingProxyType(self.__task_dict)
 
+    def find_nodes_by_name(self, name: str, match_partly=False) -> Set[Node]:
+        if match_partly:
+            match_fn = lambda x,y: x in y
+        else:
+            match_fn = lambda x,y: x == y
+        matched = set()
+        for node in self.__node_dict.values():
+            if match_fn(name, node.node_name()):
+                matched.add(node)
+
+        return matched
+
     def get_inspected_item(self) -> Optional[QGraphicsItem]:
         """
         returns item that needs to be inspected.
@@ -1239,6 +1261,10 @@ class QGraphicsImguiScene(QGraphicsScene):
         if len(sel) == 0:
             return None
         return sel[0]
+
+    #
+    #
+    #
 
     def start(self):
         if self.__ui_connection_thread is None:
