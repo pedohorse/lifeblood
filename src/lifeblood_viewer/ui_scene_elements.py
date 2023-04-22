@@ -1,17 +1,41 @@
 import imgui
-from .ui_elements_base import ImguiWindow
+from .ui_elements_base import ImguiWindow, ImguiPopup
 from .nodeeditor import NodeEditor
+from .graphics_scene import QGraphicsImguiScene
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class ImguiViewWindow(ImguiWindow):
+    def __init__(self, editor_widget: NodeEditor, title: str = '', closable: bool = True):
+        super().__init__(title, closable)
+        self.__editor = editor_widget
+
+    def editor_widget(self) -> NodeEditor:
+        return self.__editor
+
+    def scene(self) -> QGraphicsImguiScene:
+        return self.__editor.scene()
+
+    def popup(self):
+        super().popup()
+        self.__editor._window_opened(self)
+
+    def _close(self):
+        super()._close()
+        self.__editor._window_closed(self)
+
+
+class ImguiViewPopup(ImguiPopup):
     def __init__(self, editor_widget: NodeEditor, title: str = ''):
         super().__init__(title)
         self.__editor = editor_widget
 
     def editor_widget(self) -> NodeEditor:
         return self.__editor
+
+    def scene(self) -> QGraphicsImguiScene:
+        return self.__editor.scene()
 
     def popup(self):
         super().popup()
