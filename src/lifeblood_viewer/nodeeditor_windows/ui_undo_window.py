@@ -16,7 +16,7 @@ class UndoWindow(ImguiViewWindow):
                 break
 
     def initial_geometry(self):
-        return 32, 32, 256, 300
+        return 32, 48, 256, 300
 
     def shortcut_context_id(self):
         return None

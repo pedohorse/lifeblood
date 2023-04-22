@@ -13,7 +13,7 @@ class ParametersWindow(ImguiViewWindow):
             iitem.draw_imgui_elements(self)
 
     def initial_geometry(self):
-        return 1065, 32, 561, 697
+        return 1065, 48, 561, 697
 
     def shortcut_context_id(self):
         return None
