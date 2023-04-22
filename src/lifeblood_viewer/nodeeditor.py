@@ -8,6 +8,7 @@ from .long_op import LongOperation
 from .flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
+from .menu_entry_base import MainMenuLocation
 from lifeblood.base import TypeMetadata
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
@@ -180,6 +181,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__editor_clipboard = Clipboard()
         self.__opened_windows: Set[ImguiWindow] = set()
         self.__actions: Dict[str, Callable[[], None]] = {}
+        self.__menu_actions: Dict = {}
 
         #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -226,11 +228,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 'nodeeditor.undo': 'Ctrl+z',
                 'nodeeditor.delete': 'delete'}
 
-    def add_action(self, action_name: str, action_callback: Callable, shortcut: Optional[str]):
+    def add_action(self, action_name: str, action_callback: Callable, shortcut: Optional[str], menu_entry: Optional[MainMenuLocation] = None):
         logger.info(f'registering action "{action_name}"')
         if action_name in self.__actions:
             raise RuntimeError(f'action "{action_name}" is already registered')
         self.__actions[action_name] = action_callback
+        if menu_entry is not None:
+            menu = self.__menu_actions
+            for submenu in menu_entry.location:
+                menu = menu.setdefault(submenu, {})
+                menu[(menu_entry.label, shortcut)] = action_callback
+
         if shortcut:
             self.add_shortcut(action_name, 'main', shortcut, action_callback)
 
@@ -703,7 +711,25 @@ class NodeEditor(QGraphicsView, Shortcutable):
         # start new frame context
         imgui.new_frame()
 
-        imgui.core.show_metrics_window()
+        # draw main menu
+        def _draw_one_level(submenu):
+            for label, something in submenu.items():
+                if isinstance(something, dict):
+                    if imgui.begin_menu(label):
+                        _draw_one_level(something)
+                        imgui.end_menu()
+                else:
+                    label, shortcut = label
+                    clicked, _ = imgui.menu_item(label, shortcut)
+                    if clicked:
+                        something()
+
+        imgui.begin_main_menu_bar()
+        _draw_one_level(self.__menu_actions)
+        imgui.end_main_menu_bar()
+        #
+
+        # imgui.core.show_metrics_window()
 
         # general window draw
         any_window_focused = False
