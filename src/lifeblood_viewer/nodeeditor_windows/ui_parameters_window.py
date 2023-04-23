@@ -10,7 +10,7 @@ class ParametersWindow(ImguiViewWindow):
     def draw_window_elements(self):
         iitem = self.scene().get_inspected_item()
         if iitem and isinstance(iitem, NetworkItemWithUI):
-            iitem.draw_imgui_elements(self)
+            iitem.draw_imgui_elements(self.editor_widget())
 
     def initial_geometry(self):
         return 1065, 48, 561, 697
