@@ -120,6 +120,7 @@ class RemoveNodesOp(AsyncSceneOperation):
         self.__scene = scene
         self.__node_sids = tuple(node.get_session_id() for node in nodes)
         self.__restoration_snippet = None
+        self.__is_a_noop = False
 
     def _my_do_longop(self, longop: LongOperation):
         node_ids = [self.__scene._session_node_id_to_id(sid) for sid in self.__node_sids]
@@ -128,15 +129,29 @@ class RemoveNodesOp(AsyncSceneOperation):
             raise OperationError('some nodes disappeared before operation was done')
         self.__restoration_snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
         self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
-        yield
+        removed_ids, = yield
+        # now filter snippet to remove nodes that scheduler failed to remove
+        not_removed = set(node_ids) - set(removed_ids)
+        not_removed_sids = set(self.__scene.get_node(nid).get_session_id() for nid in not_removed)
+        self.__node_sids = tuple(sid for sid in self.__node_sids if sid not in not_removed_sids)
+        if len(not_removed) > 0:
+            self.__restoration_snippet.remove_node_temp_ids_from_snippet(not_removed_sids)
+
+        # if nothing was deleted:
+        if len(self.__restoration_snippet.nodes_data) == 0:
+            self.__is_a_noop = True
 
     def _my_undo_longop(self, longop: LongOperation):
+        if self.__is_a_noop:
+            return
         self.__scene._request_create_nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
         created_ids = yield
         sids = set(self.__scene._session_node_id_from_id(nid) for nid in created_ids)
-        assert set(self.__node_sids) == sids
+        assert set(self.__node_sids) == sids, (sids, set(self.__node_sids))
 
     def __str__(self):
+        if self.__is_a_noop:
+            return 'failed attempt to delete nodes'
         return f'Remove Nodes {",".join(str(x) for x in self.__node_sids)}'
 
 

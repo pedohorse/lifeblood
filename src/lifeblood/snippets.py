@@ -99,7 +99,8 @@ class NodeSnippetData(TypeMetadata):
             for nodedata in self.__nodes_data:
                 avgpos[0] += nodedata.pos[0]
                 avgpos[1] += nodedata.pos[1]
-            self.__avgpos = (avgpos[0] / len(self.__nodes_data), avgpos[1] / len(self.__nodes_data))
+            nnodes = max(1, len(self.__nodes_data))
+            self.__avgpos = (avgpos[0] / nnodes, avgpos[1] / nnodes)
         return self.__avgpos
 
     @property
@@ -112,6 +113,13 @@ class NodeSnippetData(TypeMetadata):
 
     def add_tag(self, tag: str):
         self.__tags.add(tag)
+
+    def remove_node_temp_ids_from_snippet(self, node_temp_ids: Iterable[int]):
+        to_rm = set(node_temp_ids)
+        self.__nodes_data = [nd for nd in self.__nodes_data if nd.tmpid not in to_rm]
+        in_snippet = set(nd.tmpid for nd in self.__nodes_data)
+        self.__connections_data = [cd for cd in self.__connections_data
+                                   if cd.tmpout in in_snippet or cd.tmpin in in_snippet]
 
     def __init__(self, nodes_data: Iterable[NodeData], connections_data: Iterable[ConnData], label: Optional[str] = None, tags: Optional[Iterable[str]] = None):
         self.__nodes_data = list(nodes_data)
