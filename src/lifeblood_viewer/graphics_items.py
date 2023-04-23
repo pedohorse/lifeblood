@@ -18,7 +18,7 @@ from lifeblood.enums import NodeParameterType
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
-from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent
+from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent, QLinearGradient
 
 import imgui
 
@@ -230,7 +230,14 @@ class Node(NetworkItemWithUI):
 
         Node._node_inputs_outputs_cached[self.__node_type] = (list(self.__nodeui.inputs_names()), list(self.__nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
-        self.__header_brush = QBrush(QColor(*(x * 255 for x in self.__nodeui.color_scheme().main_color()), 192))
+        css = self.__nodeui.color_scheme()
+        if css.secondary_color() is not None:
+            gradient = QLinearGradient(-self.__width*0.1, 0, self.__width*0.1, 16)
+            gradient.setColorAt(0.0, QColor(*(x * 255 for x in css.main_color()), 192))
+            gradient.setColorAt(1.0, QColor(*(x * 255 for x in css.secondary_color()), 192))
+            self.__header_brush = QBrush(gradient)
+        else:
+            self.__header_brush = QBrush(QColor(*(x * 255 for x in css.main_color()), 192))
         self.update()  # cuz input count affects visualization in the graph
         self.update_ui()
 
@@ -620,7 +627,7 @@ class Node(NetworkItemWithUI):
                                     hl = StringParameterEditor.SyntaxHighlight.PYTHON
                                 wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
                                 wgt.set_text(item.unexpanded_value())
-                                wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: (item.set_value(x), sc.send_node_parameter_change(id, item)))  # TODO: this ugly multiexpr lambda freaks me out
+                                wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: sc.change_node_parameter(id, item, x))
                                 wgt.show()
                         else:
                             changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
