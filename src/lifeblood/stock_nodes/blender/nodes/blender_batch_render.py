@@ -46,6 +46,8 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
         super(BlenderBatchRender, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
+            ui.color_scheme().set_main_color(0.922, 0.467, 0.0)
+            ui.color_scheme().set_secondary_color(0.129, 0.337, 0.533)
             ui.add_output_for_spawned_tasks()
 
             ui.add_parameter('file_path', 'File Path', NodeParameterType.STRING, "`task['file']`")
