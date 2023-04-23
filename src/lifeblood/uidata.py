@@ -296,7 +296,7 @@ class Parameter(ParameterHierarchyLeaf):
             self.__value = value_max
         return self
 
-    def set_text_multiline(self, syntax_hint=None):
+    def set_text_multiline(self, syntax_hint: Optional[str] = None):
         if self.__type != NodeParameterType.STRING:
             raise ParameterDefinitionError('multiline can be only set for string parameters')
         self.__string_multiline = True
