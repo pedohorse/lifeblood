@@ -918,7 +918,16 @@ def main(argv):
     parser.add_argument('--id', help='integer identifier which worker should use when talking to worker pool')
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
     parser.add_argument('--priority', choices=tuple(x.name for x in ProcessPriorityAdjustment), default=ProcessPriorityAdjustment.NO_CHANGE.name, help='adjust child process priority')
+    parser.add_argument('--generate-config-only', action='store_true', help='just generate initial config and exit. Note that existing config will NOT be overriden')
+
     args = parser.parse_args(argv)
+
+    # check and create default config if none
+    create_default_user_config_file('worker', default_config)
+
+    if args.generate_config_only:
+        return
+
     if args.type == 'STANDARD':
         wtype = WorkerType.STANDARD
     elif args.type == 'SCHEDULER_HELPER':
