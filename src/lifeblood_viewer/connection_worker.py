@@ -134,6 +134,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     @Slot()
     def poke_graph_and_tasks_update(self):
+        if self.__timer_graph is None or self.__timer_tasks is None:
+            return
         self.__timer_graph.start()  # restart the timer
         self.__timer_tasks.start()  # restart the timer
         self._check_graph()
@@ -163,6 +165,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     @Slot()
     def poke_workers_update(self):
+        if self.__timer_workers is None:
+            return
         self.__timer_workers.start()  # restart the timer
         self._check_workers()
 
@@ -184,6 +188,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
     @Slot()
     def poke_task_groups_update(self):
+        if self.__timer_groups is None:
+            return
         self.__timer_groups.start()  # restart the timer
         self._check_task_groups()
 
