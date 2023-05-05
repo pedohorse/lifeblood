@@ -8,7 +8,7 @@ from .graphics_items import Task, Node, NodeConnection
 from .db_misc import sql_init_script_nodes
 from .long_op import LongOperation, LongOperationData
 from .connection_worker import SchedulerConnectionWorker
-from .undo_stack import UndoStack, UndoableOperation
+from .undo_stack import UndoStack, UndoableOperation, StackLockedError
 from .ui_snippets import UiNodeSnippetData
 from .scene_ops import *
 
@@ -395,7 +395,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         op = MoveNodesOp(self,
                          ((node, node.pos(), old_pos) for node, old_pos in nodes_datas)
                          )
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def node_position(self, node_id: int):
         if self.__db_path is not None:
@@ -432,7 +432,7 @@ class QGraphicsImguiScene(QGraphicsScene):
 
     def create_node(self, typename: str, nodename: str, pos: QPointF):
         op = CreateNodeOp(self, typename, nodename, pos)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def delete_selected_nodes(self):
         nodes: List[Node] = []
@@ -443,21 +443,21 @@ class QGraphicsImguiScene(QGraphicsScene):
             return
 
         op = RemoveNodesOp(self, nodes)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def add_connection(self,  outnode_id: int, outname: str, innode_id: int, inname: str):
         outnode = self.get_node(outnode_id)
         innode = self.get_node(innode_id)
 
         op = AddConnectionOp(self, outnode, outname, innode, inname)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def cut_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str):
         outnode = self.get_node(outnode_id)
         innode = self.get_node(innode_id)
 
         op = RemoveConnectionOp(self, outnode, outname, innode, inname)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def cut_connection_by_id(self, con_id):
         con = self.get_node_connection(con_id)
@@ -482,7 +482,7 @@ class QGraphicsImguiScene(QGraphicsScene):
                               to_innode or from_innode, to_inname or from_inname)
 
         op = CompoundAsyncSceneOperation(self, (op1, op2))
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def change_connection_by_id(self, con_id, *,
                                 to_outnode_id: Optional[int] = None, to_outname: Optional[str] = None,
@@ -509,7 +509,7 @@ class QGraphicsImguiScene(QGraphicsScene):
         logger.debug(f'node:{node_id}, changing "{item.name()}" to {repr(value)}/({expression})')
         node_sid = self._session_node_id_from_id(node_id)
         op = ParameterChangeOp(self, self.get_node(node_id), item.name(), value, expression)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def rename_node(self, node_id: int, new_name: str):
         node = self.get_node(node_id)
@@ -517,9 +517,12 @@ class QGraphicsImguiScene(QGraphicsScene):
             logger.warning(f'cannot move node: node not found')
 
         op = RenameNodeOp(self, node, new_name)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     # undoes, also async
+
+    def _undo_stack(self):
+        return self.__undo_stack
 
     def undo(self, count=1) -> List[UndoableOperation]:
         return self.__undo_stack.perform_undo(count)
@@ -1100,7 +1103,7 @@ class QGraphicsImguiScene(QGraphicsScene):
     @Slot(NodeSnippetData, QPointF)
     def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
         op = CreateNodesOp(self, snippet, pos)
-        op.do(lambda x: self.__undo_stack.add_operation(x))
+        op.do()
 
     def _request_create_nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
         def pasteop(longop):
