@@ -101,7 +101,7 @@ class Shortcutable:
             logger.error(f'action "{action}" is already defined, ignoring')
             return
         self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
-        print(self.__shortcuts[action], QKeySequence(shortcut), shortcut)
+        logger.debug(f'adding shortcut: {self.__shortcuts[action]}, {shortcut}')
         self.__shortcut_contexts.setdefault(action, set()).add(context)
         self.__shortcuts[action].activated.connect(callback)
         if self.current_shortcut_context() != context:
@@ -110,6 +110,7 @@ class Shortcutable:
     def change_shortcut_context(self, new_context_name: str) -> None:
         if self.__context_name == new_context_name:
             return
+        logger.debug(f'changed shortcut context to "{new_context_name}"')
         self.disable_shortcuts()
         self.__context_name = new_context_name
         self.enable_shortcuts()
@@ -274,6 +275,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             return
 
         # this trick below is to keep iterated __opened_windows valid
+        logger.debug(f'closed window {window}')
         new_set = self.__opened_windows.copy()
         new_set.remove(window)
         self.__opened_windows = new_set
@@ -407,7 +409,6 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if len(node_ids) == 0:
             return
         avg_old_pos /= len(node_ids)
-        print(node_ids, pos, avg_old_pos)
         self.__scene.request_duplicate_nodes(node_ids, pos - avg_old_pos)
 
     @Slot()
@@ -737,8 +738,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
             window.draw()
             if window.is_focused():
                 ctx = window.shortcut_context_id()
-                if ctx is not None and ctx != self.current_shortcut_context():
-                    self.change_shortcut_context(ctx)
+                if ctx is not None:
+                    if ctx != self.current_shortcut_context():
+                        self.change_shortcut_context(ctx)
                     any_window_focused = True
         if not any_window_focused:
             self.reset_shortcut_context()
