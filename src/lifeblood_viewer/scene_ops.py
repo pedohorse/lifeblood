@@ -1,6 +1,6 @@
 from lifeblood.logging import get_logger
 from lifeblood.uidata import Parameter
-from .undo_stack import UndoableOperation, OperationError
+from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError
 from .long_op import LongOperation, LongOperationData
 from .ui_snippets import UiNodeSnippetData
 from .graphics_items import Node, NodeConnection
@@ -18,30 +18,51 @@ __all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'Remo
            'MoveNodesOp', 'AddConnectionOp', 'RemoveConnectionOp', 'ParameterChangeOp']
 
 
-class AsyncSceneOperation(UndoableOperation):
+class AsyncSceneOperation(StackAwareOperation):
     def __init__(self, scene: "QGraphicsImguiScene"):
+        super().__init__(scene._undo_stack())
         self.__scene = scene
         self.__was_done = False
 
-    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
         def doop(longop: LongOperation):
-            yield from self._my_do_longop(longop)
-            self.__was_done = True
-            if callback:
+            success = True
+            try:
+                yield from self._my_do_longop(longop)
+                self.__was_done = True
+            except Exception as e:
+                logger.exception(f'exception happened during do operation "{self}"')
+                success = False
+            finally:
+                self._undo_stack()._operation_finalized(self, True, success)
+
+            if success and callback:
                 callback(self)
+
         if self.__was_done:
             raise OperationError('operation was done already')
-        self.__scene.add_long_operation(doop, 'undoqueue')
+        self.__scene.add_long_operation(doop, 'undoqueue')  # TODO: move this add_long_operation to an interface, move this class to undo_stack (so no scene dep)
+        return False
 
     def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         def undoop(longop: LongOperation):
-            yield from self._my_undo_longop(longop)
-            self.__was_done = False
-            if callback:
+            success = True
+            try:
+                yield from self._my_undo_longop(longop)
+                self.__was_done = False
+            except Exception as e:
+                logger.exception(f'exception happened during do operation "{self}"')
+                success = False
+            finally:
+                self._undo_stack()._operation_finalized(self, False, success)
+
+            if success and callback:
                 callback(self)
+
         if not self.__was_done:
             raise OperationError('operation was not done yet')
         self.__scene.add_long_operation(undoop, 'undoqueue')
+        return False
 
     def _my_do_longop(self, longop: LongOperation):
         raise NotImplementedError()
@@ -184,13 +205,13 @@ class RenameNodeOp(AsyncSceneOperation):
         return f'Rename Node {self.__node_sid} {self.__old_name}->{self.__new_name}'
 
 
-class MoveNodesOp(UndoableOperation):
+class MoveNodesOp(SimpleUndoableOperation):
     def __init__(self, scene: "QGraphicsImguiScene", info: Iterable[Tuple[Node, QPointF, Optional[QPointF]]]):
-        super().__init__()
+        super().__init__(scene._undo_stack(), self._doop, self._undoop)
         self.__scene = scene
         self.__node_info = tuple((scene._session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
 
-    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+    def _doop(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
             node_id = self.__scene._session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
@@ -200,7 +221,7 @@ class MoveNodesOp(UndoableOperation):
         if callback:
             callback(self)
 
-    def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+    def _undoop(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
             node_id = self.__scene._session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
