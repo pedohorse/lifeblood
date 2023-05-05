@@ -101,6 +101,7 @@ class ImguiPopup(ImguiWindow):
     def __init__(self, title: str = ''):
         super().__init__(title)
         self.__to_be_opened = False
+        self.__is_opened = False
 
     def popup(self):
         self.__to_be_opened = True
@@ -109,7 +110,11 @@ class ImguiPopup(ImguiWindow):
         """
         call ONLY from draw_window_elements instead of imgui.close_current_popup()
         """
-        imgui.close_current_popup()
+        if self.__is_opened:
+            imgui.close_current_popup()
+
+    def is_focused(self) -> bool:
+        return True  # dialog is either focused, or closed
 
     def draw(self):
         if self.__to_be_opened:
@@ -117,6 +122,9 @@ class ImguiPopup(ImguiWindow):
         self.__to_be_opened = False
 
         if imgui.begin_popup(self._imgui_window_name()):
-            self.__focused_last_draw = imgui.is_window_focused()
+            self.__is_opened = True
             self.draw_window_elements()
             imgui.end_popup()
+        else:
+            self.__is_opened = False
+            self. _close()
