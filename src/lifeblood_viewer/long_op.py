@@ -47,3 +47,7 @@ class LongOperationData:
         self.op = op
         self.data = data
 
+
+class LongOperationProcessor:
+    def add_long_operation(self, generator_to_call, queue_name: Optional[str] = None):
+        raise NotImplementedError()

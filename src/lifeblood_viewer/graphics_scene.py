@@ -6,7 +6,7 @@ import grandalf.layouts
 from types import MappingProxyType
 from .graphics_items import Task, Node, NodeConnection
 from .db_misc import sql_init_script_nodes
-from .long_op import LongOperation, LongOperationData
+from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 from .connection_worker import SchedulerConnectionWorker
 from .undo_stack import UndoStack, UndoableOperation, StackLockedError
 from .ui_snippets import UiNodeSnippetData
@@ -33,7 +33,7 @@ from typing import Callable, Generator, Optional, List, Mapping, Tuple, Dict, Se
 logger = logging.get_logger('viewer')
 
 
-class QGraphicsImguiScene(QGraphicsScene):
+class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
     _signal_log_has_been_requested = Signal(int)
     _signal_log_meta_has_been_requested = Signal(int)
