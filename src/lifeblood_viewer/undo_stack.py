@@ -1,6 +1,9 @@
 from lifeblood.logging import get_logger
+from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 
 from typing import Callable, List, Optional
+
+logger = get_logger('undoable_operations')
 
 
 class OperationError(RuntimeError):
@@ -78,6 +81,59 @@ class SimpleUndoableOperation(StackAwareOperation):
     def _my_undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
         self.__bkw_op(callback)
         return True
+
+
+class AsyncOperation(StackAwareOperation):
+    def __init__(self, undo_stack: "UndoStack", op_processor: LongOperationProcessor):
+        super().__init__(undo_stack)
+        self.__op_processor = op_processor
+        self.__was_done = False
+
+    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+        def doop(longop: LongOperation):
+            success = True
+            try:
+                yield from self._my_do_longop(longop)
+                self.__was_done = True
+            except Exception as e:
+                logger.exception(f'exception happened during do operation "{self}"')
+                success = False
+            finally:
+                self._undo_stack()._operation_finalized(self, True, success)
+
+            if success and callback:
+                callback(self)
+
+        if self.__was_done:
+            raise OperationError('operation was done already')
+        self.__op_processor.add_long_operation(doop, 'undoqueue')  # TODO: move this add_long_operation to an interface, move this class to undo_stack (so no scene dep)
+        return False
+
+    def _my_undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+        def undoop(longop: LongOperation):
+            success = True
+            try:
+                yield from self._my_undo_longop(longop)
+                self.__was_done = False
+            except Exception as e:
+                logger.exception(f'exception happened during do operation "{self}"')
+                success = False
+            finally:
+                self._undo_stack()._operation_finalized(self, False, success)
+
+            if success and callback:
+                callback(self)
+
+        if not self.__was_done:
+            raise OperationError('operation was not done yet')
+        self.__op_processor.add_long_operation(undoop, 'undoqueue')
+        return False
+
+    def _my_do_longop(self, longop: LongOperation):
+        raise NotImplementedError()
+
+    def _my_undo_longop(self, longop: LongOperation):
+        raise NotImplementedError()
 
 
 class UndoStack:

@@ -1,6 +1,5 @@
 from lifeblood.logging import get_logger
-from lifeblood.uidata import Parameter
-from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError
+from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError, AsyncOperation
 from .long_op import LongOperation, LongOperationData
 from .ui_snippets import UiNodeSnippetData
 from .graphics_items import Node, NodeConnection
@@ -18,57 +17,9 @@ __all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'Remo
            'MoveNodesOp', 'AddConnectionOp', 'RemoveConnectionOp', 'ParameterChangeOp']
 
 
-class AsyncSceneOperation(StackAwareOperation):
+class AsyncSceneOperation(AsyncOperation):
     def __init__(self, scene: "QGraphicsImguiScene"):
-        super().__init__(scene._undo_stack())
-        self.__scene = scene
-        self.__was_done = False
-
-    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
-        def doop(longop: LongOperation):
-            success = True
-            try:
-                yield from self._my_do_longop(longop)
-                self.__was_done = True
-            except Exception as e:
-                logger.exception(f'exception happened during do operation "{self}"')
-                success = False
-            finally:
-                self._undo_stack()._operation_finalized(self, True, success)
-
-            if success and callback:
-                callback(self)
-
-        if self.__was_done:
-            raise OperationError('operation was done already')
-        self.__scene.add_long_operation(doop, 'undoqueue')  # TODO: move this add_long_operation to an interface, move this class to undo_stack (so no scene dep)
-        return False
-
-    def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
-        def undoop(longop: LongOperation):
-            success = True
-            try:
-                yield from self._my_undo_longop(longop)
-                self.__was_done = False
-            except Exception as e:
-                logger.exception(f'exception happened during do operation "{self}"')
-                success = False
-            finally:
-                self._undo_stack()._operation_finalized(self, False, success)
-
-            if success and callback:
-                callback(self)
-
-        if not self.__was_done:
-            raise OperationError('operation was not done yet')
-        self.__scene.add_long_operation(undoop, 'undoqueue')
-        return False
-
-    def _my_do_longop(self, longop: LongOperation):
-        raise NotImplementedError()
-
-    def _my_undo_longop(self, longop: LongOperation):
-        raise NotImplementedError()
+        super().__init__(scene._undo_stack(), scene)
 
 
 class CompoundAsyncSceneOperation(AsyncSceneOperation):
