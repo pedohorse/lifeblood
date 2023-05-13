@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, scheduler: "Scheduler", limit=2**16):
         self.__logger = logging.get_logger('scheduler')
-        self.__timeout = 60.0
+        self.__timeout = 300.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__scheduler = scheduler
         self.__saved_references = []
@@ -124,17 +124,17 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             writer.write(struct.pack('>' + 'Q'*(1+len(ids)), len(ids), *ids))
 
         #
-        commands = {b'ping': comm_ping,
-                    b'pulse': comm_pulse,
-                    b'done': comm_done,
-                    b'dropped': comm_dropped,
-                    b'hello': comm_hello,
-                    b'bye': comm_bye,
-                    b'spawn': comm_spawn,
-                    b'nodenametoid': comm_node_name_to_id,
-                    b'tupdateattribs': comm_update_task_attributes,
-                    b'gettaskstate': comm_get_task_state,
-                    b'tasknametoid': comm_task_name_to_id,
+        commands = {'ping': comm_ping,
+                    'pulse': comm_pulse,
+                    'done': comm_done,
+                    'dropped': comm_dropped,
+                    'hello': comm_hello,
+                    'bye': comm_bye,
+                    'spawn': comm_spawn,
+                    'nodenametoid': comm_node_name_to_id,
+                    'tupdateattribs': comm_update_task_attributes,
+                    'gettaskstate': comm_get_task_state,
+                    'tasknametoid': comm_task_name_to_id,
                     }
         #
         #
@@ -157,10 +157,12 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 raise NotImplementedError()
 
             while True:
-                command = await asyncio.wait_for(reader.readline(), timeout=self.__timeout)  # type: bytes
-                if command.endswith(b'\n'):
-                    command = command[:-1]
-                self.__logger.debug(f'scheduler got command: {command.decode("UTF-8")}')
+                try:
+                    command: str = await read_string()
+                except asyncio.IncompleteReadError:  # no command sent, connection closed
+                    self.__logger.debug('connection closed')
+                    break
+                self.__logger.debug(f'scheduler got command: {command}')
 
                 if command in commands:
                     await commands[command]()
@@ -176,7 +178,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                 await writer.drain()
 
         except asyncio.exceptions.TimeoutError as e:
-            pass
+            self.__logger.warning(f'connection timeout happened ({self.__timeout}s).')
         except ConnectionResetError as e:
             self.__logger.exception('connection was reset. disconnected %s', e)
         except ConnectionError as e:
@@ -192,7 +194,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
 
 
 class SchedulerTaskClient:
-    async def write_string(self, s: str):
+    def write_string(self, s: str):
         b = s.encode('UTF-8')
         self.__writer.write(struct.pack('>Q', len(b)))
         self.__writer.write(b)
@@ -222,26 +224,26 @@ class SchedulerTaskClient:
 
     async def report_task_done(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
-        self.__writer.write(b'done\n')
+        self.write_string('done')
         taskserialized = await task.serialize_async()
         self.__writer.write(struct.pack('>Q', len(taskserialized)))
         self.__writer.write(taskserialized)
         for std_file in (stdout_file, stderr_file):
             async with aiofiles.open(std_file, 'r') as f:
-                await self.write_string(await f.read())
+                self.write_string(await f.read())
         await self.__writer.drain()
         # we DO need a reply to ensure proper sequence of events
         assert await self.__reader.readexactly(1) == b'\1'
 
     async def report_task_canceled(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
         await self._ensure_conn_open()
-        self.__writer.write(b'dropped\n')
+        self.write_string('dropped')
         taskserialized = await task.serialize_async()
         self.__writer.write(struct.pack('>Q', len(taskserialized)))
         self.__writer.write(taskserialized)
         for std_file in (stdout_file, stderr_file):
             async with aiofiles.open(std_file, 'r') as f:
-                await self.write_string(await f.read())
+                self.write_string(await f.read())
         await self.__writer.drain()
         # we DO need a reply to ensure proper sequence of events
         assert await self.__reader.readexactly(1) == b'\1'
@@ -254,9 +256,9 @@ class SchedulerTaskClient:
         :return: worker state that scheduler thinks a worker with given address has
         """
         await self._ensure_conn_open()
-        self.__writer.write(b'ping\n')
+        self.write_string('ping')
         try:
-            await self.write_string(my_address)
+            self.write_string(my_address)
             await self.__writer.drain()
             return WorkerState(struct.unpack('>I', await self.__reader.readexactly(4))[0])
         except ConnectionResetError as e:
@@ -271,7 +273,7 @@ class SchedulerTaskClient:
         :return:
         """
         await self._ensure_conn_open()
-        self.__writer.write(b'pulse\n')
+        self.write_string('pulse')
         try:
             await self.__writer.drain()
             await self.__reader.readexactly(1)
@@ -281,8 +283,8 @@ class SchedulerTaskClient:
 
     async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
         await self._ensure_conn_open()
-        self.__writer.write(b'hello\n')
-        await self.write_string(address_to_advertise)
+        self.write_string('hello')
+        self.write_string(address_to_advertise)
         self.__writer.write(struct.pack('>I', worker_type.value))
         resdata = worker_resources.serialize()
         self.__writer.write(struct.pack('>Q', len(resdata)))
@@ -293,15 +295,15 @@ class SchedulerTaskClient:
 
     async def say_bye(self, address_of_worker: str):
         await self._ensure_conn_open()
-        self.__writer.write(b'bye\n')
-        await self.write_string(address_of_worker)
+        self.write_string('bye')
+        self.write_string(address_of_worker)
         await self.__writer.drain()
         # we DO need a reply to ensure proper sequence of events
         assert await self.__reader.readexactly(1) == b'\1'
 
     async def spawn(self, taskspawn: TaskSpawn) -> Tuple[SpawnStatus, Optional[int]]:
         await self._ensure_conn_open()
-        self.__writer.write(b'spawn\n')
+        self.write_string('spawn')
         data_ser = await taskspawn.serialize_async()
         self.__writer.write(struct.pack('>Q', len(data_ser)))
         self.__writer.write(data_ser)
