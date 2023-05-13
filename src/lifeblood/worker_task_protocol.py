@@ -40,7 +40,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
     def __init__(self, worker: "Worker", limit: int = 2 ** 16):
         self.__logger = logging.get_logger('worker.protocol')
-        self.__timeout = 60.0
+        self.__timeout = 300.0
         self.__reader = asyncio.StreamReader(limit=limit)
         self.__worker = worker
         self.__saved_references = []
@@ -183,7 +183,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
 
 
 class WorkerTaskClient:
-    def __init__(self, ip: str, port: int, timeout=30.0):
+    def __init__(self, ip: str, port: int, timeout=300.0):
         self.__logger = logging.get_logger('scheduler.workerconnection')
         self.__conn_task = asyncio.create_task(asyncio.open_connection(ip, port))
         self.__reader = None  # type: Optional[asyncio.StreamReader]
