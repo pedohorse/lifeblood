@@ -1,5 +1,5 @@
 #!/bin/sh
-"exec" "`dirname $0`/venv/bin/python" "$0" "$@"
+"exec" "`dirname \`readlink -f $0\``/venv/bin/python" "`readlink -f $0`" "$@"
 import sys
 from lifeblood import launch
 
