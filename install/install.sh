@@ -122,12 +122,12 @@ fi
 ln -s $hash current
 
 echo "#!/bin/sh" > lifeblood
-echo "exec current/entry.py "\"\$@\" > lifeblood
+echo 'exec `dirname \`readlink -f $0\``/current/entry.py "$@"' >> lifeblood
 chmod +x lifeblood
 
 if $install_viewer; then
   echo "#!/bin/sh" > lifeblood_viewer
-  echo "exec current/entry.py viewer "\"\$@\" > lifeblood_viewer
+  echo 'exec `dirname \`readlink -f $0\``/current/entry.py viewer "$@"' >> lifeblood_viewer
   chmod +x lifeblood_viewer
 fi
 
