@@ -31,7 +31,7 @@ default_config = f'''
 ##
 ## if you use more than 1 machine - you must change this to a network location shared among all workers
 ## by default it's set to scheduler's machine local temp path, and will only work for 1 machine setup 
-global_scratch_path = "{get_local_scratch_path()}"
+global_scratch_location = "{get_local_scratch_path()}"
 
 [scheduler.database]
 ## you can specify default database path, 
