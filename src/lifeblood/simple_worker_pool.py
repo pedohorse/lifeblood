@@ -7,7 +7,10 @@ import time
 import itertools
 from types import MappingProxyType
 import json
+from .config import get_config
+from .nethelpers import get_default_addr
 from .broadcasting import await_broadcast
+from .defaults import scheduler_port as default_scheduler_port
 from .pulse_checker import PulseChecker
 from .process_utils import create_worker_process, send_stop_signal_to_worker
 
@@ -375,25 +378,39 @@ async def async_main(argv):
 
     stop_event = asyncio.Event()
     stop_task = asyncio.create_task(stop_event.wait())
+    config = get_config('worker')
+
+    start_attempt_cooldown = 0
     while True:
-        logger.info('listening for scheduler broadcasts...')
-        broadcast_task = asyncio.create_task(await_broadcast('lifeblood_scheduler'))
-        done, _ = await asyncio.wait((broadcast_task, stop_task), return_when=asyncio.FIRST_COMPLETED)
-        if stop_task in done:
-            broadcast_task.cancel()
-            logger.info('broadcast listening cancelled')
-            break
-        assert broadcast_task.done()
-        message = await broadcast_task
-        scheduler_info = json.loads(message)
-        logger.debug('received', scheduler_info)
-        addr = scheduler_info['worker']
-        ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
-        port = int(sport)
+        if await config.get_option('worker.listen_to_broadcast', True):
+            logger.info('listening for scheduler broadcasts...')
+            broadcast_task = asyncio.create_task(await_broadcast('lifeblood_scheduler'))
+            done, _ = await asyncio.wait((broadcast_task, stop_task), return_when=asyncio.FIRST_COMPLETED)
+            if stop_task in done:
+                broadcast_task.cancel()
+                logger.info('broadcast listening cancelled')
+                break
+            assert broadcast_task.done()
+            message = await broadcast_task
+            scheduler_info = json.loads(message)
+            logger.debug('received', scheduler_info)
+            addr = scheduler_info['worker']
+            ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
+            port = int(sport)
+        else:
+            if stop_event.is_set():
+                break
+            logger.info('boradcast listening disabled')
+            start_attempt_cooldown = 10
+            ip = await config.get_option('worker.scheduler_ip', get_default_addr())
+            port = await config.get_option('worker.scheduler_port', default_scheduler_port())
+            logger.debug(f'using {ip}:{port}')
+
         try:
             pool = await create_worker_pool(WorkerType.STANDARD, scheduler_address=(ip, port), **opts.__dict__)
         except Exception:
             logger.exception('could not start the pool')
+            await asyncio.sleep(start_attempt_cooldown)
         else:
             await pool.wait_till_stops()
             logger.info('pool quited')
