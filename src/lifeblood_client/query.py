@@ -39,7 +39,7 @@ class scheduler_client:
         self.__socket.close()
 
     def find_nodes_by_name(self, node_name):  # type: (str) -> Tuple[int, ...]
-        self.__socket.sendall(b'nodenametoid\n')
+        send_string(self.__socket, 'nodenametoid')
 
         send_string(self.__socket, node_name)
         num = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]
@@ -47,7 +47,7 @@ class scheduler_client:
         return ids
 
     def find_tasks_by_name(self, task_name):  # type: (str) -> Tuple[int, ...]
-        self.__socket.sendall(b'tasknametoid\n')
+        send_string(self.__socket, 'tasknametoid')
 
         send_string(self.__socket, task_name)
         num = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]
@@ -63,7 +63,7 @@ class scheduler_client:
         return attribs
 
     def get_task_attributes_and_env(self, task_id):
-        self.__socket.sendall(b'gettaskattribs\n')
+        send_string(self.__socket, 'gettaskattribs')
 
         self.__socket.sendall(struct.pack('>Q', task_id))
         data_len = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]
@@ -77,7 +77,7 @@ class scheduler_client:
         return attribs, env
 
     def get_task_fields(self, task_id):
-        self.__socket.sendall(b'gettaskstate\n')
+        send_string(self.__socket, 'gettaskstate')
 
         self.__socket.sendall(struct.pack('>Q', task_id))
         data_len = struct.unpack('>Q', recv_exactly(self.__socket, 8))[0]

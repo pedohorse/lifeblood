@@ -128,7 +128,7 @@ class NewTask(TaskSpawn):
         sock.sendall(b'\0\0\0\0')
         data = self.serialize()
 
-        sock.sendall(b'spawn\n')
+        send_string(sock, 'spawn')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         status, is_not_null, task_id = struct.unpack('>I?Q', sock.recv(13))

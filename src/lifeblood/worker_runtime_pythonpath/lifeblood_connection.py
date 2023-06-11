@@ -15,6 +15,12 @@ except ImportError:
     pass
 
 
+def send_string(sock, text):  # type: (socket.socket, str) -> None
+    bts = text.encode('UTF-8')
+    sock.sendall(struct.pack('>Q', len(bts)))
+    sock.sendall(bts)
+
+
 class EnvironmentResolverArguments:
     """
     this is a copy of envirionment_resolver.EnvironmentResolverArguments class purely for pickling
@@ -133,7 +139,7 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
         sock = socket.create_connection((addr, port), timeout=30)
         data = spawn.serialize()
         sock.sendall(b'\0\0\0\0')
-        sock.sendall(b'spawn\n')
+        send_string(sock, 'spawn')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         res = sock.recv(13)  # >I?Q  13 should be small enough to ensure receiving in one call
@@ -158,7 +164,7 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
         sock.sendall(b'\0\0\0\0')
-        sock.sendall(b'tupdateattribs\n')
+        send_string(sock, 'tupdateattribs')
         updata = pickle.dumps(attribs)
         sock.sendall(struct.pack('>QQQ', task_id, len(updata), 0))
         sock.sendall(updata)
