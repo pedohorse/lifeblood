@@ -1257,8 +1257,8 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', len(data)))
         w.write(data)
         w.flush()
-        spawn_status_value, new_id = struct.unpack('>I?Q', r.readexactly(13))  # reply that we don't care about for now
-        if SpawnStatus(spawn_status_value) == SpawnStatus.FAILED:
+        spawn_status_value, good, new_id = struct.unpack('>I?Q', r.readexactly(13))  # reply that we don't care about for now
+        if SpawnStatus(spawn_status_value) == SpawnStatus.FAILED or not good:
             return None
         return new_id
 
