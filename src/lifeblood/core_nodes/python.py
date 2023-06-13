@@ -102,7 +102,7 @@ class Python(BaseNodeWithTaskRequirements):
 
         exec_locals = {'task': task_helper, 'schedule': _set_sched}
         do_schedule = False
-        exec(context.param_value('process'), {}, exec_locals)
+        exec(context.param_value('process'), exec_locals)
 
         if do_schedule:
             inv = InvocationJob(['python', ':/main_invocation.py'])
