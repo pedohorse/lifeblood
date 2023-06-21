@@ -96,37 +96,50 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
         env = InvocationEnvironment()
 
-        # we add first line "kwargs = {{'frames': {frames}}}\n" later
-        spawnlines =      f"for attr, val in {repr(attr_to_trans)}:\n" \
-                          f"    kwargs[attr] = val\n" \
-                          f"kwargs['hipfile'] = {repr(hippath)}\n" \
-                          f"kwargs['file'] = node.evalParm(output_parm_name)\n"
+        attr_transfer_lines = ''
         if attr_to_promote_mask != '' or intr_to_promote_mask != '':
-            spawnlines += f"geo = hou.Geometry()\n" \
-                          f"geo.loadFromFile(node.parm(output_parm_name).evalAsString())\n"
+            attr_transfer_lines += \
+                  f"geo = hou.Geometry()\n" \
+                  f"geo.loadFromFile(node.parm(output_parm_name).evalAsString())\n"
             if attr_to_promote_mask != '':
-                spawnlines += \
-                          f"detail_attrs_names = geo.intrinsicValue('globalattributes')\n" \
-                          f"if not isinstance(detail_attrs_names, (tuple, list)):  # believe it or not - in case of a single attrib - the return value is a string, not a tuple!\n" \
-                          f"    detail_attrs_names = (detail_attrs_names,)\n" \
-                          f"for detail_attr_name in (x for x in detail_attrs_names if hou.patternMatch({repr(attr_to_promote_mask)}, x)):\n" \
-                          f"    kwargs[detail_attr_name] = geo.attribValue(detail_attr_name)\n"
+                attr_transfer_lines += \
+                  f"detail_attrs_names = geo.intrinsicValue('globalattributes')\n" \
+                  f"if not isinstance(detail_attrs_names, (tuple, list)):  # believe it or not - in case of a single attrib - the return value is a string, not a tuple!\n" \
+                  f"    detail_attrs_names = (detail_attrs_names,)\n" \
+                  f"for detail_attr_name in (x for x in detail_attrs_names if hou.patternMatch({repr(attr_to_promote_mask)}, x)):\n" \
+                  f"    kwargs[detail_attr_name] = geo.attribValue(detail_attr_name)\n"
+                # TODO: hou.patternMatch is deprecated since 18.5, hou.text.patternMatch is available starting from 18.5
             if intr_to_promote_mask != '':
-                spawnlines += \
-                          f"for intrinsic_name in geo.intrinsicNames():\n" \
-                          f"    if not hou.patternMatch({repr(intr_to_promote_mask)}, intrinsic_name):\n" \
-                          f"        continue\n" \
-                          f"    kwargs[intrinsic_name] = geo.intrinsicValue(intrinsic_name)\n"
-            spawnlines += f"geo.clear()\n"
-        spawnlines +=     f"lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
+                attr_transfer_lines += \
+                  f"for intrinsic_name in geo.intrinsicNames():\n" \
+                  f"    if not hou.patternMatch({repr(intr_to_promote_mask)}, intrinsic_name):\n" \
+                  f"        continue\n" \
+                  f"    kwargs[intrinsic_name] = geo.intrinsicValue(intrinsic_name)\n"
+            attr_transfer_lines += \
+                  f"geo.clear()\n"
+
+        # we add first line "kwargs = {{'frames': {frames}}}\n" later
+        spawnlines = f"for attr, val in {repr(attr_to_trans)}:\n" \
+                     f"    kwargs[attr] = val\n" \
+                     f"kwargs['hipfile'] = {repr(hippath)}\n" \
+                     f"kwargs['file'] = node.evalParm(output_parm_name)\n"
+        spawnlines += attr_transfer_lines
+        spawnlines += "lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
 
         spawnlines = self._fescape(spawnlines)
         # now we add first line that we DON'T want to escape...
         # yeah, a bit shitty...
         spawnlines = "kwargs = {{'frames': {frames}}}\n" + spawnlines
 
+        main_task_modify_lines = None
         if not self.is_output_connected('spawned'):
             spawnlines = None
+            main_task_modify_lines = \
+                "kwargs = {}\n"
+            main_task_modify_lines += attr_transfer_lines
+            main_task_modify_lines += "kwargs['files'] = all_out_files\n"
+            main_task_modify_lines += \
+                "lifeblood_connection.set_attributes(kwargs, blocking=True)\n"
 
         script = \
             f'import os\n' \
@@ -185,11 +198,14 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             script += 'if skipped:\n' \
                       '    print("output file already exists, skipping")\n' \
                       'else:\n' \
-                      f'    node.render(frame_range=({frames[0]}, {frames[-1]}, {frames[min(1, len(frames)-1)] - frames[0] or 1}), ignore_inputs={context.param_value("ignore inputs")})\n'
+                      f'    node.render(frame_range=({frames[0]}, {frames[-1]}, {frames[min(1, len(frames)-1)] - frames[0] or 1}), ignore_inputs={context.param_value("ignore inputs")})\n' \
+                      'all_out_files = [node.evalParm(output_parm_name)]\n'
             if spawnlines is not None:
-                script +=  f'if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
+                script += f'if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
                 spawnlines = spawnlines.format(frames=repr(frames))
                 script += '\n'.join(f'    {line}' for line in spawnlines.split('\n')) + '\n'
+            if main_task_modify_lines is not None:
+                script += main_task_modify_lines
 
         else:
             # temporary disallow rendering alembics not in full range
@@ -198,6 +214,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ##
 
             script += \
+                f'all_out_files = []\n' \
                 f'for i, frame in enumerate({repr(frames)}):\n' \
                 f'    hou.setFrame(frame)\n' \
                 f'    skipped = False\n' \
@@ -209,11 +226,14 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                       f'        print("output file already exists, skipping frame {{}}".format(frame))\n' \
                       f'    else:\n' \
                       f'        print("rendering frame {{}}".format(frame))\n' \
-                      f'        node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n'
+                      f'        node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n' \
+                      f'    all_out_files.append(node.evalParm(output_parm_name))\n'
             if spawnlines is not None:
                 script += f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
                 spawnlines = spawnlines.format(frames='[frame]')
                 script += '\n'.join(f'        {line}' for line in spawnlines.split('\n')) + '\n'
+            if main_task_modify_lines is not None:
+                script += main_task_modify_lines
 
         script += f'print("all done!")\n'
 
