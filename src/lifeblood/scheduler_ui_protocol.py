@@ -654,7 +654,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 raise NotImplementedError(f'protocol version unsupported {proto}')
 
             wait_stop_task = asyncio.create_task(self.__scheduler._stop_event_wait())
-            while True:  # TODO: there is SOO many commands now - that it's better to refactor them into a dict instead of infinite list of IFs
+            while True:
                 readline_task = asyncio.create_task(read_string())
                 done, pending = await asyncio.wait((readline_task, wait_stop_task), return_when=asyncio.FIRST_COMPLETED)
                 if wait_stop_task in done:
