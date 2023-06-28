@@ -20,7 +20,7 @@ def expand_and_try_json_decode(value: str):
     # first expand value
     vars = dict(os.environ)
     vars['this_blend_file'] = bpy.data.filepath
-    vars['frames_list'] = json.dumps(list(range(bpy.context.scene.frame_start, bpy.context.scene.frame_end + 1)))
+    vars['frames_list'] = json.dumps(list(range(bpy.context.scene.frame_start, bpy.context.scene.frame_end + 1, bpy.context.scene.frame_step)))
     value = re.sub(r'\$(\w+|{\w+})', lambda m: vars.get(m.group(1)), value)
 
     # then try to decode
