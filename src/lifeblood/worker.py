@@ -460,9 +460,9 @@ class Worker:
             for aname, aval in task.attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue
-                if isinstance(aval, dict):  # special case: dict values get jsoned
-                    aval = json.dumps(aval)
-                env[f'LBATTR_{aname}'] = str(aval)
+                # TODO: THINK OF A BETTER LOGIC !
+                if isinstance(aval, (str, int, float)):
+                    env[f'LBATTR_{aname}'] = str(aval)
 
             # env['LBATTRS_JSON'] = json.dumps(dict(task.attributes()))
             if self.__extra_files_base_dir is not None:
