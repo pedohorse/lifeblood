@@ -33,7 +33,8 @@ class MessageProcessorBase(ComponentBase):
                      message_queue: MessageQueue,
                      sessions_being_processed: dict,
                      message_stream_factory: MessageStreamFactory,
-                     force_session: Optional[uuid.UUID] = None):
+                     force_session: Optional[uuid.UUID] = None,
+                     send_retry_attempts: int = 6):
             self.__destination = destination
             self.__force_session = force_session
             self.__sessions_being_processed = sessions_being_processed
@@ -42,6 +43,7 @@ class MessageProcessorBase(ComponentBase):
             self.__address = host_address
             self.__session = None
             self.__initialized = False
+            self.__send_retry_attempts = send_retry_attempts
 
         def initialize(self) -> MessageClient:
             if self.__initialized:
@@ -61,7 +63,8 @@ class MessageProcessorBase(ComponentBase):
             client = MessageClient(self.__message_queue, session,
                                    source_address_chain=self.__address,
                                    destination_address_chain=self.__destination,
-                                   message_stream_factory=self.__message_stream_factory)
+                                   message_stream_factory=self.__message_stream_factory,
+                                   send_retry_attempts=self.__send_retry_attempts)
             self.__sessions_being_processed[session] = client
             return client
 
@@ -82,13 +85,14 @@ class MessageProcessorBase(ComponentBase):
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
 
-    def message_client(self, destination: AddressChain, force_session: Optional[uuid.UUID] = None) -> _ClientContext:
+    def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: int = 6) -> _ClientContext:
         return MessageProcessorBase._ClientContext(self.__address,
                                                    destination,
                                                    self.__message_queue,
                                                    self.__sessions_being_processed,
                                                    self.__message_stream_factory,
-                                                   force_session)
+                                                   force_session,
+                                                   send_retry_attempts=send_retry_attempts)
 
     # @asynccontextmanager
     # async def message_client(self, destination: str, force_session: Optional[uuid.UUID] = None) -> AsyncIterator[MessageClient]:
@@ -131,7 +135,7 @@ class MessageProcessorBase(ComponentBase):
         await server.wait_till_stopped()
         self._logger.info('message server stopped')
 
-    async def new_message_received(self, message: Message):
+    async def new_message_received(self, message: Message) -> bool:
         """
         note about ordering: if session messages come from the same tcp connection - then same protocol instance
          is processing it, so only one message is processed here at a time
@@ -145,7 +149,7 @@ class MessageProcessorBase(ComponentBase):
         destination = message.message_destination().split_address()
         if destination[0] != self.__address:
             self._logger.error('received message not meant for me, dropping')
-            return
+            return True
 
         if len(destination) > 1:  # redirect it further
             dcurrent, dnext = destination[0], destination[1:]
@@ -162,12 +166,12 @@ class MessageProcessorBase(ComponentBase):
                     await stream.wait_closed()
                 except:
                     self._logger.exception('failed to close forwarding stream, suppressing')
-            return
+            return True
 
         session = message.message_session()
         if session in self.__sessions_being_processed:
             await self.__message_queue.put_message(message)
-            return
+            return True
 
         # otherwise - noone is expecting message, so we process it
         # we rely here on that several messages of same session CANNOT be processed here at the same time
@@ -176,6 +180,7 @@ class MessageProcessorBase(ComponentBase):
         client = context.initialize()
         task = asyncio.create_task(self.__process_message_wrapper(message, client, context))
         self.__processing_tasks.add(task)
+        return True
 
     async def __process_message_wrapper(self, message: Message, client: MessageClient, context: _ClientContext):
         try:
