@@ -71,6 +71,7 @@ class MessageReceiveStreamBase:
     def __init__(self, listening_address: DirectAddress, other_end_address: DirectAddress):
         self.__source = listening_address
         self.__destination = other_end_address
+        self.__message_acked = True
 
     def listening_address(self) -> DirectAddress:
         return self.__source
@@ -84,6 +85,12 @@ class MessageReceiveStreamBase:
         """
         raise NotImplementedError()
 
+    async def _acknowledge_message_implementation(self, status: bool):
+        """
+        override this with actual message acknowledgement implementation
+        """
+        raise NotImplementedError()
+
     async def receive_data_message(self) -> Message:
         """
         receive message from stream
@@ -91,10 +98,21 @@ class MessageReceiveStreamBase:
         :raises MessageReceivingError: wrapping actual error occured
         :returns: Message received from the stream
         """
+        if not self.__message_acked:
+            raise RuntimeError('previous message was not acknowledged')
         try:
-            return await self._receive_message_implementation()
+            message = await self._receive_message_implementation()
         except Exception as e:
             raise MessageReceivingError(wrapped_exception=e) from None
+        else:
+            self.__message_acked = False
+            return message
+
+    async def acknowledge_received_message(self, success: bool):
+        if self.__message_acked:
+            raise RuntimeError('there was no message to acknowledge')
+        await self._acknowledge_message_implementation(success)
+        self.__message_acked = True
 
     def close(self):
         """
