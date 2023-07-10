@@ -239,6 +239,8 @@ class MessageSendStream(MessageSendStreamBase):
         """
         await _serialize_to_stream_writer(message, self.__writer)
         await self.__writer.drain()
+        if not struct.unpack('?', await self.__reader.readexactly(1))[0]:
+            raise MessageSendingError('message delivery failed', wrapped_exception=None)
 
     def close(self):
         self.__writer.close()
@@ -266,6 +268,10 @@ class MessageReceiveStream(MessageReceiveStreamBase):
         async with self.__start_receiving_message() as stream:
             pass  # will receive all
         return stream.to_message()
+
+    async def _acknowledge_message_implementation(self, status: bool):
+        self.__writer.write(struct.pack('?', status))
+        await self.__writer.drain()
 
     def close(self):
         self.__writer.close()
