@@ -2,15 +2,21 @@
 
 
 
-rectangle control{
+rectangle "net_messages"{
   'class MessageData << (D,lightblue) >>
   class MessageClient{
     sends messages through processor
   }
 
 
-  class MessageStream
-  interface IMessageReceiver{
+  class MessageStream{
+    async send_data_message(data, destination, session) -> Message
+    async forward_message(message)
+    async receive_data_message() -> Message
+    close()
+    async wait_closed()
+  }
+  interface MessageReceiver{
     async start()
     stop()
     async wait_till_stopped()
@@ -31,7 +37,7 @@ rectangle control{
   interface MessageStreamFactory{
     open_message_connection
   }
-  interface IMessageReceiverFactory{
+  interface MessageReceiverFactory{
     current: create_server
     --
     async create_receiving_task(address, callback)
@@ -39,8 +45,6 @@ rectangle control{
 }
 
 'Message --|> IMessage
-Message --> asyncio.StreamReader
-Message --> asyncio.StreamWriter
 
 MessageClient --> Message
 MessageClient --> MessageStreamFactory
@@ -48,20 +52,20 @@ MessageClient --> SessionPool
 MessageClient --> MessageQueue
 'MessageClient --> MessageData
 
-MessageProcessor o--> IMessageReceiverFactory
+MessageProcessor o--> MessageReceiverFactory
 MessageProcessor o--> MessageStreamFactory
 MessageProcessor o--> SessionPool
 MessageProcessor o--> MessageQueue
 MessageProcessor o--> "*" MessageClient
-MessageProcessor --> IMessageReceiver
+MessageProcessor --> MessageReceiver
 MessageProcessor *--> MessageReceiverCallback
 
 MessageReceiverCallback --> Message
 
-IMessageReceiverFactory --> IMessageReceiver
+MessageReceiverFactory --> MessageReceiver
 
-IMessageReceiver --> MessageReceiverCallback
-IMessageReceiver --> MessageStream
+MessageReceiver --> MessageReceiverCallback
+MessageReceiver --> MessageStream
 
 MessageStreamFactory --> MessageStream
 
@@ -70,9 +74,10 @@ MessageStream --> asyncio.StreamReader
 MessageStream --> asyncio.StreamWriter
 
 rectangle impl {
-  'TCPMessageSender --|> MessageStream
-  TCPMessageReceiver --|> IMessageReceiver
-  MessageSenderFactory --|> MessageStreamFactory
+  'TcpMessageSender --|> MessageStream
+  TcpMessageReceiver --|> MessageReceiver
+  TcpMessageStreamFactory --|> MessageStreamFactory
+  TcpMessageReceiverFactory --|> MessageReceiverFactory
 }
 
 @enduml

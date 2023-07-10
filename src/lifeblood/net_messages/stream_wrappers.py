@@ -7,7 +7,57 @@ from .enums import MessageType
 from .address import AddressChain
 from .exceptions import MessageReceivingError, MessageSendingError
 
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
+
+
+def _write_header(stream: asyncio.StreamWriter, data_size: int, message_type: MessageType, source: AddressChain, destination: AddressChain, session: Optional[uuid.UUID]):
+    src_data = source.encode('UTF-8')
+    src_data_size = len(src_data)
+    dest_data = destination.encode('UTF-8')
+    dest_data_size = len(dest_data)
+    has_session = session is not None
+    stream.write(struct.pack('>QQQ?', data_size + 16 + src_data_size + dest_data_size + 1 + message_type.message_type_size() + (16 if has_session else 0),
+                             src_data_size,
+                             dest_data_size,
+                             session is not None))
+    stream.write(message_type.value)
+    stream.write(src_data)
+    stream.write(dest_data)
+    if has_session:
+        stream.write(session.bytes)
+
+
+async def _read_header(stream: asyncio.StreamReader) -> Tuple[int, MessageType, AddressChain, AddressChain, Optional[uuid.UUID]]:
+    """
+    returns: (data_size, destination, session)
+    """
+    message_size, src_data_size, dest_data_size, has_session = struct.unpack('>QQQ?', await stream.readexactly(25))
+    message_type = MessageType(await stream.readexactly(MessageType.message_type_size()))
+    source = (await stream.readexactly(src_data_size)).decode('UTF-8')
+    destination = (await stream.readexactly(dest_data_size)).decode('UTF-8')
+    session = uuid.UUID(bytes=await stream.readexactly(16)) if has_session else None
+    return message_size - 8-src_data_size - 8-dest_data_size - 1 - MessageType.message_type_size() - (16 if has_session else 0), \
+           message_type, \
+           AddressChain(source), \
+           AddressChain(destination), \
+           session
+
+
+async def _from_stream_reader(stream: asyncio.StreamReader):
+    data_size, message_type, source, destination, session = await _read_header(stream)
+    data = await stream.readexactly(data_size)
+    return Message(data, message_type, source, destination, session)
+
+
+async def _serialize_to_stream_writer(message: Message, stream: asyncio.StreamWriter):
+    _write_header(stream,
+                  len(message.message_body()),
+                  message.message_type(),
+                  message.message_source(),
+                  message.message_destination(),
+                  message.message_session())
+    stream.write(message.message_body())
+    await stream.drain()
 
 
 class WriterStreamRawMessageWrapper(MessageInterface):
@@ -55,7 +105,7 @@ class WriterStreamRawMessageWrapper(MessageInterface):
         self.write(b)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        Message._write_header(self.__writer, self.__size, self.__message_type, self.__source, self.__destination, self.__session)
+        _write_header(self.__writer, self.__size, self.__message_type, self.__source, self.__destination, self.__session)
         self.__writer.write(self.__buffer.getbuffer())
         await self.__writer.drain()
 
@@ -147,7 +197,7 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         if self.__initialized:
             raise RuntimeError('message was already initialized')
         self.__initialized = True
-        self.__message_body_size, self.__message_type, self.__source, self.__destination, session = await Message._read_header(self.__reader)
+        self.__message_body_size, self.__message_type, self.__source, self.__destination, session = await _read_header(self.__reader)
         if self.__session is not None:  # if we expect specific session
             if session != self.__session:
                 raise RuntimeError('received message has wrong session')
@@ -190,7 +240,7 @@ class MessageStream:
         assume message prepared, just forwarding it
         """
         try:
-            await message.serialize_to_stream_writer(self.__writer)
+            await _serialize_to_stream_writer(message, self.__writer)
             await self.__writer.drain()
         except ConnectionError as e:
             raise MessageSendingError(wrapped_exception=e) from None
