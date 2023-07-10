@@ -1,0 +1,78 @@
+@startuml
+
+
+
+rectangle control{
+  'class MessageData << (D,lightblue) >>
+  class MessageClient{
+    sends messages through processor
+  }
+
+
+  class MessageStream
+  interface IMessageReceiver{
+    async start()
+    stop()
+    async wait_till_stopped()
+  }
+  class MessageReceiverCallback
+  abstract MessageProcessor
+  
+  'interface IMessage
+  class Message
+
+  class SessionPool{
+    currently just a dict...
+  }
+  class MessageQueue{
+    queue of received messages
+  }
+
+  interface MessageStreamFactory{
+    open_message_connection
+  }
+  interface IMessageReceiverFactory{
+    current: create_server
+    --
+    async create_receiving_task(address, callback)
+  }
+}
+
+'Message --|> IMessage
+Message --> asyncio.StreamReader
+Message --> asyncio.StreamWriter
+
+MessageClient --> Message
+MessageClient --> MessageStreamFactory
+MessageClient --> SessionPool
+MessageClient --> MessageQueue
+'MessageClient --> MessageData
+
+MessageProcessor o--> IMessageReceiverFactory
+MessageProcessor o--> MessageStreamFactory
+MessageProcessor o--> SessionPool
+MessageProcessor o--> MessageQueue
+MessageProcessor o--> "*" MessageClient
+MessageProcessor --> IMessageReceiver
+MessageProcessor *--> MessageReceiverCallback
+
+MessageReceiverCallback --> Message
+
+IMessageReceiverFactory --> IMessageReceiver
+
+IMessageReceiver --> MessageReceiverCallback
+IMessageReceiver --> MessageStream
+
+MessageStreamFactory --> MessageStream
+
+MessageStream --> Message
+MessageStream --> asyncio.StreamReader
+MessageStream --> asyncio.StreamWriter
+
+rectangle impl {
+  'TCPMessageSender --|> MessageStream
+  TCPMessageReceiver --|> IMessageReceiver
+  MessageSenderFactory --|> MessageStreamFactory
+}
+
+@enduml
