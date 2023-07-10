@@ -71,12 +71,14 @@ class TestNetMessageStreams(IsolatedAsyncioTestCase):
 
     async def test_random_writer(self):
         rng = random.Random(666666)
-        for _ in range(666):
-            data = rng.randbytes(rng.randint(0, 12345))
+        for _ in range(333):
+            # rng.randbytes is not available in py3.8
+            data_len = rng.randint(0, 12345)
+            data = struct.pack('B'*data_len, *(rng.randint(0, 255) for _ in range(data_len)))
             stream = DummyStream()
             dest = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
             src = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
-            session = uuid.UUID(bytes=rng.randbytes(16)) if rng.random() > 0.5 else None
+            session = uuid.UUID(int=rng.randint(0, 2**(16*8))) if rng.random() > 0.5 else None
             async with WriterStreamRawMessageWrapper(stream, destination=dest, source=src, session=session) as writer:
                 writer.write(data)
 

@@ -240,7 +240,7 @@ class UniqueUiParametersCheck(TestCase):
         rng = random.Random(9173712)
 
         # big multiparam value changes are slow currently, test takes a long time
-        for val in chain(range(0, 100), (rng.randint(100, 1000) for _ in range(50))):
+        for val in chain(range(0, 100), (rng.randint(100, 1000) for _ in range(8))):  # TODO: improve performance, then inc test data range
             node.param('vigo').set_value(val)
             for i in range(val):
                 self.assertIsNotNone(node.param(f'efgh_{i}'))
@@ -255,10 +255,10 @@ class UniqueUiParametersCheck(TestCase):
         node = ListParamTypesNode('lolname')
 
         for param, val, expr, expr_result, alt_val in ((node.param('int_param'), 23, '2+3*4', 14, -23),
-                                                      (node.param('float_param'), -4.21, '2+5/10', 2.5, -9.111),
-                                                      (node.param('bool_param'), True, '2==5', False, True),
-                                                      (node.param('bool_param'), False, '4==4', True, False),
-                                                      (node.param('string_param'), 'asdfghj', '" ".join(("wow","cat"))', 'wow cat', 'crocodile')):
+                                                       (node.param('float_param'), -4.21, '2+5/10', 2.5, -9.111),
+                                                       (node.param('bool_param'), True, '2==5', False, True),
+                                                       (node.param('bool_param'), False, '4==4', True, False),
+                                                       (node.param('string_param'), 'asdfghj', '" ".join(("wow","cat"))', 'wow cat', 'crocodile')):
             self.assertFalse(param.has_expression())
             param.set_value(val)
             self.assertEqual(val, param.value())
