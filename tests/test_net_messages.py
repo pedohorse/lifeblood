@@ -15,6 +15,14 @@ class DummyStream:
         super().__init__()
         self.__buffer = buffer or BytesIO()
 
+    @property
+    def transport(self):
+        class _DummySock:
+            def get_extra_info(self, key, default=None) -> Optional[str]:
+                return '127.0.0.1:1234'
+
+        return _DummySock()
+
     def write(self, data: bytes):
         self.__buffer.write(data)
 
@@ -39,7 +47,7 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             writer.write(b'test')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQ?', 23, 10, False) + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 45, 14, 10, False) + b'127.0.0.1:1234' + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
 
     async def test_empty_writer(self):
         stream = DummyStream()
@@ -47,7 +55,7 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             writer.write(b'')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQ?', 16, 7, False) + b'bee;boo', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 38, 14, 7, False) + b'127.0.0.1:1234' + b'bee;boo', bytes(buffer.getbuffer()))
 
     async def test_random_writer(self):
         rng = random.Random(666666)
@@ -68,7 +76,7 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             self.assertEqual(dest, msg.message_destination())
 
     async def test_simple_reader(self):
-        stream = DummyStream(BytesIO(struct.pack('>QQ?', 24, 5, False) + b'fooba' + b'doubletest'))
+        stream = DummyStream(BytesIO(struct.pack('>QQQ?', 46, 14, 5, False) + b'127.0.0.1:1234' + b'fooba' + b'doubletest'))
         async with ReaderStreamMessageWrapper(stream) as reader:
             data = await reader.readexactly(10)
 
@@ -82,8 +90,13 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             exp_data = rng.randbytes(rng.randint(0, 12345))
             dest = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
             dest_data = dest.encode('UTF-8')
+            src = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
+            src_data = src.encode('UTF-8')
             session = uuid.UUID(bytes=rng.randbytes(16)) if rng.random() > 0.5 else None
-            stream = DummyStream(BytesIO(struct.pack('>QQ?', len(exp_data) + 8 + len(dest_data) + 1 + (16 if session else 0), len(dest_data), session is not None) + dest_data + (session.bytes if session else b'') + exp_data))
+            stream = DummyStream(BytesIO(struct.pack('>QQQ?', len(exp_data) + 8 + len(dest_data) + 8 + len(src_data) + 1 + (16 if session else 0),
+                                                     len(src_data),
+                                                     len(dest_data),
+                                                     session is not None) + src_data + dest_data + (session.bytes if session else b'') + exp_data))
             async with ReaderStreamMessageWrapper(stream) as reader:
                 data_read = await reader.readexactly(min(11, len(exp_data)))
             data_all = reader.message_body()
