@@ -4,15 +4,17 @@ import struct
 from io import BytesIO
 from .messages import MessageInterface, Message
 from .enums import MessageType
+from .address import AddressChain
+from .exceptions import MessageReceivingError, MessageSendingError
 
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 
 
 class WriterStreamRawMessageWrapper(MessageInterface):
     """
     wraps writes into "messages" that have predictable borders, that can be redirected easily
     """
-    def __init__(self, writer: asyncio.StreamWriter, *, message_type: Optional[MessageType] = None, source: str, destination: str, session: Optional[uuid.UUID] = None):
+    def __init__(self, writer: asyncio.StreamWriter, *, message_type: Optional[MessageType] = None, source: AddressChain, destination: AddressChain, session: Optional[uuid.UUID] = None):
         """
         Note: source and destination must be provided:
             while destination is basically where reader/writer are connected,
@@ -22,8 +24,8 @@ class WriterStreamRawMessageWrapper(MessageInterface):
         self.__writer = writer
         self.__buffer: Optional[BytesIO] = None
         self.__size = 0
-        self.__source: str = source
-        self.__destination: str = destination
+        self.__source: AddressChain = source
+        self.__destination: AddressChain = destination
         self.__session = session
         self.__message_type: MessageType = message_type or MessageType.STANDALONE_MESSAGE
         self.__initialized = False
@@ -67,12 +69,12 @@ class WriterStreamRawMessageWrapper(MessageInterface):
             raise RuntimeError('message was not initialized')
         return self.__buffer.getbuffer()
 
-    def message_destination(self) -> str:
+    def message_destination(self) -> AddressChain:
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
         return self.__destination
 
-    def message_source(self) -> str:
+    def message_source(self) -> AddressChain:
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
         return self.__source
@@ -98,8 +100,8 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         self.__reader = reader
         self.__message_body_size: int = 0
         self.__already_read = 0
-        self.__source: Optional[str] = None
-        self.__destination: Optional[str] = None
+        self.__source: Optional[AddressChain] = None
+        self.__destination: Optional[AddressChain] = None
         self.__message_type: Optional[MessageType] = None
         self.__initialized = False
         self.__buffer = BytesIO()
@@ -121,12 +123,12 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
             raise RuntimeError('message was not initialized')
         return self.__buffer.getbuffer()
 
-    def message_destination(self) -> str:
+    def message_destination(self) -> AddressChain:
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
         return self.__destination
 
-    def message_source(self) -> str:
+    def message_source(self) -> AddressChain:
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
         return self.__source
@@ -170,52 +172,14 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
             raise RuntimeError('message was not initialized')
         return Message(self.message_body(), self.message_type(), self.message_source(), self.message_destination(), self.message_session())
 
-#
-# class MessageSession:
-#     def __init__(self, writer: asyncio.StreamWriter, *, destination: Optional[str] = None, session: uuid.UUID):
-#         self.__initialized = False
-#         self.__finalized = False
-#         self.__writer = writer
-#         self.__destination = destination
-#         self.__session = session
-#
-#     async def initialize(self):
-#         if self.__initialized:
-#             raise RuntimeError('message was already initialized')
-#         self.__initialized = True
-#         async with WriterStreamRawMessageWrapper(self.__writer,
-#                                              message_type=MessageType.SESSION_START,
-#                                              destination=self.__destination,
-#                                              session=self.__session):
-#             pass
-#
-#     async def finalize(self):
-#         if not self.__initialized:
-#             raise RuntimeError('message was not initialized')
-#         if self.__finalized:
-#             raise RuntimeError('message was already finalized')
-#         self.__finalized = True
-#         async with WriterStreamRawMessageWrapper(self.__writer,
-#                                                  message_type=MessageType.SESSION_END,
-#                                                  destination=self.__destination,
-#                                                  session=self.__session):
-#             pass
-#
-#     async def __aenter__(self) -> "MessageSession":
-#         await self.initialize()
-#         return self
-#
-#     async def __aexit__(self, exc_type, exc_val, exc_tb):
-#         await self.finalize()
-
 
 class MessageStream:
-    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, reply_listening_address: Tuple[str, int]):
+    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, reply_listening_address: AddressChain):
         self.__reader = reader_stream
         self.__writer = writer_stream
-        self.__msg_source = ':'.join(str(x) for x in reply_listening_address)
+        self.__msg_source = reply_listening_address
 
-    def start_new_message(self, destination: str, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
+    def start_new_message(self, destination: AddressChain, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
         return WriterStreamRawMessageWrapper(self.__writer, source=self.__msg_source, destination=destination, session=session)
 
     def start_receiving_message(self):
@@ -225,18 +189,26 @@ class MessageStream:
         """
         assume message prepared, just forwarding it
         """
-        await message.serialize_to_stream_writer(self.__writer)
-        await self.__writer.drain()
+        try:
+            await message.serialize_to_stream_writer(self.__writer)
+            await self.__writer.drain()
+        except ConnectionError as e:
+            raise MessageSendingError(wrapped_exception=e) from None
 
-    async def send_data_message(self, data: bytes, destination: str, *, session: uuid.UUID) -> Message:
-        async with self.start_new_message(destination, session=session) as stream:
-            stream.write(data)
+    async def send_data_message(self, data: bytes, destination: AddressChain, *, session: uuid.UUID) -> Message:
+        try:
+            async with self.start_new_message(destination, session=session) as stream:
+                stream.write(data)
+        except ConnectionError as e:
+            raise MessageSendingError(wrapped_exception=e) from None
         return stream.to_message()
 
     async def receive_data_message(self) -> Message:
-        async with self.start_receiving_message() as stream:
-            pass  # will receive all
-
+        try:
+            async with self.start_receiving_message() as stream:
+                pass  # will receive all
+        except ConnectionError as e:
+            raise MessageReceivingError(wrapped_exception=e) from None
         return stream.to_message()
 
     def close(self):

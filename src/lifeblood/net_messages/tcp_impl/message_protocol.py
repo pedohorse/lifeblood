@@ -1,10 +1,10 @@
 import asyncio
 import uuid
 
-from .logging import get_logger
-from .stream_wrappers import MessageStream
-from .messages import Message
-from .queue import MessageQueue
+from ..logging import get_logger
+from ..stream_wrappers import MessageStream
+from ..messages import Message
+from ..queue import MessageQueue
 
 from typing import Callable, Awaitable, Tuple
 
@@ -24,7 +24,7 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
         # so we HAVE to save a reference to self somewhere
         self.__saved_references.append(asyncio.current_task())
 
-        message_stream = MessageStream(reader, writer, self.__listening_address)
+        message_stream = MessageStream(reader, writer, ':'.join(str(x) for x in self.__listening_address))
 
         while not reader.at_eof():
             try:

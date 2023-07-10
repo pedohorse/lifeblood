@@ -2,7 +2,7 @@ import asyncio
 import struct
 import uuid
 from .enums import MessageType
-from io import BytesIO
+from .address import AddressChain
 
 from typing import Optional, Tuple, Union
 
@@ -14,10 +14,10 @@ class MessageInterface:
     def message_body(self) -> Union[bytes, memoryview]:
         raise NotImplementedError()
 
-    def message_destination(self) -> str:
+    def message_destination(self) -> AddressChain:
         raise NotImplementedError()
 
-    def message_source(self) -> str:
+    def message_source(self) -> AddressChain:
         raise NotImplementedError()
 
     def message_session(self) -> Optional[uuid.UUID]:
@@ -28,7 +28,7 @@ class MessageInterface:
 
 
 class Message(MessageInterface):
-    def __init__(self, data: bytes, message_type: MessageType, source: str, destination: str, session: Optional[uuid.UUID]):
+    def __init__(self, data: bytes, message_type: MessageType, source: AddressChain, destination: AddressChain, session: Optional[uuid.UUID]):
         self.__data = data
         self.__destination = destination
         self.__source = source
@@ -36,7 +36,7 @@ class Message(MessageInterface):
         self.__message_type = message_type
 
     @classmethod
-    def _write_header(cls, stream: asyncio.StreamWriter, data_size: int, message_type: MessageType, source: str, destination: str, session: Optional[uuid.UUID]):
+    def _write_header(cls, stream: asyncio.StreamWriter, data_size: int, message_type: MessageType, source: AddressChain, destination: AddressChain, session: Optional[uuid.UUID]):
         src_data = source.encode('UTF-8')
         src_data_size = len(src_data)
         dest_data = destination.encode('UTF-8')
@@ -53,7 +53,7 @@ class Message(MessageInterface):
             stream.write(session.bytes)
 
     @classmethod
-    async def _read_header(cls, stream: asyncio.StreamReader) -> Tuple[int, MessageType, str, str, Optional[uuid.UUID]]:
+    async def _read_header(cls, stream: asyncio.StreamReader) -> Tuple[int, MessageType, AddressChain, AddressChain, Optional[uuid.UUID]]:
         """
         returns: (data_size, destination, session)
         """
@@ -64,8 +64,8 @@ class Message(MessageInterface):
         session = uuid.UUID(bytes=await stream.readexactly(16)) if has_session else None
         return message_size - 8-src_data_size - 8-dest_data_size - 1 - MessageType.message_type_size() - (16 if has_session else 0), \
                message_type, \
-               source, \
-               destination, \
+               AddressChain(source), \
+               AddressChain(destination), \
                session
 
     @classmethod
@@ -85,10 +85,10 @@ class Message(MessageInterface):
     def message_body(self) -> Union[bytes, memoryview]:
         return self.__data
 
-    def message_source(self) -> str:
+    def message_source(self) -> AddressChain:
         return self.__source
 
-    def message_destination(self) -> str:
+    def message_destination(self) -> AddressChain:
         return self.__destination
 
     def message_session(self) -> Optional[uuid.UUID]:
@@ -97,10 +97,10 @@ class Message(MessageInterface):
     def set_message_body(self, body: bytes):
         self.__data = body
 
-    def set_message_destination(self, destination: str):
+    def set_message_destination(self, destination: AddressChain):
         self.__destination = destination
 
-    def set_message_source(self, source: str):
+    def set_message_source(self, source: AddressChain):
         self.__source = source
 
     def create_reply_message(self, data: bytes = b''):

@@ -2,10 +2,11 @@ import asyncio
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.logging import get_logger, set_default_loglevel
 from lifeblood.nethelpers import get_localhost
-from lifeblood.net_messages.address import join_address
-from lifeblood.net_messages.message_processor import MessageProcessorBase, MessageProxyProcessor
+from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.messages import Message
 from lifeblood.net_messages.client import MessageClient
+
+from lifeblood.net_messages.tcp_impl.tcp_message_processor import MessageProcessor, MessageProxyProcessor
 
 from typing import Callable, List, Type, Awaitable
 
@@ -13,9 +14,9 @@ set_default_loglevel('DEBUG')
 logger = get_logger('message_test')
 
 
-class TestReceiver(MessageProcessorBase):
+class TestReceiver(MessageProcessor):
     def __init__(self, listening_host: str, listening_port: int, *, backlog=None):
-        super().__init__(listening_host=listening_host, listening_port=listening_port, backlog=backlog)
+        super().__init__((listening_host, listening_port), backlog=backlog)
         self.messages_received: List[Message] = []
 
     async def process_message(self, message: Message, client: MessageClient):
@@ -51,7 +52,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct(self):
         async def _logic(proc1, proc2, proxies):
-            with proc1.message_client(proc2.listening_link()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
                 timeout = 2
                 await client.send_message(b'foofoobarbar')
                 while len(proc2.messages_received) == 0:
@@ -66,7 +67,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
-            with proc1.message_client(proc2.listening_link()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
                 timeout = 2
                 logger.debug('c: sending message "foofoobarbar"')
                 await client.send_message(b'foofoobarbar')
@@ -93,7 +94,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct_parallel(self):
         async def _sub_logic(proc1: TestReceiver, proc2: TestReceiver):
-            with proc1.message_client(proc2.listening_link()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
                 timeout = 2
                 logger.debug(f'c({client.session()}): sending message "foofoobarbar"')
                 await client.send_message(b'foofoobarbar')
@@ -146,7 +147,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_proxy(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[MessageProxyProcessor]):
-            address = join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
+            address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
             logger.info(f'sending message to address: "{address}"')
             with proc1.message_client(address) as client:  # type: MessageClient
                 timeout = 2
@@ -165,7 +166,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_proxy_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
-            address = join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
+            address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
             logger.info(f'sending message to address: "{address}"')
             with proc1.message_client(address) as client:  # type: MessageClient
                 timeout = 2
@@ -201,7 +202,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
         proc2 = proc_class(*addr2)
         proxies = []
         for i in range(num_hops):
-            proxy = MessageProxyProcessor(get_localhost(), 23458 + i)
+            proxy = MessageProxyProcessor((get_localhost(), 23458 + i))
             proxies.append(proxy)
 
         logger.info('starting up')

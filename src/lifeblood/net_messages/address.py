@@ -1,16 +1,22 @@
-from typing import Tuple, Iterable
+from typing import Tuple, Iterable, Union
 
 
-def split_address(address: str) -> Tuple[Tuple[str, int], ...]:  # TODO: move this to special module
-    parts = address.strip().split('|')
+class AddressChain(str):
+    def split_address(self) -> Tuple["DirectAddress", ...]:  # TODO: move this to special module
+        parts = self.strip().split('|')
 
-    def _split_part(part: str) -> Tuple[str, int]:
-        addr, port = part.split(':', 1)
-        return addr, int(port)
+        return tuple(DirectAddress(part) for part in parts)
 
-    return tuple(tuple(_split_part(part)) for part in parts)
+    @classmethod
+    def join_address(cls, address: Iterable["DirectAddress"]) -> "AddressChain":
+        # return '|'.join(':'.join(str(x) for x in part) for part in address)
+        return cls('|'.join(address))
 
 
-def join_address(address: Iterable[Tuple[str, int]]) -> str:
-    return '|'.join(':'.join(str(x) for x in part) for part in address)
+class DirectAddress(AddressChain):
+    pass
+
+
+AddressAny = Union[DirectAddress, AddressChain]
+
 
