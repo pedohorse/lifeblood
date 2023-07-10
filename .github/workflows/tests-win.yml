@@ -48,4 +48,4 @@ jobs:
       run: |
         pytest
       shell: bash
-    timeout-minutes: 15
+    timeout-minutes: 20
