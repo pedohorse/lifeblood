@@ -137,7 +137,7 @@ class MessageProcessorBase(ComponentBase):
         self._logger.info('message server stopped')
 
     async def new_message_received(self, message: Message) -> bool:
-        """
+        r"""
         note about ordering: if session messages come from the same tcp connection - then same protocol instance
          is processing it, so only one message is processed here at a time
          However if messages of same session are coming from multiple tcp connections - there is already no way of
