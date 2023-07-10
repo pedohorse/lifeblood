@@ -7,6 +7,7 @@ from .interfaces import MessageReceiverFactory, MessageStreamFactory
 from .client import MessageClient
 from .logging import get_logger
 from .address import AddressChain, DirectAddress
+from .enums import MessageType
 from ..component_base import ComponentBase
 
 from typing import Optional
@@ -166,6 +167,9 @@ class MessageProcessorBase(ComponentBase):
                     await stream.wait_closed()
                 except:
                     self._logger.exception('failed to close forwarding stream, suppressing')
+            return True
+
+        if message.message_type() == MessageType.SYSTEM_PING:
             return True
 
         session = message.message_session()
