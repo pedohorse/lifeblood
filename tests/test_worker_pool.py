@@ -30,12 +30,15 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         if testdbpath.exists():
             testdbpath.unlink()
         testdbpath.touch()
-        cls._scheduler_proc = subprocess.Popen(['python', '-m', 'lifeblood.launch', 'scheduler', '--db-path', 'test_empty.db'], close_fds=True)
+        cls._scheduler_proc = subprocess.Popen(['python', '-m',
+                                                'lifeblood.launch', 'scheduler',
+                                                '--db-path', 'test_empty.db',
+                                                '--broadcast-interval', '2'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
         server_port = config.get_option_noasync('core.server_port', scheduler_port())
         cls.sched_addr = (server_ip, server_port)
-        time.sleep(5)  # this is very arbitrary, but i'm too lazy to
+        time.sleep(1.5)  # this is very arbitrary, but i'm too lazy to
         print('settingup done')
 
     @classmethod
@@ -60,7 +63,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         await asyncio.sleep(rnd.uniform(0, 2))
         workers = swp.list_workers()
         self.assertEqual(1, len(workers))
-        await asyncio.sleep(rnd.uniform(10, 15))  # awaiting so that worker gets a broadcast from scheduler, which is now every 10s
+        await asyncio.sleep(rnd.uniform(2, 4))  # awaiting so that worker gets a broadcast from scheduler, which is now every 2s
         workers = swp.list_workers()
         self.assertEqual(WorkerState.IDLE, workers[0].state)
         swp.stop()
@@ -84,7 +87,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
-        await asyncio.sleep(rnd.uniform(0, 12))
+        await asyncio.sleep(rnd.uniform(0, 4))
         swp.stop()
         await swp.wait_till_stops()
 
