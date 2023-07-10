@@ -9,7 +9,7 @@ from typing import Awaitable, Callable, Tuple
 
 class TcpMessageReceiver(MessageReceiver):
     def __init__(self, address: Tuple[str, int],
-                 message_received_callback: Callable[[Message], Awaitable[None]],
+                 message_received_callback: Callable[[Message], Awaitable[bool]],
                  *, socket_backlog=4096):
         super().__init__(DirectAddress(address))
         self.__address = address

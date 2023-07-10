@@ -15,7 +15,7 @@ from typing import Callable, Awaitable, Tuple
 
 class MessageProtocol(asyncio.StreamReaderProtocol):
     def __init__(self, reply_address: Tuple[str, int],
-                 message_processor_callback: Callable[[Message], Awaitable[None]]):
+                 message_processor_callback: Callable[[Message], Awaitable[bool]]):
         self.__reader = asyncio.StreamReader()
         self.__logger = get_logger('message_protocol')
         self.__callback = message_processor_callback
@@ -44,7 +44,11 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
 
             while not reader.at_eof():
                 message = await message_stream.receive_data_message()
-                await self.__callback(message)
+                success = False
+                try:
+                    success = await self.__callback(message)
+                finally:
+                    await message_stream.acknowledge_received_message(success)
         except MessageReceivingError as mre:
             e = mre.wrapped_exception()
             if isinstance(e, asyncio.exceptions.IncompleteReadError):
