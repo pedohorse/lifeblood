@@ -8,14 +8,6 @@ rectangle "net_messages"{
     sends messages through processor
   }
 
-
-  class MessageStream{
-    async send_data_message(data, destination, session) -> Message
-    async forward_message(message)
-    async receive_data_message() -> Message
-    close()
-    async wait_closed()
-  }
   interface MessageReceiver{
     async start()
     stop()
@@ -42,13 +34,23 @@ rectangle "net_messages"{
     --
     async create_receiving_task(address, callback)
   }
+  interface MessageSendStreamBase{
+    async send_data_message(data, source, destination, session) -> Message
+    async send_raw_message(message)
+    close()
+    async wait_closed()
+  }
+  interface MessageReceiveStreamBase{
+    async receive_raw_message() -> Message
+    close()
+    async wait_closed()
+  }
 }
 
 'Message --|> IMessage
 
 MessageClient --> Message
 MessageClient --> MessageStreamFactory
-MessageClient --> SessionPool
 MessageClient --> MessageQueue
 'MessageClient --> MessageData
 
@@ -65,19 +67,36 @@ MessageReceiverCallback --> Message
 MessageReceiverFactory --> MessageReceiver
 
 MessageReceiver --> MessageReceiverCallback
-MessageReceiver --> MessageStream
 
-MessageStreamFactory --> MessageStream
+MessageStreamFactory --> MessageSendStreamBase
 
-MessageStream --> Message
-MessageStream --> asyncio.StreamReader
-MessageStream --> asyncio.StreamWriter
+MessageSendStreamBase --> Message
+MessageReceiveStreamBase --> Message
+
+
+class asyncio.StreamReader
+class asyncio.StreamWriter
 
 rectangle impl {
   'TcpMessageSender --|> MessageStream
   TcpMessageReceiver --|> MessageReceiver
   TcpMessageStreamFactory --|> MessageStreamFactory
   TcpMessageReceiverFactory --|> MessageReceiverFactory
+
+  MessageSendStream --|> MessageSendStreamBase
+  MessageReceiveStream --|> MessageReceiveStreamBase
+
+  TcpMessageReceiverFactory --> TcpMessageReceiver
+  TcpMessageReceiver --> MessageReceiveStream
+
+  TcpMessageStreamFactory --> MessageSendStream
+
+  MessageSendStream --> asyncio.StreamReader
+  MessageSendStream --> asyncio.StreamWriter
+  MessageReceiveStream --> asyncio.StreamReader
+  MessageReceiveStream --> asyncio.StreamWriter
+
+  
 }
 
 @enduml
