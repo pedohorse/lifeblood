@@ -10,6 +10,8 @@ from .. import paths
 
 from .scheduler import Scheduler
 
+from typing import Optional
+
 
 default_config = f'''
 [core]
@@ -50,7 +52,7 @@ global_scratch_location = "{get_local_scratch_path()}"
 '''
 
 
-async def main_async(db_path=None):
+async def main_async(db_path=None, *, broadcast_interval: Optional[int] = None):
     def graceful_closer(*args):
         scheduler.stop()
 
@@ -64,7 +66,9 @@ async def main_async(db_path=None):
             await asyncio.sleep(1)
         graceful_closer()
 
-    scheduler = Scheduler(db_path)
+    scheduler = Scheduler(db_path,
+                          do_broadcasting=broadcast_interval > 0 if broadcast_interval is not None else None,
+                          broadcast_interval=broadcast_interval)
     win_signal_waiting_task = None
     try:
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
@@ -90,6 +94,7 @@ def main(argv):
     parser.add_argument('--db-path', help='path to sqlite database to use')
     parser.add_argument('--ephemeral', action='store_true', help='start with an empty one time use database, that is placed into shared memory IF POSSIBLE')
     parser.add_argument('--verbosity-pinger', help='set individual verbosity for worker pinger')
+    parser.add_argument('--broadcast-interval', type=int, help='help easily override broadcasting interval (in seconds). value 0 disables broadcasting')
     opts = parser.parse_args(argv)
 
     # check and create default config if none
@@ -130,7 +135,7 @@ def main(argv):
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
     try:
-        asyncio.run(main_async(db_path))
+        asyncio.run(main_async(db_path, broadcast_interval=opts.broadcast_interval))
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')
