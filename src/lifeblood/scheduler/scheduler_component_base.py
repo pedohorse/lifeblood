@@ -1,4 +1,5 @@
 import asyncio
+from ..component_base import ComponentBase
 from ..enums import SchedulerMode
 
 from typing import TYPE_CHECKING
@@ -7,7 +8,7 @@ if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smt
     from .scheduler import Scheduler
 
 
-class SchedulerComponentBase:
+class SchedulerComponentBase(ComponentBase):
     def __init__(self, scheduler: "Scheduler"):
         super().__init__()
         self.__stop_event = asyncio.Event()
@@ -28,21 +29,6 @@ class SchedulerComponentBase:
     def _poke_event(self):
         return self.__wakeup_event
 
-    @property
-    def _stop_event(self):
-        return self.__stop_event
-
-    def start(self):
-        self.__main_task = asyncio.create_task(self._main_task())
-
-    def stop(self):
-        self.__stop_event.set()
-
-    async def wait_till_stops(self):
-        if self.__main_task is None:
-            return
-        return await self.__main_task
-
     def poke(self):
         """
         poke pinger to interrupt sleep and continue pinging immediately
@@ -53,9 +39,6 @@ class SchedulerComponentBase:
         self.__wakeup_event.clear()
 
     def _main_task(self):
-        """
-        should return the coroutine that will produce the main task to run by the component
-        """
         raise NotImplementedError('override this with the main task')
 
     def _my_sleep(self):

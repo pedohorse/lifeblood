@@ -3,7 +3,9 @@ import struct
 import random
 import string
 import uuid
-from lifeblood.net_messages import ReaderStreamMessageWrapper, WriterStreamMessageWrapper, Message
+from lifeblood.net_messages.enums import MessageType
+from lifeblood.net_messages.stream_wrappers import ReaderStreamRawMessageWrapper, WriterStreamRawMessageWrapper
+from lifeblood.net_messages.messages import Message
 from unittest import IsolatedAsyncioTestCase
 from io import BufferedReader, BufferedWriter, BytesIO
 
@@ -19,7 +21,9 @@ class DummyStream:
     def transport(self):
         class _DummySock:
             def get_extra_info(self, key, default=None) -> Optional[str]:
-                return '127.0.0.1:1234'
+                if key == 'sockname':
+                    return '127.0.0.1:1234'
+                print(key)
 
         return _DummySock()
 
@@ -40,22 +44,22 @@ class DummyStream:
         return self.__buffer
 
 
-class TestNetMessages(IsolatedAsyncioTestCase):
+class TestNetMessageStreams(IsolatedAsyncioTestCase):
     async def test_simple_writer(self):
         stream = DummyStream()
-        async with WriterStreamMessageWrapper(stream, destination='foo;бар') as writer:
+        async with WriterStreamRawMessageWrapper(stream, destination='foo;бар') as writer:
             writer.write(b'test')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQQ?', 45, 14, 10, False) + b'127.0.0.1:1234' + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 47, 14, 10, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
 
     async def test_empty_writer(self):
         stream = DummyStream()
-        async with WriterStreamMessageWrapper(stream, destination='bee;boo') as writer:
+        async with WriterStreamRawMessageWrapper(stream, destination='bee;boo') as writer:
             writer.write(b'')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQQ?', 38, 14, 7, False) + b'127.0.0.1:1234' + b'bee;boo', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 40, 14, 7, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'bee;boo', bytes(buffer.getbuffer()))
 
     async def test_random_writer(self):
         rng = random.Random(666666)
@@ -64,7 +68,7 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             stream = DummyStream()
             dest = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
             session = uuid.UUID(bytes=rng.randbytes(16)) if rng.random() > 0.5 else None
-            async with WriterStreamMessageWrapper(stream, destination=dest, session=session) as writer:
+            async with WriterStreamRawMessageWrapper(stream, destination=dest, session=session) as writer:
                 writer.write(data)
 
             stream.rewind()
@@ -76,8 +80,8 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             self.assertEqual(dest, msg.message_destination())
 
     async def test_simple_reader(self):
-        stream = DummyStream(BytesIO(struct.pack('>QQQ?', 46, 14, 5, False) + b'127.0.0.1:1234' + b'fooba' + b'doubletest'))
-        async with ReaderStreamMessageWrapper(stream) as reader:
+        stream = DummyStream(BytesIO(struct.pack('>QQQ?', 48, 14, 5, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'fooba' + b'doubletest'))
+        async with ReaderStreamRawMessageWrapper(stream) as reader:
             data = await reader.readexactly(10)
 
         self.assertEqual(b'doubletest', data)
@@ -93,11 +97,15 @@ class TestNetMessages(IsolatedAsyncioTestCase):
             src = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(0, 100)))
             src_data = src.encode('UTF-8')
             session = uuid.UUID(bytes=rng.randbytes(16)) if rng.random() > 0.5 else None
-            stream = DummyStream(BytesIO(struct.pack('>QQQ?', len(exp_data) + 8 + len(dest_data) + 8 + len(src_data) + 1 + (16 if session else 0),
+            stream = DummyStream(BytesIO(struct.pack('>QQQ?', len(exp_data) + 8 + len(dest_data) + 8 + len(src_data) + 1 + MessageType.message_type_size() + (16 if session else 0),
                                                      len(src_data),
                                                      len(dest_data),
-                                                     session is not None) + src_data + dest_data + (session.bytes if session else b'') + exp_data))
-            async with ReaderStreamMessageWrapper(stream) as reader:
+                                                     session is not None)
+                                         + MessageType.STANDALONE_MESSAGE.value
+                                         + src_data
+                                         + dest_data
+                                         + (session.bytes if session else b'') + exp_data))
+            async with ReaderStreamRawMessageWrapper(stream) as reader:
                 data_read = await reader.readexactly(min(11, len(exp_data)))
             data_all = reader.message_body()
 
