@@ -153,7 +153,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
                 timeout=30
             )
             logger.info('================== wait done! ==================')
-            logger.info(f'error tasks: {len([task.exception() is not None for task in done])}')
+            logger.info(f'error tasks: {len([task for task in done if task.exception() is not None])}')
             logger.info(f'pending tasks: {len(pending)}')
             if len(pending) > 0:
                 logger.warning('trying to print stack of some pending tasks...')
