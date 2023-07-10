@@ -1,9 +1,12 @@
+from typing import Optional
+
+
 class MessageTransferError(RuntimeError):
-    def __init__(self, message: str = '', *, wrapped_exception: Exception):
+    def __init__(self, message: str = '', *, wrapped_exception: Optional[Exception]):
         super().__init__(message)
         self.__wrapped_exception = wrapped_exception
         
-    def wrapped_exception(self):
+    def wrapped_exception(self) -> Optional[Exception]:
         return self.__wrapped_exception
 
     def __repr__(self):
