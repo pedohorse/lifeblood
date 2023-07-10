@@ -208,8 +208,10 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         return self
 
     async def readexactly(self, size: int):
-        if size <= 0:
+        if size < 0:
             return
+        elif size == 0:
+            return b''
         self.__already_read += size
         data = await self.__reader.readexactly(size)
         self.__buffer.write(data)
@@ -243,7 +245,8 @@ class MessageSendStream(MessageSendStreamBase):
             raise MessageSendingError('message delivery failed', wrapped_exception=None)
 
     def close(self):
-        self.__writer.close()
+        if not self.__writer.is_closing():
+            self.__writer.close()
 
     async def wait_closed(self):
         await self.__writer.wait_closed()
