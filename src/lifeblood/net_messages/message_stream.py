@@ -42,6 +42,9 @@ class MessageSendStreamBase:
         except Exception as e:
             raise MessageSendingError(wrapped_exception=e) from None
 
+    async def send_ping(self):
+        await self.send_raw_message(Message(b'', MessageType.SYSTEM_PING, self.__source, self.__destination, None))
+
     async def send_data_message(self, data: bytes, destination: AddressChain, *, session: uuid.UUID, source: Optional[AddressChain] = None) -> Message:
         """
         send message through stream
