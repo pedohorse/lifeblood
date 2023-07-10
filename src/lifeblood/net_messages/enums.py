@@ -6,4 +6,5 @@ class MessageType(Enum):
     def message_type_size(cls) -> int:
         return 2
 
-    STANDALONE_MESSAGE = b'\0\0'
+    DEFAULT_MESSAGE = b'\0\0'
+    DELIVERY_ERROR = b'\1\0'

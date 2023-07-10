@@ -78,7 +78,7 @@ class WriterStreamRawMessageWrapper(MessageInterface):
         self.__source: AddressChain = source
         self.__destination: AddressChain = destination
         self.__session = session
-        self.__message_type: MessageType = message_type or MessageType.STANDALONE_MESSAGE
+        self.__message_type: MessageType = message_type or MessageType.DEFAULT_MESSAGE
         self.__initialized = False
 
     def initialized(self):

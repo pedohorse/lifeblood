@@ -50,7 +50,7 @@ class MessageSendStreamBase:
         :raises MessageRoutingError: if destination does not contain this stream's destination
         """
         source = source or self.reply_address()
-        await self.send_raw_message(Message(data, MessageType.STANDALONE_MESSAGE, source, destination, session))
+        await self.send_raw_message(Message(data, MessageType.DEFAULT_MESSAGE, source, destination, session))
 
     def close(self):
         """

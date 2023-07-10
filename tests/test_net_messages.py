@@ -51,7 +51,7 @@ class TestNetMessageStreams(IsolatedAsyncioTestCase):
             writer.write(b'test')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQQ?', 47, 14, 10, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 47, 14, 10, False) + MessageType.DEFAULT_MESSAGE.value + b'127.0.0.1:1234' + b'foo;\xd0\xb1\xd0\xb0\xd1\x80' + b'test', bytes(buffer.getbuffer()))
 
     async def test_empty_writer(self):
         stream = DummyStream()
@@ -59,7 +59,7 @@ class TestNetMessageStreams(IsolatedAsyncioTestCase):
             writer.write(b'')
 
         buffer = stream.get_buffer()
-        self.assertEqual(struct.pack('>QQQ?', 40, 14, 7, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'bee;boo', bytes(buffer.getbuffer()))
+        self.assertEqual(struct.pack('>QQQ?', 40, 14, 7, False) + MessageType.DEFAULT_MESSAGE.value + b'127.0.0.1:1234' + b'bee;boo', bytes(buffer.getbuffer()))
 
     async def test_random_writer(self):
         rng = random.Random(666666)
@@ -80,7 +80,7 @@ class TestNetMessageStreams(IsolatedAsyncioTestCase):
             self.assertEqual(dest, msg.message_destination())
 
     async def test_simple_reader(self):
-        stream = DummyStream(BytesIO(struct.pack('>QQQ?', 48, 14, 5, False) + MessageType.STANDALONE_MESSAGE.value + b'127.0.0.1:1234' + b'fooba' + b'doubletest'))
+        stream = DummyStream(BytesIO(struct.pack('>QQQ?', 48, 14, 5, False) + MessageType.DEFAULT_MESSAGE.value + b'127.0.0.1:1234' + b'fooba' + b'doubletest'))
         async with ReaderStreamRawMessageWrapper(stream) as reader:
             data = await reader.readexactly(10)
 
@@ -101,7 +101,7 @@ class TestNetMessageStreams(IsolatedAsyncioTestCase):
                                                      len(src_data),
                                                      len(dest_data),
                                                      session is not None)
-                                         + MessageType.STANDALONE_MESSAGE.value
+                                         + MessageType.DEFAULT_MESSAGE.value
                                          + src_data
                                          + dest_data
                                          + (session.bytes if session else b'') + exp_data))

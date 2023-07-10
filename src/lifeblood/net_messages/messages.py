@@ -64,7 +64,7 @@ class Message(MessageInterface):
             return_type = MessageType.SESSION_MESSAGE
         elif self.__message_type == MessageType.SESSION_END:
             raise RuntimeError('cannot reply to session end message')
-        elif self.__message_type == MessageType.STANDALONE_MESSAGE:
+        elif self.__message_type == MessageType.DEFAULT_MESSAGE:
             return_type = self.__message_type
         else:
             raise RuntimeError(f'unknown message type {self.__message_type}')
