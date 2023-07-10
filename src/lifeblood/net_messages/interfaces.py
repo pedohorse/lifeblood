@@ -1,5 +1,5 @@
 from .messages import Message
-from .stream_wrappers import MessageStream
+from .message_stream import MessageSendStreamBase, MessageReceiveStreamBase
 from .address import DirectAddress, AddressChain
 
 from typing import Callable, Awaitable
@@ -11,6 +11,12 @@ class MessageReceiverFactory:
 
 
 class MessageReceiver:
+    def __init__(self, this_address: DirectAddress):
+        self.__this_address = this_address
+
+    def this_address(self) -> DirectAddress:
+        return self.__this_address
+
     def stop(self):
         """
         stop running receiver async task
@@ -22,5 +28,5 @@ class MessageReceiver:
 
 
 class MessageStreamFactory:
-    async def open_message_connection(self, destination: DirectAddress, source: AddressChain) -> MessageStream:
+    async def open_sending_stream(self, destination: DirectAddress, source: DirectAddress) -> MessageSendStreamBase:
         raise NotImplementedError()

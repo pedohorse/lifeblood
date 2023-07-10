@@ -35,13 +35,13 @@ class MessageClient:
         return self.__session
 
     async def send_message(self, data: bytes) -> Message:
-        stream = await self.__message_stream_factory.open_message_connection(self.__destination[0], self.__source_str)
+        stream = await self.__message_stream_factory.open_sending_stream(self.__destination[0], self.__source[0])
 
         last_exception = None
         timeout = self.__init_timeout
         for attempt in range(self.__attempts):
             try:
-                message = await stream.send_data_message(data, self.__destination_str, session=self.__session)
+                message = await stream.send_data_message(data, self.__destination_str, source=self.__source_str, session=self.__session)
                 self.__last_sent_message = message
                 return message
             except MessageSendingError as e:

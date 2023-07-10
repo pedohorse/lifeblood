@@ -3,8 +3,9 @@ import uuid
 import struct
 from io import BytesIO
 from .messages import MessageInterface, Message
+from .message_stream import MessageSendStreamBase, MessageReceiveStreamBase
 from .enums import MessageType
-from .address import AddressChain
+from .address import AddressChain, DirectAddress
 from .exceptions import MessageReceivingError, MessageSendingError
 
 from typing import Optional, Tuple, Union
@@ -223,42 +224,47 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         return Message(self.message_body(), self.message_type(), self.message_source(), self.message_destination(), self.message_session())
 
 
-class MessageStream:
-    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, reply_listening_address: AddressChain):
+class MessageSendStream(MessageSendStreamBase):
+    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, *, reply_address: DirectAddress, destination_address: DirectAddress):
+        super().__init__(reply_address, destination_address)
         self.__reader = reader_stream
         self.__writer = writer_stream
-        self.__msg_source = reply_listening_address
 
-    def start_new_message(self, destination: AddressChain, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
-        return WriterStreamRawMessageWrapper(self.__writer, source=self.__msg_source, destination=destination, session=session)
+    # def start_new_message(self, destination: AddressChain, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
+    #     return WriterStreamRawMessageWrapper(self.__writer, source=self.reply_address(), destination=destination, session=session)
 
-    def start_receiving_message(self):
+    async def _send_message_implementation(self, message: Message):
+        """
+        override this with actual message sending implementation
+        """
+        await _serialize_to_stream_writer(message, self.__writer)
+        await self.__writer.drain()
+
+    def close(self):
+        self.__writer.close()
+
+    async def wait_closed(self):
+        await self.__writer.wait_closed()
+
+
+class MessageReceiveStream(MessageReceiveStreamBase):
+    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, *, this_address: DirectAddress, other_end_address: DirectAddress):
+        super().__init__(this_address, other_end_address)
+        self.__reader = reader_stream
+        self.__writer = writer_stream
+
+    # def start_new_message(self, destination: AddressChain, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
+    #     return WriterStreamRawMessageWrapper(self.__writer, source=self.reply_address(), destination=destination, session=session)
+
+    def __start_receiving_message(self):
         return ReaderStreamRawMessageWrapper(self.__reader)
 
-    async def forward_message(self, message):
+    async def _receive_message_implementation(self) -> Message:
         """
-        assume message prepared, just forwarding it
+        override this with actual message receiving implementation
         """
-        try:
-            await _serialize_to_stream_writer(message, self.__writer)
-            await self.__writer.drain()
-        except ConnectionError as e:
-            raise MessageSendingError(wrapped_exception=e) from None
-
-    async def send_data_message(self, data: bytes, destination: AddressChain, *, session: uuid.UUID) -> Message:
-        try:
-            async with self.start_new_message(destination, session=session) as stream:
-                stream.write(data)
-        except ConnectionError as e:
-            raise MessageSendingError(wrapped_exception=e) from None
-        return stream.to_message()
-
-    async def receive_data_message(self) -> Message:
-        try:
-            async with self.start_receiving_message() as stream:
-                pass  # will receive all
-        except ConnectionError as e:
-            raise MessageReceivingError(wrapped_exception=e) from None
+        async with self.__start_receiving_message() as stream:
+            pass  # will receive all
         return stream.to_message()
 
     def close(self):
@@ -266,4 +272,3 @@ class MessageStream:
 
     async def wait_closed(self):
         await self.__writer.wait_closed()
-#

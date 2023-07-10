@@ -5,7 +5,7 @@
 # from typing import Tuple, Union
 #
 #
-# async def open_message_connection(address: Union[str, Tuple[Tuple[str, int], ...]], reply_address: Tuple[str, int]):
+# async def open_sending_stream(address: Union[str, Tuple[Tuple[str, int], ...]], reply_address: Tuple[str, int]):
 #     """
 #     address is expected to be in form of "1.2.3.4:1313|2.3.4.5:2424"...
 #     """

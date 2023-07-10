@@ -149,11 +149,12 @@ class MessageProcessorBase(ComponentBase):
 
         if len(destination) > 1:  # redirect it further
             dcurrent, dnext = destination[0], destination[1:]
-            stream = await self.__message_stream_factory.open_message_connection(dnext[0], AddressChain())
+            assert dcurrent == self.__address
+            stream = await self.__message_stream_factory.open_sending_stream(dnext[0], self.__address)
             try:
                 message.set_message_destination(AddressChain.join_address(dnext))
                 message.set_message_source(AddressChain.join_address((dcurrent, *(message.message_source().split_address()))))
-                await stream.forward_message(message)
+                await stream.send_raw_message(message)
                 self.__forwarded_messages_count += 1
             finally:
                 try:
