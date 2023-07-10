@@ -2,9 +2,10 @@ import asyncio
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.logging import get_logger, set_default_loglevel
 from lifeblood.nethelpers import get_localhost
-from lifeblood.net_messages.address import AddressChain
+from lifeblood.net_messages.address import AddressChain, DirectAddress
 from lifeblood.net_messages.messages import Message
 from lifeblood.net_messages.client import MessageClient
+from lifeblood.net_messages.exceptions import MessageSendingError
 
 from lifeblood.net_messages.tcp_impl.tcp_message_processor import MessageProcessor, MessageProxyProcessor
 
@@ -64,6 +65,30 @@ class TestIntegration(IsolatedAsyncioTestCase):
                 self.assertEqual(b'foofoobarbar', proc2.messages_received[0].message_body())
 
         await self._direct_comm_helper(DummyReceiver, _logic)
+
+    async def test_fail_stream(self):
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[MessageProxyProcessor]):
+            addr_to_nowhere = AddressChain.join_address(tuple(p.listening_address() for p in proxies) + (DirectAddress('127.11.22.33:6666'),))  # assume that address does not exist
+            with proc1.message_client(addr_to_nowhere, send_retry_attempts=3) as client:
+                good = False
+                try:
+                    await client.send_message(b'something')
+                    print('sent')
+                except MessageSendingError:
+                    good = True
+                except Exception as e:
+                    logger.exception(e)
+                    good = False
+                self.assertTrue(good, 'exception was not raised')
+
+        await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=2)
+        print('2 hops fine')
+        await asyncio.sleep(0.5)
+        await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=1)
+        print('1 hop fine')
+        await asyncio.sleep(0.5)
+        await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=0)
+        print('0 hops fine')
 
     async def test_direct_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
@@ -168,8 +193,8 @@ class TestIntegration(IsolatedAsyncioTestCase):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
             address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
             logger.info(f'sending message to address: "{address}"')
+
             with proc1.message_client(address) as client:  # type: MessageClient
-                timeout = 2
                 logger.debug('c: sending message "foofoobarbar"')
                 await client.send_message(b'foofoobarbar')
                 logger.debug('c: waiting for reply')
@@ -183,11 +208,19 @@ class TestIntegration(IsolatedAsyncioTestCase):
                 logger.debug(f'c: reply2 received: {reply}, {bytes(reply.message_body())}')
                 self.assertEqual(b'!!!gnimlehwrevorewop', reply.message_body())
 
+                timeout = 2
                 while len(proc2.messages_received) == 0:
                     await asyncio.sleep(0.1)
                     timeout -= 0.1
                     if timeout <= 0:
                         raise RuntimeError(f'no message received! {len(proc2.messages_received)}')
+
+                timeout = 1
+                while any(proxy.forwarded_messages_count() < 4 for proxy in proxies):
+                    await asyncio.sleep(0.1)
+                    timeout -= 0.1
+                    if timeout <= 0:
+                        break  # will raise assertion error after anyway
                 self.assertEqual(1, len(proc2.messages_received))
                 for proxy in proxies:
                     self.assertEqual(4, proxy.forwarded_messages_count())
