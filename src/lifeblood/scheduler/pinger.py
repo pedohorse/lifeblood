@@ -2,8 +2,8 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
-from ..worker_task_protocol import WorkerTaskClient, WorkerPingReply
-from ..enums import WorkerState, InvocationState, WorkerPingState, SchedulerMode
+from ..worker_task_protocol import WorkerTaskClient
+from ..enums import WorkerState, InvocationState, WorkerPingState, SchedulerMode, WorkerPingReply
 from ..ui_protocol_data import TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
 from ..config import get_config
@@ -176,6 +176,7 @@ class Pinger(SchedulerComponentBase):
         tasks = []
         stop_task = asyncio.create_task(self._stop_event.wait())
         wakeup_task = asyncio.create_task(self._poke_event.wait())
+        self._main_task_is_ready_now()
         while not self._stop_event.is_set():
             nowtime = time.time()
 

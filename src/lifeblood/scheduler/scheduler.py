@@ -397,9 +397,9 @@ class Scheduler:
         self.__ui_server = await self.__ui_server_coro
         if self.__broadcasting_server_coro is not None:
             self.__broadcasting_server = await self.__broadcasting_server_coro
-        self.__task_processor.start()
-        self.__pinger.start()
-        self.ui_state_access.start()
+        await self.__task_processor.start()
+        await self.__pinger.start()
+        await self.ui_state_access.start()
         # run
         self.__all_components = \
               asyncio.gather(self.__task_processor.wait_till_stops(),

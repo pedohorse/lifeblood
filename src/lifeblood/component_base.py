@@ -6,20 +6,32 @@ class ComponentBase:
         super().__init__()
         self.__stop_event = asyncio.Event()
         self.__main_task = None
+        self.__main_task_is_ready = asyncio.Event()
 
     @property
     def _stop_event(self):
         return self.__stop_event
 
-    def start(self):
+    def _main_task_is_ready_now(self):
+        """
+        subclass needs to call this once starting initializations are done
+        to signal that component is in running state
+        """
+        self.__main_task_is_ready.set()
+
+    async def start(self):
+        if self.__main_task is not None:
+            raise RuntimeError('already started')
         self.__main_task = asyncio.create_task(self._main_task())
+        await self.__main_task_is_ready.wait()
 
     def stop(self):
+        if self.__main_task is None:
+            raise RuntimeError('not started')
         self.__stop_event.set()
 
     async def wait_till_stops(self):
-        if self.__main_task is None:
-            return
+        await self.__stop_event.wait()
         return await self.__main_task
 
     def _main_task(self):

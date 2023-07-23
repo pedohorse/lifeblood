@@ -1,8 +1,8 @@
 import asyncio
 import aiofiles
-from enum import Enum
 import struct
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
+from .enums import TaskScheduleStatus, TaskExecutionStatus, TaskExecutionStatus, WorkerPingReply
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning
 from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
@@ -13,27 +13,6 @@ import os
 from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .worker import Worker
-
-
-class TaskScheduleStatus(Enum):
-    SUCCESS = 0
-    FAILED = 1
-    BUSY = 2
-    EMPTY = 3
-
-
-class TaskExecutionStatus(Enum):
-    FINISHED = 0
-    RUNNING = 1
-
-
-class WorkerPingReply(Enum):
-    IDLE = 0
-    BUSY = 1
-
-
-class AlreadyRunning(RuntimeError):
-    pass
 
 
 class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):

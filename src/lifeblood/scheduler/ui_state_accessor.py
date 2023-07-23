@@ -107,6 +107,7 @@ class UIStateAccessor(SchedulerComponentBase):
 
     async def main_task(self):
         self.__logger.info('ui state accessor started')
+        self._main_task_is_ready_now()
         await asyncio.gather(self.house_keeping(), self.process_event_queue())
         self.__logger.info('ui state accessor finished')
 

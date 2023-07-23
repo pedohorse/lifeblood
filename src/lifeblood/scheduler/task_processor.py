@@ -8,9 +8,9 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
-from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState
+from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
-from ..worker_task_protocol import WorkerTaskClient, TaskScheduleStatus
+from ..worker_task_protocol import WorkerTaskClient
 from ..invocationjob import InvocationJob
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
@@ -345,6 +345,7 @@ class TaskProcessor(SchedulerComponentBase):
         kick_wait_task = asyncio.create_task(self._poke_event.wait())
         gc_counter = 0
         # tm_counter = 0
+        self._main_task_is_ready_now()
         while not self._stop_event.is_set():
             data_access = self.scheduler.data_access
             gc_counter += 1
