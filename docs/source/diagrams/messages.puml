@@ -34,6 +34,9 @@ rectangle "net_messages"{
     --
     async create_receiving_task(address, callback)
   }
+  interface MessageClientFactory{
+    create_message_client(queue, session, *, ...)
+  }
   interface MessageSendStreamBase{
     async send_data_message(data, source, destination, session) -> Message
     async send_raw_message(message)
@@ -49,6 +52,10 @@ rectangle "net_messages"{
 
 'Message --|> IMessage
 
+MessageClientFactory --> MessageStreamFactory
+MessageClientFactory --> MessageQueue
+MessageClientFactory --> MessageClient
+
 MessageClient --> Message
 MessageClient --> MessageStreamFactory
 MessageClient --> MessageQueue
@@ -56,6 +63,7 @@ MessageClient --> MessageQueue
 
 MessageProcessor o--> MessageReceiverFactory
 MessageProcessor o--> MessageStreamFactory
+MessageProcessor o--> MessageClientFactory
 MessageProcessor o--> SessionPool
 MessageProcessor o--> MessageQueue
 MessageProcessor o--> "*" MessageClient
