@@ -4,7 +4,7 @@ import uuid
 from .queue import MessageQueue
 from .messages import Message
 from .interfaces import MessageReceiverFactory, MessageStreamFactory
-from .client import MessageClient
+from .client import MessageClient, MessageClientFactory, RawMessageClientFactory
 from .logging import get_logger
 from .address import AddressChain, DirectAddress
 from .enums import MessageType
@@ -16,7 +16,8 @@ from typing import Optional
 class MessageProcessorBase(ComponentBase):
     def __init__(self, listening_address: DirectAddress, *,
                  message_receiver_factory: MessageReceiverFactory,
-                 message_stream_factory: MessageStreamFactory):
+                 message_stream_factory: MessageStreamFactory,
+                 message_client_factory: MessageClientFactory = None):
         super().__init__()
         self.__message_queue = MessageQueue()
         self.__address = listening_address
@@ -25,8 +26,9 @@ class MessageProcessorBase(ComponentBase):
         self.__forwarded_messages_count = 0
         self.__message_receiver_factory = message_receiver_factory
         self.__message_stream_factory = message_stream_factory
+        self.__message_client_factory = message_client_factory or RawMessageClientFactory()
         # self.__socket_backlog = backlog or 4096
-        self._logger = get_logger('message_processor')
+        self._logger = get_logger(f'message_processor {type(self).__name__}')
 
     class _ClientContext:
         def __init__(self, host_address: AddressChain,
@@ -34,6 +36,7 @@ class MessageProcessorBase(ComponentBase):
                      message_queue: MessageQueue,
                      sessions_being_processed: dict,
                      message_stream_factory: MessageStreamFactory,
+                     message_client_factory: MessageClientFactory,
                      force_session: Optional[uuid.UUID] = None,
                      send_retry_attempts: int = 6):
             self.__destination = destination
@@ -41,6 +44,7 @@ class MessageProcessorBase(ComponentBase):
             self.__sessions_being_processed = sessions_being_processed
             self.__message_queue = message_queue
             self.__message_stream_factory = message_stream_factory
+            self.__message_client_factory = message_client_factory
             self.__address = host_address
             self.__session = None
             self.__initialized = False
@@ -61,11 +65,13 @@ class MessageProcessorBase(ComponentBase):
 
             self.__session = session
 
-            client = MessageClient(self.__message_queue, session,
-                                   source_address_chain=self.__address,
-                                   destination_address_chain=self.__destination,
-                                   message_stream_factory=self.__message_stream_factory,
-                                   send_retry_attempts=self.__send_retry_attempts)
+            client = self.__message_client_factory.create_message_client(
+                self.__message_queue, session,
+                source_address_chain=self.__address,
+                destination_address_chain=self.__destination,
+                message_stream_factory=self.__message_stream_factory,
+                send_retry_attempts=self.__send_retry_attempts
+            )
             self.__sessions_being_processed[session] = client
             return client
 
@@ -92,6 +98,7 @@ class MessageProcessorBase(ComponentBase):
                                                    self.__message_queue,
                                                    self.__sessions_being_processed,
                                                    self.__message_stream_factory,
+                                                   self.__message_client_factory,
                                                    force_session,
                                                    send_retry_attempts=send_retry_attempts)
 
@@ -127,9 +134,9 @@ class MessageProcessorBase(ComponentBase):
         self._logger.info('start serving messages')
         server = await self.__message_receiver_factory.create_receiver(self.__address, self.new_message_received)
         self._logger.debug('server started')
+        self._main_task_is_ready_now()
 
-        while not self._stop_event.is_set():
-            await asyncio.sleep(0.5)
+        await self._stop_event.wait()
 
         self._logger.info('message server stopping...')
         server.stop()

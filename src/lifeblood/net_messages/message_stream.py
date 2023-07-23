@@ -1,8 +1,9 @@
 import uuid
-from .exceptions import MessageSendingError, MessageReceivingError, MessageRoutingError
+from .exceptions import MessageSendingError, MessageReceivingError, MessageRoutingError, MessageTransferError
 from .messages import Message
 from .address import AddressChain, DirectAddress
 from .enums import MessageType
+from .defaults import default_stream_timeout
 
 from typing import Optional
 
@@ -11,9 +12,22 @@ class MessageSendStreamBase:
     """
     Represents a direct channel between source and destination
     """
-    def __init__(self, reply_address: DirectAddress, destination_address: DirectAddress):
+    def __init__(self, reply_address: DirectAddress, destination_address: DirectAddress, 
+                 stream_timeout: Optional[float] = default_stream_timeout,
+                 message_confirmation_timeout: Optional[float] = default_stream_timeout):
         self.__source = reply_address
         self.__destination = destination_address
+        self.__timeout = stream_timeout if stream_timeout and stream_timeout > 0 else None
+        self.__confirmation_timeout = message_confirmation_timeout
+
+    def _stream_timeout(self) -> Optional[float]:
+        return self.__timeout
+
+    def _confirmation_timeout(self) -> Optional[float]:
+        """
+        how long to wait from message sending till confirmation receiving
+        """
+        return self.__confirmation_timeout
 
     def reply_address(self) -> DirectAddress:
         return self.__source
@@ -24,6 +38,12 @@ class MessageSendStreamBase:
     async def _send_message_implementation(self, message: Message):
         """
         override this with actual message sending implementation
+        """
+        raise NotImplementedError()
+
+    async def _ack_message_implementation(self, message: Message):
+        """
+        implementation-specific ack received after message is sent
         """
         raise NotImplementedError()
 
@@ -39,6 +59,9 @@ class MessageSendStreamBase:
             raise MessageRoutingError('message source address must contain stream\'s source')
         try:
             await self._send_message_implementation(message)
+            await self._ack_message_implementation(message)
+        except MessageTransferError:
+            raise
         except Exception as e:
             raise MessageSendingError(wrapped_exception=e) from None
 
@@ -71,10 +94,14 @@ class MessageSendStreamBase:
 
 
 class MessageReceiveStreamBase:
-    def __init__(self, listening_address: DirectAddress, other_end_address: DirectAddress):
+    def __init__(self, listening_address: DirectAddress, other_end_address: DirectAddress, stream_timeout: Optional[float] = default_stream_timeout):
         self.__source = listening_address
         self.__destination = other_end_address
         self.__message_acked = True
+        self.__timeout = stream_timeout if stream_timeout and stream_timeout > 0 else None
+
+    def _stream_timeout(self) -> Optional[float]:
+        return self.__timeout
 
     def listening_address(self) -> DirectAddress:
         return self.__source
@@ -105,6 +132,8 @@ class MessageReceiveStreamBase:
             raise RuntimeError('previous message was not acknowledged')
         try:
             message = await self._receive_message_implementation()
+        except MessageTransferError:
+            raise
         except Exception as e:
             raise MessageReceivingError(wrapped_exception=e) from None
         else:

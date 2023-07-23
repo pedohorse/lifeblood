@@ -4,10 +4,12 @@ import logging
 from lifeblood.logging import get_logger
 from datetime import datetime
 from dataclasses import dataclass
-from ..exceptions import MessageSendingError
+from ..exceptions import MessageSendingError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 from ..stream_wrappers import MessageSendStream, MessageSendStreamBase
 from ..address import DirectAddress, AddressChain
+from ..defaults import default_stream_timeout
+from ..messages import Message
 
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -36,12 +38,33 @@ class ReusableMessageSendStream(MessageSendStream):
     """
 
     """
-    def __init__(self, pool_entry: ConnectionPoolEntry, *, reply_address: DirectAddress, destination_address: DirectAddress):
-        super().__init__(pool_entry.reader, pool_entry.writer, reply_address=reply_address, destination_address=destination_address)
+    def __init__(self,
+                 pool_entry: ConnectionPoolEntry,
+                 *,
+                 reply_address: DirectAddress,
+                 destination_address: DirectAddress,
+                 stream_timeout: float = default_stream_timeout,
+                 confirmation_timeout: float = default_stream_timeout):
+        super().__init__(pool_entry.reader,
+                         pool_entry.writer,
+                         reply_address=reply_address,
+                         destination_address=destination_address,
+                         stream_timeout=stream_timeout,
+                         confirmation_timeout=confirmation_timeout)
         self.__pool_entry = pool_entry
         self.__closed = False
         self.__pool_entry.users_count += 1
         self.__do_actually_wait_closed = False
+
+    async def send_raw_message(self, message: Message):
+        try:
+            return await super().send_raw_message(message)
+        except MessageTransferTimeoutError:
+            # we cannot be sure some crap won't arrive after timeout,
+            # in that case future uses of this connection will be at risk of getting it,
+            # so it's safer to mark it for closure
+            self.__pool_entry.close_when_user_count_zero = True
+            raise
 
     def close(self):
         if self.__closed:
@@ -67,12 +90,16 @@ class ReusableMessageSendStream(MessageSendStream):
 class TcpMessageStreamPooledFactory(MessageStreamFactory):
     _logger: Optional[logging.Logger] = None
 
-    def __init__(self, pooled_connection_life: int = 0, connection_open_function: Optional[Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]]] = None):
+    def __init__(self,
+                 pooled_connection_life: int = 0,
+                 connection_open_function: Optional[Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]]] = None,
+                 timeout: float = default_stream_timeout):
         self.__pooled_connection_life = pooled_connection_life
         self.__pool: Dict[Tuple[str, int], List[ConnectionPoolEntry]] = {}
         self.__connection_open_func: Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]] = connection_open_function or _initialize_connection
         self.__open_connection_calls_count = 0
         self.__pool_closed = asyncio.Event()
+        self.__timeout = timeout
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
@@ -137,7 +164,11 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         port = int(sport)
         entry = self._get_cached_entry(host, port)
         if entry is not None:  # test entry with ping message
-            stream = ReusableMessageSendStream(entry, reply_address=source, destination_address=destination)
+            stream = ReusableMessageSendStream(entry,
+                                               reply_address=source,
+                                               destination_address=destination,
+                                               stream_timeout=self.__timeout,
+                                               confirmation_timeout=self.__timeout)
             try:
                 await stream.send_ping()
             except MessageSendingError as e:
@@ -159,7 +190,11 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         # Warning: be sure there is no possibility of prune running (no awaits)
         #  between here (where use_count incs)
         #  and where it was fetched/created. We don't want to lose connection we've just got
-        stream = ReusableMessageSendStream(entry, reply_address=source, destination_address=destination)
+        stream = ReusableMessageSendStream(entry,
+                                           reply_address=source,
+                                           destination_address=destination,
+                                           stream_timeout=self.__timeout,
+                                           confirmation_timeout=self.__timeout)
         await self.prune()
         return stream
 
@@ -185,6 +220,9 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
 
 
 class TcpMessageStreamFactory(MessageStreamFactory):
+    def __init__(self, *, timeout: float = default_stream_timeout):
+        self.__timeout = timeout
+
     async def open_sending_stream(self, destination: DirectAddress, source: DirectAddress) -> MessageSendStreamBase:
         """
         address is expected to be in form of "1.2.3.4:1313|2.3.4.5:2424"...
@@ -193,4 +231,6 @@ class TcpMessageStreamFactory(MessageStreamFactory):
 
         return MessageSendStream(reader, writer,
                                  reply_address=source,
-                                 destination_address=destination)
+                                 destination_address=destination,
+                                 stream_timeout=self.__timeout,
+                                 confirmation_timeout=self.__timeout)

@@ -24,5 +24,13 @@ class MessageReceivingError(MessageTransferError):
     pass
 
 
+class MessageTransferTimeoutError(MessageTransferError):
+    pass
+
+
+class NoMessageError(MessageTransferTimeoutError):
+    pass
+
+
 class MessageRoutingError(RuntimeError):
     pass

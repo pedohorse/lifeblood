@@ -9,13 +9,13 @@ from .tcp_message_stream_factory import TcpMessageStreamFactory, TcpMessageStrea
 from typing import Tuple
 
 
-class MessageProcessor(MessageProcessorBase):
-    def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
+class TcpMessageProcessor(MessageProcessorBase):
+    def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300, stream_timeout: float = 90):
         self.__pooled_factory = None
         if connection_pool_cache_time <= 0:
-            stream_factory = TcpMessageStreamFactory()
+            stream_factory = TcpMessageStreamFactory(timeout=stream_timeout)
         else:
-            stream_factory = TcpMessageStreamPooledFactory(connection_pool_cache_time)
+            stream_factory = TcpMessageStreamPooledFactory(connection_pool_cache_time, timeout=stream_timeout)
             self.__pooled_factory = stream_factory
         super().__init__(DirectAddress(':'.join(str(x) for x in listening_address)),
                          message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
@@ -32,6 +32,6 @@ class MessageProcessor(MessageProcessorBase):
             await self.__pooled_factory.wait_pool_closed()
 
 
-class MessageProxyProcessor(MessageProcessor):
+class TcpMessageProxyProcessor(TcpMessageProcessor):
     async def process_message(self, message: Message, client: MessageClient):
         self._logger.warning('received a message addressed to me, though i\'m just a proxy. ignoring')

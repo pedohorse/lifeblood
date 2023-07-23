@@ -6,7 +6,8 @@ from .messages import MessageInterface, Message
 from .message_stream import MessageSendStreamBase, MessageReceiveStreamBase
 from .enums import MessageType
 from .address import AddressChain, DirectAddress
-from .exceptions import MessageReceivingError, MessageSendingError
+from .exceptions import MessageReceivingError, MessageSendingError, MessageTransferTimeoutError, NoMessageError
+from .defaults import default_stream_timeout
 
 from typing import Optional, Tuple, Union
 
@@ -28,7 +29,11 @@ def _write_header(stream: asyncio.StreamWriter, data_size: int, message_type: Me
         stream.write(session.bytes)
 
 
-async def _read_header(stream: asyncio.StreamReader) -> Tuple[int, MessageType, AddressChain, AddressChain, Optional[uuid.UUID]]:
+async def _read_header(stream: asyncio.StreamReader, timeout: float) -> Tuple[int, MessageType, AddressChain, AddressChain, Optional[uuid.UUID]]:
+    return await asyncio.wait_for(__read_header(stream), timeout=timeout)
+
+
+async def __read_header(stream: asyncio.StreamReader) -> Tuple[int, MessageType, AddressChain, AddressChain, Optional[uuid.UUID]]:
     """
     returns: (data_size, destination, session)
     """
@@ -147,7 +152,7 @@ class WriterStreamRawMessageWrapper(MessageInterface):
 
 
 class ReaderStreamRawMessageWrapper(MessageInterface):
-    def __init__(self, reader: asyncio.StreamReader, session: Optional[uuid.UUID] = None):
+    def __init__(self, reader: asyncio.StreamReader, session: Optional[uuid.UUID] = None, timeout: Optional[float] = None):
         self.__reader = reader
         self.__message_body_size: int = 0
         self.__already_read = 0
@@ -157,6 +162,10 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         self.__initialized = False
         self.__buffer = BytesIO()
         self.__session = session
+        self.__timeout = timeout
+
+    def total_read_bytes(self) -> int:
+        return self.__already_read
 
     def initialized(self):
         return self.__initialized
@@ -198,7 +207,7 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         if self.__initialized:
             raise RuntimeError('message was already initialized')
         self.__initialized = True
-        self.__message_body_size, self.__message_type, self.__source, self.__destination, session = await _read_header(self.__reader)
+        self.__message_body_size, self.__message_type, self.__source, self.__destination, session = await _read_header(self.__reader, timeout=self.__timeout)
         if self.__session is not None:  # if we expect specific session
             if session != self.__session:
                 raise RuntimeError('received message has wrong session')
@@ -212,8 +221,8 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
             return
         elif size == 0:
             return b''
+        data = await asyncio.wait_for(self.__reader.readexactly(size), timeout=self.__timeout)
         self.__already_read += size
-        data = await self.__reader.readexactly(size)
         self.__buffer.write(data)
         return data
 
@@ -227,8 +236,15 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
 
 
 class MessageSendStream(MessageSendStreamBase):
-    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, *, reply_address: DirectAddress, destination_address: DirectAddress):
-        super().__init__(reply_address, destination_address)
+    def __init__(self,
+                 reader_stream: asyncio.StreamReader,
+                 writer_stream: asyncio.StreamWriter,
+                 *,
+                 reply_address: DirectAddress,
+                 destination_address: DirectAddress,
+                 stream_timeout: float = default_stream_timeout,
+                 confirmation_timeout: float = default_stream_timeout):
+        super().__init__(reply_address, destination_address, stream_timeout=stream_timeout, message_confirmation_timeout=confirmation_timeout)
         self.__reader = reader_stream
         self.__writer = writer_stream
 
@@ -241,8 +257,14 @@ class MessageSendStream(MessageSendStreamBase):
         """
         await _serialize_to_stream_writer(message, self.__writer)
         await self.__writer.drain()
-        if not struct.unpack('?', await self.__reader.readexactly(1))[0]:
-            raise MessageSendingError('message delivery failed', wrapped_exception=None)
+
+    async def _ack_message_implementation(self, message: Message):
+        try:
+            if not struct.unpack('?', await asyncio.wait_for(self.__reader.readexactly(1),
+                                                             timeout=self._confirmation_timeout()))[0]:
+                raise MessageSendingError('message delivery failed', wrapped_exception=None)
+        except asyncio.TimeoutError as e:
+            raise MessageTransferTimeoutError(wrapped_exception=e) from None
 
     def close(self):
         if not self.__writer.is_closing():
@@ -253,8 +275,8 @@ class MessageSendStream(MessageSendStreamBase):
 
 
 class MessageReceiveStream(MessageReceiveStreamBase):
-    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, *, this_address: DirectAddress, other_end_address: DirectAddress):
-        super().__init__(this_address, other_end_address)
+    def __init__(self, reader_stream: asyncio.StreamReader, writer_stream: asyncio.StreamWriter, *, this_address: DirectAddress, other_end_address: DirectAddress, stream_timeout: float = default_stream_timeout):
+        super().__init__(this_address, other_end_address, stream_timeout=stream_timeout)
         self.__reader = reader_stream
         self.__writer = writer_stream
 
@@ -262,15 +284,22 @@ class MessageReceiveStream(MessageReceiveStreamBase):
     #     return WriterStreamRawMessageWrapper(self.__writer, source=self.reply_address(), destination=destination, session=session)
 
     def __start_receiving_message(self):
-        return ReaderStreamRawMessageWrapper(self.__reader)
+        return ReaderStreamRawMessageWrapper(self.__reader, timeout=self._stream_timeout())
 
     async def _receive_message_implementation(self) -> Message:
         """
         override this with actual message receiving implementation
         """
-        async with self.__start_receiving_message() as stream:
-            pass  # will receive all
-        return stream.to_message()
+        stream = None
+        try:
+            async with self.__start_receiving_message() as stream:
+                pass  # will receive all
+            return stream.to_message()
+        except asyncio.TimeoutError as e:
+            if stream is not None:
+                if stream.total_read_bytes() == 0:
+                    raise NoMessageError(wrapped_exception=e) from None
+            raise MessageTransferTimeoutError(wrapped_exception=e) from None
 
     async def _acknowledge_message_implementation(self, status: bool):
         self.__writer.write(struct.pack('?', status))
