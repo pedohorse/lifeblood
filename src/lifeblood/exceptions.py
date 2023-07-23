@@ -11,6 +11,10 @@ class NodeNotReadyToProcess(Exception):
     pass
 
 
+class AlreadyRunning(RuntimeError):
+    pass
+
+
 class NotEnoughResources(RuntimeError):
     pass
 
