@@ -17,3 +17,7 @@ def worker_pool_port() -> int:
 
 def worker_start_port() -> int:
     return 6969
+
+
+def message_proxy_port() -> int:
+    return 22182
