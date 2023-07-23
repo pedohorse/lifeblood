@@ -1,13 +1,14 @@
 import asyncio
+import random
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.logging import get_logger, set_default_loglevel
 from lifeblood.nethelpers import get_localhost
 from lifeblood.net_messages.address import AddressChain, DirectAddress
 from lifeblood.net_messages.messages import Message
 from lifeblood.net_messages.client import MessageClient
-from lifeblood.net_messages.exceptions import MessageSendingError
+from lifeblood.net_messages.exceptions import MessageSendingError, MessageTransferTimeoutError
 
-from lifeblood.net_messages.tcp_impl.tcp_message_processor import MessageProcessor, MessageProxyProcessor
+from lifeblood.net_messages.tcp_impl.tcp_message_processor import TcpMessageProcessor, TcpMessageProxyProcessor
 
 from typing import Callable, List, Type, Awaitable
 
@@ -15,14 +16,22 @@ set_default_loglevel('DEBUG')
 logger = get_logger('message_test')
 
 
-class TestReceiver(MessageProcessor):
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None):
-        super().__init__((listening_host, listening_port), backlog=backlog)
+class TestReceiver(TcpMessageProcessor):
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None):
+        super().__init__((listening_host, listening_port), backlog=backlog, stream_timeout=stream_timeout)
         self.messages_received: List[Message] = []
+        self.__artificial_delay: float = artificial_delay
 
     async def process_message(self, message: Message, client: MessageClient):
         self._logger.debug(f'got message {message}')
         self.messages_received.append(message)
+
+    async def new_message_received(self, message: Message) -> bool:
+        if self.__artificial_delay > 0:
+            logger.warning(f'artificially waiting for {self.__artificial_delay}')
+            await asyncio.sleep(self.__artificial_delay)
+            logger.warning(f'artificial wait over')
+        return await super().new_message_received(message)
 
 
 class DummyReceiver(TestReceiver):
@@ -30,20 +39,24 @@ class DummyReceiver(TestReceiver):
 
 
 class DummyReceiverWithReply(TestReceiver):
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None):
-        super().__init__(listening_host=listening_host, listening_port=listening_port, backlog=backlog)
+    _counter = 0
+
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None):
+        super().__init__(listening_host=listening_host, listening_port=listening_port, backlog=backlog, artificial_delay=artificial_delay, stream_timeout=stream_timeout)
+        self.__my_id = self._counter
+        DummyReceiverWithReply._counter += 1
 
     async def process_message(self, message: Message, client: MessageClient):
         try:
             await super().process_message(message, client)
             data = message.message_body()
-            self._logger.debug(f'p({message.message_session()}): got message {message}, {bytes(data)}')
+            self._logger.debug(f'p({self.__my_id}:{message.message_session()}): got message {message}, {bytes(data)}')
             await client.send_message(bytes(reversed(data)))
-            self._logger.debug(f'p({message.message_session()}): reply sent')
+            self._logger.debug(f'p({self.__my_id}:{message.message_session()}): reply sent')
             msg2 = await client.receive_message()
-            self._logger.debug(f'p({message.message_session()}): got message {msg2}, {bytes(data)}')
+            self._logger.debug(f'p({self.__my_id}:{message.message_session()}): got message {msg2}, {bytes(data)}')
             await client.send_message(b'!!!' + bytes(reversed(msg2.message_body())))
-            self._logger.debug(f'p({message.message_session()}): reply sent')
+            self._logger.debug(f'p({self.__my_id}:{message.message_session()}): reply sent')
         except:
             self._logger.exception('whoops!')
             raise
@@ -67,7 +80,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
         await self._direct_comm_helper(DummyReceiver, _logic)
 
     async def test_fail_stream(self):
-        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[MessageProxyProcessor]):
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
             addr_to_nowhere = AddressChain.join_address(tuple(p.listening_address() for p in proxies) + (DirectAddress('127.11.22.33:6666'),))  # assume that address does not exist
             with proc1.message_client(addr_to_nowhere, send_retry_attempts=3) as client:
                 good = False
@@ -89,6 +102,50 @@ class TestIntegration(IsolatedAsyncioTestCase):
         await asyncio.sleep(0.5)
         await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=0)
         print('0 hops fine')
+
+    async def test_timeout(self):
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
+            good = False
+            with proc1.message_client(AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()]), send_retry_attempts=3) as client:  # type: MessageClient
+                client.set_base_attempt_timeout(0.6)
+                try:
+                    await client.send_message(b'foofoobarbar')
+                except MessageTransferTimeoutError:
+                    good = True
+
+            logger.info('--- sleeping waiting ---')
+            await asyncio.sleep(3)
+
+            self.assertTrue(good, "exception was not raised")
+
+        logger.info('=== testing with 0 hops ===')
+        await self._direct_comm_helper(lambda h, p: DummyReceiver(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=0)
+        logger.info('=== testing with 2 hops ===')
+        await self._direct_comm_helper(lambda h, p: DummyReceiver(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=2)
+
+    async def test_timeout_with_lost_reply(self):
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
+            good = False
+            with proc1.message_client(AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()]), send_retry_attempts=3) as client:  # type: MessageClient
+                client.set_base_attempt_timeout(0.6)
+                try:
+                    await client.send_message(b'foofoobarbar')
+                except MessageTransferTimeoutError:
+                    good = True
+                else:  # this should NEVER happen if test succeeds
+                    reply = await client.receive_message()
+                    await client.send_message(b'poweroverwhelming')
+                    reply = await client.receive_message()
+
+            logger.info('--- sleeping waiting ---')
+            await asyncio.sleep(3)
+
+            self.assertTrue(good, "exception was not raised")
+
+        logger.info('=== testing with 0 hops ===')
+        await self._direct_comm_helper(lambda h, p: DummyReceiverWithReply(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=0)
+        #logger.info('=== testing with 2 hops ===')
+        #await self._direct_comm_helper(lambda h, p: DummyReceiverWithReply(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=2)
 
     async def test_direct_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
@@ -171,7 +228,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
     # proxy
 
     async def test_proxy(self):
-        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[MessageProxyProcessor]):
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
             address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
             logger.info(f'sending message to address: "{address}"')
             with proc1.message_client(address) as client:  # type: MessageClient
@@ -228,21 +285,25 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
         await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=3)
 
-    async def _direct_comm_helper(self, proc_class: Type[TestReceiver], logic: Callable[[TestReceiver, TestReceiver, List[MessageProxyProcessor]], Awaitable[None]], num_hops: int = 0):
+    async def _direct_comm_helper(self,
+                                  proc_class: Callable[[str, int], TestReceiver],
+                                  logic: Callable[[TestReceiver, TestReceiver, List[TcpMessageProxyProcessor]], Awaitable[None]],
+                                  num_hops: int = 0,
+                                  proxy_timeout: float = 30):
         addr1 = (get_localhost(), 23456)
         addr2 = (get_localhost(), 23457)
         proc1 = proc_class(*addr1)
         proc2 = proc_class(*addr2)
         proxies = []
         for i in range(num_hops):
-            proxy = MessageProxyProcessor((get_localhost(), 23458 + i))
+            proxy = TcpMessageProxyProcessor((get_localhost(), 23458 + i), stream_timeout=proxy_timeout)
             proxies.append(proxy)
 
         logger.info('starting up')
-        proc1.start()
-        proc2.start()
+        await proc1.start()
+        await proc2.start()
         for proxy in proxies:
-            proxy.start()
+            await proxy.start()
         await asyncio.sleep(1)
         logger.info('assume all started')
         try:
