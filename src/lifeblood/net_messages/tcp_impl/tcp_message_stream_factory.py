@@ -4,7 +4,7 @@ import logging
 from lifeblood.logging import get_logger
 from datetime import datetime
 from dataclasses import dataclass
-from ..exceptions import MessageSendingError, MessageTransferTimeoutError
+from ..exceptions import MessageTransferError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 from ..stream_wrappers import MessageSendStream, MessageSendStreamBase
 from ..address import DirectAddress, AddressChain
@@ -56,9 +56,9 @@ class ReusableMessageSendStream(MessageSendStream):
         self.__pool_entry.users_count += 1
         self.__do_actually_wait_closed = False
 
-    async def send_raw_message(self, message: Message):
+    async def send_raw_message(self, message: Message, *, message_delivery_timeout_override: Optional[float] = ...):
         try:
-            return await super().send_raw_message(message)
+            return await super().send_raw_message(message, message_delivery_timeout_override=message_delivery_timeout_override)
         except MessageTransferTimeoutError:
             # we cannot be sure some crap won't arrive after timeout,
             # in that case future uses of this connection will be at risk of getting it,
@@ -171,10 +171,11 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
                                                confirmation_timeout=self.__timeout)
             try:
                 await stream.send_ping()
-            except MessageSendingError as e:
+            except MessageTransferError as e:
                 self._logger.debug('ping failed due to %s', e)
                 entry.bad = True
                 entry = None
+                stream.close()
 
         if entry is None:
             key = (host, port)

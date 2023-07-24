@@ -251,17 +251,17 @@ class MessageSendStream(MessageSendStreamBase):
     # def start_new_message(self, destination: AddressChain, session: uuid.UUID) -> WriterStreamRawMessageWrapper:
     #     return WriterStreamRawMessageWrapper(self.__writer, source=self.reply_address(), destination=destination, session=session)
 
-    async def _send_message_implementation(self, message: Message):
+    async def _send_message_implementation(self, message: Message, timeout: Optional[float]):
         """
         override this with actual message sending implementation
         """
         await _serialize_to_stream_writer(message, self.__writer)
-        await self.__writer.drain()
+        await self.__writer.drain()  # TODO: timeout not implemented
 
-    async def _ack_message_implementation(self, message: Message):
+    async def _ack_message_implementation(self, message: Message, timeout: Optional[float]):
         try:
             if not struct.unpack('?', await asyncio.wait_for(self.__reader.readexactly(1),
-                                                             timeout=self._confirmation_timeout()))[0]:
+                                                             timeout=timeout))[0]:
                 raise MessageSendingError('message delivery failed', wrapped_exception=None)
         except asyncio.TimeoutError as e:
             raise MessageTransferTimeoutError(wrapped_exception=e) from None

@@ -19,6 +19,7 @@ class MessageSendStreamBase:
         self.__destination = destination_address
         self.__timeout = stream_timeout if stream_timeout and stream_timeout > 0 else None
         self.__confirmation_timeout = message_confirmation_timeout
+        self.__ping_timeout = message_confirmation_timeout
 
     def _stream_timeout(self) -> Optional[float]:
         return self.__timeout
@@ -35,19 +36,23 @@ class MessageSendStreamBase:
     def destination_address(self) -> DirectAddress:
         return self.__destination
 
-    async def _send_message_implementation(self, message: Message):
+    async def _send_message_implementation(self, message: Message, timeout: Optional[float]):
         """
         override this with actual message sending implementation
+
+        on timeout should raise MessageTransferTimeoutError
         """
         raise NotImplementedError()
 
-    async def _ack_message_implementation(self, message: Message):
+    async def _ack_message_implementation(self, message: Message, timeout: Optional[float]):
         """
         implementation-specific ack received after message is sent
+
+        on timeout should raise MessageTransferTimeoutError
         """
         raise NotImplementedError()
 
-    async def send_raw_message(self, message: Message):
+    async def send_raw_message(self, message: Message, *, message_delivery_timeout_override: Optional[float] = ...):
         """
         send message as is
 
@@ -58,15 +63,16 @@ class MessageSendStreamBase:
         if message.message_source().split_address()[0] != self.reply_address():
             raise MessageRoutingError('message source address must contain stream\'s source')
         try:
-            await self._send_message_implementation(message)
-            await self._ack_message_implementation(message)
+            await self._send_message_implementation(message, self._stream_timeout())
+            await self._ack_message_implementation(message, self._confirmation_timeout() if message_delivery_timeout_override is ... else message_delivery_timeout_override)
         except MessageTransferError:
             raise
         except Exception as e:
             raise MessageSendingError(wrapped_exception=e) from None
 
     async def send_ping(self):
-        await self.send_raw_message(Message(b'', MessageType.SYSTEM_PING, self.__source, self.__destination, None))
+        await self.send_raw_message(Message(b'', MessageType.SYSTEM_PING, self.__source, self.__destination, None),
+                                    message_delivery_timeout_override=self.__ping_timeout)
 
     async def send_data_message(self, data: bytes, destination: AddressChain, *, session: uuid.UUID, source: Optional[AddressChain] = None) -> Message:
         """
