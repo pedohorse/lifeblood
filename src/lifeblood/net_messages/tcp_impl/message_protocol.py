@@ -14,10 +14,10 @@ from typing import Callable, Awaitable, Tuple
 
 
 class IProtocolInstanceCounter:
-    def _protocol_inc_count(self):
+    def _protocol_inc_count(self, instance):
         raise NotImplementedError()
 
-    def _protocol_dec_count(self):
+    def _protocol_dec_count(self, instance):
         raise NotImplementedError()
 
     def _allowed_new_instances(self) -> bool:
@@ -35,7 +35,11 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
         self.__listening_address = reply_address
         self.__saved_references = []
         self.__protocol_instance_counter = instance_counter
+        self.__needs_to_stop = asyncio.Event()
         super(MessageProtocol, self).__init__(self.__reader, self.connection_callback)
+
+    def stop(self):
+        self.__needs_to_stop.set()
 
     @staticmethod
     async def read_string(reader: asyncio.StreamReader):
@@ -54,7 +58,9 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
             await writer.wait_closed()
             return
 
-        self.__protocol_instance_counter._protocol_inc_count()
+        stop_waiter = asyncio.create_task(self.__needs_to_stop.wait())
+
+        self.__protocol_instance_counter._protocol_inc_count(self)
         try:
             # first what's sent is return address
             try:
@@ -66,7 +72,13 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
 
                 while not reader.at_eof():
                     try:
-                        message = await message_stream.receive_data_message()
+                        message_waiter = asyncio.create_task(message_stream.receive_data_message())
+                        done, pending = await asyncio.wait((message_waiter, stop_waiter), return_when=asyncio.FIRST_COMPLETED)
+                        if stop_waiter in done:
+                            self.__logger.debug('explicitly asked to stop')
+                            message_waiter.cancel()
+                            break
+                        message = await message_waiter
                     except NoMessageError:  # either reader is closed, or chain broke, so timeout happened
                         continue
                     except MessageTransferTimeoutError:  # partial message received. either reader is closed, or chain broke, so timeout happened
@@ -102,4 +114,4 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
                 # according to the note in the beginning of the function - now reference can be cleared
                 self.__saved_references.remove(asyncio.current_task())
         finally:
-            self.__protocol_instance_counter._protocol_dec_count()
+            self.__protocol_instance_counter._protocol_dec_count(self)

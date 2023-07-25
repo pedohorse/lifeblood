@@ -13,10 +13,10 @@ from lifeblood.net_messages.address import DirectAddress
 
 
 class TestProtocolInstanceCounter(IProtocolInstanceCounter):
-    def _protocol_inc_count(self):
+    def _protocol_inc_count(self, instance):
         pass
 
-    def _protocol_dec_count(self):
+    def _protocol_dec_count(self, instance):
         pass
 
     def _allowed_new_instances(self):

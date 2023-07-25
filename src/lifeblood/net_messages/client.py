@@ -48,7 +48,10 @@ class MessageClient:
         for attempt in range(self.__attempts):
             stream = None
             try:
-                stream = await self.__message_stream_factory.open_sending_stream(self.__destination[0], self.__source[0])
+                try:
+                    stream = await self.__message_stream_factory.open_sending_stream(self.__destination[0], self.__source[0])
+                except OSError as e:
+                    raise MessageSendingError(wrapped_exception=e) from None
                 message = await stream.send_data_message(data, self.__destination_str, source=self.__source_str, session=self.__session)
                 self.__last_sent_message = message
                 return message
