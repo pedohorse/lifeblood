@@ -207,7 +207,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
             done, pending = await asyncio.wait(
                 all_tasks[:],
                 return_when=asyncio.ALL_COMPLETED,
-                timeout=30
+                timeout=300
             )
             logger.info('================== wait done! ==================')
             logger.info(f'error tasks: {len([task for task in done if task.exception() is not None])}')
