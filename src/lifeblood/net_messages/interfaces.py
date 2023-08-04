@@ -6,7 +6,7 @@ from typing import Callable, Awaitable
 
 
 class MessageReceiverFactory:
-    async def create_receiver(self, address: str, message_callback: Callable[[Message], Awaitable[bool]]) -> "MessageReceiver":
+    async def create_receiver(self, address: DirectAddress, message_callback: Callable[[Message], Awaitable[bool]]) -> "MessageReceiver":
         raise NotImplementedError()
 
 
