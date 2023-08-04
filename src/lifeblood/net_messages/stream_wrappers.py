@@ -299,7 +299,7 @@ class MessageReceiveStream(MessageReceiveStreamBase):
             if stream is not None:
                 if stream.total_read_bytes() == 0:
                     raise NoMessageError(wrapped_exception=e) from None
-            raise MessageTransferTimeoutError(wrapped_exception=e) from None
+            raise MessageTransferTimeoutError(f'read {stream.total_read_bytes()}: {stream.message_body().decode("latin1")}', wrapped_exception=e) from None
 
     async def _acknowledge_message_implementation(self, status: bool):
         self.__writer.write(struct.pack('?', status))
