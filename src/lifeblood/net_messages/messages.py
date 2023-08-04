@@ -36,8 +36,15 @@ class Message(MessageInterface):
         self.__message_type = message_type
 
     @classmethod
-    def copy_from(cls, another_message: "Message"):
+    def copy(cls, another_message: "Message"):
         return cls(another_message.__data, another_message.__message_type, another_message.__source, another_message.__destination, another_message.__session)
+
+    def copy_from(self, another_message: "Message"):
+        self.__data = another_message.__data
+        self.__destination = another_message.__destination
+        self.__source = another_message.__source
+        self.__session = another_message.__session
+        self.__message_type = another_message.__message_type
 
     def message_size(self) -> int:
         return len(self.__data)
