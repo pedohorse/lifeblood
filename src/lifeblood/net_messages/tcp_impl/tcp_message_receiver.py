@@ -3,6 +3,7 @@ from .message_protocol import MessageProtocol, IProtocolInstanceCounter
 from ..interfaces import MessageReceiver, MessageStreamFactory
 from ..messages import Message
 from ..address import DirectAddress
+from ..logging import get_logger
 
 from typing import Awaitable, Callable, List, Tuple
 
@@ -11,7 +12,7 @@ class TcpMessageReceiver(MessageReceiver, IProtocolInstanceCounter):
     def __init__(self, address: Tuple[str, int],
                  message_received_callback: Callable[[Message], Awaitable[bool]],
                  *, socket_backlog=4096):
-        super().__init__(DirectAddress(address))
+        super().__init__(DirectAddress.from_host_port(*address))
         self.__address = address
         self.__socket_backlog = socket_backlog
         self.__message_received_callback = message_received_callback
@@ -20,6 +21,7 @@ class TcpMessageReceiver(MessageReceiver, IProtocolInstanceCounter):
         self.__protocol_instance_stash: List[MessageProtocol] = []
         self.__no_more_instances = asyncio.Event()
         self.__no_more_instances.set()
+        self.__logger = get_logger(f'{self.__class__.__name__}')
 
     def _protocol_inc_count(self, instance):
         if self.__active_protocol_instances_count == 0:
@@ -47,10 +49,10 @@ class TcpMessageReceiver(MessageReceiver, IProtocolInstanceCounter):
                                                                      backlog=self.__socket_backlog)
 
     def stop(self):
+        self.__logger.debug('stopping tcp message receiver')
         self.__server.close()
         for instance in self.__protocol_instance_stash:
             instance.stop()
-
 
     async def wait_till_stopped(self):
         await self.__server.wait_closed()
