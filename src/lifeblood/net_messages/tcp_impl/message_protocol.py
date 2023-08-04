@@ -7,7 +7,7 @@ from ..stream_wrappers import MessageReceiveStream
 from ..messages import Message
 from ..queue import MessageQueue
 from ..address import DirectAddress
-from ..exceptions import MessageReceivingError, NoMessageError, MessageTransferTimeoutError
+from ..exceptions import MessageReceivingError, NoMessageError, MessageTransferError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 
 from typing import Callable, Awaitable, Tuple
@@ -62,6 +62,8 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
 
         self.__protocol_instance_counter._protocol_inc_count(self)
         try:
+            message_stream = None
+            potentially_pending_tasks = []
             # first what's sent is return address
             try:
                 other_stream_source = await self.read_string(reader)
@@ -73,23 +75,28 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
                 while not reader.at_eof():
                     try:
                         message_waiter = asyncio.create_task(message_stream.receive_data_message())
-                        done, pending = await asyncio.wait((message_waiter, stop_waiter), return_when=asyncio.FIRST_COMPLETED)
+                        potentially_pending_tasks = [message_waiter, stop_waiter]
+                        done, pending = await asyncio.wait(potentially_pending_tasks, return_when=asyncio.FIRST_COMPLETED)
                         if stop_waiter in done:
                             self.__logger.debug('explicitly asked to stop')
                             message_waiter.cancel()
+                            stop_waiter = None
                             break
                         message = await message_waiter
                     except NoMessageError:  # either reader is closed, or chain broke, so timeout happened
                         continue
-                    except MessageTransferTimeoutError:  # partial message received. either reader is closed, or chain broke, so timeout happened
-                        self.__logger.warning('partial message received, discarding, ignoring')
-                        continue
+                    except MessageTransferTimeoutError as e:  # partial message received. either reader is closed, or chain broke, so timeout happened
+                        self.__logger.warning(f'partial message received, discarding, ignoring ({str(e)})')
+                        # we cannot trust this stream anymore,
+                        # next attempted read will most likely be some partial crap too
+                        break
+
                     success = False
                     try:
                         success = await self.__callback(message)
                     finally:
                         await message_stream.acknowledge_received_message(success)
-            except MessageReceivingError as mre:
+            except MessageTransferError as mre:
                 e = mre.wrapped_exception()
                 if isinstance(e, asyncio.exceptions.IncompleteReadError):
                     if len(e.partial) == 0:
@@ -99,19 +106,34 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
                 elif isinstance(e, asyncio.exceptions.TimeoutError):
                     self.__logger.warning(f'connection timeout happened')
                 elif isinstance(e, ConnectionResetError):
-                    self.__logger.exception('connection was reset. disconnected %s', e)
+                    self.__logger.error('connection was reset. disconnected %s', e)
                 elif isinstance(e, ConnectionError):
-                    self.__logger.exception('connection error. disconnected %s', e)
+                    self.__logger.error('connection error. disconnected %s', e)
             except Exception as e:
                 self.__logger.exception('unknown error. disconnected %s', e)
-                raise
+                raise  # TODO: why raise if noone is catching?
             finally:
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception as e:
-                    self.__logger.warning(f'failed to close stream: {str(e)}')
-                # according to the note in the beginning of the function - now reference can be cleared
-                self.__saved_references.remove(asyncio.current_task())
+                # cleanup pending tasks
+                for task in potentially_pending_tasks:
+                    if not task.done():
+                        task.cancel()
+
+                if message_stream is not None:
+                    message_stream.close()
+                    try:
+                        await message_stream.wait_closed()
+                    except Exception as e:
+                        self.__logger.warning(f'failed to close stream: {str(e)}')
+
+                # and just in case:
+                if not writer.is_closing():
+                    self.__logger.warning('stream did not close underlying writer, attempting to close')
+                    writer.close()
+                    try:
+                        await writer.wait_closed()
+                    except Exception as e:
+                        self.__logger.warning(f'failed to close stream: {str(e)}')
         finally:
             self.__protocol_instance_counter._protocol_dec_count(self)
+            # according to the note in the beginning of the function - now reference can be cleared
+            self.__saved_references.remove(asyncio.current_task())
