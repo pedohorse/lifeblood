@@ -82,7 +82,9 @@ class MessageSendStreamBase:
         :raises MessageRoutingError: if destination does not contain this stream's destination
         """
         source = source or self.reply_address()
-        await self.send_raw_message(Message(data, MessageType.DEFAULT_MESSAGE, source, destination, session))
+        message = Message(data, MessageType.DEFAULT_MESSAGE, source, destination, session)
+        await self.send_raw_message(message)
+        return message
 
     def close(self):
         """
@@ -118,12 +120,19 @@ class MessageReceiveStreamBase:
     async def _receive_message_implementation(self) -> Message:
         """
         override this with actual message receiving implementation
+
+        other implementation-specific exceptions will be wrapped into MessageReceivingError by receive_data_message
+
+        :raises NoMessage: special case of timeout error when no data was read
+        :raises MessageTransferTimeoutError: timeout error, when partial data was read
         """
         raise NotImplementedError()
 
     async def _acknowledge_message_implementation(self, status: bool):
         """
         override this with actual message acknowledgement implementation
+
+        implementation-specific exceptions will be wrapped into MessageReceivingError by acknowledge_received_message
         """
         raise NotImplementedError()
 
@@ -149,7 +158,12 @@ class MessageReceiveStreamBase:
     async def acknowledge_received_message(self, success: bool):
         if self.__message_acked:
             raise RuntimeError('there was no message to acknowledge')
-        await self._acknowledge_message_implementation(success)
+        try:
+            await self._acknowledge_message_implementation(success)
+        except MessageTransferError:
+            raise
+        except Exception as e:
+            raise MessageTransferError(wrapped_exception=e) from None
         self.__message_acked = True
 
     def close(self):
