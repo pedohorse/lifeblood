@@ -8,6 +8,7 @@ from .client import MessageClient, MessageClientFactory, RawMessageClientFactory
 from .logging import get_logger
 from .address import AddressChain, DirectAddress
 from .enums import MessageType
+from .exceptions import StreamOpeningError
 from ..component_base import ComponentBase
 
 from typing import Optional
@@ -38,7 +39,7 @@ class MessageProcessorBase(ComponentBase):
                      message_stream_factory: MessageStreamFactory,
                      message_client_factory: MessageClientFactory,
                      force_session: Optional[uuid.UUID] = None,
-                     send_retry_attempts: int = 6):
+                     send_retry_attempts: int = 2):
             self.__destination = destination
             self.__force_session = force_session
             self.__sessions_being_processed = sessions_being_processed
@@ -92,7 +93,7 @@ class MessageProcessorBase(ComponentBase):
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
 
-    def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: int = 6) -> _ClientContext:
+    def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: int = 2) -> _ClientContext:
         return MessageProcessorBase._ClientContext(self.__address,
                                                    destination,
                                                    self.__message_queue,
@@ -131,7 +132,7 @@ class MessageProcessorBase(ComponentBase):
         return self.__serve()
 
     async def __serve(self):
-        self._logger.info('start serving messages')
+        self._logger.info('starting serving messages')
         server = await self.__message_receiver_factory.create_receiver(self.__address, self.new_message_received)
         self._logger.debug('server started')
         self._main_task_is_ready_now()
@@ -142,6 +143,12 @@ class MessageProcessorBase(ComponentBase):
         server.stop()
         await server.wait_till_stopped()
         self._logger.info('message server stopped')
+
+    async def should_process(self, orig_message: Message):
+        """
+        override this to decide on processing NEW messages
+        """
+        return True
 
     async def new_message_received(self, message: Message) -> bool:
         r"""
@@ -162,7 +169,13 @@ class MessageProcessorBase(ComponentBase):
         if len(destination) > 1:  # redirect it further
             dcurrent, dnext = destination[0], destination[1:]
             assert dcurrent == self.__address
-            stream = await self.__message_stream_factory.open_sending_stream(dnext[0], self.__address)
+            try:
+                stream = await self.__message_stream_factory.open_sending_stream(dnext[0], self.__address)
+            except StreamOpeningError:
+                raise
+            except Exception as e:
+                raise StreamOpeningError(wrapped_exception=e) from None
+
             try:
                 message.set_message_destination(AddressChain.join_address(dnext))
                 message.set_message_source(AddressChain.join_address((dcurrent, *(message.message_source().split_address()))))
@@ -187,6 +200,8 @@ class MessageProcessorBase(ComponentBase):
         # otherwise - noone is expecting message, so we process it
         # we rely here on that several messages of same session CANNOT be processed here at the same time
         #async with self.message_client(message.message_source(), force_session=session) as client:
+        if not await self.should_process(message):
+            return False
         context = self.message_client(message.message_source(), force_session=session)
         client = context.initialize()
         task = asyncio.create_task(self.__process_message_wrapper(message, client, context))
