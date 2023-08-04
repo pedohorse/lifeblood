@@ -113,6 +113,8 @@ class Config:
             paths_to_check.append(self.__writable_config_path)
 
         for config_path in paths_to_check:
+            if not config_path.exists():
+                continue
             try:
                 with config_path.open('r') as f:
                     self.__update_dicts(self.__stuff, toml.load(f))
