@@ -17,7 +17,7 @@ class MessageClient:
                  source_address_chain: AddressChain,
                  destination_address_chain: AddressChain,
                  message_stream_factory: MessageStreamFactory,
-                 send_retry_attempts: int = 6):
+                 send_retry_attempts: int = 2):
         self.__message_queue = queue
         self.__last_sent_message: Optional[Message] = None
         self.__session: uuid.UUID = session
@@ -93,7 +93,7 @@ class MessageClientFactory:
                               source_address_chain: AddressChain,
                               destination_address_chain: AddressChain,
                               message_stream_factory: MessageStreamFactory,
-                              send_retry_attempts: int = 6) -> MessageClient:
+                              send_retry_attempts: int = 2) -> MessageClient:
         raise NotImplementedError()
 
 
@@ -102,7 +102,7 @@ class RawMessageClientFactory(MessageClientFactory):
                               source_address_chain: AddressChain,
                               destination_address_chain: AddressChain,
                               message_stream_factory: MessageStreamFactory,
-                              send_retry_attempts: int = 6) -> MessageClient:
+                              send_retry_attempts: int = 2) -> MessageClient:
         return MessageClient(queue, session,
                              source_address_chain=source_address_chain,
                              destination_address_chain=destination_address_chain,
