@@ -70,11 +70,14 @@ MessageProcessor o--> "*" MessageClient
 MessageProcessor --> MessageReceiver
 MessageProcessor *--> MessageReceiverCallback
 
+MessageQueue --> Message
+
 MessageReceiverCallback --> Message
 
 MessageReceiverFactory --> MessageReceiver
 
 MessageReceiver --> MessageReceiverCallback
+MessageReceiver --> MessageReceiveStreamBase
 
 MessageStreamFactory --> MessageSendStreamBase
 
