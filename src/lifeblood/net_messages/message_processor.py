@@ -45,7 +45,8 @@ class MessageProcessorBase(ComponentBase):
     def __init__(self, listening_address: DirectAddress, *,
                  message_receiver_factory: MessageReceiverFactory,
                  message_stream_factory: MessageStreamFactory,
-                 message_client_factory: MessageClientFactory = None):
+                 message_client_factory: MessageClientFactory = None,
+                 default_client_retry_attempts: Optional[int] = None):
         super().__init__()
         self.__message_queue = MessageQueue()
         self.__address = listening_address
@@ -55,6 +56,7 @@ class MessageProcessorBase(ComponentBase):
         self.__message_receiver_factory = message_receiver_factory
         self.__message_stream_factory = message_stream_factory
         self.__message_client_factory = message_client_factory or RawMessageClientFactory()
+        self.__default_client_retry_attempts = 2 if default_client_retry_attempts is None else default_client_retry_attempts
 
         self._logger = get_logger(f'message_processor {type(self).__name__}')
 
@@ -120,7 +122,9 @@ class MessageProcessorBase(ComponentBase):
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
 
-    def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: int = 2) -> _ClientContext:
+    def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: Optional[int] = None) -> _ClientContext:
+        if send_retry_attempts is None:
+            send_retry_attempts = self.__default_client_retry_attempts
         return MessageProcessorBase._ClientContext(self.__address,
                                                    destination,
                                                    self.__message_queue,

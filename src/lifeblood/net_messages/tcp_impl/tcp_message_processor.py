@@ -10,7 +10,12 @@ from typing import Optional, Tuple
 
 
 class TcpMessageProcessor(MessageProcessorBase):
-    def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300, stream_timeout: float = 90, message_client_factory: Optional[MessageClientFactory] = None):
+    def __init__(self, listening_address: Tuple[str, int], *,
+                 backlog=4096,
+                 connection_pool_cache_time=300,
+                 stream_timeout: float = 90,
+                 default_client_retry_attempts: Optional[int] = None,
+                 message_client_factory: Optional[MessageClientFactory] = None):
         self.__pooled_factory = None
         if connection_pool_cache_time <= 0:
             stream_factory = TcpMessageStreamFactory(timeout=stream_timeout)
@@ -20,6 +25,7 @@ class TcpMessageProcessor(MessageProcessorBase):
         super().__init__(DirectAddress(':'.join(str(x) for x in listening_address)),
                          message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
                          message_stream_factory=stream_factory,
+                         default_client_retry_attempts=default_client_retry_attempts,
                          message_client_factory=message_client_factory)
 
     async def _post_receiver_stop_waited(self):
