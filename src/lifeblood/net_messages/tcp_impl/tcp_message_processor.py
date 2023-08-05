@@ -1,16 +1,16 @@
 import asyncio
 from ..message_processor import MessageProcessorBase
 from ..messages import Message
-from ..client import MessageClient
+from ..client import MessageClient, MessageClientFactory
 from ..address import DirectAddress
 from .tcp_message_receiver_factory import TcpMessageReceiverFactory
 from .tcp_message_stream_factory import TcpMessageStreamFactory, TcpMessageStreamPooledFactory
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class TcpMessageProcessor(MessageProcessorBase):
-    def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300, stream_timeout: float = 90):
+    def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300, stream_timeout: float = 90, message_client_factory: Optional[MessageClientFactory] = None):
         self.__pooled_factory = None
         if connection_pool_cache_time <= 0:
             stream_factory = TcpMessageStreamFactory(timeout=stream_timeout)
@@ -19,10 +19,11 @@ class TcpMessageProcessor(MessageProcessorBase):
             self.__pooled_factory = stream_factory
         super().__init__(DirectAddress(':'.join(str(x) for x in listening_address)),
                          message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
-                         message_stream_factory=stream_factory)
+                         message_stream_factory=stream_factory,
+                         message_client_factory=message_client_factory)
 
-    def stop(self):
-        super().stop()
+    async def _post_receiver_stop_waited(self):
+        await super()._post_receiver_stop_waited()
         if self.__pooled_factory is not None:
             self.__pooled_factory.close_pool()
 
