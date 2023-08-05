@@ -25,7 +25,7 @@ class WorkerMessageProcessor(TcpCommandMessageProcessor):
         self.__worker = worker
 
     async def should_process(self, orig_message: Message):
-        return not self.__worker.is_stopping()
+        return (await super().should_process(orig_message)) and not self.__worker.is_stopping()
 
     def command_mapping(self):
         return {'ping': self._command_ping,

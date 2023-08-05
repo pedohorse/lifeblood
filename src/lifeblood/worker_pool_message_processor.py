@@ -18,7 +18,7 @@ class WorkerPoolMessageProcessor(TcpCommandMessageProcessor):
         self.__worker_pool = worker_pool
 
     async def should_process(self, orig_message: Message):
-        return not self.__worker_pool.is_pool_closed()
+        return (await super().should_process(orig_message)) and not self.__worker_pool.is_pool_closed()
 
     def command_mapping(self):
         return {
