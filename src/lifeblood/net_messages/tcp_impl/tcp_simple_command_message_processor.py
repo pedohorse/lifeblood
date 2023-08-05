@@ -9,6 +9,7 @@ from ..client import MessageClient, MessageClientFactory
 from ..address import AddressChain, DirectAddress
 from ..queue import MessageQueue
 from ..interfaces import MessageStreamFactory
+from .tcp_message_processor import TcpMessageProcessor
 from .tcp_message_receiver_factory import TcpMessageReceiverFactory
 from .tcp_message_stream_factory import TcpMessageStreamFactory, TcpMessageStreamPooledFactory
 
@@ -43,7 +44,7 @@ class JsonMessageClient(MessageClient):
     async def send_message_as_json(self, data: dict) -> JsonMessageWrapper:
         return JsonMessageWrapper(await self.send_message(json.dumps(data).encode('utf-8')))
 
-    async def receive_message(self, timeout: Optional[float] = None) -> JsonMessageWrapper:
+    async def receive_message(self, timeout: Optional[float] = 90) -> JsonMessageWrapper:
         message = await super().receive_message(timeout)
         return JsonMessageWrapper(message)
 
@@ -62,28 +63,12 @@ class JsonMessageClientFactory(MessageClientFactory):
                                  )
 
 
-class TcpJsonMessageProcessor(MessageProcessorBase):
+class TcpJsonMessageProcessor(TcpMessageProcessor):
     def __init__(self, listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300, message_client_factory: Optional[JsonMessageClientFactory] = None):
-        self.__pooled_factory = None
-        if connection_pool_cache_time <= 0:
-            stream_factory = TcpMessageStreamFactory()
-        else:
-            stream_factory = TcpMessageStreamPooledFactory(connection_pool_cache_time)
-            self.__pooled_factory = stream_factory
-        super().__init__(DirectAddress(':'.join(str(x) for x in listening_address)),
-                         message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
-                         message_stream_factory=stream_factory,
+        super().__init__(listening_address,
+                         backlog=backlog,
+                         connection_pool_cache_time=connection_pool_cache_time,
                          message_client_factory=message_client_factory or JsonMessageClientFactory())
-
-    def stop(self):
-        super().stop()
-        if self.__pooled_factory is not None:
-            self.__pooled_factory.close_pool()
-
-    async def wait_till_stops(self):
-        await super().wait_till_stops()
-        if self.__pooled_factory is not None:
-            await self.__pooled_factory.wait_pool_closed()
 
     async def process_message(self, message: Message, client: MessageClient):
         assert isinstance(client, JsonMessageClient)
