@@ -23,7 +23,8 @@ class ComponentBase:
         if self.__main_task is not None:
             raise RuntimeError('already started')
         self.__main_task = asyncio.create_task(self._main_task())
-        done, others = await asyncio.wait([self.__main_task_is_ready.wait(), self.__main_task], return_when=asyncio.FIRST_COMPLETED)
+        ready_waiter = asyncio.create_task(self.__main_task_is_ready.wait())
+        done, others = await asyncio.wait([ready_waiter, self.__main_task], return_when=asyncio.FIRST_COMPLETED)
         if self.__main_task in done:  # means it raised an error
             for other in others:
                 other.cancel()
