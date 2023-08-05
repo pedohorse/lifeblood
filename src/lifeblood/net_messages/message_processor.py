@@ -14,6 +14,33 @@ from ..component_base import ComponentBase
 from typing import Optional
 
 
+class ProcessedSessionsMap:
+    def __init__(self):
+        self.__map = {}
+        self.__empty_event = asyncio.Event()
+        self.__empty_event.set()
+
+    def empty_event(self):
+        return self.__empty_event
+
+    def __getitem__(self, item):
+        return self.__map[item]
+
+    def __setitem__(self, key, value):
+        self.__map[key] = value
+        if self.__empty_event.is_set():
+            self.__empty_event.clear()
+
+    def pop(self, key):
+        item = self.__map.pop(key)
+        if len(self.__map) == 0:
+            self.__empty_event.set()
+        return item
+
+    def __contains__(self, item):
+        return item in self.__map
+
+
 class MessageProcessorBase(ComponentBase):
     def __init__(self, listening_address: DirectAddress, *,
                  message_receiver_factory: MessageReceiverFactory,
@@ -22,20 +49,20 @@ class MessageProcessorBase(ComponentBase):
         super().__init__()
         self.__message_queue = MessageQueue()
         self.__address = listening_address
-        self.__sessions_being_processed = {}
+        self.__sessions_being_processed = ProcessedSessionsMap()
         self.__processing_tasks = set()
         self.__forwarded_messages_count = 0
         self.__message_receiver_factory = message_receiver_factory
         self.__message_stream_factory = message_stream_factory
         self.__message_client_factory = message_client_factory or RawMessageClientFactory()
-        # self.__socket_backlog = backlog or 4096
+
         self._logger = get_logger(f'message_processor {type(self).__name__}')
 
     class _ClientContext:
         def __init__(self, host_address: AddressChain,
                      destination: AddressChain,
                      message_queue: MessageQueue,
-                     sessions_being_processed: dict,
+                     sessions_being_processed: ProcessedSessionsMap,
                      message_stream_factory: MessageStreamFactory,
                      message_client_factory: MessageClientFactory,
                      force_session: Optional[uuid.UUID] = None,
@@ -140,15 +167,30 @@ class MessageProcessorBase(ComponentBase):
         await self._stop_event.wait()
 
         self._logger.info('message server stopping...')
+        self._logger.debug('waiting for all existing sessions to finish')
+        await self.__sessions_being_processed.empty_event().wait()
+        self._logger.debug('all sessions finished, stopping server')
+        await self._pre_receiver_stop()
         server.stop()
+        await self._post_receiver_stop()
         await server.wait_till_stopped()
+        await self._post_receiver_stop_waited()
         self._logger.info('message server stopped')
+
+    async def _pre_receiver_stop(self):
+        return
+
+    async def _post_receiver_stop(self):
+        return
+
+    async def _post_receiver_stop_waited(self):
+        return
 
     async def should_process(self, orig_message: Message):
         """
         override this to decide on processing NEW messages
         """
-        return True
+        return not self._stop_event.is_set()
 
     async def new_message_received(self, message: Message) -> bool:
         r"""
