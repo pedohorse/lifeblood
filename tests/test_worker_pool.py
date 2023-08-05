@@ -1,4 +1,4 @@
-
+import sys
 from unittest import IsolatedAsyncioTestCase
 from pathlib import Path
 import asyncio
@@ -13,8 +13,8 @@ from lifeblood.simple_worker_pool import WorkerPool, create_worker_pool
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
-from lifeblood.defaults import scheduler_port
-from lifeblood import launch
+from lifeblood.defaults import scheduler_message_port
+from lifeblood.net_messages.address import AddressChain
 
 
 class WorkerPoolTests(IsolatedAsyncioTestCase):
@@ -30,14 +30,14 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         if testdbpath.exists():
             testdbpath.unlink()
         testdbpath.touch()
-        cls._scheduler_proc = subprocess.Popen(['python', '-m',
+        cls._scheduler_proc = subprocess.Popen([sys.executable, '-m',
                                                 'lifeblood.launch', 'scheduler',
                                                 '--db-path', 'test_empty.db',
                                                 '--broadcast-interval', '2'], close_fds=True)
         config = get_config('scheduler')  # TODO: don't load actual local configuration, override with temporary!
         server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-        server_port = config.get_option_noasync('core.server_port', scheduler_port())
-        cls.sched_addr = (server_ip, server_port)
+        server_port = config.get_option_noasync('core.server_message_port', scheduler_message_port())
+        cls.sched_addr = AddressChain(f'{server_ip}:{server_port}')
         time.sleep(1.5)  # this is very arbitrary, but i'm too lazy to
         print('settingup done')
 
@@ -84,10 +84,10 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         self.assertEqual(mint, len(workers))
         tuple(workers.values())[-1].process.send_signal(signal.SIGTERM)
         tuple(workers.values())[-2].process.send_signal(signal.SIGTERM)
-        await asyncio.sleep(rnd.uniform(0, 1))
+        await asyncio.sleep(rnd.uniform(1, 2))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
-        await asyncio.sleep(rnd.uniform(0, 4))
+        await asyncio.sleep(rnd.uniform(1, 4))
         swp.stop()
         await swp.wait_till_stops()
 

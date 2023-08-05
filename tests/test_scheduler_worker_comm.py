@@ -46,11 +46,11 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
     async def test_simple_start_stop(self):
         purge_db()
         sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
-        ip, port = sched.server_address().split(':')
-        worker = Worker(ip, int(port))
-
         await sched.start()
+
+        worker = Worker(sched.server_message_address())
         await worker.start()
+
         await asyncio.gather(sched.wait_till_starts(),
                              worker.wait_till_starts())
 
@@ -63,10 +63,9 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
     async def test_task_get_order(self):
         purge_db()
         sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
-        ip, port = sched.server_address().split(':')
-        worker = Worker(ip, int(port), scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test
-
         await sched.start()
+
+        worker = Worker(sched.server_message_address(), scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test
         await worker.start()
         self.assertTrue(sched.is_started())
         self.assertTrue(worker.is_started())

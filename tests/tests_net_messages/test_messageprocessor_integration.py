@@ -17,8 +17,8 @@ logger = get_logger('message_test')
 
 
 class TestReceiver(TcpMessageProcessor):
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None):
-        super().__init__((listening_host, listening_port), backlog=backlog, stream_timeout=stream_timeout)
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None, default_client_retry_attempts=None):
+        super().__init__((listening_host, listening_port), backlog=backlog, stream_timeout=stream_timeout, default_client_retry_attempts=default_client_retry_attempts)
         self.messages_received: List[Message] = []
         self.__artificial_delay: float = artificial_delay
 
@@ -42,7 +42,12 @@ class DummyReceiverWithReply(TestReceiver):
     _counter = 0
 
     def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None):
-        super().__init__(listening_host=listening_host, listening_port=listening_port, backlog=backlog, artificial_delay=artificial_delay, stream_timeout=stream_timeout)
+        super().__init__(listening_host=listening_host,
+                         listening_port=listening_port,
+                         backlog=backlog,
+                         artificial_delay=artificial_delay,
+                         stream_timeout=stream_timeout,
+                         default_client_retry_attempts=6)  # cuz on slow windows test ci worker there seem to be backlog error, so we have to keep trying for some time
         self.__my_id = self._counter
         DummyReceiverWithReply._counter += 1
 
@@ -210,12 +215,17 @@ class TestIntegration(IsolatedAsyncioTestCase):
                 timeout=300
             )
             logger.info('================== wait done! ==================')
-            logger.info(f'error tasks: {len([task for task in done if task.exception() is not None])}')
+            errored = [task for task in done if task.exception() is not None]
+            logger.info(f'error tasks: {len(errored)}')
             logger.info(f'pending tasks: {len(pending)}')
             if len(pending) > 0:
                 logger.warning('trying to print stack of some pending tasks...')
                 for task in list(pending)[:11]:
                     task.print_stack()
+            if len(errored) > 0:
+                logger.warning('trying to print some errors')
+                for task in errored[:11]:
+                    logger.error(task.exception())
 
             self.assertEqual(0, len(pending))
             for task in done:

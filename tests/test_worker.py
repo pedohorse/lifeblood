@@ -7,6 +7,7 @@ from lifeblood.worker import Worker
 from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
+from lifeblood.net_messages.address import AddressChain
 
 
 class RunningSchedulerTests(IsolatedAsyncioTestCase):
@@ -28,7 +29,7 @@ class RunningSchedulerTests(IsolatedAsyncioTestCase):
         print('tearingdown done')
 
     async def asyncSetUp(self) -> None:
-        self.scheduler = Scheduler(self.__db_path, do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 12345), server_ui_addr=('127.0.0.1', 12346))
+        self.scheduler = Scheduler(self.__db_path, do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 12347, 12345), server_ui_addr=('127.0.0.1', 12346))
         if not self.scheduler.is_started():
             await self.scheduler.start()
 
@@ -44,7 +45,7 @@ class Moxecption(Exception):
 
 class WorkerRunTest(RunningSchedulerTests):
     async def test_worker_run_task_env(self):
-        worker = Worker('127.0.0.1', 12345)
+        worker = Worker(AddressChain('127.0.0.1:12345'))
         # NOTE: we are testing on non-started worker...
         expected_env = InvocationEnvironment()
         expected_env.set_variable('qwe', 'rty')
@@ -57,7 +58,7 @@ class WorkerRunTest(RunningSchedulerTests):
             sw.return_value = os.path.join(os.getcwd(), 'arg0')
             m.side_effect = Moxecption('expected exception')
             try:
-                await worker.run_task(job, '')
+                await worker.run_task(job, AddressChain(''))
             except Moxecption:
                 pass
             m.assert_called()
@@ -80,16 +81,15 @@ class WorkerRunTest(RunningSchedulerTests):
         self.assertNotIn('LBATTR__bbad', test_env)
         self.assertNotIn('LBATTR_bbad', test_env)
 
-
     async def test_run_task_report(self):
-        worker = Worker('127.0.0.1', 12345)
+        worker = Worker(AddressChain('127.0.0.1:12345'))
         # NOTE: we are testing on non-started worker...
         job = InvocationJob(['echo', 'task run'], invocation_id=1123)
-        with mock.patch('lifeblood.worker.SchedulerTaskClient') as m:
+        with mock.patch('lifeblood.worker.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
             cm = mock.AsyncMock()
             m.return_value = cm
-            cm.__aenter__.return_value = cm
-            await worker.run_task(job, '127.1.2.3:1234')
+            cm.__enter__.return_value = cm
+            await worker.run_task(job, AddressChain('127.1.2.3:1234'))
             for i in range(15):  # reasonable timeout
                 await asyncio.sleep(1)
                 if not worker.is_task_running():
