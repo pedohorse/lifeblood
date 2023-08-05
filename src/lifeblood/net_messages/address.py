@@ -3,7 +3,7 @@ from typing import Tuple, Iterable, Union
 
 
 class AddressChain(str):
-    _validity_re = re.compile(r'^[^:|]+:\d+(?:\|[^:|]+:\d+)*$|^$')  # empty string is a valid invalid address
+    _validity_re = re.compile(r'^[^|]+(?:\|[^|]+)*$|^$')  # empty string is a valid invalid address
 
     def __new__(cls, source_str):
         if not cls._validity_re.match(source_str):
@@ -26,7 +26,7 @@ class AddressChain(str):
 
 
 class DirectAddress(AddressChain):
-    _validity_re = re.compile(r'^[^:|]+:\d+$|^$')  # empty string is a valid invalid address
+    _validity_re = re.compile(r'^[^|]+$|^$')  # empty string is a valid invalid address
 
 
 AddressAny = Union[DirectAddress, AddressChain]
