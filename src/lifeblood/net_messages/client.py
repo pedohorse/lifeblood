@@ -79,7 +79,7 @@ class MessageClient:
             self.logger.error(f'unable to sent message, out of attempts, failing.')
             raise last_exception
 
-    async def receive_message(self, timeout: Optional[float] = None) -> Message:
+    async def receive_message(self, timeout: Optional[float] = 90) -> Message:
         task = self.__message_queue.get_message(self.__session)
         if timeout is None:
             message = await task
