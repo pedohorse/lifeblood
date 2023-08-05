@@ -1547,4 +1547,6 @@ class Scheduler:
         return self.__server_address
 
     def server_message_address(self) -> AddressChain:
+        if self.__message_processor is None:
+            raise RuntimeError('cannot get listening address of a non started server')
         return self.message_processor().listening_address()
