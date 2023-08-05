@@ -1,13 +1,18 @@
 import asyncio
 from .logging import get_logger
-from .scheduler_task_protocol import SchedulerTaskClient
+#from .scheduler_task_protocol import SchedulerTaskClient
+from .scheduler_message_processor import SchedulerWorkerControlClient
+from .net_messages.address import AddressChain
+from .net_messages.message_processor import MessageProcessorBase
+from .net_messages.exceptions import MessageTransferError
 
 from typing import Tuple, Callable, Coroutine
 
 
 class PulseChecker:
-    def __init__(self, address: Tuple[str, int], interval: float = 5, maximum_misses: int = 5):
+    def __init__(self, address: AddressChain, message_processor: MessageProcessorBase, interval: float = 5, maximum_misses: int = 5):
         self.__address = address
+        self.__message_processor = message_processor
         self.__interval = interval
         self.__pinger_task = None
         self.__stop_event = asyncio.Event()
@@ -20,6 +25,7 @@ class PulseChecker:
 
     async def start(self):
         self.__pinger_task = asyncio.create_task(self.pinger())
+        # TODO: handle initial failing to start
 
     def stop(self):
         if self.__pinger_task is None:
@@ -48,13 +54,13 @@ class PulseChecker:
                 break
 
             try:
-                async with SchedulerTaskClient(*self.__address) as client:
+                with SchedulerWorkerControlClient.get_scheduler_control_client(self.__address, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                     await client.pulse()
                     self.__misses = 0
                     if self.__miss_reported:
                         self.__logger.info('pulse restored')
                         self.__miss_reported = False
-            except (ConnectionError, OSError):
+            except MessageTransferError:
                 self.__misses += 1
                 self.__logger.warning(f'scheduler missed pulse, current miss count: {self.__misses}')
 

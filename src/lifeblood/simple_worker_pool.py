@@ -10,22 +10,25 @@ import json
 from .config import get_config
 from .nethelpers import get_default_addr
 from .broadcasting import await_broadcast
-from .defaults import scheduler_port as default_scheduler_port
+from .defaults import scheduler_port as default_scheduler_port, message_proxy_port
 from .pulse_checker import PulseChecker
 from .process_utils import create_worker_process, send_stop_signal_to_worker
 
 from .logging import get_logger
-from .worker_pool_protocol import WorkerPoolProtocol
+# from .worker_pool_protocol import WorkerPoolProtocol
+from .worker_pool_message_processor import WorkerPoolMessageProcessor
 from .nethelpers import get_localhost
 from .enums import WorkerState, WorkerType, ProcessPriorityAdjustment
 from .defaults import worker_pool_port as default_worker_pool_port
+
+from .net_messages.address import AddressChain, DirectAddress
 
 from typing import Tuple, Dict, List, Optional
 
 
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
                              minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
-                             idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[Tuple[str, int]] = None):
+                             idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[AddressChain] = None):
     swp = WorkerPool(worker_type,
                      minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
                      idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, priority=priority, scheduler_address=scheduler_address)
@@ -49,7 +52,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *,
                  minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
                  idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE,
-                 scheduler_address: Optional[Tuple[str, int]] = None):
+                 scheduler_address: Optional[AddressChain] = None):
         """
         manages a pool of workers.
         :param worker_type: workers are created of given type
@@ -61,7 +64,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__worker_pool: Dict[asyncio.Future, ProcData] = {}
         self.__workers_to_merge: List[ProcData] = []
         self.__pool_task = None
-        self.__worker_server: Optional[asyncio.AbstractServer] = None
+        # self.__worker_server: Optional[asyncio.AbstractServer] = None
+        self.__message_proxy: Optional[WorkerPoolMessageProcessor] = None
         self.__stop_event = asyncio.Event()
         self.__server_closer_waiter = None
         self.__poke_event = asyncio.Event()
@@ -77,13 +81,13 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
         self.__suspiciously_short_process_time = worker_suspicious_lifetime
 
-        self.__pulse_checker = PulseChecker(self.__scheduler_address, interval=10, maximum_misses=10)
-        self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
+        self.__pulse_checker = None
 
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
-        self.__my_addr = get_localhost()
-        self.__my_port = default_worker_pool_port()
+        # self.__my_addr = get_localhost()
+        # self.__my_port = default_worker_pool_port()
+        self.__message_proxy_address = None
 
         self.__poke_event.set()
         self.__stopped = False
@@ -92,36 +96,41 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         if self.__pool_task is not None and not self.__pool_task.done():
             return
 
-        for i in range(1024):  # big but finite
+        proxy_addr, proxy_port = get_default_addr(), message_proxy_port()
+        for i in range(1024):  # somewhat big, but not too big
+            self.__message_proxy = WorkerPoolMessageProcessor(self, (proxy_addr, proxy_port))  # TODO: config for other arguments
             try:
-                self.__worker_server = await asyncio.get_event_loop().create_server(lambda: WorkerPoolProtocol(self),
-                                                                                    self.__my_addr,
-                                                                                    self.__my_port)
+                await self.__message_proxy.start()
                 break
             except OSError as e:
                 if e.errno != errno.EADDRINUSE:
                     raise
-                self.__my_port += 1
+                proxy_port += 1
                 continue
-
         else:
-            raise RuntimeError('could not find an opened port!')
+            raise RuntimeError(f'could not find an opened port in range [{message_proxy_port()}-{proxy_port}]!')
+        self.__message_proxy_address = DirectAddress.from_host_port(proxy_addr, proxy_port)
 
         self.__pool_task = asyncio.create_task(self.local_worker_pool_manager())
+
+        self.__pulse_checker = PulseChecker(self.__scheduler_address, self.__message_proxy, interval=10, maximum_misses=10)
+        self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
         await self.__pulse_checker.start()
-        self.__logger.debug(f'worker pool protocol listening on {self.__my_port}')
+        self.__logger.debug(f'worker pool message protocol listening on {self.__message_proxy_address}')
 
     def stop(self):
         async def _server_closer():
+            self.__pulse_checker.stop()
+            await self.__pulse_checker
             await self.__pool_task  # ensure local manager is stopped before closing server. here it will ensure all workers are terminated
-            self.__worker_server.close()
-            await self.__worker_server.wait_closed()
+            self.__message_proxy.stop()
+            await self.__message_proxy.wait_till_stops()
+            self.__logger.info('message processor stopped')
 
         if self.__stopped:
             return
         self.__stop_event.set()  # stops local_worker_pool_manager
         self.__server_closer_waiter = asyncio.create_task(_server_closer())  # server will be closed here
-        self.__pulse_checker.stop()
         self.__stopped = True
 
     def __await__(self):
@@ -130,10 +139,20 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
     async def wait_till_stops(self):
         if self.__pool_task is None:
             return
-        await self.__pool_task
-        await self.__worker_server.wait_closed()
-        await self.__pulse_checker
+        await self.__stop_event.wait()
         await self.__server_closer_waiter
+
+    def is_stopping(self) -> bool:
+        """
+        True if worker pool is stopped or in process of stopping
+        """
+        return self.__stop_event.is_set()
+
+    def is_pool_closed(self) -> bool:
+        """
+        True if main task has finished
+        """
+        return self.__pool_task.done()
 
     async def add_worker(self):
         if self.__stopped:
@@ -143,14 +162,19 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
         args = [sys.executable, '-m', 'lifeblood.launch',
+                '--loglevel', 'DEBUG',
                 'worker',
                 '--type', self.__worker_type.name,
                 '--priority', self.__worker_priority.name,
                 '--no-loop',
                 '--id', str(self.__next_wid),
-                '--pool-address', f'{self.__my_addr}:{self.__my_port}']
+                '--pool-address', str(self.__message_proxy_address)]
         if self.__scheduler_address is not None:
-            args += ['--scheduler-address', ':'.join(str(x) for x in self.__scheduler_address)]
+            args += ['--scheduler-address',
+                     AddressChain.join_address((
+                         self.__message_proxy.listening_address(),
+                         self.__scheduler_address
+                     ))]
 
         self.__workers_to_merge.append(ProcData(await create_worker_process(args), self.__next_wid))
         self.__logger.debug(f'adding new worker (id: {self.__next_wid}) to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
@@ -394,20 +418,19 @@ async def async_main(argv):
             message = await broadcast_task
             scheduler_info = json.loads(message)
             logger.debug('received', scheduler_info)
-            addr = scheduler_info['worker']
-            ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
-            port = int(sport)
+            addr = AddressChain(scheduler_info['message_address'])
         else:
             if stop_event.is_set():
                 break
             logger.info('boradcast listening disabled')
             start_attempt_cooldown = 10
-            ip = await config.get_option('worker.scheduler_ip', get_default_addr())
-            port = await config.get_option('worker.scheduler_port', default_scheduler_port())
-            logger.debug(f'using {ip}:{port}')
+            if not config.has_option_noasync('worker.scheduler_address'):
+                raise RuntimeError('worker.scheduler_address config option must be provided')
+            addr = AddressChain(await config.get_option('worker.scheduler_address', None))
+            logger.debug(f'using {addr}')
 
         try:
-            pool = await create_worker_pool(WorkerType.STANDARD, scheduler_address=(ip, port), **opts.__dict__)
+            pool = await create_worker_pool(WorkerType.STANDARD, scheduler_address=addr, **opts.__dict__)
         except Exception:
             logger.exception('could not start the pool')
             await asyncio.sleep(start_attempt_cooldown)

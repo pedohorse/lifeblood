@@ -2,11 +2,13 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
-from ..worker_task_protocol import WorkerTaskClient
-from ..enums import WorkerState, InvocationState, WorkerPingState, SchedulerMode, WorkerPingReply
+from ..worker_messsage_processor import WorkerControlClient
+from ..enums import WorkerState, InvocationState, WorkerPingState, WorkerPingReply
 from ..ui_protocol_data import TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
 from ..config import get_config
+from ..net_messages.address import AddressChain
+from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
 
 from typing import Any, Optional, TYPE_CHECKING
 
@@ -87,34 +89,37 @@ class Pinger(SchedulerComponentBase):
             self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.CHECKING.value
             self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['last_checked'] = int(time.time())
 
-            addr = worker_row['last_address']
-            ip, port = addr.split(':')  # type: str, str
-            self.__pinger_logger.debug('    :: checking %s, %s', ip, port)
-
-            if not port.isdigit():
-                self.__pinger_logger.debug('    :: malformed address')
+            try:
+                addr = AddressChain(worker_row['last_address'])
+            except ValueError:
+                self.__pinger_logger.debug(f'    :: malformed address "{addr}"')
                 self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 await self._set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
                 await _check_lastseen_and_drop_invocations()
                 await con.commit()
                 return
+
+            self.__pinger_logger.debug(f'    :: checking {addr}')
+
             try:
-                async with WorkerTaskClient(ip, int(port), timeout=15) as client:
+                with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
+                    # TODO: lower message timeout
                     ping_code, pvalue = await client.ping()
-            except asyncio.exceptions.TimeoutError:
-                self.__pinger_logger.info(f'    :: network timeout {ip}:{port}')
+                    self.__pinger_logger.debug(f'    :: {addr} is {ping_code}')
+            except MessageTransferTimeoutError:
+                self.__pinger_logger.info(f'    :: network timeout {addr}')
                 self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):  # TODO: maybe give it a couple of tries before declaring a failure?
                     await con.commit()
                 return
-            except ConnectionRefusedError as e:
-                self.__pinger_logger.info(f'    :: host down {ip}:{port} {e}')
+            except MessageTransferError as e:
+                self.__pinger_logger.info(f'    :: host/route down {addr} {e.wrapped_exception()}')
                 self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
                 return
             except Exception as e:
-                self.__pinger_logger.info(f'    :: ping failed {ip}:{port} {type(e)}, {e}')
+                self.__pinger_logger.info(f'    :: ping failed {addr} {type(e)}, {e}')
                 self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
                 if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
                     await con.commit()
