@@ -28,6 +28,7 @@ class SchedulerMessageProcessor(TcpCommandMessageProcessor):
     def command_mapping(self) -> Dict[str, Callable[[dict, CommandJsonMessageClient, Message], Awaitable[None]]]:
         return {
             'pulse': self._command_pulse,
+            '_pulse3way_': self._command_pulse3way,  # TODO: remove this when handlers are implemented
             # worker-specific
             'worker.ping': self._command_ping,
             'worker.done': self._command_done,
@@ -127,6 +128,14 @@ class SchedulerMessageProcessor(TcpCommandMessageProcessor):
         await self.__scheduler.worker_stopped(addr)
         await client.send_message_as_json({'ok': True})
 
+    async def _command_pulse3way(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        TODO: remove this when handlers are implemented
+        This command exists for test purposes only
+        """
+        await client.send_message_as_json({'phase': 1})
+        msg2 = await client.receive_message()
+        await client.send_message_as_json({'phase': 2})
 
 #
 # Client

@@ -48,6 +48,12 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         async def comm_pulse():  # elif command == b'pulse':
             writer.write(b'\1')
 
+        async def comm__pulse3way_():  # WARNING: this is for tests only!
+            writer.write(b'\1')
+            await writer.drain()
+            await reader.readexactly(1)
+            writer.write(b'\2')
+
         async def comm_done():  # elif command == b'done':
             tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
             task = await reader.readexactly(tasksize)
@@ -126,6 +132,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         #
         commands = {'ping': comm_ping,
                     'pulse': comm_pulse,
+                    '_pulse3way_': comm__pulse3way_,  # WARNING: this is for tests only!
                     'done': comm_done,
                     'dropped': comm_dropped,
                     'hello': comm_hello,
@@ -280,6 +287,20 @@ class SchedulerTaskClient:
         except ConnectionResetError as e:
             self.__logger.error('pulse check failed. %s', e)
             raise
+
+    async def _pulse3way_(self):
+        """
+        FOR TESTS ONLY
+        """
+        await self._ensure_conn_open()
+        self.write_string('_pulse3way_')
+        await self.__writer.drain()
+        yield
+        await self.__reader.readexactly(1)
+        yield
+        self.__writer.write(b'\1')
+        await self.__writer.drain()
+        await self.__reader.readexactly(1)
 
     async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
         await self._ensure_conn_open()
