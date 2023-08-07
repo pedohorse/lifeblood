@@ -47,7 +47,7 @@ class DummyReceiverWithReply(TestReceiver):
                          backlog=backlog,
                          artificial_delay=artificial_delay,
                          stream_timeout=stream_timeout,
-                         default_client_retry_attempts=6)  # cuz on slow windows test ci worker there seem to be backlog error, so we have to keep trying for some time
+                         default_client_retry_attempts=8)  # cuz on slow windows test ci worker there seem to be backlog error, so we have to keep trying for some time
         self.__my_id = self._counter
         DummyReceiverWithReply._counter += 1
 
