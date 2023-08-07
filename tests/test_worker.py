@@ -52,7 +52,9 @@ class WorkerRunTest(RunningSchedulerTests):
         expected_env.set_variable('asd', 'fgh')
         expected_args = ['arg0', '-1', 'ass']
         job = InvocationJob(expected_args, env=expected_env, invocation_id=1123)
-        job._set_task_attributes({'test1': 42, 'TesT2': 'food', '_bad': 2.3, '__bbad': 'no'})
+        job._set_task_attributes({'test1': 42, 'TesT2': 'food', '_bad': 2.3, '__bbad': 'no',
+                                  'nolists1': [1, 2, 3], 'nolists2': [],
+                                  'nodicts1': {'a': 'b'}, 'nodicts2': {}})
         with mock.patch('lifeblood.worker.create_process') as m,\
                 mock.patch('shutil.which') as sw:
             sw.return_value = os.path.join(os.getcwd(), 'arg0')
@@ -80,6 +82,10 @@ class WorkerRunTest(RunningSchedulerTests):
         self.assertNotIn('LBATTR___bbad', test_env)
         self.assertNotIn('LBATTR__bbad', test_env)
         self.assertNotIn('LBATTR_bbad', test_env)
+        self.assertNotIn('LBATTR_nolists1', test_env)  # dicts and lists may increase env block too much
+        self.assertNotIn('LBATTR_nolists2', test_env)  # so we do NOT promote them
+        self.assertNotIn('LBATTR_nodicts1', test_env)
+        self.assertNotIn('LBATTR_nodicts2', test_env)
 
     async def test_run_task_report(self):
         worker = Worker(AddressChain('127.0.0.1:12345'))
