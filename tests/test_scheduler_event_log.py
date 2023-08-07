@@ -124,7 +124,7 @@ class Tests(TestCase):
         self.assertEqual(1, len(log))
 
     def _run_iters(self, count, log_time_length_max, log_event_count_max):
-        log = SchedulerEventLog(log_time_length_max=10, log_event_count_max=9999999)
+        log = SchedulerEventLog(log_time_length_max=log_time_length_max, log_event_count_max=log_event_count_max)
         # pre-create shit for higher precision of actual add_event
         events = []
         for i in range(count):
@@ -139,27 +139,31 @@ class Tests(TestCase):
 
     def _test_benchmark(self, log_time_length_max, log_event_count_max):
         # the point of this test is to ensure asymptotic complexity is no worse than linear for the common case
+        def _help_time(callable):
+            delta = callable()
+            count = 1
+            while delta < 0.1:
+                delta += callable()
+                count += 1
+            return delta / count
 
-        delta1 = 0
-        for _ in range(10):
-            delta1 += self._run_iters(1000, 10, 9999999)
-        delta1 /= 10
-        delta2 = self._run_iters(10000, 10, 9999999)
-        delta3 = self._run_iters(100000, 10, 9999999)
-        delta4 = self._run_iters(1000000, 10, 9999999)
+        delta1 = _help_time(lambda: self._run_iters(1000, log_time_length_max, log_event_count_max))
+        delta2 = _help_time(lambda: self._run_iters(10000, log_time_length_max, log_event_count_max))
+        delta3 = _help_time(lambda: self._run_iters(100000, log_time_length_max, log_event_count_max))
+        delta4 = _help_time(lambda: self._run_iters(1000000, log_time_length_max, log_event_count_max))
         print(f'{delta1} : {delta2} : {delta3} : {delta4}')
         self.assertGreater(delta1*(10+2), delta2, )  # we give 20% margin
         self.assertGreater(delta1*(100+20), delta3)
         self.assertGreater(delta1*(1000+200), delta4)
 
     def test_benchmark1(self):
-        self._test_benchmark(10, 9999999)
+        self._test_benchmark(100, 9999999)
 
     def test_benchmark2(self):
-        self._test_benchmark(10, 100)
+        self._test_benchmark(100, 100)
 
     def test_benchmark3(self):
-        self._test_benchmark(None, None)
+        self._test_benchmark(100, None)
 
     def test_auto_ids(self):
         log = SchedulerEventLog(log_time_length_max=None, log_event_count_max=100)
