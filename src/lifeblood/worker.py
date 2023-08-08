@@ -38,7 +38,7 @@ from .process_utils import create_process, kill_process_tree
 from . import db_misc
 from .misc import DummyLock
 from .net_messages.address import AddressChain, DirectAddress
-# from .net_messages.tcp_impl.tcp_message_processor import TcpMessageProcessor
+# from .net_messages.impl.tcp_message_processor import TcpMessageProcessor
 from .net_messages.exceptions import MessageTransferError
 from .defaults import worker_pool_port as default_worker_pool_port, \
                       scheduler_port as default_scheduler_port, \

@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 from .enums import WorkerState
-from .net_messages.tcp_impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
-from .net_messages.tcp_impl.clients import CommandJsonMessageClient
+from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
+from .net_messages.impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
-from .net_messages.tcp_impl.message_haldlers import CommandMessageHandlerBase
+from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
 from typing import Optional, Tuple, TYPE_CHECKING
