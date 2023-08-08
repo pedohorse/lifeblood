@@ -8,9 +8,11 @@ from . import logging
 from . import invocationjob
 from .exceptions import AlreadyRunning
 from .enums import WorkerPingReply, TaskScheduleStatus
-from .net_messages.tcp_impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor, CommandJsonMessageClient
+from .net_messages.tcp_impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
+from .net_messages.tcp_impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
+from .net_messages.tcp_impl.message_haldlers import CommandMessageHandlerBase
 
 
 from typing import Optional, Tuple, TYPE_CHECKING
@@ -18,14 +20,11 @@ if TYPE_CHECKING:
     from .worker import Worker
 
 
-class WorkerMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, worker: "Worker", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
-        super().__init__(listening_address, backlog=backlog, connection_pool_cache_time=connection_pool_cache_time)
-        self.__logger = logging.get_logger('worker.message_processor')
+class WorkerCommandHandler(CommandMessageHandlerBase):
+    def __init__(self, worker: "Worker"):
+        super().__init__()
+        self.__logger = logging.get_logger('worker.message_handler')
         self.__worker = worker
-
-    async def should_process(self, orig_message: Message):
-        return (await super().should_process(orig_message)) and not self.__worker.is_stopping()
 
     def command_mapping(self):
         return {'ping': self._command_ping,
@@ -152,6 +151,14 @@ class WorkerMessageProcessor(TcpCommandMessageProcessor):
                 result[key] = all_data
 
         await client.send_message_as_json(result)
+
+
+class WorkerMessageProcessor(TcpCommandMessageProcessor):
+    def __init__(self, worker: "Worker", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
+        super().__init__(listening_address,
+                         backlog=backlog,
+                         connection_pool_cache_time=connection_pool_cache_time,
+                         message_handlers=(WorkerCommandHandler(worker),))
 
 
 #

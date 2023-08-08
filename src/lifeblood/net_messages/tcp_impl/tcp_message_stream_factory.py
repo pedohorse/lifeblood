@@ -103,6 +103,8 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
+        self.__closing_task_to_wait = asyncio.create_task(self.__closing_task())
+
     async def prune(self):
         await self.close_unused_connections_older_than(self.__pooled_connection_life)
 
@@ -144,17 +146,18 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
             return None
 
         entry_list = self.__pool[key]
-        to_remove = []
+        # to_remove = []
         selected: Optional[ConnectionPoolEntry] = None
         for entry in entry_list:
             if entry.users_count > 0 or entry.close_when_user_count_zero:
                 continue
             if entry.bad or entry.reader.at_eof() or entry.writer.is_closing():
-                to_remove.append(entry)
+                # to_remove.append(entry)
+                entry.bad = True
                 continue
             selected = entry
-        for entry in to_remove:  # not the most optimal way......
-            entry_list.remove(entry)
+        # for entry in to_remove:  # not the most optimal way......
+        #     entry_list.remove(entry)
         return selected
 
     async def open_sending_stream(self, destination: DirectAddress, source: DirectAddress) -> MessageSendStreamBase:
@@ -209,6 +212,9 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
                 item.close_when_user_count_zero = True
 
     async def wait_pool_closed(self):
+        await self.__closing_task_to_wait
+
+    async def __closing_task(self):
         await self.__pool_closed.wait()
         while len(self.__pool) > 0:
             await self.close_all_unused_connections()

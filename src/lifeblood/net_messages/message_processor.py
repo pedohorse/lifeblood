@@ -5,13 +5,14 @@ from .queue import MessageQueue
 from .messages import Message
 from .interfaces import MessageReceiverFactory, MessageStreamFactory
 from .client import MessageClient, MessageClientFactory, RawMessageClientFactory
+from .message_handler import MessageHandlerBase
 from .logging import get_logger
 from .address import AddressChain, DirectAddress
 from .enums import MessageType
 from .exceptions import StreamOpeningError
 from ..component_base import ComponentBase
 
-from typing import Optional
+from typing import List, Optional, Sequence
 
 
 class ProcessedSessionsMap:
@@ -46,7 +47,8 @@ class MessageProcessorBase(ComponentBase):
                  message_receiver_factory: MessageReceiverFactory,
                  message_stream_factory: MessageStreamFactory,
                  message_client_factory: MessageClientFactory = None,
-                 default_client_retry_attempts: Optional[int] = None):
+                 default_client_retry_attempts: Optional[int] = None,
+                 message_handlers: Sequence[MessageHandlerBase] = ()):
         super().__init__()
         self.__message_queue = MessageQueue()
         self.__address = listening_address
@@ -57,6 +59,7 @@ class MessageProcessorBase(ComponentBase):
         self.__message_stream_factory = message_stream_factory
         self.__message_client_factory = message_client_factory or RawMessageClientFactory()
         self.__default_client_retry_attempts = 2 if default_client_retry_attempts is None else default_client_retry_attempts
+        self.__handlers: List[MessageHandlerBase] = list(message_handlers)
 
         self._logger = get_logger(f'message_processor {type(self).__name__}')
 
@@ -121,6 +124,10 @@ class MessageProcessorBase(ComponentBase):
 
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
+
+    def add_message_handler(self, handler: MessageHandlerBase):
+        if handler not in self.__handlers:
+            self.__handlers.append(handler)
 
     def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: Optional[int] = None) -> _ClientContext:
         if send_retry_attempts is None:
@@ -256,7 +263,12 @@ class MessageProcessorBase(ComponentBase):
 
     async def __process_message_wrapper(self, message: Message, client: MessageClient, context: _ClientContext):
         try:
-            await self.process_message(message, client)
+            for handler in self.__handlers:
+                processed = await handler.process_message(message, client)
+                if processed:
+                    break
+            else:
+                await self.process_message(message, client)
         except Exception as e:
             self._logger.exception('processing exception happened')
         finally:
@@ -265,6 +277,8 @@ class MessageProcessorBase(ComponentBase):
 
     async def process_message(self, message: Message, client: MessageClient):
         """
+        This will be called only if no handler processed the message
+
         Override this with actual processing
         """
-        raise NotImplementedError()  # actual processing here
+        self._logger.warning(f'no handlers found to process message "{message}", ignoring')

@@ -1,12 +1,13 @@
 import asyncio
 from ..message_processor import MessageProcessorBase
+from ..message_handler import MessageHandlerBase
 from ..messages import Message
 from ..client import MessageClient, MessageClientFactory
 from ..address import DirectAddress
 from .tcp_message_receiver_factory import TcpMessageReceiverFactory
 from .tcp_message_stream_factory import TcpMessageStreamFactory, TcpMessageStreamPooledFactory
 
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 
 class TcpMessageProcessor(MessageProcessorBase):
@@ -15,7 +16,8 @@ class TcpMessageProcessor(MessageProcessorBase):
                  connection_pool_cache_time=300,
                  stream_timeout: float = 90,
                  default_client_retry_attempts: Optional[int] = None,
-                 message_client_factory: Optional[MessageClientFactory] = None):
+                 message_client_factory: Optional[MessageClientFactory] = None,
+                 message_handlers: Sequence[MessageHandlerBase] = ()):
         self.__pooled_factory = None
         if connection_pool_cache_time <= 0:
             stream_factory = TcpMessageStreamFactory(timeout=stream_timeout)
@@ -26,7 +28,8 @@ class TcpMessageProcessor(MessageProcessorBase):
                          message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
                          message_stream_factory=stream_factory,
                          default_client_retry_attempts=default_client_retry_attempts,
-                         message_client_factory=message_client_factory)
+                         message_client_factory=message_client_factory,
+                         message_handlers=message_handlers)
 
     async def _post_receiver_stop_waited(self):
         await super()._post_receiver_stop_waited()

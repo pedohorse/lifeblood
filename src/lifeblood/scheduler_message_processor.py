@@ -9,9 +9,11 @@ from . import invocationjob
 from .exceptions import AlreadyRunning
 from .enums import WorkerPingReply, TaskScheduleStatus, WorkerState, WorkerType
 from .net_classes import WorkerResources
-from .net_messages.tcp_impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor, CommandJsonMessageClient
+from .net_messages.tcp_impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
+from .net_messages.tcp_impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
+from .net_messages.tcp_impl.message_haldlers import CommandMessageHandlerBase
 
 
 from typing import Awaitable, Callable, Dict, Optional, Tuple, TYPE_CHECKING
@@ -19,10 +21,9 @@ if TYPE_CHECKING:
     from .scheduler import Scheduler
 
 
-class SchedulerMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, scheduler: "Scheduler", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
-        super().__init__(listening_address, backlog=backlog, connection_pool_cache_time=connection_pool_cache_time)
-        self.__logger = logging.get_logger('scheduler.message_processor')
+class SchedulerCommandHandler(CommandMessageHandlerBase):
+    def __init__(self, scheduler: "Scheduler"):
+        super().__init__()
         self.__scheduler = scheduler
 
     def command_mapping(self) -> Dict[str, Callable[[dict, CommandJsonMessageClient, Message], Awaitable[None]]]:
@@ -136,6 +137,16 @@ class SchedulerMessageProcessor(TcpCommandMessageProcessor):
         await client.send_message_as_json({'phase': 1})
         msg2 = await client.receive_message()
         await client.send_message_as_json({'phase': 2})
+
+
+class SchedulerMessageProcessor(TcpCommandMessageProcessor):
+    def __init__(self, scheduler: "Scheduler", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
+        super().__init__(listening_address,
+                         backlog=backlog,
+                         connection_pool_cache_time=connection_pool_cache_time,
+                         message_handlers=(SchedulerCommandHandler(scheduler),))
+        self.__logger = logging.get_logger('scheduler.message_processor')
+
 
 #
 # Client
