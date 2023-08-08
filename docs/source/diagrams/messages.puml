@@ -1,7 +1,4 @@
 @startuml
-
-
-
 rectangle "net_messages"{
   'class MessageData << (D,lightblue) >>
   class MessageClient{
@@ -15,7 +12,7 @@ rectangle "net_messages"{
   }
   class MessageReceiverCallback
   abstract MessageProcessor
-  
+
   'interface IMessage
   class Message
 
@@ -48,6 +45,9 @@ rectangle "net_messages"{
     close()
     async wait_closed()
   }
+  interface MessageHandler{
+    async process_message(Message, Client)
+  }
 }
 
 'Message --|> IMessage
@@ -69,6 +69,8 @@ MessageProcessor o--> MessageQueue
 MessageProcessor o--> "*" MessageClient
 MessageProcessor --> MessageReceiver
 MessageProcessor *--> MessageReceiverCallback
+
+MessageProcessor o--> "*" MessageHandler
 
 MessageQueue --> Message
 
@@ -107,7 +109,6 @@ rectangle impl {
   MessageReceiveStream --> asyncio.StreamReader
   MessageReceiveStream --> asyncio.StreamWriter
 
-  
-}
 
+}
 @enduml
