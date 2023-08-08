@@ -7,8 +7,8 @@ from unittest import IsolatedAsyncioTestCase
 from lifeblood.nethelpers import get_localhost
 from lifeblood.logging import set_default_loglevel
 set_default_loglevel('DEBUG')  # TODO: this must be set by env variable
-from lifeblood.net_messages.tcp_impl.message_protocol import MessageProtocol, IProtocolInstanceCounter
-from lifeblood.net_messages.tcp_impl.tcp_message_stream_factory import TcpMessageStreamPooledFactory, _initialize_connection
+from lifeblood.net_messages.impl.message_protocol import MessageProtocol, IProtocolInstanceCounter
+from lifeblood.net_messages.impl.tcp_message_stream_factory import TcpMessageStreamPooledFactory, _initialize_connection
 from lifeblood.net_messages.address import DirectAddress
 
 

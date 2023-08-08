@@ -8,7 +8,7 @@ from lifeblood.net_messages.messages import Message
 from lifeblood.net_messages.client import MessageClient
 from lifeblood.net_messages.exceptions import MessageSendingError, MessageTransferTimeoutError
 
-from lifeblood.net_messages.tcp_impl.tcp_message_processor import TcpMessageProcessor, TcpMessageProxyProcessor
+from lifeblood.net_messages.impl.tcp_message_processor import TcpMessageProcessor, TcpMessageProxyProcessor
 
 from typing import Callable, List, Type, Awaitable
 
@@ -41,13 +41,13 @@ class DummyReceiver(TestReceiver):
 class DummyReceiverWithReply(TestReceiver):
     _counter = 0
 
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None):
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None, default_client_retry_attempts=None):
         super().__init__(listening_host=listening_host,
                          listening_port=listening_port,
                          backlog=backlog,
                          artificial_delay=artificial_delay,
                          stream_timeout=stream_timeout,
-                         default_client_retry_attempts=8)  # cuz on slow windows test ci worker there seem to be backlog error, so we have to keep trying for some time
+                         default_client_retry_attempts=default_client_retry_attempts or 8)  # cuz on slow windows test ci worker there seem to be backlog error, so we have to keep trying for some time
         self.__my_id = self._counter
         DummyReceiverWithReply._counter += 1
 
@@ -148,7 +148,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
             self.assertTrue(good, "exception was not raised")
 
         logger.info('=== testing with 0 hops ===')
-        await self._direct_comm_helper(lambda h, p: DummyReceiverWithReply(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=0)
+        await self._direct_comm_helper(lambda h, p: DummyReceiverWithReply(h, p, stream_timeout=1, artificial_delay=1.5, default_client_retry_attempts=2), _logic, num_hops=0)
         #logger.info('=== testing with 2 hops ===')
         #await self._direct_comm_helper(lambda h, p: DummyReceiverWithReply(h, p, stream_timeout=1, artificial_delay=1.5), _logic, num_hops=2)
 

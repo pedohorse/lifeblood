@@ -6,7 +6,7 @@ from lifeblood.db_misc import sql_init_script
 from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.scheduler_message_processor import SchedulerWorkerControlClient
 from lifeblood.net_messages.address import AddressChain
-from lifeblood.net_messages.tcp_impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
+from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
 from lifeblood.net_messages.exceptions import MessageTransferError
 from lifeblood.scheduler_task_protocol import SchedulerTaskClient
 

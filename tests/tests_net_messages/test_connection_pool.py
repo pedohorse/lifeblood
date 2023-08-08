@@ -1,7 +1,7 @@
 import asyncio
 from unittest import IsolatedAsyncioTestCase
 
-from lifeblood.net_messages.tcp_impl.tcp_message_stream_factory import TcpMessageStreamPooledFactory
+from lifeblood.net_messages.impl.tcp_message_stream_factory import TcpMessageStreamPooledFactory
 from lifeblood.net_messages.address import DirectAddress
 
 
