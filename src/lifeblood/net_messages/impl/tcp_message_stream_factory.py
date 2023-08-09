@@ -103,7 +103,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
-        self.__closing_task_to_wait = asyncio.create_task(self.__closing_task())
+        self.__closing_task_to_wait = None
 
     async def prune(self):
         await self.close_unused_connections_older_than(self.__pooled_connection_life)
@@ -206,12 +206,15 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         await self.close_unused_connections_older_than(-1)
 
     def close_pool(self):
+        self.__closing_task_to_wait = asyncio.create_task(self.__closing_task())
         self.__pool_closed.set()
         for items in self.__pool.values():
             for item in items:
                 item.close_when_user_count_zero = True
 
     async def wait_pool_closed(self):
+        await self.__pool_closed.wait()
+        # by this time self.__closing_task_to_wait will be not None
         await self.__closing_task_to_wait
 
     async def __closing_task(self):
