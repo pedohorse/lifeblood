@@ -67,6 +67,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 #
                 # command enqueue task
                 elif command == b'task':  # scheduler wants us to pick up task
+                    raise DeprecationWarning('this does not work any more')  # TODO: slavage if any and clean up
                     tasksize = await reader.readexactly(4)
                     tasksize = struct.unpack('>I', tasksize)[0]
                     task = await reader.readexactly(tasksize)

@@ -47,7 +47,7 @@ from .defaults import worker_pool_port as default_worker_pool_port, \
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
 
-from typing import Optional, Dict, Tuple
+from typing import Any, Optional, Dict, Tuple, Union
 
 
 is_posix = not sys.platform.startswith('win')
@@ -460,7 +460,7 @@ class Worker:
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
-            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = str(report_to)
+            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = str('INCORRECT!!')  # TODO: implement worker-invocation api running only on localhost, add tests
             for aname, aval in task.attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue
