@@ -1,3 +1,4 @@
+import random
 import sys
 import os
 import errno
@@ -24,6 +25,7 @@ from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNo
 # from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
+from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
 #from .worker_pool_protocol import WorkerPoolClient
 from .worker_pool_message_processor import WorkerPoolControlClient
 from .broadcasting import await_broadcast
@@ -112,7 +114,9 @@ class Worker:
         self.__running_awaiter = None
         self.__previous_notrunning_awaiter = None  # here we will temporarily save running_awaiter before it is set to None again when task canceled or finished, to avoid task being GCd while in work
         self.__message_processor: Optional[WorkerMessageProcessor] = None
-        self.__local_negotiator: Optional[LocalMessageExchanger] = None
+        self.__local_invocation_server: Optional[asyncio.Server] = None
+        self.__local_invocation_server_address_string: str = ''
+
         self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
         self.__resource_db_lock = FileCoupledLock('worker_resources', self.__local_shared_dir)
         self.__resource_db_path = os.path.join(self.__local_shared_dir, 'resources.db')
@@ -171,6 +175,12 @@ class Worker:
         self.__started_event = asyncio.Event()
         self.__stopped = False
 
+    def message_processor(self) -> WorkerMessageProcessor:
+        return self.__message_processor
+
+    def scheduler_message_address(self) -> AddressChain:
+        return self.__scheduler_addr
+
     async def start(self):
         if self.__started:
             return
@@ -180,6 +190,30 @@ class Worker:
         async with self.__start_lock:
             abort_start = False
 
+            # start local server for invocation api connections
+            loop = asyncio.get_event_loop()
+            localhost = get_localhost()
+            localport_start = 10101
+            localport_end = 11111
+            localport = None
+            for _ in range(localport_end - localport_start):  # big but finite
+                localport = random.randint(localport_start, localport_end)
+                try:
+                    self.__local_invocation_server = await loop.create_server(
+                        lambda: WorkerInvocationServerProtocol(self, [WorkerInvocationProtocolHandlerV10(self)]),
+                        localhost,
+                        localport
+                    )
+                    break
+                except OSError as e:
+                    if e.errno != errno.EADDRINUSE:
+                        raise
+                    continue
+            else:
+                raise RuntimeError('could not find an opened port!')
+            self.__local_invocation_server_address_string = f'{localhost}:{localport}'
+
+            # start message processor
             my_ip = get_addr_to(self.__scheduler_addr.split_address()[0])
             my_port = default_worker_start_port()
             for i in range(1024):  # big but finite
@@ -254,7 +288,9 @@ class Worker:
                 await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
                 await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler.
                 # no new tasks will be picked up cuz __stopped is already set
+                self.__local_invocation_server.close()
                 await _send_byebye()  # saying bye, don't bother us. (some delayed comms may still come through to the __server
+                await self.__local_invocation_server.wait_closed()
                 self.__message_processor.stop()
                 await self.__message_processor.wait_till_stops()
                 self.__logger.info('message processor stopped')
@@ -460,7 +496,7 @@ class Worker:
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
-            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = str('INCORRECT!!')  # TODO: implement worker-invocation api running only on localhost, add tests
+            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
             for aname, aval in task.attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue

@@ -7,7 +7,8 @@ from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
 from .exceptions import AlreadyRunning
-from .enums import WorkerPingReply, TaskScheduleStatus, WorkerState, WorkerType
+from .taskspawn import TaskSpawn
+from .enums import WorkerPingReply, TaskScheduleStatus, WorkerState, WorkerType, SpawnStatus
 from .net_classes import WorkerResources
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
@@ -16,7 +17,7 @@ from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
-from typing import Awaitable, Callable, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Awaitable, Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .scheduler import Scheduler
 
@@ -139,12 +140,78 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         await client.send_message_as_json({'phase': 2})
 
 
+class SchedulerExtraCommandHandler(CommandMessageHandlerBase):
+    def __init__(self, scheduler: "Scheduler"):
+        super().__init__()
+        self.__scheduler = scheduler
+
+    def command_mapping(self) -> Dict[str, Callable[[dict, CommandJsonMessageClient, Message], Awaitable[None]]]:
+        return {
+            'spawn': self.comm_spawn,
+            'nodenametoid': self.comm_node_name_to_id,
+            'tupdateattribs': self.comm_update_task_attributes,
+        }
+
+    async def comm_spawn(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        spawn a new task
+
+        expects keys:
+            task: serialized TaskSpawn
+        returns keys:
+            status: SpawnStatus value
+            task_id: spawned task id or None if no tasks were spawned
+        """
+        task_data = args['task'].encode('latin1')
+        taskspawn: TaskSpawn = TaskSpawn.deserialize(task_data)
+
+        ret: Tuple[SpawnStatus, Optional[int]] = await self.__scheduler.spawn_tasks(taskspawn)
+        await client.send_message_as_json({
+            'status': ret[0].value,
+            'task_id': ret[1]
+        })
+
+    async def comm_node_name_to_id(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        node name to node id if found
+
+        expects keys:
+            name: name of the node to find
+        returns keys:
+            node_ids: list of int, ids of the nodes with given name
+        """
+        ids = await self.__scheduler.node_name_to_id(args['name'])
+        await client.send_message_as_json({
+            'node_ids': list(ids)
+        })
+
+    async def comm_update_task_attributes(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        update task attributes
+
+        expects keys:
+            task_id: id of the task to update attributes of
+            attribs_to_update: dict of attribute names to attribute values
+            attribs_to_delete: list of attribute names to delete
+        returns keys:
+            ok: ok is ok
+        """
+        task_id = args['task_id']
+        attribs_to_update = args['attribs_to_update']
+        attribs_to_delete = set(args['attribs_to_delete'])
+        await self.__scheduler.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
+        await client.send_message_as_json({
+            'ok': True
+        })
+
+
 class SchedulerMessageProcessor(TcpCommandMessageProcessor):
     def __init__(self, scheduler: "Scheduler", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
         super().__init__(listening_address,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
-                         message_handlers=(SchedulerCommandHandler(scheduler),))
+                         message_handlers=(SchedulerCommandHandler(scheduler),
+                                           SchedulerExtraCommandHandler(scheduler)))
         self.__logger = logging.get_logger('scheduler.message_processor')
 
 
@@ -228,3 +295,40 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         })
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
+
+
+class SchedulerExtraControlClient(SchedulerBaseClient):
+    def __init__(self, client: CommandJsonMessageClient):
+        super().__init__(client)
+        self.__client = client
+
+    @classmethod
+    @contextmanager
+    def get_scheduler_control_client(cls, scheduler_address: AddressChain, processor: TcpCommandMessageProcessor) -> "SchedulerExtraControlClient":
+        with processor.message_client(scheduler_address) as message_client:
+            yield SchedulerExtraControlClient(message_client)
+
+    async def spawn(self, task_spawn: TaskSpawn) -> Tuple[SpawnStatus, Optional[int]]:
+        await self.__client.send_command('spawn', {
+            'task': task_spawn.serialize().decode('latin1')
+        })
+        reply = await self.__client.receive_message()
+        ret_data = await reply.message_body_as_json()
+        return SpawnStatus(ret_data['status']), ret_data['task_id']
+
+    async def node_name_to_id(self, name: str) -> List[int]:
+        await self.__client.send_command('nodenametoid', {
+            'name': name
+        })
+        reply = await self.__client.receive_message()
+        ret_data = await reply.message_body_as_json()
+        return list(ret_data['node_ids'])
+
+    async def update_task_attributes(self, task_id: int, attribs_to_update: dict, attribs_to_delete: Set[str]):
+        await self.__client.send_command('tupdateattribs', {
+            'task_id': task_id,
+            'attribs_to_update': attribs_to_update,
+            'attribs_to_delete': list(attribs_to_delete),
+        })
+        reply = await self.__client.receive_message()
+        assert (await reply.message_body_as_json()).get('ok')
