@@ -1,4 +1,6 @@
-from unittest import IsolatedAsyncioTestCase
+import os
+import tempfile
+from unittest import IsolatedAsyncioTestCase, mock
 from pathlib import Path
 import asyncio
 import random
@@ -10,14 +12,17 @@ import logging
 
 from lifeblood.logging import get_logger
 from lifeblood.worker import Worker
+from lifeblood.invocationjob import InvocationJob
 from lifeblood.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
-from lifeblood.enums import WorkerType, WorkerState
+from lifeblood.enums import WorkerType, WorkerState, SpawnStatus
 from lifeblood.db_misc import sql_init_script
 from lifeblood.logging import set_default_loglevel
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
 from lifeblood import launch
+
+from typing import Awaitable, Callable
 
 
 def purge_db():
@@ -59,6 +64,91 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
         await asyncio.gather(sched.wait_till_stops(),
                              worker.wait_till_stops())
+
+    async def test_worker_invocation_api1(self):
+        async def _logic(scheduler, worker, tmp_script_path, done_waiter):
+            with mock.patch('lifeblood.scheduler.scheduler.Scheduler.spawn_tasks') as spawn_patch:
+                spawn_patch.side_effect = lambda *args, **kwargs: print(f'spawn_tasks_called with {args}, {kwargs}') \
+                                                                  or (SpawnStatus.SUCCEEDED, 2346)
+
+                ij = InvocationJob(
+                        ['python', tmp_script_path],
+                        invocation_id=1234,
+                    )
+                ij._set_task_id(2345)
+                await worker.run_task(
+                    ij,
+                    scheduler.server_message_address()
+                )
+
+                await asyncio.wait([done_waiter], timeout=10)
+
+                self.assertTrue(spawn_patch.call_count == 1)
+
+        await self._helper_test_worker_invocation_api(
+            'import lifeblood_connection as lbc\n'
+            'lbc.create_task("woobwoob", {"testattr": 42})\n'
+            'print("invoc done")\n',
+            _logic
+        )
+
+    async def test_worker_invocation_api2(self):
+        async def _logic(scheduler, worker, tmp_script_path, done_waiter):
+            with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
+                attr_patch.side_effect = lambda *args, **kwargs: print(f'update attrs with {args}, {kwargs}')
+
+                ij = InvocationJob(
+                        ['python', tmp_script_path],
+                        invocation_id=1234,
+                    )
+                ij._set_task_id(2345)
+                await worker.run_task(
+                    ij,
+                    scheduler.server_message_address()
+                )
+
+                await asyncio.wait([done_waiter], timeout=10)
+
+                self.assertTrue(attr_patch.call_count == 1)
+                self.assertEqual(((2345, {"myattree": [1, 2, -42]}, set()),), attr_patch.call_args)
+
+        await self._helper_test_worker_invocation_api(
+            'import lifeblood_connection as lbc\n'
+            'lbc.set_attributes({"myattree": [1, 2, -42]})\n'
+            'print("invoc done")\n',
+            _logic
+        )
+
+    async def _helper_test_worker_invocation_api(self, runcode: str, logic: Callable):
+        purge_db()
+        sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        await sched.start()
+
+        worker = Worker(sched.server_message_address())
+        await worker.start()
+
+        await asyncio.gather(sched.wait_till_starts(),
+                             worker.wait_till_starts())
+
+        #
+        fd, tmp_script_path = tempfile.mkstemp('.py')
+        try:
+            with open(tmp_script_path, 'w') as f:
+                f.write(runcode)
+
+            done_ev = asyncio.Event()
+            with mock.patch('lifeblood.scheduler.scheduler.Scheduler.task_done_reported') as td_patch:
+                td_patch.side_effect = lambda *args, **kwargs: done_ev.set()
+                done_waiter = asyncio.create_task(done_ev.wait())
+                await logic(sched, worker, tmp_script_path, done_waiter)
+        finally:
+            os.close(fd)
+            os.unlink(tmp_script_path)
+
+        worker.stop()
+        await worker.wait_till_stops()
+        sched.stop()
+        await sched.wait_till_stops()
 
     async def test_task_get_order(self):
         purge_db()
