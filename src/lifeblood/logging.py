@@ -3,7 +3,8 @@ import os
 import time
 import logging
 from .paths import log_path
-# init default logging
+# reexport some names
+from logging import CRITICAL, FATAL, ERROR, WARNING, WARN, INFO, DEBUG, NOTSET  # reexport
 
 
 class UnimportantOnlyFilter(logging.Filter):
@@ -27,14 +28,14 @@ def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     __logger_cache[name] = logger
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s] %(message)s'))
+    handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s:%(process)d][%(levelname)s] %(message)s'))
     handler.setStream(sys.stdout)
     handler.setLevel(logging.NOTSET)
     handler.addFilter(UnimportantOnlyFilter())
     logger.addHandler(handler)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
+    handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
     handler.setLevel(logging.WARNING)
     handler.setStream(sys.stderr)
     logger.addHandler(handler)
@@ -42,7 +43,7 @@ def get_logger(name: str) -> logging.Logger:
     logpath = log_path(f'{os.getpid()}.log', 'log')
     if logpath is not None:
         logfile_handler = logging.FileHandler(logpath)
-        logfile_handler.setFormatter(logging.Formatter('[%(asctime)s][%(module)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
+        logfile_handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s:%(process)d][%(levelname)s][%(funcName)s] %(message)s'))
         logfile_handler.setLevel(logging.INFO)
         logger.addHandler(logfile_handler)
 

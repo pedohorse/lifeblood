@@ -217,6 +217,14 @@ class Node(NetworkItemWithUI):
         scene: QGraphicsImguiScene = self.scene()
         scene.set_tasks_paused([x.get_id() for x in self.__tasks], False)
 
+    def rewaiting_all_ready_tasks(self):
+        """
+        all currently displayed tasks that are in states BEFORE processing will be set to WAITING
+        """
+        scene: QGraphicsImguiScene = self.scene()
+        scene.set_task_state([x.get_id() for x in self.__tasks if x.state() in (TaskState.READY,)],
+                             TaskState.WAITING)
+
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
         self.__nodeui_menucache = {}
