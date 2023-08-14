@@ -13,7 +13,8 @@ from contextlib import asynccontextmanager
 
 from .. import logging
 from .. import paths
-from ..worker_task_protocol import WorkerTaskClient
+#from ..worker_task_protocol import WorkerTaskClient
+from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from ..scheduler_ui_protocol import SchedulerUiProtocol
 from ..invocationjob import InvocationJob
@@ -30,9 +31,12 @@ from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, Wo
     SchedulerMode, TaskGroupArchivedState
 from ..config import get_config
 from ..misc import atimeit, alocking
-from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
+from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port, scheduler_message_port as default_scheduler_message_port
 from .. import aiosqlite_overlay
 from ..ui_protocol_data import TaskData, TaskDelta, IncompleteInvocationLogData, InvocationLogData
+
+from ..net_messages.address import DirectAddress, AddressChain
+from ..scheduler_message_processor import SchedulerMessageProcessor
 
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
@@ -44,8 +48,10 @@ from typing import Optional, Any, Tuple, List, Iterable, Union, Dict
 
 
 class Scheduler:
-    def __init__(self, db_file_path, *, do_broadcasting=None, helpers_minimal_idle_to_ensure=1,
-                 server_addr: Optional[Tuple[str, int]] = None, server_ui_addr: Optional[Tuple[str, int]] = None):
+    def __init__(self, db_file_path, *, do_broadcasting: Optional[bool] = None, broadcast_interval: Optional[int] = None,
+                 helpers_minimal_idle_to_ensure=1,
+                 server_addr: Optional[Tuple[str, int, int]] = None,
+                 server_ui_addr: Optional[Tuple[str, int]] = None):
         """
         TODO: add a docstring
 
@@ -104,8 +110,9 @@ class Scheduler:
         if server_addr is None:
             server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
             server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
+            message_server_port = config.get_option_noasync('core.server_message_port', default_scheduler_message_port())
         else:
-            server_ip, server_port = server_addr
+            server_ip, server_port, message_server_port = server_addr
         if server_ui_addr is None:
             ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
             ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
@@ -118,20 +125,29 @@ class Scheduler:
         self.__server = None
         self.__server_coro = loop.create_server(self._scheduler_protocol_factory, server_ip, server_port, backlog=16)
         self.__server_address = ':'.join((server_ip, str(server_port)))
+        self.__message_processor: Optional[SchedulerMessageProcessor] = None
+        self.__message_address: Tuple[str, int] = (server_ip, message_server_port)
         self.__ui_server = None
         self.__ui_server_coro = loop.create_server(self._ui_protocol_factory, ui_ip, ui_port, backlog=16)
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting is None:
             do_broadcasting = config.get_option_noasync('core.broadcast', True)
         if do_broadcasting:
-            broadcast_info = json.dumps({'worker': self.__server_address, 'ui': self.__ui_address})
+            if broadcast_interval is None or broadcast_interval <= 0:
+                broadcast_interval = config.get_option_noasync('core.broadcast_interval', 10)
+            broadcast_info = json.dumps({
+                'message_address': str(DirectAddress.from_host_port(*self.__message_address)),
+                'worker': self.__server_address,
+                'ui': self.__ui_address
+            })
             self.__broadcasting_server = None
-            self.__broadcasting_server_coro = create_broadcaster('lifeblood_scheduler', broadcast_info, ip=get_default_broadcast_addr())
+            self.__broadcasting_server_coro = create_broadcaster('lifeblood_scheduler', broadcast_info, ip=get_default_broadcast_addr(), broadcast_interval=broadcast_interval)
         else:
             self.__broadcasting_server = None
             self.__broadcasting_server_coro = None
 
-        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER, minimal_idle_to_ensure=helpers_minimal_idle_to_ensure, scheduler_address=(server_ip, server_port))
+        self.__worker_pool = None
+        self.__worker_pool_helpers_minimal_idle_to_ensure = helpers_minimal_idle_to_ensure
 
         self.__event_loop = asyncio.get_running_loop()
         assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
@@ -180,6 +196,12 @@ class Scheduler:
         if component == self.__task_processor and mode == SchedulerMode.DORMANT:
             self.__logger.info('task processor switched to DORMANT mode')
             self.__pinger.sleep()
+
+    def message_processor(self) -> SchedulerMessageProcessor:
+        """
+        get scheduler's main message processor
+        """
+        return self.__message_processor
 
     async def get_node_type_and_name_by_id(self, node_id: int) -> (str, str):
         async with self.data_access.data_connection() as con:
@@ -334,10 +356,18 @@ class Scheduler:
 
     def stop(self):
         async def _server_closer():
+            # ensure all components stop first
+            await self.__pinger.wait_till_stops()
+            await self.__task_processor.wait_till_stops()
             await self.__worker_pool.wait_till_stops()
+            await self.__ui_server.wait_closed()
             if self.__server is not None:
                 self.__server.close()
                 await self.__server.wait_closed()
+            self.__logger.debug('stopping message processor...')
+            self.__message_processor.stop()
+            await self.__message_processor.wait_till_stops()
+            self.__logger.debug('message processor stopped')
 
         async def _db_cache_writeback():
             await self.__pinger.wait_till_stops()
@@ -389,14 +419,21 @@ class Scheduler:
                     self.data_access.mem_cache_workers_state[row['id']] = {k: row[k] for k in dict(row)}
 
         # start
-        await self.__worker_pool.start()
         self.__server = await self.__server_coro
         self.__ui_server = await self.__ui_server_coro
+        # start message processor
+        self.__message_processor = SchedulerMessageProcessor(self, self.__message_address)
+        await self.__message_processor.start()
+        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER,
+                                        minimal_idle_to_ensure=self.__worker_pool_helpers_minimal_idle_to_ensure,
+                                        scheduler_address=self.server_message_address())
+        await self.__worker_pool.start()
+        #
         if self.__broadcasting_server_coro is not None:
             self.__broadcasting_server = await self.__broadcasting_server_coro
-        self.__task_processor.start()
-        self.__pinger.start()
-        self.ui_state_access.start()
+        await self.__task_processor.start()
+        await self.__pinger.start()
+        await self.ui_state_access.start()
         # run
         self.__all_components = \
               asyncio.gather(self.__task_processor.wait_till_stops(),
@@ -427,6 +464,12 @@ class Scheduler:
 
     def is_started(self):
         return self.__started_event.is_set()
+
+    def is_stopping(self) -> bool:
+        """
+        True if stopped or in process of stopping
+        """
+        return self.__stop_event.is_set()
 
     #
     # helper functions
@@ -811,13 +854,13 @@ class Scheduler:
         if worker is None:
             self.__logger.error('inconsistent worker ids? how?')
             return
-        ip, port = worker['last_address'].rsplit(':', 1)
+        addr = AddressChain(worker['last_address'])
 
         # the logic is:
         # - we send the worker a signal to cancel invocation
         # - later worker sends task_cancel_reported, and we are happy
         # - but worker might be overloaded, broken or whatever and may never send it. and it can even finish task and send task_done_reported, witch we need to treat
-        async with WorkerTaskClient(ip, int(port)) as client:
+        with WorkerControlClient.get_worker_control_client(addr, self.message_processor()) as client:  # type: WorkerControlClient
             await client.cancel_task()
 
         # oh no, we don't do that, we wait for worker to report task canceled.  await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?', (InvocationState.FINISHED.value, invocation_id))
@@ -1468,7 +1511,7 @@ class Scheduler:
                     self.__logger.error('Worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
                 else:
                     try:
-                        async with WorkerTaskClient(*address_to_ip_port(workrow['last_address'])) as client:
+                        with WorkerControlClient.get_worker_control_client(workrow['last_address'], self.message_processor()) as client:  # type: WorkerControlClient
                             stdout, stderr = await client.get_log(invocation_id)
                         if not self.__use_external_log:
                             await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',  # TODO: is this really needed? if it's never really read
@@ -1502,3 +1545,8 @@ class Scheduler:
 
     def server_address(self) -> str:
         return self.__server_address
+
+    def server_message_address(self) -> AddressChain:
+        if self.__message_processor is None:
+            raise RuntimeError('cannot get listening address of a non started server')
+        return self.message_processor().listening_address()

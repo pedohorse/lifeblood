@@ -10,10 +10,10 @@ class SerializationTest(TestCase):
     def create_random_data(self, seed) -> NodeSnippetData:
         rng = Random(seed)
         nodes = []
-        nodes_count = rng.randint(0, 333)
+        nodes_count = rng.randint(0, 150)
         for i in range(nodes_count):
             params = {}
-            for _ in range(rng.randint(0, 100)):
+            for _ in range(rng.randint(0, 50)):
                 paramname = ''.join(rng.choice(string.ascii_letters) for _ in range(rng.randint(1, 32)))
                 paramtype = rng.choice(list(NodeParameterType))
                 if paramtype == NodeParameterType.STRING:

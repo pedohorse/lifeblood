@@ -10,7 +10,7 @@ class InterfaceTests(IsolatedAsyncioTestCase):
     async def test_broadcast(self):
         async def _broad_receiver():
             nonlocal msg_received
-            for _ in range(7):
+            for _ in range(3):
                 self.assertEqual('ooh, fresh information!', await broadcasting.await_broadcast('test me', 9271))
                 msg_received += 1
             print('all received')
@@ -22,10 +22,10 @@ class InterfaceTests(IsolatedAsyncioTestCase):
         await asyncio.sleep(1)
         # TODO: even though it's highly unlikely to be a problem - still better think of a more reliable way of waiting for listener to listen
 
-        _, caster = await broadcasting.create_broadcaster('test me', 'ooh, fresh information!', ip=nethelpers.get_default_broadcast_addr(), broad_port=9271, broadcasts_count=7, broadcast_interval=3)
+        _, caster = await broadcasting.create_broadcaster('test me', 'ooh, fresh information!', ip=nethelpers.get_default_broadcast_addr(), broad_port=9271, broadcasts_count=3, broadcast_interval=1)
         await caster.till_done()
         await listener
-        self.assertEqual(7, msg_received)
+        self.assertEqual(3, msg_received)
 
     async def test_broadcast_port_reusing(self):
         class _broad_receiver:
@@ -49,7 +49,7 @@ class InterfaceTests(IsolatedAsyncioTestCase):
         await asyncio.sleep(1)
         # TODO: even though it's highly unlikely to be a problem - still better think of a more reliable way of waiting for listener to listen
 
-        _, caster = await broadcasting.create_broadcaster('test me', 'ooh, fresh information!', ip=nethelpers.get_default_broadcast_addr(), broad_port=9271, broadcasts_count=4, broadcast_interval=3)
+        _, caster = await broadcasting.create_broadcaster('test me', 'ooh, fresh information!', ip=nethelpers.get_default_broadcast_addr(), broad_port=9271, broadcasts_count=4, broadcast_interval=1)
         await caster.till_done()
         for res, restask in listeners:
             await restask

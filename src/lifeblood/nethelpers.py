@@ -109,6 +109,8 @@ def get_default_broadcast_addr():
 
 
 def get_addr_to(ip):
+    if ':' in ip:
+        ip = ip.split(':', 1)[0]
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect((ip, 1))

@@ -1,0 +1,114 @@
+@startuml
+rectangle "net_messages"{
+  'class MessageData << (D,lightblue) >>
+  class MessageClient{
+    sends messages through processor
+  }
+
+  interface MessageReceiver{
+    async start()
+    stop()
+    async wait_till_stopped()
+  }
+  class MessageReceiverCallback
+  abstract MessageProcessor
+
+  'interface IMessage
+  class Message
+
+  class SessionPool{
+    currently just a dict...
+  }
+  class MessageQueue{
+    queue of received messages
+  }
+
+  interface MessageStreamFactory{
+    open_message_connection
+  }
+  interface MessageReceiverFactory{
+    current: create_server
+    --
+    async create_receiving_task(address, callback)
+  }
+  interface MessageClientFactory{
+    create_message_client(queue, session, *, ...)
+  }
+  interface MessageSendStreamBase{
+    async send_data_message(data, source, destination, session) -> Message
+    async send_raw_message(message)
+    close()
+    async wait_closed()
+  }
+  interface MessageReceiveStreamBase{
+    async receive_raw_message() -> Message
+    close()
+    async wait_closed()
+  }
+  interface MessageHandler{
+    async process_message(Message, Client)
+  }
+}
+
+'Message --|> IMessage
+
+MessageClientFactory --> MessageStreamFactory
+MessageClientFactory --> MessageQueue
+MessageClientFactory --> MessageClient
+
+MessageClient --> Message
+MessageClient --> MessageStreamFactory
+MessageClient --> MessageQueue
+'MessageClient --> MessageData
+
+MessageProcessor o--> MessageReceiverFactory
+MessageProcessor o--> MessageStreamFactory
+MessageProcessor o--> MessageClientFactory
+MessageProcessor o--> SessionPool
+MessageProcessor o--> MessageQueue
+MessageProcessor o--> "*" MessageClient
+MessageProcessor --> MessageReceiver
+MessageProcessor *--> MessageReceiverCallback
+
+MessageProcessor o--> "*" MessageHandler
+
+MessageQueue --> Message
+
+MessageReceiverCallback --> Message
+
+MessageReceiverFactory --> MessageReceiver
+
+MessageReceiver --> MessageReceiverCallback
+MessageReceiver --> MessageReceiveStreamBase
+
+MessageStreamFactory --> MessageSendStreamBase
+
+MessageSendStreamBase --> Message
+MessageReceiveStreamBase --> Message
+
+
+class asyncio.StreamReader
+class asyncio.StreamWriter
+
+rectangle impl {
+  'TcpMessageSender --|> MessageStream
+  TcpMessageReceiver --|> MessageReceiver
+  TcpMessageStreamFactory --|> MessageStreamFactory
+  TcpMessageReceiverFactory --|> MessageReceiverFactory
+
+  MessageSendStream --|> MessageSendStreamBase
+  MessageReceiveStream --|> MessageReceiveStreamBase
+
+  TcpMessageReceiverFactory --> TcpMessageReceiver
+  TcpMessageReceiver --> MessageReceiveStream
+
+  TcpMessageStreamFactory --> MessageSendStream
+
+  MessageSendStream --> asyncio.StreamReader
+  MessageSendStream --> asyncio.StreamWriter
+  MessageReceiveStream --> asyncio.StreamReader
+  MessageReceiveStream --> asyncio.StreamWriter
+
+
+}
+@enduml

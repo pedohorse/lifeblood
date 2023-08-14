@@ -1,3 +1,4 @@
+import random
 import sys
 import os
 import errno
@@ -19,10 +20,14 @@ from enum import Enum
 from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .net_classes import WorkerResources
-from .worker_task_protocol import WorkerTaskServerProtocol, AlreadyRunning
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
-from .scheduler_task_protocol import SchedulerTaskClient
-from .worker_pool_protocol import WorkerPoolClient
+# from .worker_task_protocol import WorkerTaskServerProtocol
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning
+# from .scheduler_task_protocol import SchedulerTaskClient
+from .worker_messsage_processor import WorkerMessageProcessor
+from .scheduler_message_processor import SchedulerWorkerControlClient
+from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
+#from .worker_pool_protocol import WorkerPoolClient
+from .worker_pool_message_processor import WorkerPoolControlClient
 from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob
 from .config import get_config, create_default_user_config_file
@@ -34,6 +39,9 @@ from .filelock import FileCoupledLock
 from .process_utils import create_process, kill_process_tree
 from . import db_misc
 from .misc import DummyLock
+from .net_messages.address import AddressChain, DirectAddress
+# from .net_messages.impl.tcp_message_processor import TcpMessageProcessor
+from .net_messages.exceptions import MessageTransferError
 from .defaults import worker_pool_port as default_worker_pool_port, \
                       scheduler_port as default_scheduler_port, \
                       worker_start_port as default_worker_start_port
@@ -41,33 +49,33 @@ from .defaults import worker_pool_port as default_worker_pool_port, \
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
 
-from typing import Optional, Dict, Tuple
+from typing import Any, Optional, Dict, Tuple, Union
 
 
 is_posix = not sys.platform.startswith('win')
 
 
-async def create_worker(scheduler_ip: str, scheduler_port: int, *,
+async def create_worker(scheduler_address: AddressChain, *,
                         child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
                         worker_type: WorkerType = WorkerType.STANDARD,
                         singleshot: bool = False,
                         worker_id: Optional[int] = None,
                         pool_address: Optional[Tuple[str, int]] = None):
-    worker = Worker(scheduler_ip, scheduler_port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+    worker = Worker(scheduler_address, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
 
     await worker.start()  # note that server is already started at this point
     return worker
 
 
 class Worker:
-    def __init__(self, scheduler_addr: str, scheduler_port: int, *,
+    def __init__(self, scheduler_addr: AddressChain, *,
                  child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
                  worker_type: WorkerType = WorkerType.STANDARD,
                  singleshot: bool = False,
                  scheduler_ping_interval: float = 10,
                  scheduler_ping_miss_threshold: int = 6,
                  worker_id: Optional[int] = None,
-                 pool_address: Optional[Tuple[str, int]] = None):
+                 pool_address: Optional[AddressChain] = None):
         """
 
         :param scheduler_addr:
@@ -105,9 +113,10 @@ class Worker:
         self.__running_task_progress: Optional[float] = None
         self.__running_awaiter = None
         self.__previous_notrunning_awaiter = None  # here we will temporarily save running_awaiter before it is set to None again when task canceled or finished, to avoid task being GCd while in work
-        # self.__running_resource_checker = None
-        self.__server: asyncio.AbstractServer = None
-        self.__local_negotiator: Optional[LocalMessageExchanger] = None
+        self.__message_processor: Optional[WorkerMessageProcessor] = None
+        self.__local_invocation_server: Optional[asyncio.Server] = None
+        self.__local_invocation_server_address_string: str = ''
+
         self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
         self.__resource_db_lock = FileCoupledLock('worker_resources', self.__local_shared_dir)
         self.__resource_db_path = os.path.join(self.__local_shared_dir, 'resources.db')
@@ -118,20 +127,20 @@ class Worker:
         self.__task_changing_state_lock = asyncio.Lock()
         self.__stop_lock = threading.Lock()
         self.__start_lock = asyncio.Lock()  # cant use threading lock in async methods - it can yeild out, and deadlock on itself
-        self.__where_to_report = None
+        self.__where_to_report: Optional[AddressChain] = None
         self.__ping_interval = scheduler_ping_interval
         self.__ping_missed_threshold = scheduler_ping_miss_threshold
         self.__ping_missed = 0
-        self.__scheduler_addr = (scheduler_addr, scheduler_port)
+        self.__scheduler_addr = scheduler_addr
         self.__scheduler_pinger = None
         self.__components_stop_event = asyncio.Event()
         self.__extra_files_base_dir = None
-        self.__my_addr: Optional[Tuple[str, int]] = None
+        self.__my_addr: Optional[AddressChain] = None
         self.__worker_id = worker_id
-        if pool_address is None:
-            self.__pool_address = (get_localhost(), default_worker_pool_port())
-        else:
-            self.__pool_address: Tuple[str, int] = pool_address
+        self.__pool_address: Optional[AddressChain] = pool_address
+        if self.__worker_id is None and self.__pool_address is not None \
+                or self.__worker_id is not None and self.__pool_address is None:
+            raise RuntimeError('pool_address must be given together with worker_id')
 
         self.__worker_type: WorkerType = worker_type
         self.__singleshot: bool = singleshot or worker_type == WorkerType.SCHEDULER_HELPER
@@ -166,8 +175,11 @@ class Worker:
         self.__started_event = asyncio.Event()
         self.__stopped = False
 
-    def my_address_string(self) -> str:
-        return '%s:%d' % self.__my_addr
+    def message_processor(self) -> WorkerMessageProcessor:
+        return self.__message_processor
+
+    def scheduler_message_address(self) -> AddressChain:
+        return self.__scheduler_addr
 
     async def start(self):
         if self.__started:
@@ -177,13 +189,37 @@ class Worker:
 
         async with self.__start_lock:
             abort_start = False
+
+            # start local server for invocation api connections
             loop = asyncio.get_event_loop()
-            my_ip = get_addr_to(self.__scheduler_addr[0])
+            localhost = get_localhost()
+            localport_start = 10101
+            localport_end = 11111
+            localport = None
+            for _ in range(localport_end - localport_start):  # big but finite
+                localport = random.randint(localport_start, localport_end)
+                try:
+                    self.__local_invocation_server = await loop.create_server(
+                        lambda: WorkerInvocationServerProtocol(self, [WorkerInvocationProtocolHandlerV10(self)]),
+                        localhost,
+                        localport
+                    )
+                    break
+                except OSError as e:
+                    if e.errno != errno.EADDRINUSE:
+                        raise
+                    continue
+            else:
+                raise RuntimeError('could not find an opened port!')
+            self.__local_invocation_server_address_string = f'{localhost}:{localport}'
+
+            # start message processor
+            my_ip = get_addr_to(self.__scheduler_addr.split_address()[0])
             my_port = default_worker_start_port()
             for i in range(1024):  # big but finite
                 try:
-                    self.__server = await loop.create_server(lambda: WorkerTaskServerProtocol(self), my_ip, my_port, backlog=16)
-                    addr = f'{my_ip}:{my_port}'
+                    self.__message_processor = WorkerMessageProcessor(self, (my_ip, my_port))
+                    await self.__message_processor.start()
                     break
                 except OSError as e:
                     if e.errno != errno.EADDRINUSE:
@@ -192,24 +228,26 @@ class Worker:
                     continue
             else:
                 raise RuntimeError('could not find an opened port!')
-            self.__my_addr = (my_ip, my_port)
 
-            # # resource checker
-            # self.__running_resource_checker = await self._start_resource_checker()
+            if self.__pool_address:
+                self.__my_addr = AddressChain.join_address((self.__pool_address, DirectAddress.from_host_port(my_ip, my_port)))
+            else:
+                self.__my_addr = AddressChain.from_host_port(my_ip, my_port)
 
             # now report our address to the scheduler
             try:
-                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources)
-            except ConnectionError as e:
+                with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
+                    self.__scheduler_db_uid = await client.say_hello(self.__my_addr, self.__worker_type, self.__my_resources)
+            except MessageTransferError as e:
                 self.__logger.error('error connecting to scheduler during start')
                 abort_start = True
             #
             # and report to the pool
             try:
                 if self.__worker_id is not None:
-                    async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
-                        await client.report_state(WorkerState.IDLE)
+                    assert self.__pool_address is not None
+                    with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
+                        await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
             except ConnectionError as e:
                 self.__logger.error('error connecting to worker pool during start')
                 abort_start = True
@@ -233,9 +271,9 @@ class Worker:
         async def _send_byebye():
             try:
                 self.__logger.debug('saying bye to scheduler')
-                async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                    await client.say_bye(self.my_address_string())
-            except ConnectionRefusedError:  # if scheduler is down
+                with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
+                    await client.say_bye(self.__my_addr)
+            except MessageTransferError:  # if scheduler or route is down
                 self.__logger.info('couldn\'t say bye to scheduler as it seem to be down')
             except Exception:
                 self.__logger.exception('couldn\'t say bye to scheduler for unknown reason')
@@ -250,9 +288,12 @@ class Worker:
                 await self.__scheduler_pinger  # to ensure pinger stops and won't try to contact scheduler any more
                 await self.cancel_task()  # then we cancel task, here we still can report it to the scheduler.
                 # no new tasks will be picked up cuz __stopped is already set
+                self.__local_invocation_server.close()
                 await _send_byebye()  # saying bye, don't bother us. (some delayed comms may still come through to the __server
-                self.__server.close()  # start the closing.
-                await self.__server.wait_closed()
+                await self.__local_invocation_server.wait_closed()
+                self.__message_processor.stop()
+                await self.__message_processor.wait_till_stops()
+                self.__logger.info('message processor stopped')
 
             self.__stopping_waiters.append(asyncio.create_task(_finalizer()))
             self.__finished.set()
@@ -268,7 +309,6 @@ class Worker:
         #     self.__scheduler_pinger = None
         # await self.__server.wait_closed()
         await self.__finished.wait()
-        await self.__server.wait_closed()
         self.__logger.info('server closed')
         await self.__scheduler_pinger
         self.__logger.info('pinger closed')
@@ -387,7 +427,7 @@ class Worker:
     #     if self.__local_negotiator:
     #         await self.__local_negotiator.send_sync_event()
 
-    async def run_task(self, task: InvocationJob, report_to: str):
+    async def run_task(self, task: InvocationJob, report_to: AddressChain):
         if self.__stopped:
             raise WorkerNotAvailable()
         self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}, {self.__resource_db_lock.locked_by_me()}')
@@ -456,7 +496,7 @@ class Worker:
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
-            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = report_to
+            env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
             for aname, aval in task.attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue
@@ -487,8 +527,9 @@ class Worker:
             self.__running_awaiter = asyncio.create_task(self._awaiter())
             self.__running_task_progress = 0
             if self.__worker_id is not None:  # TODO: gracefully handle connection fails here \/
-                async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
-                    await client.report_state(WorkerState.BUSY)
+                assert self.__pool_address is not None
+                with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
+                    await wpclient.report_state(self.__worker_id, WorkerState.BUSY)
 
             # # now adjust shared resource db:
             # # we are still in the resource lock
@@ -551,14 +592,22 @@ class Worker:
                 finally:
                     # report to the pool
                     if self.__worker_id is not None:
-                        async with WorkerPoolClient(*self.__pool_address, worker_id=self.__worker_id) as client:
-                            await client.report_state(WorkerState.IDLE)
+                        assert self.__pool_address is not None
+                        with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
+                            await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
 
         await self.__running_process.wait()
         await self.task_finished()
 
     def is_task_running(self) -> bool:
         return self.__running_task is not None
+
+    def is_stopping(self) -> bool:
+        """
+        returns True is stop was called on worker,
+        so worker is closed or in the process of closing
+        """
+        return self.__stopped
 
     async def cancel_task(self):
         async with self.__task_changing_state_lock:
@@ -576,8 +625,7 @@ class Worker:
             # report to scheduler that cancel was a success
             self.__logger.info(f'reporting cancel back to {self.__where_to_report}')
             try:
-                ip, port = self.__where_to_report.split(':', 1)
-                async with SchedulerTaskClient(ip, int(port)) as client:
+                with SchedulerWorkerControlClient.get_scheduler_control_client(self.__where_to_report, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                     await client.report_task_canceled(self.__running_task,
                                                       self.get_log_filepath('output', self.__running_task.invocation_id()),
                                                       self.get_log_filepath('error', self.__running_task.invocation_id()))
@@ -629,8 +677,7 @@ class Worker:
             # report to scheduler
             self.__logger.info(f'reporting done back to {self.__where_to_report}')
             try:
-                ip, port = self.__where_to_report.split(':', 1)
-                async with SchedulerTaskClient(ip, int(port)) as client:
+                with SchedulerWorkerControlClient.get_scheduler_control_client(self.__where_to_report, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                     await client.report_task_done(self.__running_task,
                                                   self.get_log_filepath('output', self.__running_task.invocation_id()),
                                                   self.get_log_filepath('error', self.__running_task.invocation_id()))
@@ -687,9 +734,9 @@ class Worker:
             for attempt in range(5):
                 self.__logger.debug(f'trying to reintroduce myself, attempt: {attempt + 1}')
                 try:
-                    async with SchedulerTaskClient(*self.__scheduler_addr) as client:
+                    with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                         assert self.__my_addr is not None
-                        addr = self.my_address_string()
+                        addr = self.__my_addr
                         self.__logger.debug('saying bye')
                         await client.say_bye(addr)
                         self.__logger.debug('cancelling task')
@@ -717,13 +764,12 @@ class Worker:
             # Here we are locking to prevent unexpected task state changes while checking for state inconsistencies
             async with self.__task_changing_state_lock:
                 try:
-                    async with SchedulerTaskClient(*self.__scheduler_addr) as client:
-                        result = await client.ping(f'{self.__my_addr[0]}:{self.__my_addr[1]}')
-                except ConnectionRefusedError as e:
-                    self.__logger.error('scheduler ping connection was refused')
-                    result = None
-                except ConnectionResetError as e:
-                    self.__logger.error('scheduler ping connection was reset')
+                    self.__logger.debug('pinging scheduler')
+                    with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
+                        result = await client.ping(self.__my_addr)
+                    self.__logger.debug(f'scheduler pinged: sees me as {result}')
+                except MessageTransferError as mte:
+                    self.__logger.error('ping message delivery failed')
                     result = None
                 except Exception as e:
                     self.__logger.exception('unexpected exception happened')
@@ -840,11 +886,9 @@ async def main_async(worker_type=WorkerType.STANDARD,
             message = await broadcast_task
             scheduler_info = json.loads(message)
             logger.debug('received', scheduler_info)
-            addr = scheduler_info['worker']
-            ip, sport = addr.split(':')  # TODO: make a proper protocol handler or what? at least ip/ipv6
-            port = int(sport)
+            addr = AddressChain(scheduler_info['message_address'])
             try:
-                worker = await create_worker(ip, port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = await create_worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             except Exception:
                 logger.exception('could not start the worker')
             else:
@@ -855,11 +899,10 @@ async def main_async(worker_type=WorkerType.STANDARD,
     else:
         logger.info('boradcast listening disabled')
         while True:
-            ip = await config.get_option('worker.scheduler_ip', get_default_addr())
-            port = await config.get_option('worker.scheduler_port', default_scheduler_port())
-            logger.debug(f'using {ip}:{port}')
+            addr = AddressChain(await config.get_option('worker.scheduler_address', get_default_addr()))
+            logger.debug(f'using {addr}')
             try:
-                worker = await create_worker(ip, port, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = await create_worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
                 await asyncio.sleep(10)
@@ -943,17 +986,15 @@ def main(argv):
     create_default_user_config_file('worker', default_config)
 
     # check legality of the address
-    paddr = None
-    if args.pool_address is not None:
-        paddr = address_to_ip_port(args.pool_address)
+    paddr = AddressChain(args.pool_address)
+
     config = get_config('worker')
     if args.no_listen_broadcast:
         config.set_override('worker.listen_to_broadcast', False)
     if args.scheduler_address is not None:
         config.set_override('worker.listen_to_broadcast', False)
-        saddr = address_to_ip_port(args.scheduler_address)
-        config.set_override('worker.scheduler_ip', saddr[0])
-        config.set_override('worker.scheduler_port', saddr[1])
+        saddr = AddressChain(args.scheduler_address)
+        config.set_override('worker.scheduler_address', str(saddr))
     try:
         asyncio.run(main_async(wtype, child_priority_adjustment=priority_adjustment, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:

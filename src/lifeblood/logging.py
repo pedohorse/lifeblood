@@ -15,12 +15,12 @@ __logger_cache = {}
 __default_loglevel = 'INFO'
 
 
-def set_default_loglevel(loglevel):
+def set_default_loglevel(loglevel: str):
     global __default_loglevel
     __default_loglevel = loglevel
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     global __logger_cache
     if name in __logger_cache:
         return __logger_cache[name]
@@ -63,6 +63,7 @@ def cleanup_logs():
                 log.unlink(missing_ok=True)
             except OSError:
                 pass
+
 
 # on first import - cleanup logs
 cleanup_logs()

@@ -8,9 +8,9 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
-from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState
+from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
-from ..worker_task_protocol import WorkerTaskClient, TaskScheduleStatus
+from ..worker_messsage_processor import WorkerControlClient
 from ..invocationjob import InvocationJob
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
@@ -19,6 +19,7 @@ from .. import pluginloader
 from .. import aiosqlite_overlay
 from ..config import get_config
 from ..ui_events import TaskData, TaskDelta
+from ..net_messages.address import AddressChain
 
 from .scheduler_component_base import SchedulerComponentBase
 
@@ -247,20 +248,19 @@ class TaskProcessor(SchedulerComponentBase):
     @atimeit()
     async def _submitter(self, task_row, worker_row):
         self.__logger.debug(f'submitter started')
-        addr = worker_row['last_address']
         try:
-            ip, port = addr.split(':')
-            port = int(port)
-        except:
-            self.__logger.error('error addres converting during unexpected here. ping should have cought it')
-            ip, port = None, None  # set to invalid values to exit in error-checking if a bit below
+            addr = AddressChain(worker_row['last_address'])
+        except ValueError:
+            self.__logger.error('error address converting during unexpected here. ping should have cought it')
+            addr = None  # set to invalid values to exit in error-checking if a bit below
+            # TODO: add nicer error check for invalid address. currently we fail to open connection to None
 
         task_id = task_row['id']
         ui_task_delta = TaskDelta(task_id)  # for ui event
         work_data = task_row['work_data']
         assert work_data is not None
         task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-        if not task.args() or ip is None:  # TODO: wait, wtf am i skipping work if ip is None ??
+        if not task.args():
             async with self.awaiter_lock, self.scheduler.data_access.data_connection() as skipwork_transaction:
                 await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                    (TaskState.POST_WAITING.value, task_id))
@@ -290,10 +290,10 @@ class TaskProcessor(SchedulerComponentBase):
             self.__logger.debug(f'submitting task to {addr}')
             try:
                 # this is potentially a long operation - db must NOT be locked during it
-                async with WorkerTaskClient(ip, port) as client:
+                with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
                     # import random
                     # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
-                    reply = await client.give_task(task, self.scheduler.server_address())
+                    reply = await client.give_task(task, self.scheduler.server_message_address())
                 self.__logger.debug(f'got reply {reply}')
             except Exception as e:
                 self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
@@ -345,6 +345,7 @@ class TaskProcessor(SchedulerComponentBase):
         kick_wait_task = asyncio.create_task(self._poke_event.wait())
         gc_counter = 0
         # tm_counter = 0
+        self._main_task_is_ready_now()
         while not self._stop_event.is_set():
             data_access = self.scheduler.data_access
             gc_counter += 1

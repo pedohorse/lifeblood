@@ -6,6 +6,7 @@ from __future__ import print_function
 import os
 import errno
 import pickle
+import json
 import threading
 import socket
 import struct
@@ -138,7 +139,10 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
         data = spawn.serialize()
-        sock.sendall(b'\0\0\0\0')
+        # negotiate protocol
+        sock.sendall(struct.pack('>QII', 1, 1, 0))
+        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+
         send_string(sock, 'spawn')
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
@@ -163,9 +167,12 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         addr, sport = addrport.rsplit(':', 1)
         port = int(sport)
         sock = socket.create_connection((addr, port), timeout=30)
-        sock.sendall(b'\0\0\0\0')
+        # negotiate protocol
+        sock.sendall(struct.pack('>QII', 1, 1, 0))
+        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+
         send_string(sock, 'tupdateattribs')
-        updata = pickle.dumps(attribs)
+        updata = json.dumps(attribs).encode('UTF-8')
         sock.sendall(struct.pack('>QQQ', task_id, len(updata), 0))
         sock.sendall(updata)
         sock.recv(1)  # recv confirmation

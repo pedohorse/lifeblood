@@ -1,5 +1,5 @@
 import asyncio
-from io import BufferedIOBase
+from io import BufferedIOBase, BytesIO
 from .buffered_connection import BufferedReader
 
 
@@ -12,4 +12,6 @@ class IBufferSerializable:
         raise NotImplementedError()
 
     async def serialize_to_streamwriter(self, stream: asyncio.StreamWriter):
-        await asyncio.get_event_loop().run_in_executor(None, self.serialize, stream)
+        buff = BytesIO()
+        await asyncio.get_event_loop().run_in_executor(None, self.serialize, buff)
+        stream.write(buff.getbuffer())

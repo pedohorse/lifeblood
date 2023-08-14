@@ -30,6 +30,23 @@ class WorkerPingState(Enum):
     UNKNOWN = 5
 
 
+class TaskScheduleStatus(Enum):
+    SUCCESS = 0
+    FAILED = 1
+    BUSY = 2
+    EMPTY = 3
+
+
+class TaskExecutionStatus(Enum):
+    FINISHED = 0
+    RUNNING = 1
+
+
+class WorkerPingReply(Enum):
+    IDLE = 0
+    BUSY = 1
+
+
 class TaskState(Enum):
     WAITING = 0  # arrived at node, does not know what to do
     GENERATING = 1  # node is generating work load

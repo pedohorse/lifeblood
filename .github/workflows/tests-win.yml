@@ -24,15 +24,15 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Set up Python ${{matrix.pyver}}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{matrix.pyver}}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 pytest
+        pip install flake8 pytest pytest-timeout
         if [ -f requirements_tests.txt ]; then pip install -r requirements_tests.txt; fi
       shell: bash
     - name: Adjust PYTHONPATH
@@ -46,6 +46,12 @@ jobs:
 #         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest
+        pytest --timeout=180 --durations=10 --junitxml=tests_log_win_${{matrix.pyver}}.xml
       shell: bash
-    timeout-minutes: 15
+    - name: save result
+      uses: actions/upload-artifact@v3
+      with:
+        name: tests-report
+        path: tests_log_win_${{matrix.pyver}}.xml
+      if: ${{ always() }}
+    timeout-minutes: 30
