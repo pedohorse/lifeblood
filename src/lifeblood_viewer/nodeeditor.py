@@ -1,5 +1,5 @@
+import os
 from pathlib import Path
-from itertools import chain, repeat
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
@@ -39,6 +39,8 @@ from imgui.integrations.opengl import ProgrammablePipelineRenderer
 from typing import Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
 
 logger = logging.get_logger('viewer')
+
+_in_debug_mode = logger.isEnabledFor(logging.DEBUG)
 
 
 def call_later(callable, *args, **kwargs):
@@ -461,15 +463,21 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if task.paused():
             menu.addAction('resume').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], False))
         else:
-            menu.addAction('pause').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], True))
+            menu.addAction('pause further processing').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], True))
 
         if task.state() == TaskState.IN_PROGRESS:
-            menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
-        state_submenu = menu.addMenu('force state')
-        for state in TaskState:
-            if state in (TaskState.GENERATING, TaskState.INVOKING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
-                continue
-            state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
+            action_text = 'cancel' if task.paused() else 'cancel and reschedule'
+            menu.addAction(action_text).triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
+        elif task.state() in (TaskState.READY, TaskState.ERROR):
+            action_text = 'retry' if task.state() == TaskState.ERROR else 'regenerate'
+            menu.addAction(action_text).trigger().connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_state([x], TaskState.WAITING))
+
+        if _in_debug_mode:
+            state_submenu = menu.addMenu('force state (debug)')
+            for state in TaskState:
+                if state in (TaskState.GENERATING, TaskState.INVOKING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
+                    continue
+                state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
 
         pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
         menu.aboutToHide.connect(menu.deleteLater)
@@ -502,6 +510,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addSeparator()
         menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
+        menu.addSeparator()
+        menu.addAction('regenerate all ready tasks').triggered.connect(node.regenerate_all_ready_tasks)
         menu.addSeparator()
 
         if len(self.__scene.selectedItems()) > 0:
