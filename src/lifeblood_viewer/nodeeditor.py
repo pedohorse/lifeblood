@@ -245,6 +245,15 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if shortcut:
             self.add_shortcut(action_name, 'main', shortcut, action_callback)
 
+    def perform_action(self, action_name: str):
+        """
+        perform action named action_name
+        """
+        if action_name not in self.__actions:
+            logger.error(f'no action named "{action_name}"')
+            return
+        self.__actions[action_name]()
+
     def show_message(self, message: str, duration: float):
         self.__overlay_message.show_label(message[:100], duration)
         self.__overlay_message.move(self.width()//2 - self.__overlay_message.width()//2, self.height()*5//6)
@@ -470,7 +479,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
             menu.addAction(action_text).triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
         elif task.state() in (TaskState.READY, TaskState.ERROR):
             action_text = 'retry' if task.state() == TaskState.ERROR else 'regenerate'
-            menu.addAction(action_text).trigger().connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_state([x], TaskState.WAITING))
+            menu.addAction(action_text).triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_state([x], TaskState.WAITING))
+        elif task.state() == TaskState.DONE and task.paused():
+            menu.addAction('retry').triggered.connect(
+                lambda checked=False, x=task.get_id(): (
+                    self.__scene.set_task_state([x], TaskState.WAITING),
+                    self.__scene.set_tasks_paused([x], False)
+            ))
 
         if _in_debug_mode:
             state_submenu = menu.addMenu('force state (debug)')
@@ -513,6 +528,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addSeparator()
         menu.addAction('regenerate all ready tasks').triggered.connect(node.regenerate_all_ready_tasks)
         menu.addSeparator()
+        menu.addAction('show task list').triggered.connect(lambda: self.perform_action('nodeeditor.task_list'))
 
         if len(self.__scene.selectedItems()) > 0:
             menu.addAction(f'layout selected nodes ({self.shortcuts()["nodeeditor.layout_graph"].key().toString()})').triggered.connect(self.layout_selected_nodes)
