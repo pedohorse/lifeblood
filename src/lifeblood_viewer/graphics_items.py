@@ -498,6 +498,9 @@ class Node(NetworkItemWithUI):
         assert task_to_remove not in self.__tasks
         self.update()  # cuz node displays task number - we should redraw
 
+    def tasks_iter(self):
+        return (x for x in self.__tasks)
+
     def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
         rect = self._get_bodyshape().boundingRect()
