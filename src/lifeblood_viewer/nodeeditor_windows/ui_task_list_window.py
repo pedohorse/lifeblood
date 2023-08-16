@@ -1,5 +1,6 @@
 import imgui
 
+from lifeblood.enums import TaskState
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
 from ..graphics_items import Node
@@ -18,23 +19,32 @@ class TaskListWindow(ImguiViewWindow):
         if self.__displayed_node is not None:
             imgui.text(f'node: {self.__displayed_node.node_name()}')
             base_name = self._imgui_window_name()
-            imgui.columns(3, f'tasks##{base_name}')
-            imgui.separator()
-            for col in ('ID', 'name', 'state'):
-                imgui.text(col)
-                imgui.next_column()
-            imgui.separator()
-            imgui.set_column_offset(1, 32)
-            imgui.set_column_offset(2, 450)
+            with imgui.begin_table(f'tasks##{base_name}', 3, imgui.TABLE_SIZING_STRETCH_PROP |
+                                                             imgui.TABLE_BORDERS_INNER_VERTICAL |
+                                                             imgui.TABLE_ROW_BACKGROUND
+                                   ):
+                imgui.table_setup_column('ID', imgui.TABLE_COLUMN_DEFAULT_SORT)
+                imgui.table_setup_column('name')
+                imgui.table_setup_column('state', imgui.TABLE_COLUMN_WIDTH_FIXED, 128.0)
+                imgui.table_headers_row()
 
-            for task in self.__displayed_node.tasks_iter():
-                for val in (task.get_id(), task.name(), task.state().name):
-                    imgui.text(str(val))
-                    imgui.next_column()
-            imgui.columns(1)
+                imgui.table_next_row()
+                imgui.table_next_column()
+
+                for task in self.__displayed_node.tasks_iter():
+                    for val in (task.get_id(), task.name()):
+                        imgui.text(str(val))
+                        imgui.table_next_column()
+                    if task.state() == TaskState.IN_PROGRESS:
+                        imgui.push_item_width(-1)
+                        imgui.progress_bar((task.get_progress() or 0) / 100, (0, 0), f'{task.get_progress() or 0}%')
+                    else:
+                        imgui.text(task.state().name)
+                    imgui.table_next_row()
+                    imgui.table_next_column()
 
     def initial_geometry(self):
-        return 512, 512, 450, 300
+        return 512, 512, 550, 300
 
     def shortcut_context_id(self):
         return None
