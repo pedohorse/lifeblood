@@ -1,6 +1,6 @@
 import imgui
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
 class ImguiElement:
@@ -12,16 +12,31 @@ class ImguiElement:
 
 
 class ImguiWindow(ImguiElement):
+    __unique_nums: Dict[str, int] = {}
+
     def __init__(self, title: str = '', closable: bool = True):
         self.__opened = False
         self.__just_opened = False
         # wanted to use uuid.uuid4().hex below, but that would bloat imgui's internal db after multiple launches
-        self.__imgui_name = f'{title}##{type(self).__name__}'
+        wnum = ImguiWindow.__unique_nums.setdefault(type(self).__name__, 0)
+        self.__title = title
+        self.__imgui_name_suffix = f'###{type(self).__name__}_{wnum}'  # triple ### ensures imgui uses only last part as key
+        ImguiWindow.__unique_nums[type(self).__name__] = wnum + 1
+
         self.__focused_last_draw: bool = False
         self.__closable = closable
 
+    def title(self):
+        return self.__title
+
+    def set_title(self, title: str):
+        self.__title = title
+
     def _imgui_window_name(self):
-        return self.__imgui_name
+        return f'{self.__title}{self.__imgui_name_suffix}'
+
+    def _imgui_key_name(self):
+        return self.__imgui_name_suffix
 
     def popup(self):
         self.__opened = True
@@ -68,7 +83,7 @@ class ImguiWindow(ImguiElement):
                 imgui.set_next_window_size(size[0], size[1], imgui.APPEARING)
             imgui.set_next_window_focus()
 
-        (expanded, opened) = imgui.begin(self.__imgui_name, closable=self.__closable)
+        (expanded, opened) = imgui.begin(self._imgui_window_name(), closable=self.__closable)
         if not opened:
             imgui.end()
             self._close()
