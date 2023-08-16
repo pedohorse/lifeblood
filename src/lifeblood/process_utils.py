@@ -180,8 +180,8 @@ async def kill_process_tree_posix(process: asyncio.subprocess.Process, graceful_
     try:
         __logger.debug(f'sending SIGKILL to process group {process.pid}')
         os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        __logger.warning('failed to send SIGKILL to group')
+    except OSError as e:
+        __logger.warning(f'failed to send SIGKILL to group, {str(e)}')
         pass
     return await process.wait()
 
