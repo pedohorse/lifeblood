@@ -227,9 +227,15 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
         software_to_detect = set(x.lower() for x in software_to_detect) if software_to_detect is not None else full_software_set
         all = {}
         if 'houdini' in software_to_detect:
-            all.update(cls.autodetect_houdini(base))
+            try:
+                all.update(cls.autodetect_houdini(base))
+            except Exception as e:
+                cls.logger.exception('failed to detect houdini, skipping')
         if 'blender' in software_to_detect:
-            all.update(cls.autodetect_blender(base))
+            try:
+                all.update(cls.autodetect_blender(base))
+            except Exception as e:
+                cls.logger.exception('failed to detect blender, skipping')
         return all
 
     @classmethod
@@ -251,30 +257,33 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
         houre = re.compile(r'^(?:[Hh]oudini|hfs)\s*(\d+\.\d+\.\d+)(?:\.py(\d+))?$')
         pyre = re.compile(r'^python(\d+)\.(\d+).*$')
         if base.exists():
-            for houdir in base.iterdir():
-                if not houdir.exists() or not houdir.is_dir():
-                    continue
-                match = houre.match(str(houdir.name))
-                if not match:
-                    continue
-                hpy = match.group(2)
-                if hpy is None:  # so we don't see explicit python version
-                    for file in (houdir/hfs_prefix/'python'/'bin').iterdir():
-                        pymatch = pyre.match(str(file.name))
-                        if not pymatch:
-                            continue
-                        hpy = pymatch.group(1)
-                        break
-                if f'houdini.py{hpy}' not in packages:
-                    packages[f'houdini.py{hpy}'] = {}
-                packages[f'houdini.py{hpy}'][match.group(1)] = {
-                    'label': f'SideFX Houdini, with python version {hpy}',
-                    'env': {
-                        'PATH': {
-                            'prepend': str(houdir/hfs_prefix/'bin')
+            try:
+                for houdir in base.iterdir():
+                    if not houdir.exists() or not houdir.is_dir():
+                        continue
+                    match = houre.match(str(houdir.name))
+                    if not match:
+                        continue
+                    hpy = match.group(2)
+                    if hpy is None:  # so we don't see explicit python version
+                        for file in (houdir/hfs_prefix/'python'/'bin').iterdir():
+                            pymatch = pyre.match(str(file.name))
+                            if not pymatch:
+                                continue
+                            hpy = pymatch.group(1)
+                            break
+                    if f'houdini.py{hpy}' not in packages:
+                        packages[f'houdini.py{hpy}'] = {}
+                    packages[f'houdini.py{hpy}'][match.group(1)] = {
+                        'label': f'SideFX Houdini, with python version {hpy}',
+                        'env': {
+                            'PATH': {
+                                'prepend': str(houdir/hfs_prefix/'bin')
+                            }
                         }
                     }
-                }
+            except PermissionError:
+                cls.logger.error(f'no permissions to scan {base}, skipping')
         return packages
 
     @classmethod
@@ -293,22 +302,25 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
             for base in bases:
                 if not base.exists():
                     continue
-                for blendir in base.iterdir():
-                    if not blendir.exists() or not blendir.is_dir():
-                        continue
-                    match = blere.match(str(blendir.name))
-                    if not match:
-                        continue
-                    if 'blender' not in packages:
-                        packages['blender'] = {}
-                    packages['blender'][match.group(1)] = {
-                        'label': 'Blender',
-                        'env': {
-                            'PATH': {
-                                'prepend': str(blendir)
+                try:
+                    for blendir in base.iterdir():
+                        if not blendir.exists() or not blendir.is_dir():
+                            continue
+                        match = blere.match(str(blendir.name))
+                        if not match:
+                            continue
+                        if 'blender' not in packages:
+                            packages['blender'] = {}
+                        packages['blender'][match.group(1)] = {
+                            'label': 'Blender',
+                            'env': {
+                                'PATH': {
+                                    'prepend': str(blendir)
+                                }
                             }
                         }
-                    }
+                except PermissionError:
+                    cls.logger.error(f'no permissions to scan {base}, skipping')
         elif sys.platform.startswith('darwin'):
             import subprocess
             # TODO: single stupid case covered only, not in a super nice way either...
