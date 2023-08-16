@@ -441,6 +441,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.setSceneRect(rect)
         #self.setSceneRect(rect.translated(*((self.__ui_panning_lastpos - event.screenPos()) * (2 ** self.__view_scale)).toTuple()))
 
+    def selected_nodes(self) -> Tuple[Node, ...]:
+        return tuple(node for node in self.__scene.selectedItems() if isinstance(node, Node))
+
     def node_types(self) -> MappingProxyType[str, TypeMetadata]:
         return MappingProxyType(self.__node_types)
 
@@ -508,6 +511,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def show_node_menu(self, node: Node, pos=None):
         menu = QMenu(self)
         menu.addAction(f'node {node.node_name()}').setEnabled(False)
+        menu.addAction('show task list').triggered.connect(lambda: (
+            node.set_selected(True, unselect_others=True),
+            self.perform_action('nodeeditor.task_list_for_selected_node')
+        ))
         menu.addSeparator()
         menu.addAction('rename').triggered.connect(lambda checked=False, x=node: self._popup_node_rename_widget(x))
         menu.addSeparator()
@@ -528,7 +535,6 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addSeparator()
         menu.addAction('regenerate all ready tasks').triggered.connect(node.regenerate_all_ready_tasks)
         menu.addSeparator()
-        menu.addAction('show task list').triggered.connect(lambda: self.perform_action('nodeeditor.task_list'))
 
         if len(self.__scene.selectedItems()) > 0:
             menu.addAction(f'layout selected nodes ({self.shortcuts()["nodeeditor.layout_graph"].key().toString()})').triggered.connect(self.layout_selected_nodes)
