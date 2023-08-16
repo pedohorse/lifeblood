@@ -276,6 +276,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             sche_port = config.get_option_noasync('viewer.scheduler_port', ui_port())
         logger.debug(f'connecting to scheduler on {sche_addr}:{sche_port} ...')
 
+        timeout = 5
         while not self.interruption_requested():
             try:
                 self.__client = UIProtocolSocketClient(sche_addr, sche_port, timeout=30)
@@ -285,14 +286,15 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 self.__last_known_event_id = -1
                 self.__last_known_db_uid = db_uid_update
                 self.db_uid_update.emit(db_uid_update)
-            except ConnectionError:
-                logger.debug('ui connection refused, retrying...')
+            except (ConnectionError, TimeoutError):
+                logger.warning('ui connection refused, retrying...')
 
                 # now sleep, but listening to interrupt requests
-                for i in range(25):
+                for i in range(timeout * 5):
                     time.sleep(0.2)
                     if self.interruption_requested():
                         return False
+                timeout = min(timeout * 2, 60)
             else:
                 break
 
