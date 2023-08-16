@@ -1403,6 +1403,9 @@ class Task(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
+    def get_progress(self) -> Optional[float]:
+        return self.__raw_data.progress if self.__raw_data else None
+
     def update_log(self, alllog: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]]):
         """
         This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
