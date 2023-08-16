@@ -205,6 +205,12 @@ class Node(NetworkItemWithUI):
         self.update()
         self.update_ui()
 
+    def set_selected(self, selected: bool, *, unselect_others=False):
+        scene: QGraphicsImguiScene = self.scene()
+        if unselect_others:
+            scene.clearSelection()
+        self.setSelected(selected)
+
     def apply_settings(self, settings_name: str):
         scene: QGraphicsImguiScene = self.scene()
         scene.request_apply_node_settings(self.get_id(), settings_name)
@@ -1277,6 +1283,13 @@ class Task(NetworkItemWithUI):
         if screen_rect.width() > 7:
             painter.setPen(self.__borderpen[int(self.isSelected())])
             painter.drawPath(path)
+
+    def set_selected(self, selected: bool):
+        scene: QGraphicsImguiScene = self.scene()
+        scene.clearSelection()
+        if selected:
+            self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+        self.setSelected(selected)
 
     def name(self):
         return self.__raw_data.name
