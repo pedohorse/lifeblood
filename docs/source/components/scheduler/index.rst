@@ -9,4 +9,3 @@ Scheduler
     scheduler
     scheduler_configs
     database
-    scheduler_api

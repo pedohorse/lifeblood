@@ -1,3 +1,5 @@
+.. _overview:
+
 =====================
 Overview of Lifeblood
 =====================
@@ -14,10 +16,26 @@ but Lifeblood does much more on top of that.
 **Lifeblood** allows you do define task processing workflows in terms of a node graph,
 where tasks that travel from node to node and may produce workload to be executed by a swarm of workers.
 
+Main concepts
+=============
+
+Lifeblood is a task processing system.
+
+A short summary of how Lifeblood works is this:
+
+* **task** are the main entities, they carry attributes.
+* **node** define some processing logic, they are sort of like functions in programming languages.
+* Nodes **process** tasks, reading and modifying their attributes.
+* After task is processed, it moves to the next node, according to **Node Graph**.
+* While processing tasks, node may produce an **invocation** (sort of like a "closure" to be executed).
+* Invocation is scheduled to be executed by one of the **workers**.
+* workers may be spawned on any number of physical or virtual machines to use all available
+  resources to process invocations.
+
 Main components
 ===============
 
-Lifeblood is a task processing system. It consists of 3 main component types:
+Lifeblood consists of 3 main component types:
 
 * scheduler
 * worker

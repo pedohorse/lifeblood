@@ -1,5 +1,6 @@
 venv
 venv-doc
+venv_docs
 .idea
 .run
 *.db*
