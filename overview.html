@@ -381,19 +381,20 @@ document.write(`
                 <article class="bd-article" role="main">
                   
   <section id="overview-of-lifeblood">
-<h1>Overview of Lifeblood<a class="headerlink" href="#overview-of-lifeblood" title="Permalink to this heading">#</a></h1>
+<span id="overview"></span><h1>Overview of Lifeblood<a class="headerlink" href="#overview-of-lifeblood" title="Permalink to this heading">#</a></h1>
 <nav class="contents local" id="contents">
 <ul class="simple">
-<li><p><a class="reference internal" href="#main-components" id="id1">Main components</a></p>
+<li><p><a class="reference internal" href="#main-concepts" id="id1">Main concepts</a></p></li>
+<li><p><a class="reference internal" href="#main-components" id="id2">Main components</a></p>
 <ul>
-<li><p><a class="reference internal" href="#scheduler" id="id2"><a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">scheduler</span></a></a></p></li>
-<li><p><a class="reference internal" href="#worker" id="id3"><a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">worker</span></a></a></p></li>
-<li><p><a class="reference internal" href="#viewer" id="id4"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a></p></li>
+<li><p><a class="reference internal" href="#scheduler" id="id3"><a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">scheduler</span></a></a></p></li>
+<li><p><a class="reference internal" href="#worker" id="id4"><a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">worker</span></a></a></p></li>
+<li><p><a class="reference internal" href="#viewer" id="id5"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#requirements" id="id5">Requirements</a></p>
+<li><p><a class="reference internal" href="#requirements" id="id6">Requirements</a></p>
 <ul>
-<li><p><a class="reference internal" href="#os-support" id="id6">OS support</a></p></li>
+<li><p><a class="reference internal" href="#os-support" id="id7">OS support</a></p></li>
 </ul>
 </li>
 </ul>
@@ -403,9 +404,24 @@ document.write(`
 but Lifeblood does much more on top of that.</p>
 <p><strong>Lifeblood</strong> allows you do define task processing workflows in terms of a node graph,
 where tasks that travel from node to node and may produce workload to be executed by a swarm of workers.</p>
+<section id="main-concepts">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Main concepts</a><a class="headerlink" href="#main-concepts" title="Permalink to this heading">#</a></h2>
+<p>Lifeblood is a task processing system.</p>
+<p>A short summary of how Lifeblood works is this:</p>
+<ul class="simple">
+<li><p><strong>task</strong> are the main entities, they carry attributes.</p></li>
+<li><p><strong>node</strong> define some processing logic, they are sort of like functions in programming languages.</p></li>
+<li><p>Nodes <strong>process</strong> tasks, reading and modifying their attributes.</p></li>
+<li><p>After task is processed, it moves to the next node, according to <strong>Node Graph</strong>.</p></li>
+<li><p>While processing tasks, node may produce an <strong>invocation</strong> (sort of like a “closure” to be executed).</p></li>
+<li><p>Invocation is scheduled to be executed by one of the <strong>workers</strong>.</p></li>
+<li><p>workers may be spawned on any number of physical or virtual machines to use all available
+resources to process invocations.</p></li>
+</ul>
+</section>
 <section id="main-components">
-<h2><a class="toc-backref" href="#id1" role="doc-backlink">Main components</a><a class="headerlink" href="#main-components" title="Permalink to this heading">#</a></h2>
-<p>Lifeblood is a task processing system. It consists of 3 main component types:</p>
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Main components</a><a class="headerlink" href="#main-components" title="Permalink to this heading">#</a></h2>
+<p>Lifeblood consists of 3 main component types:</p>
 <ul class="simple">
 <li><p>scheduler</p></li>
 <li><p>worker</p></li>
@@ -413,16 +429,16 @@ where tasks that travel from node to node and may produce workload to be execute
 </ul>
 <img alt="_images/overview.png" src="_images/overview.png" />
 <section id="scheduler">
-<span id="overview-scheduler"></span><h3><a class="toc-backref" href="#id2" role="doc-backlink"><a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">scheduler</span></a></a><a class="headerlink" href="#scheduler" title="Permalink to this heading">#</a></h3>
+<span id="overview-scheduler"></span><h3><a class="toc-backref" href="#id3" role="doc-backlink"><a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">scheduler</span></a></a><a class="headerlink" href="#scheduler" title="Permalink to this heading">#</a></h3>
 <p>Scheduler is the main brain of Lifeblood.
 It processes tasks, moves them around and schedules them for execution on workers.</p>
 </section>
 <section id="worker">
-<h3><a class="toc-backref" href="#id3" role="doc-backlink"><a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">worker</span></a></a><a class="headerlink" href="#worker" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id4" role="doc-backlink"><a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">worker</span></a></a><a class="headerlink" href="#worker" title="Permalink to this heading">#</a></h3>
 <p>Worker is the one component that does the (usually) heavy work specified by tasks’ invocations.</p>
 </section>
 <section id="viewer">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a><a class="headerlink" href="#viewer" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id5" role="doc-backlink"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a><a class="headerlink" href="#viewer" title="Permalink to this heading">#</a></h3>
 <p>Viewer is the tool that allows a user to view scheduler’s state.
 With a viewer you can see the state of the processing of your task group, or modify or create new node setups,
 move tasks around, or otherwise change things in scheduler.</p>
@@ -482,10 +498,10 @@ and to make lifeblood package lighter.</p>
 </section>
 </section>
 <section id="requirements">
-<h2><a class="toc-backref" href="#id5" role="doc-backlink">Requirements</a><a class="headerlink" href="#requirements" title="Permalink to this heading">#</a></h2>
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Requirements</a><a class="headerlink" href="#requirements" title="Permalink to this heading">#</a></h2>
 <p>python3.8 or higher is required</p>
 <section id="os-support">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">OS support</a><a class="headerlink" href="#os-support" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">OS support</a><a class="headerlink" href="#os-support" title="Permalink to this heading">#</a></h3>
 <p>There is nothing strictly os-specific, except signal handling and process managing by the worker.</p>
 <p>Currently it was <strong>only tested in linux</strong>.</p>
 <p>MacOS, being posix, should theoretically work without problems too.
@@ -541,6 +557,7 @@ Windows requires some os-specific modifications. it <em>should</em> work, but wa
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#main-concepts">Main concepts</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#main-components">Main components</a><ul class="visible nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#scheduler"><span class="xref std std-ref">scheduler</span></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#worker"><span class="xref std std-ref">worker</span></a></li>

@@ -22,6 +22,8 @@ and watch and manipulate task processing.
     so a scheduler needs to be configured and launched somewhere on the network before you will be
     able to see anything in the viewer
 
+Refer to :ref:`overview` to understand the main concepts.
+
 When you start viewer, you will see something like this:
 
 .. image:: /images/viewer_overview.png
