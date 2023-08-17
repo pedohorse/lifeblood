@@ -159,10 +159,7 @@ Right click a node and select **task list**
 
 this will opened a task list pinned on clicked node.
 
-.. figure:: /images/viewer_nodeeditor_tasklist.png
-    :align: left
-
-    Task list
+.. image:: /images/viewer_nodeeditor_tasklist.png
 
 You can also open a "unpinned" task list from ``Main Menu > Windows > Task List``.
 This task list will show tasks for any selected node
