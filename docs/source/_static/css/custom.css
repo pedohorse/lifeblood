@@ -1,0 +1,11 @@
+.bd-main .bd-content .bd-article-container {
+    max-width: 100rem;
+}
+
+.bd-page-width {
+    max-width: 105rem;
+}
+
+.bd-sidebar-primary {
+    width: 18%;
+}
