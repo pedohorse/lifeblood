@@ -30,6 +30,7 @@
 <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/css/custom.css" />
   
   <!-- Pre-loaded scripts that we'll load fully later -->
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=e353d410970836974a52" />
@@ -45,7 +46,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Installation" href="installation.html" />
-    <link rel="prev" title="Welcome to Lifeblood documentation!" href="index.html" />
+    <link rel="prev" title="Lifeblood Worker" href="components/worker/worker.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -131,6 +132,13 @@
   </p>
   <ul class="bd-navbar-elements navbar-nav">
     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item current active">
                       <a class="nav-link nav-internal" href="#">
                         Overview of Lifeblood
@@ -158,13 +166,6 @@
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="nodes.html">
-                        Nodes
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
@@ -172,8 +173,8 @@
                 <div class="dropdown-menu">
                     
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="components/index.html">
-                        Components
+                      <a class="nav-link nav-internal" href="nodes.html">
+                        Nodes
                       </a>
                     </li>
                 
@@ -257,6 +258,13 @@ document.write(`
   </p>
   <ul class="bd-navbar-elements navbar-nav">
     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item current active">
                       <a class="nav-link nav-internal" href="#">
                         Overview of Lifeblood
@@ -284,13 +292,6 @@ document.write(`
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="nodes.html">
-                        Nodes
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
@@ -298,8 +299,8 @@ document.write(`
                 <div class="dropdown-menu">
                     
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="components/index.html">
-                        Components
+                      <a class="nav-link nav-internal" href="nodes.html">
+                        Nodes
                       </a>
                     </li>
                 
@@ -387,7 +388,7 @@ document.write(`
 <ul>
 <li><p><a class="reference internal" href="#scheduler" id="id2"><a class="reference internal" href="components/scheduler/scheduler.html#scheduler"><span class="std std-ref">scheduler</span></a></a></p></li>
 <li><p><a class="reference internal" href="#worker" id="id3"><a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">worker</span></a></a></p></li>
-<li><p><a class="reference internal" href="#viewer" id="id4"><a class="reference internal" href="components/viewer/viewer.html#viewer"><span class="std std-ref">viewer</span></a></a></p></li>
+<li><p><a class="reference internal" href="#viewer" id="id4"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a></p></li>
 </ul>
 </li>
 <li><p><a class="reference internal" href="#requirements" id="id5">Requirements</a></p>
@@ -421,7 +422,7 @@ It processes tasks, moves them around and schedules them for execution on worker
 <p>Worker is the one component that does the (usually) heavy work specified by tasks’ invocations.</p>
 </section>
 <section id="viewer">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink"><a class="reference internal" href="components/viewer/viewer.html#viewer"><span class="std std-ref">viewer</span></a></a><a class="headerlink" href="#viewer" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id4" role="doc-backlink"><a class="reference internal" href="components/viewer/index.html#viewer"><span class="std std-ref">viewer</span></a></a><a class="headerlink" href="#viewer" title="Permalink to this heading">#</a></h3>
 <p>Viewer is the tool that allows a user to view scheduler’s state.
 With a viewer you can see the state of the processing of your task group, or modify or create new node setups,
 move tasks around, or otherwise change things in scheduler.</p>
@@ -505,12 +506,12 @@ Windows requires some os-specific modifications. it <em>should</em> work, but wa
     <div class="footer-article-item"><!-- Previous / next buttons -->
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="components/worker/worker.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Welcome to Lifeblood documentation!</p>
+        <p class="prev-next-title">Lifeblood Worker</p>
       </div>
     </a>
     <a class="right-next"

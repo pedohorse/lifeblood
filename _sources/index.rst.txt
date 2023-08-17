@@ -15,12 +15,12 @@ where tasks that travel from node to node and may produce workload to be execute
     :maxdepth: 2
     :caption: Contents:
 
+    components/index
     overview
     installation
     usage
     tutorials
     nodes
-    components/index
 
 Indices and tables
 ==================
@@ -28,4 +28,6 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-* :ref:`api`
+
+..
+    * :ref:`api`

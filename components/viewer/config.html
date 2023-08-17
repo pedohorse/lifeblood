@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
-    <title>Lifeblood Worker &#8212; Lifeblood 1.0.0 documentation</title>
+    <title>Viewer Configuration &#8212; Lifeblood 1.0.0 documentation</title>
   
   
   
@@ -42,11 +42,11 @@
     <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../../_static/doctools.js"></script>
     <script src="../../_static/sphinx_highlight.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'components/worker/worker';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'components/viewer/config';</script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Overview of Lifeblood" href="../../overview.html" />
-    <link rel="prev" title="Worker" href="index.html" />
+    <link rel="next" title="Parameter expressions" href="../../expressions.html" />
+    <link rel="prev" title="Lifeblood Viewer" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -337,8 +337,8 @@ document.write(`
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Components</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1 has-children"><a class="reference internal" href="../viewer/index.html">Lifeblood Viewer</a><input checked class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-1"><i class="fa-solid fa-chevron-down"></i></label><ul>
-<li class="toctree-l2"><a class="reference internal" href="../viewer/config.html">Viewer Configuration</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Lifeblood Viewer</a><input checked class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-1"><i class="fa-solid fa-chevron-down"></i></label><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Viewer Configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../expressions.html">Parameter expressions</a></li>
 </ul>
 </li>
@@ -351,8 +351,8 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="../scheduler/database.html">Database</a></li>
 </ul>
 </li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Worker</a><input checked class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-4"><i class="fa-solid fa-chevron-down"></i></label><ul class="current">
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Lifeblood Worker</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../worker/index.html">Worker</a><input checked class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-4"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../worker/worker.html">Lifeblood Worker</a></li>
 </ul>
 </li>
 </ul>
@@ -396,9 +396,9 @@ document.write(`
     <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Components</a></li>
     
     
-    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Worker</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Lifeblood Viewer</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page">Lifeblood Worker</li>
+    <li class="breadcrumb-item active" aria-current="page">Viewer Configuration</li>
   </ul>
 </nav>
 </div>
@@ -415,107 +415,9 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article" role="main">
                   
-  <section id="lifeblood-worker">
-<span id="worker"></span><h1>Lifeblood Worker<a class="headerlink" href="#lifeblood-worker" title="Permalink to this heading">#</a></h1>
-<nav class="contents local" id="contents">
-<ul class="simple">
-<li><p><a class="reference internal" href="#overview" id="id1">Overview</a></p></li>
-<li><p><a class="reference internal" href="#pre-requisites" id="id2">Pre-requisites</a></p></li>
-<li><p><a class="reference internal" href="#launching" id="id3">Launching</a></p>
-<ul>
-<li><p><a class="reference internal" href="#logging" id="id4">Logging</a></p></li>
-</ul>
-</li>
-</ul>
-</nav>
-<section id="overview">
-<h2><a class="toc-backref" href="#id1" role="doc-backlink">Overview</a><a class="headerlink" href="#overview" title="Permalink to this heading">#</a></h2>
-<p>Worker is the part of Lifeblood that is responsible for launching things as ordered by scheduler. A task may (or may not)
-create a payload that needs to be computed. For example: run simulation caching, render a frame, generate procedural
-geometry, etc.</p>
-<p>These payloads are not run by Scheduler directly, instead the Scheduler assigns this payload to one of free workers.
-The worker will do the job and report back to the Scheduler with results (or error)</p>
-<div class="line-block">
-<div class="line">You would have a single scheduler and multiple workers ran across local network.</div>
-<div class="line">Worker knows about computational resources available on the machine it runs on, and reports that to scheduler.</div>
-</div>
-<p>Multiple workers may be launched on the same machine, they should be able to agree with each other on how to share
-resources among each other</p>
-<p>Workers can be started on the same machine with scheduler, BUT you should be careful to leave enough resources for
-scheduler to work. If machine runs out of memory - scheduler will have problems working and may crash
-or be killed by the system.</p>
-</section>
-<section id="pre-requisites">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">Pre-requisites</a><a class="headerlink" href="#pre-requisites" title="Permalink to this heading">#</a></h2>
-<p>currently worker requires:</p>
-<ul class="simple">
-<li><p>existing temporary directory, shared between all worker instances (<span class="xref std std-ref">scratch location</span>)</p></li>
-<li><p>all worker instances on the same machine must share the same network namespace</p></li>
-</ul>
-</section>
-<section id="launching">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">Launching</a><a class="headerlink" href="#launching" title="Permalink to this heading">#</a></h2>
-<blockquote>
-<div><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">worker</span></code></p>
-</div></blockquote>
-<p>here you would also supply component-specific command line arguments, for example</p>
-<blockquote>
-<div><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">--loglevel</span> <span class="pre">DEBUG</span> <span class="pre">worker</span></code></p>
-</div></blockquote>
-<p>See all options using built-in help:</p>
-<blockquote>
-<div><p><code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">worker</span> <span class="pre">--help</span></code></p>
-</div></blockquote>
-<p>It’s important to understand: one worker can launch only one payload process at one time,
-there is no concept of slots. Instead, multiple workers running locally negociate with each other to share resources
-properly.</p>
-<p>So all locally running workers will inform each other about the amount of resources that the task they
-currently run requested, sharing all machine resources without overspending.</p>
-<p>On a machine with a lot of CPU cores for example it makes sense to have more than one workers running
-to use resources efficiently, and it can be tedious to manually launch all workers.</p>
-<p>For that reason worker <a class="reference internal" href="../../usage.html#usage-pools"><span class="std std-ref">pools exist</span></a>. Generally it’s a bigger concept, in this case we need a simplest worker pool
-implementation - simple local worker pool.</p>
-<p>This pool operates according to the following logic:</p>
-<ul class="simple">
-<li><p>if there is no free workers and we are not at worker limit - launch a worker</p></li>
-<li><p>a worker that finishes a task terminates</p></li>
-</ul>
-<p>well, that’s it, not much complicated logic in there, but it’s more powerful than a worker with constant number of slots:</p>
-<ul class="simple">
-<li><p>pool launches a worker (let’s call it worker1), it advertises to scheduler all of it’s (for example) 32 cores and 64 GBs of ram</p></li>
-<li><p>scheduler assigns worker1 a task that requires 8 cpu cores adn 16GB ram</p></li>
-<li><p>there’s no free workers now, so pool launches another worker (worker2). worker2 will communicate with worker1
-and learn about the task it’s executing, so worker2 will only advertise 24 cores and 48 GBs of ram to the scheduler</p></li>
-<li><p>scheduler assigns worker2 a task that requires 20 cores and 40GB of ram</p></li>
-<li><p>there’s no free workers now, so pool launches another worker (worker3). worker3 will communicate with worker1
-and worker2 and set it’s resources to 4 cores and 8 GBs of ram</p></li>
-<li><p>now worker1 finishes task and terminates, worker2 and worker3 are informed, and both of them adjust the resources
-advertised to scheduler to 12 cores and 24 GB of ram, though worker2 is still working on it’s task</p></li>
-<li><p>worker2 finishes task and terminates, worker3 is informed, so it adjusts resources advertised to scheduler to full
-machine’s resources: 32 cores and 64 GBs of ram.</p></li>
-</ul>
-<p>and this can get as granular as resources allow. That’s why always make sure to set up non zero resources usage for your tasks
-and limit maximum workers that pool can spawn to some sane and safe amount.</p>
-<section id="logging">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink">Logging</a><a class="headerlink" href="#logging" title="Permalink to this heading">#</a></h3>
-<div class="line-block">
-<div class="line">All Lifeblood components log to stdout, as well as to a log file.</div>
-<div class="line">Log files location is:</div>
-</div>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">/home/&lt;username&gt;/.local/share/lifeblood/log</span></code> (or <code class="docutils literal notranslate"><span class="pre">$XDG_DATA_HOME</span></code> if defined) (linux)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">C:\Users\&lt;username&gt;\AppData\Local\lifeblood\log</span></code> (based on <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%</span></code>) (windows)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">/Users/&lt;username&gt;/Library/Application</span> <span class="pre">Support/lifeblood/log</span></code> (mac)</p></li>
-</ul>
-<p>By default all components of Lifeblood are set to log only “important” messages (like warnings and errors),
-but to figure out what’s happening sometimes you would need a bit more information.</p>
-<div class="line-block">
-<div class="line">All of Lifeblood’s components can accept <code class="docutils literal notranslate"><span class="pre">--loglevel</span></code> parameter before command to specify minimum log level to, well, log.</div>
-<div class="line">for example <code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">scheduler</span> <span class="pre">--loglevel</span> <span class="pre">DEBUG</span></code> will set default log level to DEBUG and you will see all the
-crap printed out into stdout</div>
-</div>
-</section>
-</section>
+  <section id="viewer-configuration">
+<span id="viewer-configs"></span><h1>Viewer Configuration<a class="headerlink" href="#viewer-configuration" title="Permalink to this heading">#</a></h1>
+<p>TODO: do</p>
 </section>
 
 
@@ -535,15 +437,15 @@ crap printed out into stdout</div>
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Worker</p>
+        <p class="prev-next-title">Lifeblood Viewer</p>
       </div>
     </a>
     <a class="right-next"
-       href="../../overview.html"
+       href="../../expressions.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Overview of Lifeblood</p>
+        <p class="prev-next-title">Parameter expressions</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -560,23 +462,8 @@ crap printed out into stdout</div>
                 <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
   <div class="sidebar-secondary-item">
-  <div class="page-toc tocsection onthispage">
-    <i class="fa-solid fa-list"></i> On this page
-  </div>
-  <nav class="bd-toc-nav page-toc">
-    <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pre-requisites">Pre-requisites</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#launching">Launching</a><ul class="visible nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#logging">Logging</a></li>
-</ul>
-</li>
-</ul>
-  </nav></div>
-
-  <div class="sidebar-secondary-item">
   <div class="tocsection sourcelink">
-    <a href="../../_sources/components/worker/worker.rst.txt">
+    <a href="../../_sources/components/viewer/config.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
