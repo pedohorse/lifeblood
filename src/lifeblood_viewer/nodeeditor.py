@@ -488,7 +488,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 lambda checked=False, x=task.get_id(): (
                     self.__scene.set_task_state([x], TaskState.WAITING),
                     self.__scene.set_tasks_paused([x], False)
-            ))
+                )
+            )
 
         if _in_debug_mode:
             state_submenu = menu.addMenu('force state (debug)')
@@ -916,7 +917,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
-            if event.buttons() & Qt.MiddleButton:
+            if event.buttons() & Qt.MiddleButton or (event.buttons() & Qt.LeftButton and event.modifiers() & Qt.AltModifier):
                 self.__ui_panning_lastpos = event.screenPos()
             elif event.buttons() & Qt.RightButton and self.itemAt(event.pos()) is None:
                 event.accept()
