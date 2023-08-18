@@ -45,7 +45,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'components/scheduler/index';</script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Lifeblood Scheduler" href="scheduler.html" />
+    <link rel="next" title="Scheduler Config" href="scheduler_configs.html" />
     <link rel="prev" title="Parameter expressions" href="../../expressions.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -343,15 +343,10 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Scheduler</a><input checked class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-2"><i class="fa-solid fa-chevron-down"></i></label><ul>
-<li class="toctree-l2 has-children"><a class="reference internal" href="scheduler.html">Lifeblood Scheduler</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-3"><i class="fa-solid fa-chevron-down"></i></label><ul>
-<li class="toctree-l3"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a></li>
-</ul>
-</li>
 <li class="toctree-l2"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a></li>
-<li class="toctree-l2"><a class="reference internal" href="database.html">Database</a></li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../worker/index.html">Worker</a><input checked class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-4"><i class="fa-solid fa-chevron-down"></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../worker/index.html">Worker</a><input checked class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/><label class="toctree-toggle" for="toctree-checkbox-3"><i class="fa-solid fa-chevron-down"></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../worker/worker.html">Lifeblood Worker</a></li>
 </ul>
 </li>
@@ -413,25 +408,87 @@ document.write(`
                 <article class="bd-article" role="main">
                   
   <section id="scheduler">
-<h1>Scheduler<a class="headerlink" href="#scheduler" title="Permalink to this heading">#</a></h1>
+<span id="id1"></span><h1>Scheduler<a class="headerlink" href="#scheduler" title="Permalink to this heading">#</a></h1>
 <div class="toctree-wrapper compound">
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Scheduler</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="scheduler.html">Lifeblood Scheduler</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a></li>
-<li class="toctree-l2"><a class="reference internal" href="scheduler.html#database">Database</a></li>
-<li class="toctree-l2"><a class="reference internal" href="scheduler.html#broadcasting">Broadcasting</a></li>
-<li class="toctree-l2"><a class="reference internal" href="scheduler.html#logging">Logging</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="scheduler_configs.html">Scheduler Config</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="scheduler_configs.html#main-configuration-file">Main Configuration file</a></li>
-<li class="toctree-l2"><a class="reference internal" href="scheduler_configs.html#nodes">nodes</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="database.html">Database</a></li>
-</ul>
 </div>
+<p>Scheduler is the central part of Lifeblood: it manages tasks and workers, viewers connect to it.</p>
+<p>Refer to <a class="reference internal" href="../../overview.html#overview"><span class="std std-ref">Overview of Lifeblood</span></a> to understand the main concepts.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Since Scheduler manages all the resources, there should only be <strong>one single scheduler</strong> running on your network.</p>
+</div>
+<p>First of all, you need to make sure that every component is configured to reach scheduler.
+This may be done by manual configuration, or by relying on automatic <strong>broadcasting</strong>.</p>
+<section id="broadcasting">
+<span id="scheduler-broadcasting"></span><h2>Broadcasting<a class="headerlink" href="#broadcasting" title="Permalink to this heading">#</a></h2>
+<div class="line-block">
+<div class="line">By default Scheduler will start broadcasting it’s address over the local network (every 10s by default),
+and by default every component will start listening to scheduler’s broadcasts.</div>
+<div class="line">This way other components (worker, viewer) will be able to automatically connect to it when started
+from anywhere within the LAN.</div>
+<div class="line">You should never start 2 or more broadcasting schedulers in the same LAN, otherwise their broadcasts will collide
+and workers and viewers will get confused.</div>
+</div>
+<p>You can disable broadcasting in scheduler’s config file, but then you will have to properly configure workers and viewers manually
+so they know where to connect.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>usually networks are configured so that broadcast is not propagated through bridges and gateways,
+so if you have some complicated network topology - you need to configure components manually.
+Defaults work best for small home/company networks.</p>
+</div>
+<p>But if you do want to change the defaults and disable broadcasting, default scheduler config comes with
+commented preset for this.</p>
+<ul class="simple">
+<li><p>To disable the broadcasting, just uncomment this line <code class="docutils literal notranslate"><span class="pre">broadcast</span> <span class="pre">=</span> <span class="pre">false</span></code></p></li>
+<li><p>To specify ip address to use <code class="docutils literal notranslate"><span class="pre">server_ip</span> <span class="pre">=</span> <span class="pre">&quot;192.168.0.234&quot;</span></code> (with your address obviously)</p></li>
+<li><p>You can specify a separate ip to be used for UI with <code class="docutils literal notranslate"><span class="pre">ui_ip</span> <span class="pre">=</span> <span class="pre">&quot;172.1.2.3&quot;</span></code>, otherwise <code class="docutils literal notranslate"><span class="pre">server_ip</span></code> will be used</p></li>
+</ul>
+<p>refer to <span class="xref std std-ref">scheduler_configs</span> for details</p>
+</section>
+<section id="database">
+<span id="scheduler-database"></span><h2>Database<a class="headerlink" href="#database" title="Permalink to this heading">#</a></h2>
+<p>Probably the most important part of the configuration is where your scheduler’s database is stored.</p>
+<p>A scheduler’s database is something like a farm manager repository - it’s where all nodes and tasks are stored.</p>
+<p>Lifeblood uses <a class="reference external" href="https://www.sqlite.org/">sqlite</a> as it’s database engine.</p>
+<p>By default, the database file location is set to be next to scheduler’s config file in <a class="reference internal" href="../../usage.html#config-dir"><span class="std std-ref">Config location</span></a></p>
+<div class="line-block">
+<div class="line">However it may be overriden by config entry <code class="docutils literal notranslate"><span class="pre">scheduler.database.path</span></code>, or command line argument <code class="docutils literal notranslate"><span class="pre">--db-path</span></code>.</div>
+<div class="line">It is quite reasonable to have multiple databases to test different things around.</div>
+<div class="line">However the main idea of Lifeblood is to set up your pipeline logic in one single database.</div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>it is better to create the database on an <strong>SSD</strong> drive if possible,
+as it will be much faster, especially on huge databases.
+Though database on HDD is quite fine for low task load, but the lag may be noticeable.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>do NOT run multiple schedulers with different databases at the same time. Though it is supported
+in general - it requires some configuration, like disabling broadcasting. So you need to know what you
+are doing</p>
+</div>
+</section>
+<section id="logging">
+<span id="scheduler-logging"></span><h2>Logging<a class="headerlink" href="#logging" title="Permalink to this heading">#</a></h2>
+<div class="line-block">
+<div class="line">All Lifeblood components log to stdout, as well as to a log file.</div>
+<div class="line">Log files location is:</div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/home/&lt;username&gt;/.local/share/lifeblood/log</span></code> (or <code class="docutils literal notranslate"><span class="pre">$XDG_DATA_HOME</span></code> if defined) (linux)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">C:\Users\&lt;username&gt;\AppData\Local\lifeblood\log</span></code> (based on <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%</span></code>) (windows)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/Users/&lt;username&gt;/Library/Application</span> <span class="pre">Support/lifeblood/log</span></code> (mac)</p></li>
+</ul>
+<p>By default all components of Lifeblood are set to log only “important” messages (like warnings and errors),
+but to figure out what’s happening sometimes you would need a bit more information.</p>
+<div class="line-block">
+<div class="line">All of Lifeblood’s components can accept <code class="docutils literal notranslate"><span class="pre">--loglevel</span></code> parameter before command to specify minimum log level to, well, log.</div>
+<div class="line">for example <code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">scheduler</span> <span class="pre">--loglevel</span> <span class="pre">DEBUG</span></code> will set default log level to DEBUG and you will see all the
+crap printed out into stdout</div>
+</div>
+</section>
 </section>
 
 
@@ -455,11 +512,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="scheduler.html"
+       href="scheduler_configs.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Lifeblood Scheduler</p>
+        <p class="prev-next-title">Scheduler Config</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -474,6 +531,18 @@ document.write(`
             
               
                 <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#broadcasting">Broadcasting</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#database">Database</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#logging">Logging</a></li>
+</ul>
+  </nav></div>
 
   <div class="sidebar-secondary-item">
   <div class="tocsection sourcelink">
