@@ -107,6 +107,7 @@ class Scheduler:
         self.__task_processor: TaskProcessor = TaskProcessor(self)
         self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
+        server_ip = None
         if server_addr is None:
             server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
             server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
@@ -114,7 +115,7 @@ class Scheduler:
         else:
             server_ip, server_port, message_server_port = server_addr
         if server_ui_addr is None:
-            ui_ip = config.get_option_noasync('core.ui_ip', get_default_addr())
+            ui_ip = config.get_option_noasync('core.ui_ip', server_ip or get_default_addr())
             ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
         else:
             ui_ip, ui_port = server_ui_addr
