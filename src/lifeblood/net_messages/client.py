@@ -4,7 +4,7 @@ from .messages import Message
 from .queue import MessageQueue
 from .address import AddressChain
 from .interfaces import MessageStreamFactory
-from .exceptions import MessageSendingError, MessageTransferTimeoutError
+from .exceptions import MessageSendingError, MessageTransferTimeoutError, MessageReceiveTimeoutError
 from .logging import get_logger
 
 from typing import Optional
@@ -84,7 +84,10 @@ class MessageClient:
         if timeout is None:
             message = await task
         else:
-            message = await asyncio.wait_for(task, timeout=timeout)
+            try:
+                message = await asyncio.wait_for(task, timeout=timeout)
+            except asyncio.TimeoutError as e:
+                raise MessageReceiveTimeoutError(wrapped_exception=e) from None
         return message
 
 
