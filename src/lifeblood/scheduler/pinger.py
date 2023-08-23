@@ -235,6 +235,10 @@ class Pinger(SchedulerComponentBase):
 
         # FINALIZING PINGER
         self.__pinger_logger.info('finishing worker pinger...')
+        if not wakeup_task.done():
+            wakeup_task.cancel()
+        if not stop_task.done():
+            stop_task.cancel()
         if len(tasks) > 0:
             self.__pinger_logger.debug(f'waiting for {len(tasks)} pinger tasks...')
             _, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED, timeout=5)

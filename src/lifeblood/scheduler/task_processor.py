@@ -706,6 +706,9 @@ class TaskProcessor(SchedulerComponentBase):
         #
         # Out of while - means we are stopping. time to save all the nodes
         self.__logger.info('finishing task processor...')
+        for task in (stop_task, kick_wait_task):
+            if not task.done():
+                task.cancel()
         if len(tasks_to_wait) > 0:
             await asyncio.wait(tasks_to_wait, return_when=asyncio.ALL_COMPLETED)
         self.__logger.info('task processor finished')
