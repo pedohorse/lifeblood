@@ -15,7 +15,7 @@ from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMe
 from .net_messages.impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
-from .net_messages.exceptions import MessageTransferTimeoutError
+from .net_messages.exceptions import MessageTransferTimeoutError, MessageReceiveTimeoutError, MessageTransferError
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
@@ -150,6 +150,10 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             src_invoc_id: sender's invocation id
             addressee: address id, where to address message within worker
             message_data_raw: message_data_raw
+            addressee_timeout: timeout in seconds of how long to wait for addressee to start receiving
+            overall_timeout: overall delivery waiting timeout. since this is just delivery, the only real waiting
+                             may actually happen when waiting for addressee to start receiving, so this timeout
+                             is very unlikely to ever hit, unless overall comm is disrupted
         returns keys:
             result: str, operation result
         """
@@ -170,10 +174,18 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
 
         try:
             with WorkerControlClient.get_worker_control_client(address, self.__scheduler.message_processor()) as worker_client:  # type: WorkerControlClient
-                result = await worker_client.send_invocation_message(invoc_id, args['addressee'], args['src_invoc_id'], args['message_data_raw'].encode('latin1'))
+                result = await worker_client.send_invocation_message(invoc_id,
+                                                                     args['addressee'],
+                                                                     args['src_invoc_id'],
+                                                                     args['message_data_raw'].encode('latin1'),
+                                                                     args['addressee_timeout'],
+                                                                     args['overall_timeout'])
         except MessageTransferTimeoutError:
             self._logger.error('could not deliver invocation message, timeout')
             result = InvocationMessageResult.ERROR_DELIVERY_TIMEOUT
+        except MessageTransferError:
+            self._logger.exception('message transfer failed')
+            result = InvocationMessageResult.ERROR_TRANSFER_ERROR
         except Exception:
             self._logger.exception('something wend wrong')
             result = InvocationMessageResult.ERROR_UNEXPECTED
@@ -391,14 +403,22 @@ class SchedulerInvocationMessageClient:
                                       destination_invocation_id: int,
                                       destination_addressee: str,
                                       source_invocation_id: Optional[int],
-                                      message_body: bytes) -> InvocationMessageResult:
+                                      message_body: bytes,
+                                      *,
+                                      addressee_timeout: float = 90,
+                                      overall_timeout: float = 300) -> InvocationMessageResult:
+        if overall_timeout < addressee_timeout:
+            overall_timeout = addressee_timeout
+
         await self.__client.send_command('forward_invocation_message', {
             'dst_invoc_id': destination_invocation_id,
             'src_invoc_id': source_invocation_id,
             'addressee': destination_addressee,
+            'addressee_timeout': addressee_timeout,
+            'overall_timeout': overall_timeout,
             'message_data_raw': message_body.decode('latin1'),
         })
         try:
-            return InvocationMessageResult((await (await self.__client.receive_message()).message_body_as_json())['result'])
-        except MessageTransferTimeoutError:
+            return InvocationMessageResult((await (await self.__client.receive_message(timeout=overall_timeout)).message_body_as_json())['result'])
+        except MessageReceiveTimeoutError:
             return InvocationMessageResult.ERROR_DELIVERY_TIMEOUT

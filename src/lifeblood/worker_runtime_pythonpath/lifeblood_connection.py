@@ -196,13 +196,15 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         thread.start()  # and not care
 
 
-def message_to_invocation_send(invocation_id, addressee, message):  # type: (int, str, bytes) -> None
+def message_to_invocation_send(invocation_id, addressee, message, addressee_timeout=None):  # type: (int, str, bytes, Optional[float]) -> None
     """
     send a message to invocation_id, addressed to addressee.
     This is useful for designing workflows where:
      - child tasks are reporting processing results to running parent
      - child tasks are synchronizing through parent (useful for distributed sims)
      - other stuff
+
+     NOTE: timeout=None means DEFAULT timeout, not no timeout. disabling timeout is not allowed
     """
     def _send():
         addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
@@ -215,7 +217,7 @@ def message_to_invocation_send(invocation_id, addressee, message):  # type: (int
 
         send_string(sock, 'sendinvmessage')
 
-        sock.sendall(struct.pack('>QQQ', invocation_id, int(os.environ['LIFEBLOOD_RUNTIME_IID']), len(message)))
+        sock.sendall(struct.pack('>QQQf', invocation_id, int(os.environ['LIFEBLOOD_RUNTIME_IID']), len(message), addressee_timeout))
         send_string(sock, addressee)
         sock.sendall(message)
         # now get reply
@@ -223,6 +225,8 @@ def message_to_invocation_send(invocation_id, addressee, message):  # type: (int
         if reply != 'delivered':
             raise RuntimeError(reply)
 
+    if addressee_timeout is None or addressee_timeout <= 0:
+        addressee_timeout = 90
     _send()
 
 

@@ -11,7 +11,7 @@ from .exceptions import AlreadyRunning
 from .enums import WorkerPingReply, TaskScheduleStatus, InvocationMessageResult
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
-from .net_messages.exceptions import MessageTransferTimeoutError
+from .net_messages.exceptions import MessageTransferTimeoutError, MessageTransferError
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
@@ -164,12 +164,17 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
             src_invoc_id: sender's invocation id
             addressee: address id, where to address message within worker
             message_data_raw: message_data_raw
+            addressee_timeout: timeout in seconds of how long to wait for addressee to start receiving
         returns keys:
             result: str, operation result
         """
         result = 'unknown'
         try:
-            await self.__worker.deliver_invocation_message(args['dst_invoc_id'], args['addressee'], args['src_invoc_id'], args['message_data_raw'].encode('latin1'))
+            await self.__worker.deliver_invocation_message(args['dst_invoc_id'],
+                                                           args['addressee'],
+                                                           args['src_invoc_id'],
+                                                           args['message_data_raw'].encode('latin1'),
+                                                           args['addressee_timeout'])
             result = InvocationMessageResult.DELIVERED.value
         except InvocationMessageWrongInvocationId:
             # it is possible that between sched checking for inv id and message received by worker
@@ -254,15 +259,20 @@ class WorkerControlClient:
                                       destination_invocation_id: int,
                                       destination_addressee: str,
                                       source_invocation_id: Optional[int],
-                                      message_body: bytes) -> InvocationMessageResult:
+                                      message_body: bytes,
+                                      addressee_timeout: float,
+                                      overall_timeout: float) -> InvocationMessageResult:
+        """
+        Note that this command, unlike others, does not raise,
+        instead it wraps errors into InvocationMessageResult
+        """
         await self.__client.send_command('invocation_message', {
             'dst_invoc_id': destination_invocation_id,
             'src_invoc_id': source_invocation_id,
             'addressee': destination_addressee,
+            'addressee_timeout': addressee_timeout,
             'message_data_raw': message_body.decode('latin1'),
         })
-        try:
-            reply = await (await self.__client.receive_message()).message_body_as_json()
-            return InvocationMessageResult(reply['result'])
-        except MessageTransferTimeoutError:
-            return InvocationMessageResult.ERROR_DELIVERY_TIMEOUT
+
+        reply = await (await self.__client.receive_message(timeout=overall_timeout)).message_body_as_json()
+        return InvocationMessageResult(reply['result'])

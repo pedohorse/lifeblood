@@ -90,12 +90,12 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
 
     # invocation messaging
     async def comm_send_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        to_inv_id, from_inv_id, data_size = struct.unpack('>QQQ', await reader.readexactly(24))
+        to_inv_id, from_inv_id, data_size, addressee_timeout = struct.unpack('>QQQf', await reader.readexactly(28))
         to_addressee = await read_string(reader)
         data = await reader.readexactly(data_size)
         with SchedulerInvocationMessageClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
                                                                            self.__worker.message_processor()) as client:  # type: SchedulerInvocationMessageClient
-            send_status = await client.send_invocation_message(to_inv_id, to_addressee, from_inv_id, data)
+            send_status = await client.send_invocation_message(to_inv_id, to_addressee, from_inv_id, data, addressee_timeout=addressee_timeout)
         await write_string(writer, send_status.value)
 
     async def comm_receive_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

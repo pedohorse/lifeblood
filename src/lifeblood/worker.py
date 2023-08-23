@@ -608,11 +608,10 @@ class Worker:
     def running_invocation(self) -> Optional[InvocationJob]:
         return self.__running_task
 
-    async def deliver_invocation_message(self, destination_invocation_id: int, destination_addressee: str, source_invocation_id: Optional[int], message_body: bytes):
+    async def deliver_invocation_message(self, destination_invocation_id: int, destination_addressee: str, source_invocation_id: Optional[int], message_body: bytes, addressee_timeout: float = 90.0):
         """
         deliver message to task
         """
-        timeout = 90  # TODO: timeout from config
         while True:
             # while we wait - invocation MAY change.
             running_invocation = self.running_invocation()
@@ -622,9 +621,14 @@ class Worker:
             while destination_addressee not in self.__worker_task_comm_queues:
                 wait_start_timestamp = time.time()
                 await asyncio.sleep(0.05)  # we MOST LIKELY are already waiting for this, so timeout occurs
-                timeout -= time.time() - wait_start_timestamp
-                if timeout <= 0:
+                addressee_timeout -= time.time() - wait_start_timestamp
+                if addressee_timeout <= 0:
                     raise InvocationMessageAddresseeTimeout()
+                # important to keep checking if invocation was changed,
+                # and important to have no awaits (no interruptions) between check and enqueueing
+                running_invocation = self.running_invocation()
+                if running_invocation is None or destination_invocation_id != running_invocation.invocation_id():
+                    raise InvocationMessageWrongInvocationId()
 
             queue = self.__worker_task_comm_queues[destination_addressee]
 
