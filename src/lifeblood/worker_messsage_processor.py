@@ -2,14 +2,16 @@ import os
 import asyncio
 import aiofiles
 from contextlib import contextmanager
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, \
+    InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationMessageError
 from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
 from .exceptions import AlreadyRunning
-from .enums import WorkerPingReply, TaskScheduleStatus
+from .enums import WorkerPingReply, TaskScheduleStatus, InvocationMessageResult
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
+from .net_messages.exceptions import MessageTransferTimeoutError
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
@@ -32,7 +34,8 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
                 'quit': self._command_quit,
                 'drop': self._command_drop,
                 'status': self._command_status,
-                'log': self._command_log}
+                'log': self._command_log,
+                'invocation_message': self._command_invocation_message}
 
     #
     # commands
@@ -152,6 +155,37 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
 
         await client.send_message_as_json(result)
 
+    #
+    # commands for inter-task communication
+    async def _command_invocation_message(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        expects keys:
+            dst_invoc_id: receiver's invocation id
+            src_invoc_id: sender's invocation id
+            addressee: address id, where to address message within worker
+            message_data_raw: message_data_raw
+        returns keys:
+            result: str, operation result
+        """
+        result = 'unknown'
+        try:
+            await self.__worker.deliver_invocation_message(args['dst_invoc_id'], args['addressee'], args['src_invoc_id'], args['message_data_raw'].encode('latin1'))
+            result = InvocationMessageResult.DELIVERED.value
+        except InvocationMessageWrongInvocationId:
+            # it is possible that between sched checking for inv id and message received by worker
+            # invocation finished, and we have to catch and report it
+            # we report that iid is not running anymore
+            result = InvocationMessageResult.ERROR_IID_NOT_RUNNING.value
+        except InvocationMessageAddresseeTimeout:
+            # we waited enough for addressee to start listening
+            result = InvocationMessageResult.ERROR_RECEIVER_TIMEOUT.value
+        except Exception:
+            result = InvocationMessageResult.ERROR_UNEXPECTED.value
+
+        await client.send_message_as_json({
+            'result': result
+        })
+
 
 class WorkerMessageProcessor(TcpCommandMessageProcessor):
     def __init__(self, worker: "Worker", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
@@ -172,8 +206,8 @@ class WorkerControlClient:
 
     @classmethod
     @contextmanager
-    def get_worker_control_client(cls, scheduler_address: AddressChain, processor: TcpCommandMessageProcessor) -> "WorkerControlClient":
-        with processor.message_client(scheduler_address) as message_client:
+    def get_worker_control_client(cls, worker_address: AddressChain, processor: TcpCommandMessageProcessor) -> "WorkerControlClient":
+        with processor.message_client(worker_address) as message_client:
             yield WorkerControlClient(message_client)
 
     async def ping(self) -> Tuple[WorkerPingReply, float]:
@@ -215,3 +249,20 @@ class WorkerControlClient:
 
         reply = await (await self.__client.receive_message()).message_body_as_json()
         return str(reply['stdout']), str(reply['stderr'])
+
+    async def send_invocation_message(self,
+                                      destination_invocation_id: int,
+                                      destination_addressee: str,
+                                      source_invocation_id: Optional[int],
+                                      message_body: bytes) -> InvocationMessageResult:
+        await self.__client.send_command('invocation_message', {
+            'dst_invoc_id': destination_invocation_id,
+            'src_invoc_id': source_invocation_id,
+            'addressee': destination_addressee,
+            'message_data_raw': message_body.decode('latin1'),
+        })
+        try:
+            reply = await (await self.__client.receive_message()).message_body_as_json()
+            return InvocationMessageResult(reply['result'])
+        except MessageTransferTimeoutError:
+            return InvocationMessageResult.ERROR_DELIVERY_TIMEOUT

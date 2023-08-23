@@ -22,6 +22,11 @@ def send_string(sock, text):  # type: (socket.socket, str) -> None
     sock.sendall(bts)
 
 
+def recv_string(sock):  # type: (socket.socket) -> str
+    data_size, = struct.unpack('>Q', sock.recv(8))
+    return sock.recv(data_size).decode('UTF-8')
+
+
 class EnvironmentResolverArguments:
     """
     this is a copy of envirionment_resolver.EnvironmentResolverArguments class purely for pickling
@@ -189,6 +194,65 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         with _threads_to_wait_lock:
             _threads_to_wait.append(thread)
         thread.start()  # and not care
+
+
+def message_to_invocation_send(invocation_id, addressee, message):  # type: (int, str, bytes) -> None
+    """
+    send a message to invocation_id, addressed to addressee.
+    This is useful for designing workflows where:
+     - child tasks are reporting processing results to running parent
+     - child tasks are synchronizing through parent (useful for distributed sims)
+     - other stuff
+    """
+    def _send():
+        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+        addr, sport = addrport.rsplit(':', 1)
+        port = int(sport)
+        sock = socket.create_connection((addr, port))
+        # negotiate protocol
+        sock.sendall(struct.pack('>QII', 1, 1, 0))
+        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+
+        send_string(sock, 'sendinvmessage')
+
+        sock.sendall(struct.pack('>QQQ', invocation_id, int(os.environ['LIFEBLOOD_RUNTIME_IID']), len(message)))
+        send_string(sock, addressee)
+        sock.sendall(message)
+        # now get reply
+        reply = recv_string(sock)
+        if reply != 'delivered':
+            raise RuntimeError(reply)
+
+    _send()
+
+
+def message_to_invocation_receive(addressee):  # type: (str) -> Tuple[int, bytes]
+    """
+    await message from another invocation, addressed to addressee
+    If graph is not properly designed so that another invocation may not send a message -
+    this function will just block forever
+    """
+    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+    addr, sport = addrport.rsplit(':', 1)
+    port = int(sport)
+    sock = socket.create_connection((addr, port))
+    # negotiate protocol
+    sock.sendall(struct.pack('>QII', 1, 1, 0))
+    assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+
+    send_string(sock, 'recvinvmessage')
+
+    send_string(sock, addressee)
+    ready = False
+    while not ready:
+        ready, = struct.unpack('>?', sock.recv(1))
+        if not ready:
+            sock.sendall(struct.pack('>?', False))  # False for no cancel
+            continue
+    source_iid, data_size = struct.unpack('>QQ', sock.recv(16))
+    data = sock.recv(data_size)
+
+    return source_iid, data
 
 
 def _clear_me_from_threads_to_wait():

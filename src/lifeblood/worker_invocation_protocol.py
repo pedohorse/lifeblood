@@ -4,7 +4,7 @@ import struct
 import json
 from .enums import TaskScheduleStatus, TaskExecutionStatus, TaskExecutionStatus, WorkerPingReply, SpawnStatus
 from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning, CouldNotNegotiateProtocolVersion
-from .scheduler_message_processor import SchedulerExtraControlClient
+from .scheduler_message_processor import SchedulerExtraControlClient, SchedulerInvocationMessageClient
 from .environment_resolver import ResolutionImpossibleError
 from .taskspawn import TaskSpawn
 from . import logging
@@ -48,6 +48,8 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
         self.__known_commands = {
             'spawn': self.comm_spawn,
             'tupdateattribs': self.comm_update_attributes,
+            'sendinvmessage': self.comm_send_invocation_message,
+            'recvinvmessage': self.comm_receive_invocation_message,
         }
         
     def protocol_version(self) -> Tuple[int, int]:
@@ -69,7 +71,7 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
         tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
         taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
 
-        with SchedulerExtraControlClient.get_scheduler_control_client(self.__worker. scheduler_message_address(),
+        with SchedulerExtraControlClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
                                                                       self.__worker.message_processor()) as client:  # type: SchedulerExtraControlClient
             status, tid = await client.spawn(taskspawn)
         writer.write(struct.pack('>I?Q', status.value, tid is not None, 0 if tid is None else tid))
@@ -81,10 +83,39 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
         attribs_to_delete = set()
         for _ in range(strcount):
             attribs_to_delete.add(await read_string(reader))
-        with SchedulerExtraControlClient.get_scheduler_control_client(self.__worker. scheduler_message_address(),
+        with SchedulerExtraControlClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
                                                                       self.__worker.message_processor()) as client:  # type: SchedulerExtraControlClient
             await client.update_task_attributes(task_id, attribs_to_update, attribs_to_delete)
         writer.write(b'\1')
+
+    # invocation messaging
+    async def comm_send_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        to_inv_id, from_inv_id, data_size = struct.unpack('>QQQ', await reader.readexactly(24))
+        to_addressee = await read_string(reader)
+        data = await reader.readexactly(data_size)
+        with SchedulerInvocationMessageClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
+                                                                           self.__worker.message_processor()) as client:  # type: SchedulerInvocationMessageClient
+            send_status = await client.send_invocation_message(to_inv_id, to_addressee, from_inv_id, data)
+        await write_string(writer, send_status.value)
+
+    async def comm_receive_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        addressee = await read_string(reader)
+        data = None
+        src_iid = None
+        while data is None:
+            try:
+                src_iid, data = await self.__worker.worker_task_addressee_wait(addressee)
+            except asyncio.TimeoutError:
+                # in case of timeout - we keep waiting, but better poke that receiver still lives
+                writer.write(struct.pack('>?', False))
+                await writer.drain()
+                cancelled, = struct.unpack('>?', await reader.readexactly(1))
+                if cancelled:
+                    return
+        assert src_iid is not None
+        writer.write(struct.pack('>?QQ', True, src_iid, len(data)))
+        writer.write(data)
+        await writer.drain()
 
 
 class WorkerInvocationServerProtocol(asyncio.StreamReaderProtocol):
