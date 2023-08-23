@@ -101,3 +101,4 @@ class InvocationMessageResult(Enum):  # Note: values are picked in a way they ar
     ERROR_DELIVERY_TIMEOUT = 'error-delivery-timeout'
     ERROR_UNEXPECTED = 'error-unknown'
     ERROR_IID_NOT_RUNNING = 'error-invoc-not-running'
+    ERROR_TRANSFER_ERROR = 'error-transfer'
