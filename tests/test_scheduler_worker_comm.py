@@ -15,11 +15,12 @@ from lifeblood.worker import Worker
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
-from lifeblood.enums import WorkerType, WorkerState, SpawnStatus, InvocationState
+from lifeblood.enums import WorkerType, WorkerState, SpawnStatus, InvocationState, InvocationMessageResult
 from lifeblood.db_misc import sql_init_script
 from lifeblood.logging import set_default_loglevel
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
+from lifeblood.net_messages.address import AddressChain
 from lifeblood import launch
 
 from typing import Awaitable, Callable, List, Optional, Tuple
@@ -35,7 +36,6 @@ def purge_db():
 
 
 class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
-
 
     # TODO: broadcasting is NOT tested here at all
     @classmethod
@@ -120,16 +120,108 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         )
 
     async def test_worker_invocation_comm_api(self):
-        await self._helper_test_worker_invocation_comm_api()
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
+                      f'print("done1")\n',
+            i2_script=f'import lifeblood_connection as lbc\n'
+                      f'src_inv, data = lbc.message_to_invocation_receive("foobaaaar")\n'
+                      f'assert data == b"IamDATAbanana", data\n'
+                      f'assert src_inv == 11234, src_inv\n'
+                      f'print("done2")\n'
+        )
 
     async def test_worker_invocation_comm_api_send_delay(self):
-        await self._helper_test_worker_invocation_comm_api(send_delay=5)
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'import time\n'
+                      f'time.sleep(5)\n'
+                      f'lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
+                      f'print("done1")\n',
+            i2_script=f'import lifeblood_connection as lbc\n'
+                      f'src_inv, data = lbc.message_to_invocation_receive("foobaaaar")\n'
+                      f'assert data == b"IamDATAbanana", data\n'
+                      f'assert src_inv == 11234, src_inv\n'
+                      f'print("done2")\n'
+        )
 
     async def test_worker_invocation_comm_api_recv_delay(self):
-        await self._helper_test_worker_invocation_comm_api(recv_delay=5)
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
+                      f'print("done1")\n',
+            i2_script=f'import lifeblood_connection as lbc\n'
+                      f'import time\n'
+                      f'time.sleep(5)\n'
+                      f'src_inv, data = lbc.message_to_invocation_receive("foobaaaar")\n'
+                      f'assert data == b"IamDATAbanana", data\n'
+                      f'assert src_inv == 11234, src_inv\n'
+                      f'print("done2")\n'
+        )
+
+    async def test_worker_invocation_comm_api_worker_no_inv(self):
+        for sdelay, rdelay in ((0, 0), (1, 0), (5, 0), (0, 1), (0, 5)):
+            print(f'trying send delay {sdelay}, recv delay {rdelay}')
+            await self._helper_test_worker_invocation_comm_api(
+                i1_script=f'import lifeblood_connection as lbc\n'
+                          f'import time\n'
+                          f'time.sleep({sdelay})\n'
+                          f'try:\n'
+                          f'    lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
+                          f'except RuntimeError as e:\n'
+                          f'    assert str(e) == "{InvocationMessageResult.ERROR_IID_NOT_RUNNING.value}", str(e)\n'
+                          f'    print("all raised as expected")\n'
+                          f'print("done1")\n',
+                i2_script=f'import time\n'
+                          f'time.sleep({rdelay})\n'
+                          f'print("do nothing, done2")\n'
+            )
+
+    async def test_worker_invocation_comm_api_send_iid_not_found(self):
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'try:\n'
+                      f'    lbc.message_to_invocation_send(11666, "foobaaaar", b"IamDATAbanana")\n'
+                      f'except RuntimeError as e:\n'
+                      f'    assert str(e) == "{InvocationMessageResult.ERROR_BAD_IID.value}", str(e)\n'
+                      f'    print("all raised as expected")\n'
+                      f'print("done1")\n',
+            i2_script=f'import time\n'
+                      f'time.sleep(2)\n'
+                      f'print("done2")\n'
+        )
+
+    async def test_worker_invocation_comm_api_send_comm_error(self):
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'try:\n'
+                      f'    lbc.message_to_invocation_send(80085, "foobaaaar", b"IamDATAbanana")\n'
+                      f'except RuntimeError as e:\n'
+                      f'    assert str(e) == "{InvocationMessageResult.ERROR_TRANSFER_ERROR.value}", str(e)\n'
+                      f'    print("logged exception from scheduler above is also expected")\n'
+                      f'    print("all raised as expected")\n'
+                      f'print("done1")\n',
+            i2_script=f'import time\n'
+                      f'time.sleep(2)\n'
+                      f'print("done2")\n'
+        )
+
+    async def test_worker_invocation_comm_api_worker_send_timeout(self):
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'try:\n'
+                      f'    lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana", addressee_timeout=1)\n'
+                      f'except RuntimeError as e:\n'
+                      f'    assert str(e) == "{InvocationMessageResult.ERROR_RECEIVER_TIMEOUT.value}", str(e)\n'
+                      f'    print("all raised as expected")\n'
+                      f'print("done1")\n',
+            i2_script=f'import time\n'
+                      f'time.sleep(3)\n'
+                      f'print("do nothing, done2")\n'
+            )
 
     async def _helper_test_worker_invocation_comm_api(self, *,
-                                                      send_delay=0, recv_delay=0):
+                                                      i1_script: str, i2_script: str):
         async def _logic(scheduler, workers: List[Worker], tmp_script_path, done_waiter):
             with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch, \
                  mock.patch('lifeblood.scheduler.scheduler.Scheduler.get_invocation_state') as get_invoc_patch, \
@@ -139,16 +231,13 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 get_invoc_worker_patch.side_effect = lambda inv_id: \
                     {
                         11234: workers[0].message_processor().listening_address(),
-                        11235: workers[1].message_processor().listening_address()
-                    }[inv_id]
+                        11235: workers[1].message_processor().listening_address(),
+                        80085: AddressChain('127.2.3.4:567'),  # BAD address
+                    }.get(inv_id)
 
                 ij1 = InvocationJob(
                         ['python', '-c',
-                            f'import lifeblood_connection as lbc\n'
-                            f'import time\n'
-                            f'time.sleep({send_delay})\n'
-                            f'lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
-                            f'print("done1")\n'
+                            i1_script
                          ],
                         invocation_id=11234,
                     )
@@ -156,13 +245,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
                 ij2 = InvocationJob(
                     ['python', '-c',
-                        f'import lifeblood_connection as lbc\n'
-                        f'import time\n'
-                        f'time.sleep({recv_delay})\n'
-                        f'src_inv, data = lbc.message_to_invocation_receive("foobaaaar")\n'
-                        f'assert data == b"IamDATAbanana", data\n'
-                        f'assert src_inv == 11234, src_inv\n'
-                        f'print("done2")\n'
+                        i2_script
                      ],
                     invocation_id=11235,
                 )
