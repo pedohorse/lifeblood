@@ -355,6 +355,27 @@ class Scheduler:
             return None
         return await InvocationJob.deserialize_async(data)
 
+    async def get_invocation_worker(self, invocation_id: int) -> Optional[AddressChain]:
+        async with self.data_access.data_connection() as con:
+            async with con.execute(
+                    'SELECT workers.last_address '
+                    'FROM invocations LEFT JOIN workers '
+                    'ON invocations.worker_id == workers.id '
+                    'WHERE invocations.id == ?', (invocation_id,)) as cur:
+                res = await cur.fetchone()
+        if res is None:
+            return None
+        return AddressChain(res[0])
+
+    async def get_invocation_state(self, invocation_id: int) -> Optional[InvocationState]:
+        async with self.data_access.data_connection() as con:
+            async with con.execute(
+                    'SELECT state FROM invocations WHERE id == ?', (invocation_id,)) as cur:
+                res = await cur.fetchone()
+        if res is None:
+            return None
+        return InvocationState(res[0])
+
     def stop(self):
         async def _server_closer():
             # ensure all components stop first
