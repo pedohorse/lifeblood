@@ -168,7 +168,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                           f'time.sleep({sdelay})\n'
                           f'try:\n'
                           f'    lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana")\n'
-                          f'except RuntimeError as e:\n'
+                          f'except lbc.MessageSendError as e:\n'
                           f'    assert str(e) == "{InvocationMessageResult.ERROR_IID_NOT_RUNNING.value}", str(e)\n'
                           f'    print("all raised as expected")\n'
                           f'print("done1")\n',
@@ -182,7 +182,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             i1_script=f'import lifeblood_connection as lbc\n'
                       f'try:\n'
                       f'    lbc.message_to_invocation_send(11666, "foobaaaar", b"IamDATAbanana")\n'
-                      f'except RuntimeError as e:\n'
+                      f'except lbc.MessageSendError as e:\n'
                       f'    assert str(e) == "{InvocationMessageResult.ERROR_BAD_IID.value}", str(e)\n'
                       f'    print("all raised as expected")\n'
                       f'print("done1")\n',
@@ -196,7 +196,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             i1_script=f'import lifeblood_connection as lbc\n'
                       f'try:\n'
                       f'    lbc.message_to_invocation_send(80085, "foobaaaar", b"IamDATAbanana")\n'
-                      f'except RuntimeError as e:\n'
+                      f'except lbc.MessageSendError as e:\n'
                       f'    assert str(e) == "{InvocationMessageResult.ERROR_TRANSFER_ERROR.value}", str(e)\n'
                       f'    print("logged exception from scheduler above is also expected")\n'
                       f'    print("all raised as expected")\n'
@@ -211,13 +211,38 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             i1_script=f'import lifeblood_connection as lbc\n'
                       f'try:\n'
                       f'    lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana", addressee_timeout=1)\n'
-                      f'except RuntimeError as e:\n'
+                      f'except lbc.MessageSendError as e:\n'
                       f'    assert str(e) == "{InvocationMessageResult.ERROR_RECEIVER_TIMEOUT.value}", str(e)\n'
                       f'    print("all raised as expected")\n'
                       f'print("done1")\n',
             i2_script=f'import time\n'
                       f'time.sleep(3)\n'
                       f'print("do nothing, done2")\n'
+            )
+
+    async def test_worker_invocation_comm_api_worker_recv_timeout(self):
+        await self._helper_test_worker_invocation_comm_api(
+            i1_script=f'import lifeblood_connection as lbc\n'
+                      f'import time\n'
+                      f'time.sleep(3)\n'
+                      f'was_raised = False\n'
+                      f'try:\n'
+                      f'    lbc.message_to_invocation_send(11235, "foobaaaar", b"IamDATAbanana", addressee_timeout=1)\n'
+                      f'except lbc.MessageSendError as e:\n'
+                      f'    was_raised = True\n'
+                      f'    assert str(e) == "{InvocationMessageResult.ERROR_IID_NOT_RUNNING.value}", str(e)\n'
+                      f'    print("all raised as expected")\n'
+                      f'assert was_raised, "was NOT raised as expected"\n'
+                      f'print("done1")\n',
+            i2_script=f'import lifeblood_connection as lbc\n'
+                      f'was_raised = False\n'
+                      f'try:\n'
+                      f'    lbc.message_to_invocation_receive("foobaaaar", timeout=1)\n'
+                      f'except lbc.MessageReceiveTimeout as e:\n'
+                      f'    was_raised = True\n'
+                      f'    print("all raised as expected")\n'
+                      f'assert was_raised, "was NOT raised as expected"\n'
+                      f'print("done2")\n'
             )
 
     async def _helper_test_worker_invocation_comm_api(self, *,
