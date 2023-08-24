@@ -16,7 +16,7 @@ but Lifeblood does much more on top of that.
 **Lifeblood** allows you do define task processing workflows in terms of a node graph,
 where tasks that travel from node to node and may produce workload to be executed by a swarm of workers.
 
-Main concepts
+Base concepts
 =============
 
 Lifeblood is a task processing system.
@@ -31,6 +31,8 @@ A short summary of how Lifeblood works is this:
 * Invocation is scheduled to be executed by one of the **workers**.
 * workers may be spawned on any number of physical or virtual machines to use all available
   resources to process invocations.
+
+All design concepts are explained here: :ref:`concepts`
 
 Main components
 ===============
