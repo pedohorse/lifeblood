@@ -100,11 +100,12 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
 
     async def comm_receive_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         addressee = await read_string(reader)
+        poll_interval, = struct.unpack('>f', await reader.readexactly(4))
         data = None
         src_iid = None
         while data is None:
             try:
-                src_iid, data = await self.__worker.worker_task_addressee_wait(addressee)
+                src_iid, data = await self.__worker.worker_task_addressee_wait(addressee, timeout=poll_interval)
             except asyncio.TimeoutError:
                 # in case of timeout - we keep waiting, but better poke that receiver still lives
                 writer.write(struct.pack('>?', False))

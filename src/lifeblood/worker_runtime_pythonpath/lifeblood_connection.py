@@ -4,6 +4,7 @@ this module should be kept minimal, with only standard modules and maximum compa
 """
 from __future__ import print_function
 import os
+import time
 import errno
 import pickle
 import json
@@ -13,6 +14,14 @@ import struct
 try:
     from typing import Optional
 except ImportError:
+    pass
+
+
+class MessageSendError(RuntimeError):
+    pass
+
+
+class MessageReceiveTimeout(RuntimeError):
     pass
 
 
@@ -126,6 +135,20 @@ _threads_to_wait = []
 _threads_to_wait_lock = threading.Lock()
 
 
+def _connect_to_worker(timeout=None):
+    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+    addr, sport = addrport.rsplit(':', 1)
+    port = int(sport)
+    if timeout is None:
+        sock = socket.create_connection((addr, port))
+    else:
+        sock = socket.create_connection((addr, port), timeout=timeout)
+    # negotiate protocol
+    sock.sendall(struct.pack('>QII', 1, 1, 0))
+    assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+    return sock
+
+
 def create_task(name, attributes, env_arguments=None, blocking=False):
     """
     creates a new task with name and attributes.
@@ -139,16 +162,11 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes, env_args=env_arguments)
 
     def _send():
-        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-        addr, sport = addrport.rsplit(':', 1)
-        port = int(sport)
-        sock = socket.create_connection((addr, port), timeout=30)
-        data = spawn.serialize()
-        # negotiate protocol
-        sock.sendall(struct.pack('>QII', 1, 1, 0))
-        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+        sock = _connect_to_worker(timeout=30)
 
         send_string(sock, 'spawn')
+
+        data = spawn.serialize()
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         res = sock.recv(13)  # >I?Q  13 should be small enough to ensure receiving in one call
@@ -168,13 +186,7 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
 
 def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
     def _send():
-        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-        addr, sport = addrport.rsplit(':', 1)
-        port = int(sport)
-        sock = socket.create_connection((addr, port), timeout=30)
-        # negotiate protocol
-        sock.sendall(struct.pack('>QII', 1, 1, 0))
-        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+        sock = _connect_to_worker(timeout=30)
 
         send_string(sock, 'tupdateattribs')
         updata = json.dumps(attribs).encode('UTF-8')
@@ -207,13 +219,7 @@ def message_to_invocation_send(invocation_id, addressee, message, addressee_time
      NOTE: timeout=None means DEFAULT timeout, not no timeout. disabling timeout is not allowed
     """
     def _send():
-        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-        addr, sport = addrport.rsplit(':', 1)
-        port = int(sport)
-        sock = socket.create_connection((addr, port))
-        # negotiate protocol
-        sock.sendall(struct.pack('>QII', 1, 1, 0))
-        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+        sock = _connect_to_worker()
 
         send_string(sock, 'sendinvmessage')
 
@@ -223,35 +229,44 @@ def message_to_invocation_send(invocation_id, addressee, message, addressee_time
         # now get reply
         reply = recv_string(sock)
         if reply != 'delivered':
-            raise RuntimeError(reply)
+            raise MessageSendError(reply)
 
     if addressee_timeout is None or addressee_timeout <= 0:
         addressee_timeout = 90
     _send()
 
 
-def message_to_invocation_receive(addressee):  # type: (str) -> Tuple[int, bytes]
+def message_to_invocation_receive(addressee, timeout=None):  # type: (str, Optional[float]) -> Tuple[int, bytes]
     """
     await message from another invocation, addressed to addressee
     If graph is not properly designed so that another invocation may not send a message -
     this function will just block forever
     """
-    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-    addr, sport = addrport.rsplit(':', 1)
-    port = int(sport)
-    sock = socket.create_connection((addr, port))
-    # negotiate protocol
-    sock.sendall(struct.pack('>QII', 1, 1, 0))
-    assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+    sock = _connect_to_worker()
 
     send_string(sock, 'recvinvmessage')
 
     send_string(sock, addressee)
+    target_poll_time = 10.0
+    min_poll_time = 0.1
+    eps = 0.001
+    poll_time = max(min_poll_time, (timeout+eps)/max(1.0, round((timeout+eps)/target_poll_time))) if timeout is not None else target_poll_time
+    sock.sendall(struct.pack('>f', poll_time))
     ready = False
+    waiting_elapsed = 0
+    _last_timestamp = time.time()
     while not ready:
+        _last_timestamp = time.time()
         ready, = struct.unpack('>?', sock.recv(1))
+
+        waiting_elapsed += time.time() - _last_timestamp
+        _last_timestamp = time.time()
+        do_cancel = timeout is not None and waiting_elapsed >= timeout
+
         if not ready:
-            sock.sendall(struct.pack('>?', False))  # False for no cancel
+            sock.sendall(struct.pack('>?', do_cancel))  # False for no cancel, True for cancel
+            if do_cancel:
+                raise MessageReceiveTimeout(f'elapsed: {waiting_elapsed}s')
             continue
     source_iid, data_size = struct.unpack('>QQ', sock.recv(16))
     data = sock.recv(data_size)
