@@ -516,7 +516,10 @@ class Worker:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process_start_time = time.time()
 
-                bin_path = shutil.which(args[0], path=env.get('PATH'))
+                if os.path.isabs(args[0]):
+                    bin_path = args[0]
+                else:
+                    bin_path = shutil.which(args[0], path=env.get('PATH'))
                 if bin_path is None:
                     raise ProcessInitializationError(f'"{args[0]}" was not found. Check environment resolver arguments and system setup')
 
@@ -595,9 +598,13 @@ class Worker:
                 finally:
                     # report to the pool
                     if self.__worker_id is not None:
-                        assert self.__pool_address is not None
-                        with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
-                            await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
+                        try:
+                            assert self.__pool_address is not None
+                            with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
+                                await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
+                        except (Exception, asyncio.CancelledError):
+                            self.__logger.error('failed to report task cancellation to worker pool. stopping worker')
+                            self.stop()
 
         await self.__running_process.wait()
         await self.task_finished()
