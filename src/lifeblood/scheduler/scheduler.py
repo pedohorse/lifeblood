@@ -845,7 +845,8 @@ class Scheduler:
             # print(wid)
 
             # we ensure there are no invocations running with this worker
-            async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND "state" = ?', (wid, InvocationState.IN_PROGRESS.value)) as invcur:
+            async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND ("state" = ? OR "state" = ?)',
+                                   (wid, InvocationState.IN_PROGRESS.value, InvocationState.INVOKING.value)) as invcur:
                 invocations = await invcur.fetchall()
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
@@ -1533,7 +1534,7 @@ class Scheduler:
                     self.__logger.error('Worker not found during log fetch! this is not supposed to happen! Database inconsistent?')
                 else:
                     try:
-                        with WorkerControlClient.get_worker_control_client(workrow['last_address'], self.message_processor()) as client:  # type: WorkerControlClient
+                        with WorkerControlClient.get_worker_control_client(AddressChain(workrow['last_address']), self.message_processor()) as client:  # type: WorkerControlClient
                             stdout, stderr = await client.get_log(invocation_id)
                         if not self.__use_external_log:
                             await con.execute('UPDATE "invocations" SET stdout = ?, stderr = ? WHERE "id" = ?',  # TODO: is this really needed? if it's never really read
