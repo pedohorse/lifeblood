@@ -1525,8 +1525,8 @@ class Scheduler:
                                                          rawentry['node_id'],
                                                          InvocationState(rawentry['state']),
                                                          rawentry['return_code'],
-                                                         rawentry['stdout'],
-                                                         rawentry['stderr'])
+                                                         rawentry['stdout'] or '',
+                                                         rawentry['stderr'] or '')
             if entry.invocation_state == InvocationState.IN_PROGRESS:
                 async with con.execute('SELECT last_address FROM workers WHERE "id" = ?', (entry.worker_id,)) as worcur:
                     workrow = await worcur.fetchone()
