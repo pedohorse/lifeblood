@@ -1,0 +1,141 @@
+.file-area {
+  width: 100%;
+  position: relative;
+}
+.file-area input[type="file"] {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  cursor: pointer;
+}
+.file-area input[type="file"]::file-selector-button{
+  font-weight: 500;
+  display: block;
+  margin: 4px 0;
+  text-transform: uppercase;
+  font-size: 15px;
+  overflow: hidden;
+  opacity: 0;
+  width: 0;
+}
+.file-area .file-dummy {
+  width: 100%;
+  padding: 30px;
+  background: rgba(255, 25, 25, 0.2);
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  text-align: center;
+  transition: background 0.3s ease-in-out;
+}
+.file-area .file-dummy .success {
+  display: none;
+}
+.file-area:hover .file-dummy {
+  background: rgba(255, 0, 0, 0.4);
+}
+.file-area input[type="file"]:focus + .file-dummy {
+  outline: 2px solid rgba(88, 0, 0, 0.5);
+}
+.file-area input[type="file"]:valid + .file-dummy {
+  border-color: rgba(0, 255, 0, 0.4);
+  background-color: rgba(0, 255, 0, 0.3);
+}
+.file-area input[type="file"]:valid + .file-dummy .success {
+  display: inline-block;
+}
+.file-area input[type="file"]:valid + .file-dummy .default {
+  display: none;
+}
+
+
+/* result */
+.wait-result{
+  width: 100%;
+  padding: 30px;
+  background: rgba(192, 192, 25, 0.3);
+  border: 10px dashed rgba(255, 255, 255, 0.2);
+  text-align: center;
+  max-width: 500px;
+  max-height: 75%;
+  margin: auto;
+  margin-bottom: 30px;
+  overflow: scroll;
+}
+
+/* ===================== BASIC STYLING ===================== */
+* {
+  box-sizing: border-box;
+  font-family: "Lato", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-weight: 300;
+  height: 100%;
+  background: #660000;
+  color: #fff;
+  font-size: 16px;
+  overflow: hidden;
+  background: -moz-linear-gradient(top, #660000 0%, #001010 100%);
+  /* FF3.6+ */
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #660000), color-stop(100%, #001010));
+  /* Chrome,Safari4+ */
+  background: -webkit-linear-gradient(top, #660000 0%, #001010 100%);
+  /* Chrome10+,Safari5.1+ */
+  background: -o-linear-gradient(top, #660000 0%, #001010 100%);
+  /* Opera 11.10+ */
+  background: -ms-linear-gradient(top, #660000 0%, #001010 100%);
+  /* IE10+ */
+  background: linear-gradient(to bottom, #660000 0%, #001010 100%);
+  /* W3C */
+}
+
+h1 {
+  text-align: center;
+  margin: 50px auto;
+  font-weight: 100;
+}
+
+a {
+  color: #EEDDFF;
+}
+
+label {
+  font-weight: 500;
+  display: block;
+  margin: 4px 0;
+  text-transform: uppercase;
+  font-size: 13px;
+  overflow: hidden;
+}
+label span {
+  float: right;
+  text-transform: none;
+  font-weight: 200;
+  line-height: 1em;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+button {
+  padding: 8px 30px;
+  background: rgba(24, 16, 16, 0.8);
+  color: #AA3333;
+  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 11px;
+  border-color: #500;
+  text-shadow: 0 1px 2px #aaa;
+  cursor: pointer;
+}
+
+.form-group {
+  max-width: 500px;
+  margin: auto;
+  margin-bottom: 30px;
+}
