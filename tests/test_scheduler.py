@@ -1,10 +1,12 @@
 import asyncio
 from unittest import IsolatedAsyncioTestCase
+from unittest import mock
 from pathlib import Path
 import sqlite3
 from lifeblood.enums import InvocationState, TaskState
 from lifeblood.db_misc import sql_init_script
 from lifeblood.scheduler.scheduler import Scheduler
+from lifeblood.scheduler.pinger import Pinger
 from lifeblood.scheduler_message_processor import SchedulerWorkerControlClient
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
@@ -182,29 +184,32 @@ class SchedulerTests(IsolatedAsyncioTestCase):
     async def test_get_invocation_workers(self):
         purge_db()
 
-        sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
-        await sched.start()
+        with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch:
+            ppatch.return_value = mock.AsyncMock(Pinger)
 
-        with sqlite3.connect('test_swc1.db') as con:
-            con.execute('INSERT INTO nodes (type, name, node_object) VALUES ("null", "test", NULL)')
-            con.execute('INSERT INTO tasks (node_id, name, state) VALUES (1, "foo", ?)', (TaskState.IN_PROGRESS.value,))
-            con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("1.2.3.4:5678", 1, 2, 123456)')
-            con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("2.3.4.5:6789", 1, 2, 123457)')
-            con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("3.4.5.6:7890", 1, 2, 123457)')
-            con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 2, 1, ?)', (InvocationState.IN_PROGRESS.value,))
-            con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 3, 1, ?)', (InvocationState.FINISHED.value,))
-            con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 1, 1, ?)', (InvocationState.INVOKING.value,))
-            con.commit()
-        try:
+            sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+            await sched.start()
 
-            self.assertEqual(InvocationState.IN_PROGRESS, await sched.get_invocation_state(1))
-            self.assertEqual(InvocationState.FINISHED, await sched.get_invocation_state(2))
-            self.assertEqual(InvocationState.INVOKING, await sched.get_invocation_state(3))
+            with sqlite3.connect('test_swc1.db') as con:
+                con.execute('INSERT INTO nodes (type, name, node_object) VALUES ("null", "test", NULL)')
+                con.execute('INSERT INTO tasks (node_id, name, state) VALUES (1, "foo", ?)', (TaskState.IN_PROGRESS.value,))
+                con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("1.2.3.4:5678", 1, 2, 123456)')
+                con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("2.3.4.5:6789", 1, 2, 123457)')
+                con.execute('INSERT INTO workers (last_address, ping_state, state, hwid) VALUES ("3.4.5.6:7890", 1, 2, 123457)')
+                con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 2, 1, ?)', (InvocationState.IN_PROGRESS.value,))
+                con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 3, 1, ?)', (InvocationState.FINISHED.value,))
+                con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 1, 1, ?)', (InvocationState.INVOKING.value,))
+                con.commit()
+            try:
 
-            self.assertEqual("2.3.4.5:6789", await sched.get_invocation_worker(1))
-            self.assertEqual("3.4.5.6:7890", await sched.get_invocation_worker(2))
-            self.assertEqual("1.2.3.4:5678", await sched.get_invocation_worker(3))
-        finally:
-            sched.stop()
-            await sched.wait_till_stops()
+                self.assertEqual(InvocationState.IN_PROGRESS, await sched.get_invocation_state(1))
+                self.assertEqual(InvocationState.FINISHED, await sched.get_invocation_state(2))
+                self.assertEqual(InvocationState.INVOKING, await sched.get_invocation_state(3))
+
+                self.assertEqual("2.3.4.5:6789", await sched.get_invocation_worker(1))
+                self.assertEqual("3.4.5.6:7890", await sched.get_invocation_worker(2))
+                self.assertEqual("1.2.3.4:5678", await sched.get_invocation_worker(3))
+            finally:
+                sched.stop()
+                await sched.wait_till_stops()
             
