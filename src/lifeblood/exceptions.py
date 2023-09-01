@@ -49,3 +49,15 @@ class CouldNotNegotiateProtocolVersion(RuntimeError):
 
     def __repr__(self):
         return f'<{self.__class__.__name__}: ours:{self.__ours}, theirs:{self.__theirs}>'
+
+
+class InvocationMessageError(RuntimeError):
+    pass
+
+
+class InvocationMessageWrongInvocationId(InvocationMessageError):
+    pass
+
+
+class InvocationMessageAddresseeTimeout(InvocationMessageError):
+    pass

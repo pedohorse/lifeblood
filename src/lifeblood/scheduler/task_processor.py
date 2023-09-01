@@ -303,13 +303,27 @@ class TaskProcessor(SchedulerComponentBase):
                 await submit_transaction.execute('BEGIN IMMEDIATE')
                 async with submit_transaction.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
                     worker_state = WorkerState((await incur.fetchone())[0])
+                async with submit_transaction.execute('SELECT "state" FROM invocations WHERE "id" == ?', (invocation_id,)) as incur:
+                    # if worker managed to stop and start before we reach this transaction - invocation state will be reset
+                    # we have to check it
+                    maybe_updated_invocation_state = InvocationState((await incur.fetchone())[0])
+
+                worker_apparently_restarted = False
+                if maybe_updated_invocation_state != InvocationState.INVOKING:
+                    self.__logger.warning(f'worker seem to have stopped during submission attempt, ignoring, retrying. reply was: {reply}, worker state is: {worker_state}')
+                    worker_apparently_restarted = True
+                    reply = TaskScheduleStatus.FAILED
+
                 # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
                 if worker_state == WorkerState.OFF:
                     self.__logger.debug('submitter: worker state changed to OFF during submitter work')
                     if reply == TaskScheduleStatus.SUCCESS:
                         self.__logger.warning('submitter succeeded, yet worker state changed to OFF in the middle of submission. forcing reply to FAIL')
                         reply = TaskScheduleStatus.FAILED
-                assert worker_state != WorkerState.IDLE  # this should never happen as hello preserves INVOKING state
+
+                # this assert should never break: as hello preserves INVOKING state, and we catch worker restart case
+                assert worker_apparently_restarted or worker_state != WorkerState.IDLE, f'worker restarted={worker_apparently_restarted}, state={worker_state}'
+
                 if reply == TaskScheduleStatus.SUCCESS:
                     await submit_transaction.execute('UPDATE tasks SET state = ?, '
                                                      '"work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 '
@@ -335,6 +349,8 @@ class TaskProcessor(SchedulerComponentBase):
                                                      (invocation_id,))
                     # update resource usage to none
                     await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
+                    # TODO: if task was reverted we MIGHT need to poke scheduler after transaction commit to process task again straight awau
+                    #  Or something else, have other things to do now, think about this one later
                 submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, ui_task_delta)  # ui event
                 await submit_transaction.commit()
 
@@ -706,6 +722,9 @@ class TaskProcessor(SchedulerComponentBase):
         #
         # Out of while - means we are stopping. time to save all the nodes
         self.__logger.info('finishing task processor...')
+        for task in (stop_task, kick_wait_task):
+            if not task.done():
+                task.cancel()
         if len(tasks_to_wait) > 0:
             await asyncio.wait(tasks_to_wait, return_when=asyncio.ALL_COMPLETED)
         self.__logger.info('task processor finished')

@@ -35,11 +35,23 @@ class MessageReceivingError(MessageTransferError):
     pass
 
 
-class MessageTransferTimeoutError(MessageTransferError):
+class MessageTimeoutError(MessageTransferError):
+    pass
+
+
+class MessageTransferTimeoutError(MessageTimeoutError):
     pass
 
 
 class NoMessageError(MessageTransferTimeoutError):
+    pass
+
+
+class MessageReceiveTimeoutError(MessageTimeoutError):
+    """
+    Note, this is different from MessageTransferTimeoutError,
+      as this exception does not imply transfer error on THIS side of comm
+    """
     pass
 
 

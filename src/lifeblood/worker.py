@@ -21,7 +21,8 @@ from . import logging
 from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
 from .net_classes import WorkerResources
 # from .worker_task_protocol import WorkerTaskServerProtocol
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning,\
+    InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationMessageError
 # from .scheduler_task_protocol import SchedulerTaskClient
 from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
@@ -141,6 +142,8 @@ class Worker:
         if self.__worker_id is None and self.__pool_address is not None \
                 or self.__worker_id is not None and self.__pool_address is None:
             raise RuntimeError('pool_address must be given together with worker_id')
+
+        self.__worker_task_comm_queues: Dict[str, asyncio.Queue] = {}
 
         self.__worker_type: WorkerType = worker_type
         self.__singleshot: bool = singleshot or worker_type == WorkerType.SCHEDULER_HELPER
@@ -513,7 +516,10 @@ class Worker:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process_start_time = time.time()
 
-                bin_path = shutil.which(args[0], path=env.get('PATH'))
+                if os.path.isabs(args[0]):
+                    bin_path = args[0]
+                else:
+                    bin_path = shutil.which(args[0], path=env.get('PATH'))
                 if bin_path is None:
                     raise ProcessInitializationError(f'"{args[0]}" was not found. Check environment resolver arguments and system setup')
 
@@ -592,15 +598,72 @@ class Worker:
                 finally:
                     # report to the pool
                     if self.__worker_id is not None:
-                        assert self.__pool_address is not None
-                        with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
-                            await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
+                        try:
+                            assert self.__pool_address is not None
+                            with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
+                                await wpclient.report_state(self.__worker_id, WorkerState.IDLE)
+                        except (Exception, asyncio.CancelledError):
+                            self.__logger.error('failed to report task cancellation to worker pool. stopping worker')
+                            self.stop()
 
         await self.__running_process.wait()
         await self.task_finished()
 
     def is_task_running(self) -> bool:
         return self.__running_task is not None
+
+    def running_invocation(self) -> Optional[InvocationJob]:
+        return self.__running_task
+
+    async def deliver_invocation_message(self, destination_invocation_id: int, destination_addressee: str, source_invocation_id: Optional[int], message_body: bytes, addressee_timeout: float = 90.0):
+        """
+        deliver message to task
+        """
+        while True:
+            # while we wait - invocation MAY change.
+            running_invocation = self.running_invocation()
+            if running_invocation is None or destination_invocation_id != running_invocation.invocation_id():
+                raise InvocationMessageWrongInvocationId()
+
+            while destination_addressee not in self.__worker_task_comm_queues:
+                wait_start_timestamp = time.time()
+                await asyncio.sleep(0.05)  # we MOST LIKELY are already waiting for this, so timeout occurs
+                addressee_timeout -= time.time() - wait_start_timestamp
+                if addressee_timeout <= 0:
+                    raise InvocationMessageAddresseeTimeout()
+                # important to keep checking if invocation was changed,
+                # and important to have no awaits (no interruptions) between check and enqueueing
+                running_invocation = self.running_invocation()
+                if running_invocation is None or destination_invocation_id != running_invocation.invocation_id():
+                    raise InvocationMessageWrongInvocationId()
+
+            queue = self.__worker_task_comm_queues[destination_addressee]
+
+            if not queue.empty():
+                # need to return control to loop in case 2 deliver_invocation_message calls happen to happen at the same time,
+                # and one is stuck in the loop of upper while being satisfied, but queue not empty already
+                await asyncio.sleep(0.01)
+                continue
+            queue.put_nowait((source_invocation_id, message_body))
+            queue.put_nowait(())
+            break
+
+    async def worker_task_addressee_wait(self, addressee: str, timeout: float = 30) -> Tuple[int, bytes]:
+        """
+        wait for a data message to addressee to be delivered
+
+        :returns: sender invocation id, message body
+        """
+        if addressee not in self.__worker_task_comm_queues:
+            self.__worker_task_comm_queues[addressee] = asyncio.Queue()
+        try:
+            value = await asyncio.wait_for(self.__worker_task_comm_queues[addressee].get(), timeout=timeout)
+            assert self.__worker_task_comm_queues[addressee].get_nowait() == ()
+            # this way above we ensure one single deliver_task deliver to one single addressee_wait
+        finally:
+            self.__worker_task_comm_queues.pop(addressee)
+
+        return value
 
     def is_stopping(self) -> bool:
         """
@@ -638,6 +701,7 @@ class Worker:
             await self.delete_logs(self.__running_task.invocation_id())
 
             self.__running_task = None
+            self.__worker_task_comm_queues = {}
             self.__running_process = None
             self.__where_to_report = None
             self.__running_task_progress = None
@@ -691,6 +755,7 @@ class Worker:
 
             self.__where_to_report = None
             self.__running_task = None
+            self.__worker_task_comm_queues = {}
             self.__running_process = None
             self.__previous_notrunning_awaiter = self.__running_awaiter  # this is JUST so task is not GCd
             self.__running_awaiter = None  # TODO: lol, this function can be called from awaiter, and if we hand below - awaiter can be gcd, and it's all fucked

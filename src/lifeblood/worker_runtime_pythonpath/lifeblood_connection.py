@@ -4,22 +4,67 @@ this module should be kept minimal, with only standard modules and maximum compa
 """
 from __future__ import print_function
 import os
+import time
 import errno
 import pickle
 import json
 import threading
 import socket
 import struct
+import uuid
 try:
-    from typing import Optional
+    from typing import Optional, Tuple, Union
 except ImportError:
     pass
+
+
+class MessageSendError(RuntimeError):
+    pass
+
+
+class MessageReceiveTimeout(RuntimeError):
+    pass
+
+
+class InvocationMessageReceiverFuture(threading.Thread):
+    def __init__(self, addressee, timeout=None):
+        super().__init__()
+        self.__addressee = addressee
+        self.__timeout = timeout
+        self.__result = None
+        self.__exception = None
+
+    def run(self) -> None:
+        try:
+            self.__result = _message_to_invocation_receive_blocking(self.__addressee, self.__timeout)
+        except Exception as e:
+            self.__exception = e
+        _clear_me_from_threads_to_wait()
+
+    def is_done(self):
+        return not self.is_alive()
+
+    def wait(self, timeout=None):  # type: (Optional[float]) -> Tuple[int, bytes]
+        """
+        wait for operation to finish and return result, or raise exception if error happened
+        """
+        self.join(timeout)
+        if self.is_alive():  # timeout happened
+            raise TimeoutError()
+        if self.__exception:
+            raise self.__exception
+        return self.__result
 
 
 def send_string(sock, text):  # type: (socket.socket, str) -> None
     bts = text.encode('UTF-8')
     sock.sendall(struct.pack('>Q', len(bts)))
     sock.sendall(bts)
+
+
+def recv_string(sock):  # type: (socket.socket) -> str
+    data_size, = struct.unpack('>Q', sock.recv(8))
+    return sock.recv(data_size).decode('UTF-8')
 
 
 class EnvironmentResolverArguments:
@@ -121,6 +166,20 @@ _threads_to_wait = []
 _threads_to_wait_lock = threading.Lock()
 
 
+def _connect_to_worker(timeout=None):
+    addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
+    addr, sport = addrport.rsplit(':', 1)
+    port = int(sport)
+    if timeout is None:
+        sock = socket.create_connection((addr, port))
+    else:
+        sock = socket.create_connection((addr, port), timeout=timeout)
+    # negotiate protocol
+    sock.sendall(struct.pack('>QII', 1, 1, 0))
+    assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+    return sock
+
+
 def create_task(name, attributes, env_arguments=None, blocking=False):
     """
     creates a new task with name and attributes.
@@ -134,16 +193,11 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
     spawn = TaskSpawn(name, invocation_id, task_attributes=attributes, env_args=env_arguments)
 
     def _send():
-        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-        addr, sport = addrport.rsplit(':', 1)
-        port = int(sport)
-        sock = socket.create_connection((addr, port), timeout=30)
-        data = spawn.serialize()
-        # negotiate protocol
-        sock.sendall(struct.pack('>QII', 1, 1, 0))
-        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+        sock = _connect_to_worker(timeout=30)
 
         send_string(sock, 'spawn')
+
+        data = spawn.serialize()
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         res = sock.recv(13)  # >I?Q  13 should be small enough to ensure receiving in one call
@@ -163,13 +217,7 @@ def create_task(name, attributes, env_arguments=None, blocking=False):
 
 def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
     def _send():
-        addrport = os.environ['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR']
-        addr, sport = addrport.rsplit(':', 1)
-        port = int(sport)
-        sock = socket.create_connection((addr, port), timeout=30)
-        # negotiate protocol
-        sock.sendall(struct.pack('>QII', 1, 1, 0))
-        assert struct.unpack('>II', sock.recv(8)) == (1, 0), 'server does not support our protocol version'
+        sock = _connect_to_worker(timeout=30)
 
         send_string(sock, 'tupdateattribs')
         updata = json.dumps(attribs).encode('UTF-8')
@@ -189,6 +237,85 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         with _threads_to_wait_lock:
             _threads_to_wait.append(thread)
         thread.start()  # and not care
+
+
+def message_to_invocation_send(invocation_id, addressee, message, addressee_timeout=None):  # type: (int, str, bytes, Optional[float]) -> None
+    """
+    send a message to invocation_id, addressed to addressee.
+    This is useful for designing workflows where:
+     - child tasks are reporting processing results to running parent
+     - child tasks are synchronizing through parent (useful for distributed sims)
+     - other stuff
+
+     NOTE: timeout=None means DEFAULT timeout, not no timeout. disabling timeout is not allowed
+    """
+    def _send():
+        sock = _connect_to_worker()
+
+        send_string(sock, 'sendinvmessage')
+
+        sock.sendall(struct.pack('>QQQf', invocation_id, int(os.environ['LIFEBLOOD_RUNTIME_IID']), len(message), addressee_timeout))
+        send_string(sock, addressee)
+        sock.sendall(message)
+        # now get reply
+        reply = recv_string(sock)
+        if reply != 'delivered':
+            raise MessageSendError(reply)
+
+    if addressee_timeout is None or addressee_timeout <= 0:
+        addressee_timeout = 90
+    _send()
+
+
+def message_to_invocation_receive(addressee, timeout=None, blocking=True):  # type: (str, Optional[float], bool) -> Union[Tuple[int, bytes], InvocationMessageReceiverFuture]
+    """
+    await message from another invocation, addressed to addressee
+    If graph is not properly designed so that another invocation may not send a message -
+    this function will just block forever
+
+    If blocking is False - it will return a Future-like object that caller can wait for.
+    NOTE: this future object actually creates a thread, which may be undesireable
+    """
+    if blocking:
+        return _message_to_invocation_receive_blocking(addressee, timeout)
+    future = InvocationMessageReceiverFuture(addressee, timeout)
+    future.start()
+    with _threads_to_wait_lock:
+        _threads_to_wait.append(future)
+    return future
+
+
+def _message_to_invocation_receive_blocking(addressee, timeout=None):  # type: (str, Optional[float]) -> Tuple[int, bytes]
+    sock = _connect_to_worker()
+
+    send_string(sock, 'recvinvmessage')
+
+    send_string(sock, addressee)
+    target_poll_time = 10.0
+    min_poll_time = 0.1
+    eps = 0.001
+    poll_time = max(min_poll_time, (timeout+eps)/max(1.0, round((timeout+eps)/target_poll_time))) if timeout is not None else target_poll_time
+    sock.sendall(struct.pack('>f', poll_time))
+    ready = False
+    waiting_elapsed = 0
+    _last_timestamp = time.time()
+    while not ready:
+        _last_timestamp = time.time()
+        ready, = struct.unpack('>?', sock.recv(1))
+
+        waiting_elapsed += time.time() - _last_timestamp
+        _last_timestamp = time.time()
+        do_cancel = timeout is not None and waiting_elapsed >= timeout
+
+        if not ready:
+            sock.sendall(struct.pack('>?', do_cancel))  # False for no cancel, True for cancel
+            if do_cancel:
+                raise MessageReceiveTimeout(f'elapsed: {waiting_elapsed}s')
+            continue
+    source_iid, data_size = struct.unpack('>QQ', sock.recv(16))
+    data = sock.recv(data_size)
+
+    return source_iid, data
 
 
 def _clear_me_from_threads_to_wait():
@@ -243,6 +370,22 @@ def get_host_ip():
     finally:
         s.close()
     return myip
+
+
+def generate_addressee():
+    """
+    generate random string, nothing more
+    """
+    return str(uuid.uuid4())
+
+
+def get_my_invocation_id():
+    """
+    since this module is run in environment generated by worker,
+    there are extra env variables available, including informatino about
+    the task+invocation currently being worked on
+    """
+    return int(os.environ['LIFEBLOOD_RUNTIME_IID'])
 
 
 def get_free_tcp_port(ip, starting_at=20001):

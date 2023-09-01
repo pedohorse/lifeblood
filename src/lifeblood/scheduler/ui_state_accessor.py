@@ -142,6 +142,12 @@ class UIStateAccessor(SchedulerComponentBase):
             if stop_task in done:
                 break
 
+        # cleaning up potentially pending tasks
+        if not stop_task.done():
+            stop_task.cancel()
+        if wakeup_task is not None and not wakeup_task.done():
+            wakeup_task.cancel()
+
     async def process_event_queue(self):
         stop_task = asyncio.create_task(self._stop_event.wait())
         while not self._stop_event.is_set():
@@ -150,6 +156,9 @@ class UIStateAccessor(SchedulerComponentBase):
             waiting_tasks = (get_task, stop_task)
             done, _ = await asyncio.wait(waiting_tasks, return_when=asyncio.FIRST_COMPLETED)
             if stop_task in done:
+                for task in waiting_tasks:
+                    if not task.done():
+                        task.cancel()
                 break
 
             queue_event_type, event_id, event_timestamp, element_data = await get_task

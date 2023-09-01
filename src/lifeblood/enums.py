@@ -92,3 +92,13 @@ class UIEventType(Enum):
     UPDATE = 0
     DELETE = 1
     FULL_STATE = 2  # represents a checkpoint in the log that represents the full state, so events before are irrelevant
+
+
+class InvocationMessageResult(Enum):  # Note: values are picked in a way they are parseable by lifeblood_connection
+    DELIVERED = 'delivered'
+    ERROR_BAD_IID = 'error-wrong-invid'
+    ERROR_RECEIVER_TIMEOUT = 'error-receiver-timeout'
+    ERROR_DELIVERY_TIMEOUT = 'error-delivery-timeout'
+    ERROR_UNEXPECTED = 'error-unknown'
+    ERROR_IID_NOT_RUNNING = 'error-invoc-not-running'
+    ERROR_TRANSFER_ERROR = 'error-transfer'

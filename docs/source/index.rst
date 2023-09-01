@@ -17,6 +17,7 @@ where tasks that travel from node to node and may produce workload to be execute
 
     components/index
     overview
+    concepts
     installation
     usage
     tutorials
