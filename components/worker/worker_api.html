@@ -145,6 +145,13 @@
                 
 
                     <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../installation.html">
                         Installation
                       </a>
@@ -157,19 +164,19 @@
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="../../tutorials.html">
-                        Tutorials
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
                 </button>
                 <div class="dropdown-menu">
                     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../nodes.html">
                         Nodes
@@ -271,6 +278,13 @@ document.write(`
                 
 
                     <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../installation.html">
                         Installation
                       </a>
@@ -283,19 +297,19 @@ document.write(`
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="../../tutorials.html">
-                        Tutorials
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
                 </button>
                 <div class="dropdown-menu">
                     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../nodes.html">
                         Nodes
@@ -416,6 +430,12 @@ document.write(`
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="lifeblood.worker.Worker.deliver_invocation_message">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">deliver_invocation_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">destination_invocation_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">destination_addressee</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_invocation_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message_body</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">addressee_timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">90.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#lifeblood.worker.Worker.deliver_invocation_message" title="Permalink to this definition">#</a></dt>
+<dd><p>deliver message to task</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="lifeblood.worker.Worker.get_log_filepath">
 <span class="sig-name descname"><span class="pre">get_log_filepath</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">invocation_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#lifeblood.worker.Worker.get_log_filepath" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
@@ -445,6 +465,11 @@ so worker is closed or in the process of closing</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="lifeblood.worker.Worker.run_task">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">run_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">task</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InvocationJob</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_to</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AddressChain</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#lifeblood.worker.Worker.run_task" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="lifeblood.worker.Worker.running_invocation">
+<span class="sig-name descname"><span class="pre">running_invocation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">InvocationJob</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#lifeblood.worker.Worker.running_invocation" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -490,6 +515,17 @@ so worker is closed or in the process of closing</p>
 <dt class="sig sig-object py" id="lifeblood.worker.Worker.wait_till_stops">
 <em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">wait_till_stops</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#lifeblood.worker.Worker.wait_till_stops" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="lifeblood.worker.Worker.worker_task_addressee_wait">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">worker_task_addressee_wait</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">addressee</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">30</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bytes</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#lifeblood.worker.Worker.worker_task_addressee_wait" title="Permalink to this definition">#</a></dt>
+<dd><p>wait for a data message to addressee to be delivered</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>sender invocation id, message body</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -549,12 +585,14 @@ and listenting for broadcast starts again
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker._cleanup_extra_files"><code class="docutils literal notranslate"><span class="pre">Worker._cleanup_extra_files()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.cancel_task"><code class="docutils literal notranslate"><span class="pre">Worker.cancel_task()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.delete_logs"><code class="docutils literal notranslate"><span class="pre">Worker.delete_logs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.deliver_invocation_message"><code class="docutils literal notranslate"><span class="pre">Worker.deliver_invocation_message()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.get_log_filepath"><code class="docutils literal notranslate"><span class="pre">Worker.get_log_filepath()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.is_started"><code class="docutils literal notranslate"><span class="pre">Worker.is_started()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.is_stopping"><code class="docutils literal notranslate"><span class="pre">Worker.is_stopping()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.is_task_running"><code class="docutils literal notranslate"><span class="pre">Worker.is_task_running()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.message_processor"><code class="docutils literal notranslate"><span class="pre">Worker.message_processor()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.run_task"><code class="docutils literal notranslate"><span class="pre">Worker.run_task()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.running_invocation"><code class="docutils literal notranslate"><span class="pre">Worker.running_invocation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.scheduler_message_address"><code class="docutils literal notranslate"><span class="pre">Worker.scheduler_message_address()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.scheduler_pinger"><code class="docutils literal notranslate"><span class="pre">Worker.scheduler_pinger()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.start"><code class="docutils literal notranslate"><span class="pre">Worker.start()</span></code></a></li>
@@ -563,6 +601,7 @@ and listenting for broadcast starts again
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.task_status"><code class="docutils literal notranslate"><span class="pre">Worker.task_status()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.wait_till_starts"><code class="docutils literal notranslate"><span class="pre">Worker.wait_till_starts()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.wait_till_stops"><code class="docutils literal notranslate"><span class="pre">Worker.wait_till_stops()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.Worker.worker_task_addressee_wait"><code class="docutils literal notranslate"><span class="pre">Worker.worker_task_addressee_wait()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood.worker.create_worker"><code class="docutils literal notranslate"><span class="pre">create_worker()</span></code></a></li>

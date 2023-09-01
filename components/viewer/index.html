@@ -147,6 +147,13 @@
                 
 
                     <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../installation.html">
                         Installation
                       </a>
@@ -159,19 +166,19 @@
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="../../tutorials.html">
-                        Tutorials
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
                 </button>
                 <div class="dropdown-menu">
                     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../nodes.html">
                         Nodes
@@ -273,6 +280,13 @@ document.write(`
                 
 
                     <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../installation.html">
                         Installation
                       </a>
@@ -285,19 +299,19 @@ document.write(`
                       </a>
                     </li>
                 
-
-                    <li class="nav-item">
-                      <a class="nav-link nav-internal" href="../../tutorials.html">
-                        Tutorials
-                      </a>
-                    </li>
-                
             <div class="nav-item dropdown">
                 <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     More
                 </button>
                 <div class="dropdown-menu">
                     
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
                     <li class="nav-item">
                       <a class="nav-link nav-internal" href="../../nodes.html">
                         Nodes
@@ -516,7 +530,7 @@ task is sent through the <strong>first output</strong>.</p>
 <p>One input may have multiple incoming connections, but <strong>be very careful with one output having multiple
 outgoing connections</strong>. Tasks are persistent entities, so while multiple incoming connections would just
 gather tasks from multiple nodes, multiple <strong>outgoing</strong> connections imply that a <strong>task needs to be duplicated</strong></p>
-<p>Instead of duplicating a task, a <span class="xref std std-ref">split</span> will be generated into the amount of subtasks
+<p>Instead of duplicating a task, a <a class="reference internal" href="../../concepts.html#concept-split"><span class="std std-ref">split</span></a> will be generated into the amount of subtasks
 equal to the number of outgoing connections. To Emphasise this - an additional overlay will be drawn
 on top of such connections.</p>
 <figure class="align-left" id="id1">
@@ -565,11 +579,11 @@ things from scheduler that are known to require little to no processing power, s
 <li><p><strong>task progress</strong> - when worker is in <code class="docutils literal notranslate"><span class="pre">BUSY</span></code> state, this will indicate current invocation’s progress</p></li>
 <li><p><strong>task id</strong> - when worker is in <code class="docutils literal notranslate"><span class="pre">BUSY</span></code> state, this will indicate the id of the task that was source
 for the invocation the worker is working on</p></li>
-<li><p><strong>address</strong> - worker process’s address in <span class="xref std std-ref">Address Chain</span> format</p></li>
+<li><p><strong>address</strong> - worker process’s address in <a class="reference internal" href="../../concepts.html#addresschain"><span class="std std-ref">Address Chain</span></a> format</p></li>
 </ul>
 <p>Following columns show some <strong>computational resources</strong> of the worker available/total</p>
-<p>Any <span class="xref std std-ref">invocation</span> has resource requirements. Those requirements are set by a node
-during <span class="xref std std-ref">processing</span>. Obviously, neither scheduler nor worker can know beforehand
+<p>Any <a class="reference internal" href="../../concepts.html#invocation"><span class="std std-ref">invocation</span></a> has resource requirements. Those requirements are set by a node
+during <a class="reference internal" href="../../concepts.html#stage-processing"><span class="std std-ref">processing</span></a>. Obviously, neither scheduler nor worker can know beforehand
 how much resources an invocation may need, therefore requirements are <strong>resource limitations</strong>
 that worker <strong>may</strong> enforce on the spawned process (if supported by platform and configured to do so)</p>
 <p>Whenever an invocation is started by a worker - the resource requirements of the invocation are deducted
