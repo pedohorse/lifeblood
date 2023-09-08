@@ -16,6 +16,10 @@ class InvocationNotFinished(RuntimeError):
     pass
 
 
+class BadProgressRegexp(RuntimeError):
+    pass
+
+
 class Environment(dict):
     def __init__(self, *args, **kwargs):
         super(Environment, self).__init__(*args, **kwargs)
@@ -107,13 +111,19 @@ class InvocationRequirements:
     for example, you might want minimum of 1 CPU core, but would prefer to use 4
     then a 1 core machine may pick up one task, but 16 core machine will pick just 4 tasks
     """
-    def __init__(self, *, min_cpu_count: Optional[int] = None, min_memory_bytes: Optional[int] = None, groups: Optional[Iterable[str]] = None, worker_type: WorkerType = WorkerType.STANDARD):
+    def __init__(self, *,
+                 min_cpu_count: Optional[int] = None,
+                 min_memory_bytes: Optional[int] = None,
+                 min_gpu_count: Optional[int] = None,
+                 min_gpu_memory_bytes: Optional[int] = None,
+                 groups: Optional[Iterable[str]] = None,
+                 worker_type: WorkerType = WorkerType.STANDARD):
         self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
         self.__min_cpu_count = min_cpu_count or 0
         self.__min_memory_bytes = min_memory_bytes or 0
-        self.__min_gpu_count = 0
-        self.__min_gpu_memory_bytes = 0
+        self.__min_gpu_count = min_gpu_count or 0
+        self.__min_gpu_memory_bytes = min_gpu_memory_bytes or 0
 
         self.__pref_cpu_count = None
         self.__pref_memory_bytes = None
@@ -144,6 +154,18 @@ class InvocationRequirements:
     def set_preferred_memory_bytes(self, pref_memory_bytes):
         self.__pref_memory_bytes = pref_memory_bytes
 
+    def set_min_gpu_count(self, min_gpu_count):
+        self.__min_gpu_count = min_gpu_count
+
+    def set_min_gpu_memory_bytes(self, min_gpu_memory_bytes):
+        self.__min_gpu_memory_bytes = min_gpu_memory_bytes
+
+    def set_preferred_gpu_count(self, pref_gpu_count):
+        self.__pref_gpu_count = pref_gpu_count
+
+    def set_preferred_gpu_memory_bytes(self, pref_gpu_memory_bytes):
+        self.__pref_gpu_memory_bytes = pref_gpu_memory_bytes
+
     def set_worker_type(self, worker_type: WorkerType):
         self.__worker_type = worker_type
 
@@ -153,6 +175,10 @@ class InvocationRequirements:
             conds.append(f'("cpu_count" >= {self.__min_cpu_count - 1e-8 if isinstance(self.__min_cpu_count, float) else self.__min_cpu_count})')   # to ensure sql compare will work
         if self.__min_memory_bytes > 0:
             conds.append(f'("cpu_mem" >= {self.__min_memory_bytes})')
+        if self.__min_gpu_count > 0:
+            conds.append(f'("gpu_count" >= {self.__min_gpu_count - 1e-8 if isinstance(self.__min_gpu_count, float) else self.__min_gpu_count})')  # to ensure sql compare will work
+        if self.__min_gpu_memory_bytes > 0:
+            conds.append(f'("gpu_mem" >= {self.__min_gpu_memory_bytes})')
         if len(self.__groups) > 0:
             esc = '\\'
 
@@ -231,7 +257,7 @@ class InvocationJob:
         self.__env = env or InvocationEnvironment()
         self.__invocation_id = invocation_id
         self.__task_id = None
-        # TODO: add here also all kind of resource requirements information
+
         self.__out_progress_regex = re.compile(rb'ALF_PROGRESS\s+(\d+)%')
         self.__err_progress_regex = None
 
@@ -262,13 +288,29 @@ class InvocationJob:
     def environment_resolver_arguments(self):  # type: () -> Optional[EnvironmentResolverArguments]
         return self.__envres_args
 
-    def set_stdout_progress_regex(self, regex: Optional[str]):
+    def set_stdout_progress_regex(self, regex: Optional[bytes]):
+        """
+        regex logic is the following:
+            - if it has one group - that is treated as progress percentage
+            - if it has 2 or more unnamed groups - those are treated as <group1> out of <group2> progress
+              so output = g1/g2*100 %
+            - if there are named groups named 'current' and 'total' - those groups are treated the same way
+              as above: = current/total*100 %
+        """
         if regex is None:
             self.__out_progress_regex = None
             return
         self.__out_progress_regex = re.compile(regex)
 
-    def set_stderr_progress_regex(self, regex: Optional[str]):
+    def set_stderr_progress_regex(self, regex: Optional[bytes]):
+        """
+        regex logic is the following:
+            - if it has one group - that is treated as progress percentage
+            - if it has 2 or more unnamed groups - those are treated as <group1> out of <group2> progress
+              so output = g1/g2*100 %
+            - if there are named groups named 'current' and 'total' - those groups are treated the same way
+              as above: = current/total*100 %
+        """
         if regex is None:
             self.__err_progress_regex = None
             return
@@ -292,25 +334,49 @@ class InvocationJob:
 
     def match_stdout_progress(self, line: bytes) -> Optional[float]:
         if self.__out_progress_regex is None:
-            return
-        match = self.__out_progress_regex.match(line)
-        if match is None:
-            return
-        if len(match.groups()) == 0:
+            return None
+        try:
+            return self._match_progress(line, self.__out_progress_regex)
+        except BadProgressRegexp:
             self.__out_progress_regex = None
-            return
-        return float(match.group(1))
+            return None
 
     def match_stderr_progress(self, line: bytes) -> Optional[float]:
         if self.__err_progress_regex is None:
-            return
-        match = self.__err_progress_regex.match(line)
+            return None
+        try:
+            return self._match_progress(line, self.__err_progress_regex)
+        except BadProgressRegexp:
+            self.__err_progress_regex = None
+            return None
+
+    @classmethod
+    def _match_progress(cls, line: bytes, regex: re.Pattern) -> Optional[float]:
+        """
+        should be given a bytes line as produced by running task output
+        will return progress percentage (so 0-100) float, if output line matches progress regex
+        otherwise returns None
+
+        regex logic is the following:
+            - if it has one group - that is treated as progress percentage
+            - if it has 2 or more unnamed groups - those are treated as <group1> out of <group2> progress
+              so output = g1/g2*100 %
+            - if there are named groups named 'current' and 'total' - those groups are treated the same way
+              as above: = current/total*100 %
+        """
+        match = regex.match(line)
         if match is None:
             return
         if len(match.groups()) == 0:
-            self.__err_progress_regex = None
-            return
-        return float(match.group(1))
+            raise BadProgressRegexp()
+        # several cases possible
+        if len(match.groups()) == 1:  # just single group match - treated as progress percentage
+            return float(match.group(1))
+        named_groups = match.groupdict()
+        if len(named_groups) == 0:  # no named groups - first 2 groups are treated as <g1> out of <g2>
+            return float(match.group(1)) / float(match.group(2)) * 100.0
+        if 'current' in named_groups and 'total' in named_groups:
+            return float(match.group('current')) / float(match.group('total')) * 100.0
 
     def attributes(self):
         return MappingProxyType(self.__attrs)
