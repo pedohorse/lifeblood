@@ -41,7 +41,7 @@ class Arnold(BaseNodeWithTaskRequirements):
             raise ProcessingError('required attributes not found')
 
         env = InvocationEnvironment()
-        done_regex = r'.*?\|\s*(\d+)% done'
+        done_regex = rb'.*?\|\s*(\d+)% done'
 
         if context.param_value('skip if exists'):
             script = 'import os\n' \
