@@ -10,7 +10,10 @@ from pathlib import Path
 from .snippets import NodeSnippetData
 from . import logging, plugin_info, paths
 
-from typing import List, Tuple, Dict, Any, Union, Optional
+from typing import List, Tuple, Dict, Any, Union, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .basenode import BaseNode
 
 
 plugins = {}
@@ -269,7 +272,7 @@ def set_settings_as_default(node_type_name: str, settings_name: Optional[str]):
         toml.dump(default_settings_config, f)
 
 
-def create_node(type_name: str, name, scheduler_parent, node_id):
+def create_node(type_name: str, name, scheduler_parent, node_id):  # type: (str, str, Scheduler, int) -> BaseNode
     """
     this function is a global node creation point.
     it has to be available somewhere global, so plugins loaded from dynamically created modules have an entry point for pickle

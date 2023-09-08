@@ -722,7 +722,7 @@ class Worker:
             if self.__singleshot:
                 self.stop()
 
-    async def task_status(self) -> Optional[float]:
+    def task_status(self) -> Optional[float]:
         return self.__running_task_progress
 
     async def task_finished(self):

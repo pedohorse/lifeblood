@@ -59,7 +59,7 @@ class WorkerTaskServerProtocol(asyncio.StreamReaderProtocol):
                 if command == b'ping':  # routine ping, report worker status
                     if self.__worker.is_task_running():
                         pstatus = WorkerPingReply.BUSY.value
-                        pvalue = int(await self.__worker.task_status() or 0)
+                        pvalue = int(self.__worker.task_status() or 0)
                     else:
                         pstatus = WorkerPingReply.IDLE.value
                         pvalue = 0
