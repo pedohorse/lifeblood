@@ -7,7 +7,7 @@ from types import MappingProxyType
 from .enums import WorkerType
 from .net_classes import WorkerResources
 
-from typing import Optional, Iterable, Union, Dict, List, TYPE_CHECKING
+from typing import Optional, Iterable, Union, Dict, List, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .environment_resolver import EnvironmentResolverArguments
 
@@ -130,8 +130,39 @@ class InvocationRequirements:
         self.__pref_gpu_count = None
         self.__pref_gpu_memory_bytes = None
 
-    def groups(self):
-        return tuple(self.__groups)
+    # querries
+
+    def groups(self) -> Set[str]:
+        return set(self.__groups)
+
+    def min_cpu_count(self) -> Union[float, int]:
+        return self.__min_cpu_count
+
+    def min_memory_bytes(self) -> int:
+        return self.__min_memory_bytes
+
+    def preferred_cpu_count(self) -> Union[float, int]:
+        return self.__pref_cpu_count
+
+    def preferred_memory_bytes(self) -> int:
+        return self.__pref_memory_bytes
+
+    def min_gpu_count(self) -> Union[float, int]:
+        return self.__min_gpu_count
+
+    def min_gpu_memory_bytes(self) -> int:
+        return self.__min_gpu_memory_bytes
+
+    def preferred_gpu_count(self) -> Union[float, int]:
+        return self.__pref_gpu_count
+
+    def preferred_gpu_memory_bytes(self) -> int:
+        return self.__pref_gpu_memory_bytes
+
+    def worker_type(self) -> WorkerType:
+        return self.__worker_type
+
+    # setters
 
     def set_groups(self, groups):
         self.__groups = groups
@@ -146,25 +177,25 @@ class InvocationRequirements:
         self.__min_cpu_count = min_cpu_count
 
     def set_min_memory_bytes(self, min_memory_bytes):
-        self.__min_memory_bytes = min_memory_bytes
+        self.__min_memory_bytes = int(min_memory_bytes)
 
     def set_preferred_cpu_count(self, pref_cpu_count):
         self.__pref_cpu_count = pref_cpu_count
 
     def set_preferred_memory_bytes(self, pref_memory_bytes):
-        self.__pref_memory_bytes = pref_memory_bytes
+        self.__pref_memory_bytes = int(pref_memory_bytes)
 
     def set_min_gpu_count(self, min_gpu_count):
         self.__min_gpu_count = min_gpu_count
 
     def set_min_gpu_memory_bytes(self, min_gpu_memory_bytes):
-        self.__min_gpu_memory_bytes = min_gpu_memory_bytes
+        self.__min_gpu_memory_bytes = int(min_gpu_memory_bytes)
 
     def set_preferred_gpu_count(self, pref_gpu_count):
         self.__pref_gpu_count = pref_gpu_count
 
     def set_preferred_gpu_memory_bytes(self, pref_gpu_memory_bytes):
-        self.__pref_gpu_memory_bytes = pref_gpu_memory_bytes
+        self.__pref_gpu_memory_bytes = int(pref_gpu_memory_bytes)
 
     def set_worker_type(self, worker_type: WorkerType):
         self.__worker_type = worker_type
@@ -204,7 +235,7 @@ class InvocationRequirements:
         if resources_only:
             return ret
 
-        ret['groups'] = self.groups()
+        ret['groups'] = tuple(self.groups())
         return ret
 
     def to_min_worker_resources(self) -> WorkerResources:
