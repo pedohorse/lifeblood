@@ -181,9 +181,9 @@ License returned
 rng = random.Random(13666)
 
 
-def printwait(stuff, wait_scale=1.0):
+def printwait(stuff: str, wait_scale=1.0):
     time.sleep(rng.uniform(0.05, 0.5)*wait_scale)
-    print(stuff)
+    sys.stdout.buffer.write(stuff.encode('utf-8') + b'\n')
     time.sleep(rng.uniform(0.05, 0.5)*wait_scale)
 
 

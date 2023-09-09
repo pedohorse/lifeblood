@@ -9,6 +9,7 @@ from lifeblood.enums import SpawnStatus
 from lifeblood.pluginloader import create_node
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.environment_resolver import EnvironmentResolverArguments
+from lifeblood.process_utils import oh_no_its_windows
 
 from .common import TestCaseBase
 
@@ -16,7 +17,8 @@ from .common import TestCaseBase
 class FakeEnvArgs(EnvironmentResolverArguments):
     def get_environment(self):
         print(str(Path(__file__).parent / 'data' / 'mock_redshift'))
-        return Environment({'PATH': os.pathsep.join((str(Path(__file__).parent / 'data' / 'mock_redshift'), os.environ.get('PATH', ''))),
+        return Environment({**os.environ,
+                            'PATH': os.pathsep.join((str(Path(__file__).parent / 'data' / 'mock_redshift'), os.environ.get('PATH', ''))),
                             'PYTHONUNBUFFERED': '1'})
 
 
@@ -27,7 +29,6 @@ class RedshiftTestCase(TestCaseBase):
         async def _logic(scheduler, workers, tmp_script_path, done_waiter):
             nonlocal the_worker
             updated_attrs = {}
-            progress = []
             with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
                 attr_patch.side_effect = lambda *args, **kwargs: updated_attrs.update(args[1]) \
                                                                  or print(f'update_task_attributes with {args}, {kwargs}')
@@ -38,6 +39,12 @@ class RedshiftTestCase(TestCaseBase):
                 ij = res.invocation_job
                 self.assertTrue(ij is not None)
                 ij._set_envresolver_arguments(FakeEnvArgs())
+                if oh_no_its_windows:
+                    # cuz windows does not allow to just run batch/python scripts with no extension...
+                    for filename, contents in list(ij.extra_files().items()):
+
+                        ij.set_extra_file(filename, contents.replace("'redshiftCmdLine'", f"'python', {repr(str(Path(__file__).parent / 'data' / 'mock_redshift' / 'redshiftCmdLine'))}"))
+
 
                 ij._set_task_id(2345)
                 ij._set_invocation_id(1234)
