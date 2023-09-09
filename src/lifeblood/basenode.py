@@ -355,6 +355,13 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 ui.add_parameter('worker type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
                     .add_menu((('standard', WorkerType.STANDARD.value),
                                ('scheduler helper', WorkerType.SCHEDULER_HELPER.value)))
+                with ui.collapsable_group_block('gpu main worker requirements', 'gpu requirements'):
+                    with ui.parameters_on_same_line_block():
+                        ui.add_parameter('worker gpu cost', 'min <gpus> preferred', NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
+                        ui.add_parameter('worker gpu cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
+                    with ui.parameters_on_same_line_block():
+                        ui.add_parameter('worker gpu mem cost', 'min <memory (GBs)> preferred', NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
+                        ui.add_parameter('worker gpu mem cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
 
     def __apply_requirements(self, task_dict: dict, result: ProcessingResult):
         if result.invocation_job is not None:
@@ -365,13 +372,21 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 reqs.add_groups(re.split(r'[ ,]+', raw_groups))
             reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
             reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
+            reqs.set_min_gpu_count(context.param_value('worker gpu cost'))
+            reqs.set_min_gpu_memory_bytes(context.param_value('worker gpu mem cost') * 10**9)
             # preferred
             pref_cpu_count = context.param_value('worker cpu cost preferred')
             pref_mem_bytes = context.param_value('worker mem cost preferred') * 10**9
+            pref_gpu_count = context.param_value('worker gpu cost preferred')
+            pref_gpu_mem_bytes = context.param_value('worker gpu mem cost preferred') * 10**9
             if pref_cpu_count > 0:
                 reqs.set_preferred_cpu_count(pref_cpu_count)
             if pref_mem_bytes > 0:
                 reqs.set_preferred_memory_bytes(pref_mem_bytes)
+            if pref_gpu_count > 0:
+                reqs.set_preferred_gpu_count(pref_gpu_count)
+            if pref_gpu_mem_bytes > 0:
+                reqs.set_preferred_gpu_memory_bytes(pref_gpu_mem_bytes)
 
             reqs.set_worker_type(WorkerType(context.param_value('worker type')))
             result.invocation_job.set_requirements(reqs)
