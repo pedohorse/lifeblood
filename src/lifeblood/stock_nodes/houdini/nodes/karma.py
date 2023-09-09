@@ -6,6 +6,14 @@ from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from typing import Iterable
 
 
+description = '''render USD file with Karma
+
+usd file path: path to USD file to render
+output image file path: path of final image. If AOVs are set up - their render location is not affected by this parameter
+skip if result already exists: skip rendering if file defined by "output image file path" already exists
+'''
+
+
 def node_class():
     return Karma
 
@@ -23,6 +31,10 @@ class Karma(BaseNodeWithTaskRequirements):
     def type_name(cls) -> str:
         return 'karma'
 
+    @classmethod
+    def description(cls) -> str:
+        return description
+
     def __init__(self, name):
         super(Karma, self).__init__(name)
         ui = self.get_ui()
@@ -37,8 +49,6 @@ class Karma(BaseNodeWithTaskRequirements):
 
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()
-        if 'file' not in args or 'outimage' not in args:
-            raise ProcessingError('required attributes not found')
 
         env = InvocationEnvironment()
 
@@ -47,22 +57,26 @@ class Karma(BaseNodeWithTaskRequirements):
                      'if not os.path.exists({imgpath}):\n' \
                      '    import sys\n' \
                      '    from subprocess import Popen\n' \
-                     "    sys.exit(Popen(['husk', '-V', '2a', '--make-output-path', '-f', {frame}, '-o', {imgpath}, {usdpath}]).wait())\n" \
+                     "    sys.exit(Popen(['husk', '-V', '2a', '--make-output-path',{doframe} '-o', {imgpath}, {usdpath}]).wait())\n" \
                      "else:\n" \
                      "    print('image file already exists, skipping work')\n" \
                     .format(imgpath=repr(context.param_value('image path')),
                             usdpath=repr(context.param_value('usd path')),
-                            frame=repr(str(args['frames'][0])))
+                            doframe=f" '-f', {repr(str(args['frames'][0]))}," if 'frames' in args else '',
+                            )
 
             invoc = InvocationJob(['python', ':/karmacall.py'])
             invoc.set_extra_file('karmacall.py', script)
         else:  # TODO: -f there is testing, if succ - make a parameter out of it on the node or smth
-            invoc = InvocationJob(['husk', '-V', '2a', '--make-output-path', '-f', str(args['frames'][0]), '-o', context.param_value('image path'), context.param_value('usd path')], env=env)
+            invoc = InvocationJob(['husk', '-V', '2a',
+                                   '--make-output-path'] +
+                                  (['-f', str(args['frames'][0])] if 'frames' in args else []) +
+                                  ['-o', context.param_value('image path'), context.param_value('usd path')],
+                                  env=env)
         res = ProcessingResult(invoc)
         return res
 
     def postprocess_task(self, context) -> ProcessingResult:
-        args = context.task_attributes()
         res = ProcessingResult()
-        res.set_attribute('file', args['outimage'])
+        res.set_attribute('file', context.param_value('image path'))
         return res
