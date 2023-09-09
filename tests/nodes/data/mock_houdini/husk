@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+import os
+import sys
+import random
+import time
+import argparse
+
+prefix = '''some stuff
+TODO: use actual husk output as base
+'''
+
+suffix = '''
+TODO: use actual husk output as base
+
+saving image {out_beauty}
+'''
+
+
+rng = random.Random(13666)
+
+
+def printwait(stuff: str, wait_scale=1.0):
+    time.sleep(rng.uniform(0.05, 0.5)*wait_scale)
+    sys.stdout.buffer.write(stuff.encode('utf-8') + b'\n')
+    time.sleep(rng.uniform(0.05, 0.5)*wait_scale)
+
+
+def mock_render(args, do_crap_myself=False):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-o', help='output image or smth')
+
+    opts, unknown_opts = parser.parse_known_args(args)
+
+    for line in prefix.splitlines():
+        printwait(line, wait_scale=0.01)
+
+    blocks = rng.randint(4, 128)
+    crap_block = rng.randint(0, blocks + 1) if do_crap_myself else None
+    for i in range(blocks + 1):
+        printwait(f'ALF_PROGRESS {int(i/blocks*100)}%', wait_scale=0.05)
+        if crap_block == i:
+            break
+
+    path = opts.o
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('ok')
+
+    if do_crap_myself:
+        print('OhNo!1! Le ErRoR oCcUrEd !1!1!', file=sys.stderr)
+        sys.exit(123)  # TODO: check real husk error messages and codes
+
+    for line in suffix.format(out_beauty=path).splitlines():
+        printwait(line, wait_scale=0.01)
+
+
+if __name__ == '__main__':
+
+    mock_render(sys.argv)

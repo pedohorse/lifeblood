@@ -67,12 +67,14 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         tasks_to_complete -= 1
                         print(f'finished {task.task_id()} out: {stdout}')
                         print(f'finished {task.task_id()} err: {stderr}')
+                        print(f'exit code: {task.exit_code()}')
                         side_effect_was_good = side_effect_was_good and 0 == task.exit_code()
                         if task_done_logic:
                             try:
                                 task_done_logic(task)
-                            except:
+                            except Exception as e:
                                 side_effect_was_good = False
+                                print(e)
                         if tasks_to_complete <= 0:
                             done_ev.set()
 
