@@ -37,10 +37,6 @@ class Mantra(BaseNodeWithTaskRequirements):
             ui.parameter('worker type').set_locked(True)
 
     def process_task(self, context) -> ProcessingResult:
-        args = context.task_attributes()
-        if 'file' not in args or 'outimage' not in args:
-            raise ProcessingError('required attributes not found')
-
         env = InvocationEnvironment()
 
         if context.param_value('skip if exists'):
@@ -62,7 +58,6 @@ class Mantra(BaseNodeWithTaskRequirements):
         return res
 
     def postprocess_task(self, context) -> ProcessingResult:
-        args = context.task_attributes()
         res = ProcessingResult()
-        res.set_attribute('file', args['outimage'])
+        res.set_attribute('file', context.param_value('image path'))
         return res
