@@ -6,11 +6,11 @@ import time
 import argparse
 
 prefix = '''some stuff
-TODO: use actual husk output as base
+TODO: use actual mantra output as base
 '''
 
 suffix = '''
-TODO: use actual husk output as base
+TODO: use actual mantra output as base
 
 saving image {out_beauty}
 '''
@@ -27,24 +27,20 @@ def printwait(stuff: str, wait_scale=1.0):
 
 def mock_render(args, do_crap_myself=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', help='output image or smth')
-    parser.add_argument('--renderer', '-R', help='delegate')
-    parser.add_argument('--frame', '-f', help='frame')
-    parser.add_argument('--frame-count', '-n', help='frame count to render')
-    parser.add_argument('--frame-inc', '-i', help='frame inc')
-    parser.add_argument('--verbose', '-V', help='verbosity')
-    parser.add_argument('usd', help='usd scene')
+    parser.add_argument('-V', help='verbosity')
+    parser.add_argument('ifd', help='ifd scene')
+    parser.add_argument('image', help='output image or smth')
 
     opts, unknown_opts = parser.parse_known_args(args)
 
     verbosity = 0
     alf_progress = False
-    if opts.verbose is not None:
-        if opts.verbose.endswith('a'):  # TODO: there can be more options: p P a/A e/E t/T
+    if opts.V is not None:
+        if opts.V.endswith('a'):
             alf_progress = True
-            verbosity = int(opts.verbose[:-1])
+            verbosity = int(opts.V[:-1])
         else:
-            verbosity = int(opts.verbose)
+            verbosity = int(opts.V)
 
     for line in prefix.splitlines():
         printwait(line, wait_scale=0.01)
@@ -57,10 +53,10 @@ def mock_render(args, do_crap_myself=False):
         if crap_block == i:
             break
 
-    path = opts.o
+    path = opts.image
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
-        f.write(f'ok\n{args[1:]}\n{opts.usd}')
+        f.write(f'ok\n{args[1:]}\n{opts.ifd}')
 
     if do_crap_myself:
         print('OhNo!1! Le ErRoR oCcUrEd !1!1!', file=sys.stderr)
@@ -71,4 +67,5 @@ def mock_render(args, do_crap_myself=False):
 
 
 if __name__ == '__main__':
+
     mock_render(sys.argv[1:])
