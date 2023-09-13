@@ -30,4 +30,4 @@ class HuskTestCase(TestCaseBase):
         await self._helper_test_render_node('houdini_husk', 'usd', 'husk', 'data/mock_houdini')
 
     async def test_karma_node(self):
-        await self._helper_test_render_node('karma', 'usd', 'karma', 'data/mock_houdini')
+        await self._helper_test_render_node('karma', 'usd', 'husk', 'data/mock_houdini')

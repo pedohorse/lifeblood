@@ -60,7 +60,7 @@ def mock_render(args, do_crap_myself=False):
     path = opts.o
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
-        f.write(f'ok\n{args[1:]}\n{opts.usd}')
+        f.write(f'ok\n{args}\n{opts.usd}')
 
     if do_crap_myself:
         print('OhNo!1! Le ErRoR oCcUrEd !1!1!', file=sys.stderr)

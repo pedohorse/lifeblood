@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-import random
 import sys
+import os
+import random
 import time
+
 
 prefix = '''Redshift Command-Line Renderer (version 3.0.39 - API: 3026)
 Copyright 2020 Redshift Rendering Technologies
@@ -187,7 +189,12 @@ def printwait(stuff: str, wait_scale=1.0):
     time.sleep(rng.uniform(0.05, 0.5)*wait_scale)
 
 
-def mock_render(rs_file: str, do_crap_myself=False):
+def mock_render(args: list, do_crap_myself=False):
+    rs_file = args[0]
+    oip = None
+    if '-oip' in args:
+        oip = args[args.index('-oip') + 1]
+
     for line in prefix.format(filename=rs_file,
                               frame=rng.randint(1, 12345)).splitlines():
         printwait(line, wait_scale=0.01)
@@ -203,11 +210,22 @@ def mock_render(rs_file: str, do_crap_myself=False):
         print('OhNo!1! Le ErRoR oCcUrEd !1!1!', file=sys.stderr)
         sys.exit(123)  # TODO: check real redshift error messages and codes
 
+    aov_paths = [
+        '/tmp/test/out.1234.exr',
+        '/tmp/fofo/with spaces/file.aov1.1234.exr',
+        '/tmp/fofo/with юникод щит/и т п.aov2.1234.exr'
+        ]
+    if oip:
+        aov_paths = [os.path.join(oip, os.path.basename(x)) for x in aov_paths]
+    for path in aov_paths:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            f.write(f'ok\n{args}\n{rs_file}')
+
     for line in suffix.format(blocks=blocks,
                               time=rng.uniform(0, 1000),
-                              out_beauty='/tmp/test/out.1234.exr',
-                              out_additional='Saving: /tmp/fofo/with spaces/file.aov.1234.exr\n'
-                                             'Saving: /tmp/fofo/with юникод щит/file.aov.1234.exr').splitlines():
+                              out_beauty=aov_paths[0],
+                              out_additional='\n'.join(f'Saving: {x}' for x in aov_paths[1:])).splitlines():
         printwait(line, wait_scale=0.01)
 
 
@@ -215,4 +233,4 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         sys.exit(2)
 
-    mock_render(sys.argv[1])
+    mock_render(sys.argv[1:])

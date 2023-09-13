@@ -42,16 +42,25 @@ class Redshift(BaseNodeWithTaskRequirements):
 
         env = InvocationEnvironment()
 
+        # TODO!!!  in case of skip existing "files" is not filled with AOVs !!!
+
         script = 'import os\n' \
                  'import sys\n' \
                  'from subprocess import Popen, PIPE\n' \
+                 'import tempfile\n' \
+                 'import shutil\n' \
                  'import lifeblood_connection as lbc\n' \
                  '\n' \
-                 'if {skip_if_exists}:  # NOT IMPLEMENTED YET\n' \
+                 'out_beauty = {out_beauty}\n' \
+                 'if {skip_if_exists} and os.path.exists(out_beauty):\n' \
                  "    print('image file already exists, skipping work')\n" \
+                 '    lbc.set_attributes({{"file": out_beauty, \n' \
+                 '                         "files": [out_beauty]}}, blocking=True)\n' \
                  "    sys.exit(0)\n" \
+                 "\n" \
+                 'temp_render_dir = tempfile.mkdtemp(prefix="redshift_")\n' \
                  "output_files = []\n" \
-                 "p = Popen(['redshiftCmdLine', {rspath}], stdout=PIPE)\n" \
+                 "p = Popen(['redshiftCmdLine', {rspath}, '-oip', temp_render_dir], stdout=PIPE)\n" \
                  'while p.poll() is None:\n' \
                  '    full_line = False\n' \
                  '    part_parts = []\n' \
@@ -66,12 +75,41 @@ class Redshift(BaseNodeWithTaskRequirements):
                  '    if part.startswith(b"Saving: "):\n' \
                  '        output_files.append(part[8:].strip())\n' \
                  '    sys.stdout.buffer.write(part)  # "promote" to stdout\n' \
-                 'lbc.set_attributes({{"file": output_files[0].decode("utf-8") if output_files else None,\n' \
-                 '                     "files": [x.decode("utf-8") for x in output_files]}}, blocking=True)\n' \
+                 '\n' \
+                 'if not output_files:\n' \
+                 '    sys.exit(1)\n' \
+                 'output_files = [x.decode("utf-8") for x in output_files]\n' \
+                 '\n' \
+                 'def cleancopy(src, dst):\n' \
+                 '    try:\n' \
+                 '        os.unlink(dst)\n' \
+                 '    except FileNotFoundError:\n' \
+                 '        pass\n' \
+                 '    os.makedirs(os.path.dirname(dst), exist_ok=True)\n' \
+                 '    shutil.copy2(src, dst)\n' \
+                 '\n' \
+                 'print("copying locally rendered files to final destination...")\n' \
+                 'final_output_files = []\n' \
+                 'print(f"copying to {{out_beauty}}")\n' \
+                 'cleancopy(output_files[0], out_beauty)\n' \
+                 'final_output_files.append(out_beauty)\n' \
+                 'out_beauty_dir = os.path.dirname(out_beauty)\n' \
+                 'for file_path in output_files:\n' \
+                 '    file_path_dst = os.path.join(out_beauty_dir, os.path.basename(file_path))\n' \
+                 '    print(f"copying to {{file_path_dst}}")\n' \
+                 '    cleancopy(file_path, file_path_dst)\n' \
+                 '    final_output_files.append(file_path_dst)\n' \
+                 '\n' \
+                 'lbc.set_attributes({{"file": final_output_files[0],\n' \
+                 '                     "files": final_output_files}}, blocking=True)\n' \
+                 'print("cleaning up...")\n' \
+                 'shutil.rmtree(temp_render_dir)\n' \
+                 'print("all done")\n' \
                  "sys.exit()\n" \
                  '' \
-                 .format(skip_if_exists=repr(False),  # for now we cannot know output image until after render
-                         rspath=repr(context.param_value('rs path')))
+                 .format(skip_if_exists=repr(context.param_value('skip if exists')),  # for now we cannot know output image until after render
+                         rspath=repr(context.param_value('rs path')),
+                         out_beauty=repr(context.param_value('image path')))
 
         invoc = InvocationJob(['python', ':/rsccall.py'])
         invoc.set_extra_file('rsccall.py', script)

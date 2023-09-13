@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import tempfile
 from pathlib import Path
 import sqlite3
@@ -60,7 +61,8 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
             workers = []
             for i in range(worker_count):
-                worker = Worker(sched.server_message_address())
+                worker = Worker(sched.server_message_address(),
+                                scheduler_ping_interval=9001)
                 await worker.start()
                 workers.append(worker)
 
@@ -113,85 +115,99 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
     async def _helper_test_render_node(self, node_type_name, scn_ext, command, bin_rel_path):
         the_worker = None
-        out_exr_path = os.path.join(tempfile.gettempdir(), f'test_render_foooo_{node_type_name}.exr')
-        if os.path.exists(out_exr_path):
-            os.unlink(out_exr_path)
-
-        def _logic_gen(skip_existing: bool):
-            async def _logic(scheduler, workers, tmp_script_path, done_waiter):
-                nonlocal the_worker
-                updated_attrs = {}
-                with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
-                    attr_patch.side_effect = lambda *args, **kwargs: updated_attrs.update(args[1]) \
-                                                                     or print(f'update_task_attributes with {args}, {kwargs}')
-
-                    out_preexists = os.path.exists(out_exr_path)
-                    pre_contents = None
-                    if out_preexists:
-                        with open(out_exr_path, 'rb') as f:
-                            pre_contents = f.read()
-
-                    node = create_node(node_type_name, f'test {node_type_name}', scheduler, 1)
-                    node.set_param_value('skip if exists', skip_existing)
-
-                    scn_filepath = f'/tmp/something/karma/filename.1234.{scn_ext}'
-                    res = node.process_task(ProcessingContext(node, {'attributes': json.dumps({
-                        'file': scn_filepath,
-                        'outimage': out_exr_path,
-                        'frames': [1, 2, 3]
-                    })}))
-
-                    ij = res.invocation_job
-                    self.assertTrue(ij is not None)
-                    ij._set_envresolver_arguments(FakeEnvArgs(bin_rel_path))
-                    if oh_no_its_windows:
-                        # cuz windows does not allow to just run batch/python scripts with no extension...
-                        for filename, contents in list(ij.extra_files().items()):
-                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / 'data' / 'mock_houdini' / command))}"))
-
-                        if ij.args()[0] == command:
-                            ij.args().pop(0)
-                            ij.args().insert(0, str(Path(__file__).parent / Path(bin_rel_path) / command))
-                            ij.args().insert(0, 'python')
-
-                    ij._set_task_id(2345)
-                    ij._set_invocation_id(1234)
-                    the_worker = workers[0]
-
-                    await workers[0].run_task(
-                        ij,
-                        scheduler.server_message_address()
-                    )
-
-                    await asyncio.wait([done_waiter], timeout=30)
-
-                    self.assertTrue(os.path.exists(out_exr_path))
-
-                    with open(out_exr_path, 'rb') as f:
-                        post_contents = f.read()
-                    if pre_contents is not None and skip_existing:
-                        self.assertEqual(pre_contents, post_contents)
-                    if pre_contents is None or not skip_existing:
-                        line_ok, line_args, line_fname = post_contents.splitlines(keepends=False)
-                        self.assertEqual(b'ok', line_ok)
-                        self.assertEqual(scn_filepath.encode(), line_fname)
-
-            return _logic
-
-        def _task_done_logic(task: InvocationJob):
-            self.assertEqual(100.0, the_worker.task_status())
-
-        for skip_exist, pre_exist in ((False, False), (True, False), (True, True)):
-            print(f'testing with: skip_exist={skip_exist}')
-
-            self.assertFalse(os.path.exists(out_exr_path))
-            if pre_exist:
-                os.makedirs(os.path.dirname(out_exr_path), exist_ok=True)
-                with open(out_exr_path, 'w') as f:
-                    f.write('some preexisting contents that is not the same as husk mock outputs')
-            await self._helper_test_worker_node(
-                _logic_gen(skip_exist),
-                task_done_logic=_task_done_logic if not skip_exist or not pre_exist else lambda *args, **kwargs: None
-            )
+        tmpdir = tempfile.mkdtemp(prefix='test_render_')
+        try:
+            out_exr_path = os.path.join(tmpdir, f'test_render_foooo_{node_type_name}.exr')
             if os.path.exists(out_exr_path):
                 os.unlink(out_exr_path)
+
+            def _logic_gen(skip_existing: bool):
+                async def _logic(scheduler, workers, tmp_script_path, done_waiter):
+                    nonlocal the_worker
+                    updated_attrs = {}
+                    with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
+                        attr_patch.side_effect = lambda *args, **kwargs: updated_attrs.update(args[1]) \
+                                                                         or print(f'update_task_attributes with {args}, {kwargs}')
+
+                        out_preexists = os.path.exists(out_exr_path)
+                        pre_contents = None
+                        if out_preexists:
+                            with open(out_exr_path, 'rb') as f:
+                                pre_contents = f.read()
+
+                        node = create_node(node_type_name, f'test {node_type_name}', scheduler, 1)
+                        node.set_param_value('skip if exists', skip_existing)
+
+                        scn_filepath = f'/tmp/something/karma/filename.1234.{scn_ext}'
+                        start_attrs = {
+                            'file': scn_filepath,
+                            'outimage': out_exr_path,
+                            'frames': [1, 2, 3]
+                        }
+                        res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(start_attrs)}))
+
+                        ij = res.invocation_job
+                        self.assertTrue(ij is not None)
+                        ij._set_envresolver_arguments(FakeEnvArgs(bin_rel_path))
+                        if oh_no_its_windows:
+                            # cuz windows does not allow to just run batch/python scripts with no extension...
+                            for filename, contents in list(ij.extra_files().items()):
+                                ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(bin_rel_path) / command))}"))
+
+                            if ij.args()[0] == command:
+                                ij.args().pop(0)
+                                ij.args().insert(0, str(Path(__file__).parent / Path(bin_rel_path) / command))
+                                ij.args().insert(0, 'python')
+
+                        ij._set_task_id(2345)
+                        ij._set_invocation_id(1234)
+                        the_worker = workers[0]
+
+                        await workers[0].run_task(
+                            ij,
+                            scheduler.server_message_address()
+                        )
+
+                        await asyncio.wait([done_waiter], timeout=30)
+
+                        # now postprocess task
+                        res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
+                            **start_attrs,
+                            **updated_attrs
+                        })}))
+                        if res.attributes_to_set:
+                            updated_attrs.update(res.attributes_to_set)
+
+                        self.assertTrue(os.path.exists(out_exr_path))
+                        self.assertEqual(out_exr_path, updated_attrs.get('file'))
+
+                        with open(out_exr_path, 'rb') as f:
+                            post_contents = f.read()
+                        if pre_contents is not None and skip_existing:
+                            self.assertEqual(pre_contents, post_contents)
+                        if pre_contents is None or not skip_existing:
+                            line_ok, line_args, line_fname = post_contents.splitlines(keepends=False)
+                            self.assertEqual(b'ok', line_ok)
+                            self.assertEqual(scn_filepath.encode(), line_fname)
+
+                return _logic
+
+            def _task_done_logic(task: InvocationJob):
+                self.assertEqual(100.0, the_worker.task_status())
+
+            for skip_exist, pre_exist in ((False, False), (True, False), (True, True)):
+                print(f'testing with: skip_exist={skip_exist}')
+
+                self.assertFalse(os.path.exists(out_exr_path))
+                if pre_exist:
+                    os.makedirs(os.path.dirname(out_exr_path), exist_ok=True)
+                    with open(out_exr_path, 'w') as f:
+                        f.write('some preexisting contents that is not the same as husk mock outputs')
+                await self._helper_test_worker_node(
+                    _logic_gen(skip_exist),
+                    task_done_logic=_task_done_logic if not skip_exist or not pre_exist else lambda *args, **kwargs: None
+                )
+                if os.path.exists(out_exr_path):
+                    os.unlink(out_exr_path)
+        finally:
+            shutil.rmtree(tmpdir)

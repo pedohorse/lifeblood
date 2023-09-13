@@ -191,7 +191,7 @@ class TaskProcessor(SchedulerComponentBase):
             if process_result.attributes_to_set:  # not None or {}
                 attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'] or '{}')
                 attributes.update(process_result.attributes_to_set)
-                for k, v in process_result.attributes_to_set.items():
+                for k, v in process_result.attributes_to_set.items():  # TODO: hmmm, None is a valid value...
                     if v is None:
                         del attributes[k]
                 result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
