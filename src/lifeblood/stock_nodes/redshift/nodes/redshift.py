@@ -90,13 +90,13 @@ class Redshift(BaseNodeWithTaskRequirements):
                  '\n' \
                  'print("copying locally rendered files to final destination...")\n' \
                  'final_output_files = []\n' \
-                 'print(f"copying to {{out_beauty}}")\n' \
+                 'sys.stdout.buffer.write(f"copying to {{out_beauty}}\\n".encode("UTF-8"))\n' \
                  'cleancopy(output_files[0], out_beauty)\n' \
                  'final_output_files.append(out_beauty)\n' \
                  'out_beauty_dir = os.path.dirname(out_beauty)\n' \
                  'for file_path in output_files:\n' \
                  '    file_path_dst = os.path.join(out_beauty_dir, os.path.basename(file_path))\n' \
-                 '    print(f"copying to {{file_path_dst}}")\n' \
+                 '    sys.stdout.buffer.write(f"copying to {{file_path_dst}}\\n".encode("UTF-8"))\n' \
                  '    cleancopy(file_path, file_path_dst)\n' \
                  '    final_output_files.append(file_path_dst)\n' \
                  '\n' \
