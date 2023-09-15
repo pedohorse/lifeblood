@@ -24,6 +24,7 @@ from types import MappingProxyType
 from . import invocationjob, paths, logging
 from .config import get_config
 from .toml_coders import TomlFlatConfigEncoder
+from .process_utils import oh_no_its_windows
 
 from typing import Dict, Mapping, Optional, Type, Iterable
 
@@ -212,6 +213,8 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
         if 'user' in arguments:
             for uservar in ('USER', 'LOGNAME', 'USERNAME'):
                 env[uservar] = arguments['user']
+        if oh_no_its_windows and 'PYTHONIOENCODING' not in env:
+            env['PYTHONIOENCODING'] = 'UTF-8'
         return env
 
     @classmethod
