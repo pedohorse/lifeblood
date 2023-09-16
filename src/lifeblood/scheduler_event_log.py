@@ -67,7 +67,11 @@ class SchedulerEventLog:
             i = self.__find_index_below_id(event.event_id) + 1
             if i > 0 and (self.__events[i-1].event_id >= event.event_id or self.__events[i-1].timestamp > event.timestamp) \
                     or i < len(self.__events) and (self.__events[i].event_id <= event.event_id or self.__events[i].timestamp < event.timestamp):  # sanity checks
-                raise RuntimeError(f'event IDs are expected to be sorted the same way as their timestamps: [{f"{self.__events[i-1].event_id}:{self.__events[i-1].timestamp}" if i>0 else "|"}, <{event.event_id}:{event.timestamp}>, {f"{self.__events[i].event_id}:{self.__events[i].timestamp}" if i<len(self.__events) else "|"}]')
+                if i > 0:
+                    logger.warning('event timestamp did not match event id order. EVENT TIMESTAMP WAS ADJUSTED')
+                    event.timestamp = self.__events[i-1].timestamp
+                else:
+                    raise RuntimeError(f'event IDs are expected to be sorted the same way as their timestamps: [{f"{self.__events[i-1].event_id}:{self.__events[i-1].timestamp}" if i>0 else "|"}, <{event.event_id}:{event.timestamp}>, {f"{self.__events[i].event_id}:{self.__events[i].timestamp}" if i<len(self.__events) else "|"}]')
         self.__events.insert(i, event)
         self.__event_id_to_event[event.event_id] = event
         if event.event_type == UIEventType.FULL_STATE:
