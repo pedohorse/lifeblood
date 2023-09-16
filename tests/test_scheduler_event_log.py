@@ -123,6 +123,33 @@ class Tests(TestCase):
         log.add_event(SchedulerEvent(10, UIEventType.UPDATE, dbuid))
         self.assertEqual(1, len(log))
 
+    def test_time_adjust(self):
+        """
+        it is possible that during work time may be adjusted (from network time for example)
+        log sorting may suffer in that case
+        """
+        log = SchedulerEventLog(log_event_count_max=9999, log_time_length_max=None)
+        evs = [
+            SchedulerEvent(0, UIEventType.UPDATE, dbuid),
+            SchedulerEvent(1, UIEventType.UPDATE, dbuid),
+            SchedulerEvent(2, UIEventType.UPDATE, dbuid),
+            SchedulerEvent(3, UIEventType.UPDATE, dbuid),
+            SchedulerEvent(4, UIEventType.UPDATE, dbuid),
+        ]
+        evs[2].timestamp -= 100000  # time adjustment occurance 1
+        evs[3].timestamp -= 100000  # time adjustment occurance 1 (same)
+        evs[4].timestamp -= 200000  # time adjustment occurance 2
+
+        for ev in evs:
+            log.add_event(ev)
+
+        # we rely on add_event adjusting timestamps, but not failing completely
+
+        for i, ev in enumerate(evs):
+            if i == 0:
+                continue
+            self.assertGreaterEqual(ev.timestamp, evs[i-1].timestamp)
+
     def _run_iters(self, count, log_time_length_max, log_event_count_max):
         log = SchedulerEventLog(log_time_length_max=log_time_length_max, log_event_count_max=log_event_count_max)
         # pre-create shit for higher precision of actual add_event

@@ -106,16 +106,25 @@ class SchedulerEventLog:
                     assert deleted_event.event_id == self.__full_state_events.pop(0).event_id
             self.__events = self.__events[-self.__max_count:]
 
-    def get_since_timestamp(self, timestamp: float):
+    def get_since_timestamp(self, timestamp: float) -> Tuple[SchedulerEvent, ...]:
         """
         get events since given timestamp
+
+        NOTE: timestamps are arbitrary: it may be real time, may be system time, process time or anything else,
+              Event Log does not know these details, it's up to log user to supply correct timestamps
+
         :param timestamp: timestamp is given as EPOCH time in floating seconds
         :return:
         """
         timestamp_ns = int(timestamp) * 10**9 + int(timestamp % 1.0 * 10**9)
         return self.get_since_timestamp_ns(timestamp_ns)
 
-    def get_since_timestamp_ns(self, timestamp_ns: int):
+    def get_since_timestamp_ns(self, timestamp_ns: int) -> Tuple[SchedulerEvent, ...]:
+        """
+        NOTE: timestamps are arbitrary: it may be real time, may be system time, process time or anything else,
+              Event Log does not know these details, it's up to log user to supply correct timestamps
+
+        """
         return tuple(self.__events[self.__find_index_below_timestamp(timestamp_ns)+1:])
 
     def get_since_event(self, event_id: int, truncate_before_full_state=False) -> Tuple[SchedulerEvent, ...]:
