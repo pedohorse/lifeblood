@@ -37,7 +37,7 @@ class LogSubscription:
     event_log: SchedulerEventLog
 
     def is_expired(self) -> bool:
-        return time.time() >= self.expiration_timestamp
+        return time.monotonic() >= self.expiration_timestamp
 
 
 class UIStateAccessor(SchedulerComponentBase):
@@ -509,7 +509,7 @@ class UIStateAccessor(SchedulerComponentBase):
         if len(self.__task_group_event_logs) == 0:
             return
         eid = self._get_next_event_id()
-        ets = time.time_ns()
+        ets = time.monotonic_ns()
         self.__task_event_preprocess_queue.put_nowait((QueueEventType.ADDED, eid, ets, (task_datas, added_where)))
 
     def scheduler_reports_task_added(self, task_data: TaskData, added_where: Optional[Set[str]] = None):
@@ -522,7 +522,7 @@ class UIStateAccessor(SchedulerComponentBase):
         if len(self.__task_group_event_logs) == 0:
             return
         eid = self._get_next_event_id()
-        ets = time.time_ns()
+        ets = time.monotonic_ns()
         self.__task_event_preprocess_queue.put_nowait((QueueEventType.UPDATED, eid, ets, task_deltas))
 
     def scheduler_reports_task_updated(self, task_delta: TaskDelta):
@@ -533,7 +533,7 @@ class UIStateAccessor(SchedulerComponentBase):
         if len(self.__task_group_event_logs) == 0:
             return
         eid = self._get_next_event_id()
-        ets = time.time_ns()
+        ets = time.monotonic_ns()
         self.__task_event_preprocess_queue.put_nowait((QueueEventType.REMOVED, eid, ets, (task_ids, groups)))
 
     def scheduler_reports_task_groups_added(self, groups):
@@ -561,7 +561,7 @@ class UIStateAccessor(SchedulerComponentBase):
         last_race_check_id = -1
         group_key = (tuple(sorted(task_groups)), skip_dead)
         if group_key in self.__task_group_event_logs:  # if so - update
-            self.__task_group_event_logs[group_key].expiration_timestamp = time.time() + subscribe_for_seconds
+            self.__task_group_event_logs[group_key].expiration_timestamp = time.monotonic() + subscribe_for_seconds
             self.__logger.debug(f'ui subscription to "{group_key}" was prolonged')
 
             log = self.__task_group_event_logs[group_key].event_log
@@ -574,7 +574,7 @@ class UIStateAccessor(SchedulerComponentBase):
             if len(events) > 0:
                 last_race_check_id = events[-1].event_id
         else:
-            log_sub = LogSubscription(time.time() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
+            log_sub = LogSubscription(time.monotonic() + subscribe_for_seconds, SchedulerEventLog(log_time_length_max=60))
             self.__task_group_event_logs[group_key] = log_sub
             for group in task_groups:
                 self.__task_group_to_logs.setdefault(group, []).append(log_sub)
@@ -582,7 +582,7 @@ class UIStateAccessor(SchedulerComponentBase):
             # now add pruning task
             async def _timed_prune():
                 while (log_sub := self.__task_group_event_logs.get(group_key)) is not None:
-                    await asyncio.sleep((log_sub.expiration_timestamp - time.time()) * 1.1)  # 1.1 just cuz
+                    await asyncio.sleep((log_sub.expiration_timestamp - time.monotonic()) * 1.1)  # 1.1 just cuz
                     self.remove_task_event_subscription_if_expired(group_key)
 
             self.__pruning_tasks.append(asyncio.create_task(_timed_prune()))
@@ -595,7 +595,7 @@ class UIStateAccessor(SchedulerComponentBase):
         # in such case we cannot order full update properly, no way to tell what happened first
         # so for now we just detect (it's not even a guaranteed detect...) if other events happen during full update
         eid = self._get_next_event_id()  # it seeeems that this will be the least destructive way. we risk having older events after full update, but at least final picture will be correct
-        ets = time.time_ns()
+        ets = time.monotonic_ns()
         state = await self.get_tasks_ui_state(task_groups, skip_dead)
         planck_events = log.get_since_event(last_race_check_id)  # no need for executor - this should be fast, and we don't want to poke event loop yet
         if len(planck_events) > 0:
