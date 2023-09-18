@@ -15,6 +15,7 @@ from .ui_scene_elements import FindNodePopup
 from .menu_entry_base import MainMenuLocation
 from .nodeeditor_windows.ui_create_node_popup import CreateNodePopup
 from .nodeeditor_windows.ui_undo_window import UndoWindow
+from .nodeeditor_windows.ui_longop_window import LongOpWindow
 from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .nodeeditor_windows.ui_task_list_window import TaskListWindow
 from .worker_list import WorkerListWidget
@@ -251,6 +252,7 @@ class LifebloodViewer(QMainWindow):
         undo_window = UndoWindow(self.__node_editor)
         parameters_window = ParametersWindow(self.__node_editor)
         task_list_window = TaskListWindow(self.__node_editor)
+        op_status_window = LongOpWindow(self.__node_editor)
 
         def _task_list_for_node(ne=self.__node_editor):
             tlist = TaskListWindow(ne)
@@ -265,11 +267,13 @@ class LifebloodViewer(QMainWindow):
         self.__node_editor.add_action('nodeeditor.find_node', lambda: find_node_window.popup(), 'Ctrl+f', MainMenuLocation(('Nodes',), 'Find Node'))
         self.__node_editor.add_action('nodeeditor.parameters', lambda: parameters_window.popup(), 'Ctrl+p', MainMenuLocation(('Nodes',), 'Parameters'))
         self.__node_editor.add_action('nodeeditor.task_list', lambda: task_list_window.popup(), 'Ctrl+t', MainMenuLocation(('Windows',), 'Task List'))
+        self.__node_editor.add_action('nodeeditor.op_status', lambda: op_status_window.popup(), 'Ctrl+r', MainMenuLocation(('Windows',), 'Operations'))
         self.__node_editor.add_action('nodeeditor.task_list_for_selected_node',
                                       _task_list_for_node,
                                       None, None)  # TODO: implement context menu fillings here too
         self.__node_editor.add_action('nodeeditor.create_node', lambda: create_node_popup.popup(), 'Tab', MainMenuLocation(('Nodes',), 'Create'))
         undo_window.popup()
+        op_status_window.popup()
         parameters_window.popup()
 
         act: QAction = view_menu.addAction('show archived groups')
