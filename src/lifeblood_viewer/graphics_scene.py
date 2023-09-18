@@ -84,7 +84,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     task_invocation_job_fetched = Signal(int, InvocationJob)
 
     #
-    operation_progress_updated = Signal(str, float)  # operation name, progress 0.0 - 1.0
+    operation_started = Signal(int)  # operation id
+    operation_progress_updated = Signal(int, str, float)  # operation id, name, progress 0.0 - 1.0
+    operation_finished = Signal(int)  # operation id
 
     def __init__(self, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
@@ -106,6 +108,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self.__session_node_id_mapping_rev = {}
         self.__next_session_node_id = -1
         self.__node_snapshots = {}  # for undo/redo
+        self.__selection_happening = False
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -370,9 +373,19 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
     def _session_node_id_from_id(self, node_id: int):
         if node_id not in self.__session_node_id_mapping_rev:
+            while self._session_node_id_to_id(self.__next_session_node_id) is not None:  # they may be taken by pasted nodes
+                self.__next_session_node_id -= 1
             self._session_node_update_id(self.__next_session_node_id, node_id)
             self.__next_session_node_id -= 1
         return self.__session_node_id_mapping_rev[node_id]
+
+    def _node_selected(self, node: Node):
+        """
+        node should inform scene when it's selected
+        I guess logically it should be the other way around, but so far
+         it seems that this is the way qt is doing this
+        """
+        self.request_node_ui(node.get_id())
 
     #
     #
@@ -1119,13 +1132,17 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             for nodedata in snippet.nodes_data:
                 current_element += 1
                 if total_elements > 1:
-                    self.operation_progress_updated.emit(opname, current_element/(total_elements-1))
+                    longop.set_op_status(current_element / (total_elements-1), opname)
                 self._request_create_node(nodedata.type, nodedata.name, QPointF(*nodedata.pos) + pos - QPointF(*snippet.pos), LongOperationData(longop, None))
                 # NOTE: there is currently no mechanism to ensure order of results when more than one things are requested
                 #  from the same operation. So we request and wait things one by one
                 node_id, _, _ = yield
                 tmp_to_new[nodedata.tmpid] = node_id
                 created_nodes.append(node_id)
+
+                # assign session ids to new nodes, prefer tmp ids from the snippet
+                if self._session_node_id_to_id(nodedata.tmpid) is None:  # session id is free
+                    self._session_node_update_session_id(nodedata.tmpid, node_id)
 
                 proxy_params = []
                 for param_name, param_data in nodedata.parameters.items():
@@ -1139,15 +1156,10 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             for node_id in created_nodes:  # selecting
                 self.get_node(node_id).setSelected(True)
 
-            # assign session ids to new nodes, prefer tmp ids from the snippet
-            for tmp_id, node_id in tmp_to_new.items():
-                if self._session_node_id_to_id(tmp_id) is None:  # session id is free
-                    self._session_node_update_session_id(tmp_id, node_id)
-
             for conndata in snippet.connections_data:
                 current_element += 1
                 if total_elements > 1:
-                    self.operation_progress_updated.emit(opname, current_element / (total_elements - 1))
+                    longop.set_op_status(current_element / (total_elements - 1), opname)
 
                 con_out = tmp_to_new.get(conndata.tmpout, self._session_node_id_to_id(conndata.tmpout))
                 con_in = tmp_to_new.get(conndata.tmpin, self._session_node_id_to_id(conndata.tmpin))
@@ -1159,7 +1171,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                 yield
 
             if total_elements > 1:
-                self.operation_progress_updated.emit(opname, 1.0)
+                longop.set_op_status(1.0, opname)
             if containing_long_op is not None:
                 self.process_operation(LongOperationData(containing_long_op, tuple(created_nodes)))
 
@@ -1183,7 +1195,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             self.__end_long_operation(op.op.opid())
 
     def add_long_operation(self, generator_to_call, queue_name: Optional[str] = None):
-        newop = LongOperation(generator_to_call)
+        newop = LongOperation(generator_to_call, lambda opid, opname, opprog: self.operation_progress_updated.emit(opid, opname, opprog))
         if queue_name is not None:
             queue = self.__long_op_queues.setdefault(queue_name, [])
             queue.insert(0, generator_to_call)
@@ -1201,10 +1213,16 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         assert len(queue) > 0
         queue.pop()  # popping ourserves
         if len(queue) > 0:
-            newop = LongOperation(queue[-1])
+            newop = LongOperation(queue[-1], lambda opid, opname, opprog: self.operation_progress_updated.emit(opid, opname, opprog))
             self.__long_operations[newop.opid()] = (newop, queue_name)
             if not newop._start():
                 self.__end_long_operation(newop.opid())
+
+    def long_operation_statuses(self) -> Tuple[Tuple[Tuple[int, Tuple[Optional[float], str]], ...], Dict[str, int]]:
+        def _op_status_list(ops) -> Tuple[Tuple[int, Tuple[Optional[float], str]], ...]:
+            return tuple((op.opid(), op.status()) for op in ops)
+        return _op_status_list(x[0] for x in self.__long_operations.values()), \
+               {qname: len(qval) for qname, qval in self.__long_op_queues.items()}
 
     #
     # query
@@ -1330,13 +1348,19 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         super(QGraphicsImguiScene, self).mousePressEvent(event)
         logger.debug(f'press mouse grabber={self.mouseGrabberItem()}')
         if not event.isAccepted() and len(event.wire_candidates) > 0:
-            print([x[0] for x in event.wire_candidates])
+            logger.debug('closest candidates: %s', ', '.join([str(x[0]) for x in event.wire_candidates]))
             closest = min(event.wire_candidates, key=lambda x: x[0])
             closest[1].post_mousePressEvent(event)  # this seem a bit unsafe, at least not typed statically enough
+        elif not event.isAccepted() and self.mouseGrabberItem() is None:
+            logger.debug('probably started selecting')
+            self.__selection_happening = True
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super(QGraphicsImguiScene, self).mouseReleaseEvent(event)
         logger.debug(f'release mouse grabber={self.mouseGrabberItem()}')
+        if not event.isAccepted() and self.mouseGrabberItem() is None and self.__selection_happening:
+            logger.debug('probably ended selecting')
+            self.__selection_happening = False
 
     def setSelectionArea(self, *args, **kwargs):
         pass

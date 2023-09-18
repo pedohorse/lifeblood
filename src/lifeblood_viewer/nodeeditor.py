@@ -397,7 +397,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__scene.add_long_operation(todoop)
 
     def create_from_viewer_preset(self, preset_name: str, pos: QPointF):
-        self.scene().nodes_from_snippet(self.editor_widget().viewer_presets_metadata()[preset_name], pos)
+        self.scene().nodes_from_snippet(self.__viewer_presets[preset_name], pos)
 
     def create_from_scheduler_preset(self, package_name: str, preset_name: str, pos: QPointF):
         if isinstance(self.__scheduler_presets[package_name][preset_name], NodeSnippetDataPlaceholder):
@@ -699,8 +699,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         popup.show()
 
     @Slot(str, float)
-    def _scene_operation_progress_updated(self, op_name: str, progress_normalized: float):
-        self.show_message(f'{op_name}: {round(100*progress_normalized):3g}%', 3)
+    def _scene_operation_progress_updated(self, op_id: int, op_name: str, progress_normalized: float):
+        if progress_normalized >= 0:
+            self.show_message(f'{op_name}: {round(100*progress_normalized):3g}%', 3)
 
     @Slot()
     def __unblock_imgui_input(self):

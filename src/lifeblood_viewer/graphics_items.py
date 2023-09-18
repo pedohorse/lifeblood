@@ -752,7 +752,7 @@ class Node(NetworkItemWithUI):
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value and self.scene().get_inspected_item() == self:   # item was just selected, And is the first selected
-                self.scene().request_node_ui(self.get_id())
+                self.scene()._node_selected(self)
         elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
             if len(self.__tasks):
@@ -1026,7 +1026,7 @@ class NodeConnection(NetworkItem):
         circle = QPainterPath()
         circle.addEllipse(event.scenePos(), self.__wire_pick_radius, self.__wire_pick_radius)
         if self.__ui_interactor is None and line.intersects(circle):
-            logger.debug('---GOT A PEAK AT MY DICK---')
+            logger.debug('wire candidate for picking detected')
             wgt = event.widget()
             if wgt is None:
                 return
