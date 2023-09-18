@@ -1,10 +1,10 @@
-from typing import Optional, Callable, Generator, Any
+from typing import Optional, Callable, Generator, Any, Tuple
 
 
 class LongOperation:
     _nextid = 0
 
-    def __init__(self, progress_callback: Callable[["LongOperation"], Generator]):
+    def __init__(self, progress_callback: Callable[["LongOperation"], Generator], status_change_callback: Optional[Callable[[int, str, float], None]] = None):
         """
 
         :param progress_callback: this is supposed to be a generator able to take this operation object and opdata as yield arguments.
@@ -14,6 +14,9 @@ class LongOperation:
         LongOperation._nextid += 1
         self.__progress_callback_factory = progress_callback
         self.__progress_callback: Optional[Generator] = None
+        self.__status_report_callback = status_change_callback
+        self.__display_name = ''
+        self.__display_progress = None
 
     def _start(self):
         """
@@ -29,6 +32,10 @@ class LongOperation:
         return True
 
     def _progress(self, opdata) -> bool:
+        """
+        NOTE: it's NOT about displayed progress!
+        progress operation with new data
+        """
         try:
             self.__progress_callback.send(opdata)
         except StopIteration:
@@ -37,6 +44,17 @@ class LongOperation:
 
     def opid(self) -> int:
         return self.__id
+
+    def set_op_status(self, progress: Optional[float], name: Optional[str] = None):
+        if progress is not None:
+            self.__display_progress = progress
+        if name is not None:
+            self.__display_name = name
+        if self.__status_report_callback is not None:
+            self.__status_report_callback(self.opid(), self.__display_name or '', self.__display_progress or -1.0)
+
+    def status(self) -> Tuple[Optional[float], str]:
+        return self.__display_progress, self.__display_name
 
     def new_op_data(self) -> "LongOperationData":
         return LongOperationData(self, None)
