@@ -28,12 +28,17 @@ class CompoundAsyncSceneOperation(AsyncSceneOperation):
         self.__ops = tuple(operations)
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'compound operation')
         for op in self.__ops:
             yield from op._my_do_longop(longop)
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undoing compound operation')
         for op in reversed(self.__ops):
             yield from op._my_undo_longop(longop)
+
+    def __str__(self):
+        return f'Compound Op with {len(self.__ops)} sub-operations'
 
 
 class CreateNodeOp(AsyncSceneOperation):
@@ -46,11 +51,13 @@ class CreateNodeOp(AsyncSceneOperation):
         self.__node_pos = pos
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'create node')
         self.__scene._request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
         node_id, node_type, node_name = yield
         self.__node_sid = self.__scene._session_node_id_from_id(node_id)
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undo create node')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         self.__scene.request_remove_node(node_id, LongOperationData(longop))
         yield
@@ -69,12 +76,14 @@ class CreateNodesOp(AsyncSceneOperation):
         self.__pos = pos
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'create nodes')
         self.__scene._request_create_nodes_from_snippet(self.__creation_snippet, self.__pos, longop)
         created_ids = yield
         self.__node_sids = set(self.__scene._session_node_id_from_id(nid) for nid in created_ids)
 
     def _my_undo_longop(self, longop: LongOperation):
         print(self.__node_sids)
+        longop.set_op_status(None, 'undo create nodes')
         node_ids = [x for x in (self.__scene._session_node_id_to_id(sid) for sid in self.__node_sids) if x is not None]
         print(node_ids)
         if not node_ids:
@@ -95,6 +104,7 @@ class RemoveNodesOp(AsyncSceneOperation):
         self.__is_a_noop = False
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'remove nodes')
         node_ids = [self.__scene._session_node_id_to_id(sid) for sid in self.__node_sids]
         nodes = [self.__scene.get_node(nid) for nid in node_ids]
         if any(n is None for n in nodes):
@@ -116,6 +126,7 @@ class RemoveNodesOp(AsyncSceneOperation):
     def _my_undo_longop(self, longop: LongOperation):
         if self.__is_a_noop:
             return
+        longop.set_op_status(None, 'undo remove nodes')
         self.__scene._request_create_nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
         created_ids = yield
         sids = set(self.__scene._session_node_id_from_id(nid) for nid in created_ids)
@@ -136,6 +147,7 @@ class RenameNodeOp(AsyncSceneOperation):
         self.__new_name = new_name
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'rename nodes')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         node = self.__scene.get_node(node_id)
         if node is None:
@@ -145,6 +157,7 @@ class RenameNodeOp(AsyncSceneOperation):
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undo rename nodes')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         node = self.__scene.get_node(node_id)
         if node is None:
@@ -196,6 +209,7 @@ class AddConnectionOp(AsyncSceneOperation):
         self.__in_name = in_name
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'add connection')
         out_id = self.__scene._session_node_id_to_id(self.__out_sid)
         in_id = self.__scene._session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
@@ -207,6 +221,7 @@ class AddConnectionOp(AsyncSceneOperation):
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undo add connection')
         out_id = self.__scene._session_node_id_to_id(self.__out_sid)
         in_id = self.__scene._session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
@@ -235,6 +250,7 @@ class RemoveConnectionOp(AsyncSceneOperation):
         self.__in_name = in_name
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'remove connection')
         out_id = self.__scene._session_node_id_to_id(self.__out_sid)
         in_id = self.__scene._session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
@@ -250,6 +266,7 @@ class RemoveConnectionOp(AsyncSceneOperation):
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undo remove connection')
         out_id = self.__scene._session_node_id_to_id(self.__out_sid)
         in_id = self.__scene._session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
@@ -286,6 +303,7 @@ class ParameterChangeOp(AsyncSceneOperation):
         self.__node_sid = node_sid
 
     def _my_do_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'change parameter value')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         param = self.__scene.get_node(node_id).get_nodeui().parameter(self.__param_name)
         if self.__new_value is not ...:
@@ -299,6 +317,7 @@ class ParameterChangeOp(AsyncSceneOperation):
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
+        longop.set_op_status(None, 'undo change parameter value')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         param = self.__scene.get_node(node_id).get_nodeui().parameter(self.__param_name)
         if self.__old_value is not ...:
