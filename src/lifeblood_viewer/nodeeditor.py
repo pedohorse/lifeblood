@@ -1,4 +1,5 @@
 import os
+from collections import OrderedDict
 from pathlib import Path
 from types import MappingProxyType
 from enum import Enum
@@ -27,11 +28,12 @@ import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import QObject, Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent
+from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent, QPainterPath, QPen, QColor, QMouseEvent
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
 from .save_node_settings_dialog import SaveNodeSettingsDialog
+from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 
 import imgui
 from imgui.integrations.opengl import ProgrammablePipelineRenderer
@@ -183,8 +185,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         #self.__update_timer.start()
         self.__editor_clipboard = Clipboard()
         self.__opened_windows: Set[ImguiWindow] = set()
+        self.__overlays: List[NodeEditorOverlayBase] = []
         self.__actions: Dict[str, Callable[[], None]] = {}
-        self.__menu_actions: Dict = {}
+        self.__menu_actions: OrderedDict = OrderedDict()
 
         #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -239,7 +242,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if menu_entry is not None:
             menu = self.__menu_actions
             for submenu in menu_entry.location:
-                menu = menu.setdefault(submenu, {})
+                menu = menu.setdefault(submenu, OrderedDict())
                 menu[(menu_entry.label, shortcut)] = action_callback
 
         if shortcut:
@@ -253,6 +256,22 @@ class NodeEditor(QGraphicsView, Shortcutable):
             logger.error(f'no action named "{action_name}"')
             return
         self.__actions[action_name]()
+
+    def add_overlay(self, overlay: NodeEditorOverlayBase):
+        """
+        add new graphical overlay to this viewer
+        """
+        self.__overlays.append(overlay)
+        self.__menu_actions.setdefault('View', OrderedDict()).setdefault('Overlays', OrderedDict()).setdefault(
+            lambda: f'{"[x]" if overlay.enabled() else "[ ]"} {overlay.name()}',
+            lambda: overlay.toggle()
+        )
+
+    def overlays(self):
+        """
+        get graphical overlays attached to this viewer
+        """
+        return tuple(self.__overlays)
 
     def show_message(self, message: str, duration: float):
         self.__overlay_message.show_label(message[:100], duration)
@@ -726,6 +745,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
         return super(NodeEditor, self).drawItems(*args, **kwargs)
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
+        for overlay in self.__overlays:
+            overlay.wrapped_draw_scene_foreground(painter, rect)
+
         painter.beginNativePainting()
         if not self.__imgui_init:
             logger.debug('initializing imgui')
@@ -742,6 +764,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
             imguio.get_clipboard_text_fn = self._get_clipboard
             self._map_keys()
 
+            style = imgui.get_style()
+            style.scrollbar_size = 12
+            style.window_rounding = 4
+            style.frame_rounding = 4
+            style.tab_rounding = 4
+
         imgui.get_io().display_size = self.rect().size().toTuple()  # rect.size().toTuple()
         # start new frame context
         imgui.new_frame()
@@ -754,7 +782,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
                         _draw_one_level(something)
                         imgui.end_menu()
                 else:
-                    label, shortcut = label
+                    if isinstance(label, (tuple, list)):
+                        label, shortcut = label
+                    else:
+                        shortcut = None
+                    if callable(label):
+                        label = label()
                     clicked, _ = imgui.menu_item(label, shortcut)
                     if clicked:
                         something()
@@ -778,6 +811,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     any_window_focused = True
         if not any_window_focused:
             self.reset_shortcut_context()
+
+        # finally draw foreground's imgui shit # TODO: maybe move this imgui shit to __foreground too?
+        for overlay in self.__overlays:
+            overlay.wrapped_draw_imgui_foreground(self)
 
         # pass all drawing comands to the rendering pipeline
         # and close frame context
@@ -924,7 +961,11 @@ class NodeEditor(QGraphicsView, Shortcutable):
                 event.accept()
                 self.show_general_menu(event.globalPos())
             else:
-                super(NodeEditor, self).mousePressEvent(event)
+                for overlay in self.__overlays:
+                    if overlay.wrapped_handle_mouse_press(event):
+                        break
+                else:
+                    super(NodeEditor, self).mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: PySide2.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)

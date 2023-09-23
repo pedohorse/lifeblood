@@ -19,6 +19,7 @@ from .nodeeditor_windows.ui_longop_window import LongOpWindow
 from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .nodeeditor_windows.ui_task_list_window import TaskListWindow
 from .worker_list import WorkerListWidget
+from .nodeeditor_overlays.task_history_overlay import TaskHistoryOverlay
 
 from typing import Dict
 
@@ -262,6 +263,8 @@ class LifebloodViewer(QMainWindow):
             tlist.set_display_node(nodes[0])
             tlist.pin()
             tlist.popup()
+
+        self.__node_editor.add_overlay(TaskHistoryOverlay(self.__node_editor.scene()))
 
         self.__node_editor.add_action('nodeeditor.undo_history', lambda: undo_window.popup(), 'Ctrl+u', MainMenuLocation(('Edit',), 'Undo Stack'))
         self.__node_editor.add_action('nodeeditor.find_node', lambda: find_node_window.popup(), 'Ctrl+f', MainMenuLocation(('Nodes',), 'Find Node'))
