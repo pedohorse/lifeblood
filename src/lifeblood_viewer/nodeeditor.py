@@ -36,7 +36,7 @@ from .save_node_settings_dialog import SaveNodeSettingsDialog
 from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 
 import imgui
-from imgui.integrations.opengl import ProgrammablePipelineRenderer
+from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
 from typing import Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
 
