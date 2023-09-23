@@ -35,8 +35,8 @@ logger = logging.get_logger('viewer')
 
 class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
-    _signal_log_has_been_requested = Signal(int)
-    _signal_log_meta_has_been_requested = Signal(int)
+    _signal_log_has_been_requested = Signal(int, object)
+    _signal_log_meta_has_been_requested = Signal(int, object)
     _signal_node_ui_has_been_requested = Signal(int)
     _signal_task_ui_attributes_has_been_requested = Signal(int, object)
     _signal_task_invocation_job_requested = Signal(int)
@@ -191,11 +191,11 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self._signal_poke_task_groups_update.connect(self.__ui_connection_worker.poke_task_groups_update)
         self._signal_poke_workers_update.connect(self.__ui_connection_worker.poke_workers_update)
 
-    def request_log(self, invocation_id: int):
-        self._signal_log_has_been_requested.emit(invocation_id)
+    def request_log(self, invocation_id: int, operation_data: Optional["LongOperationData"] = None):
+        self._signal_log_has_been_requested.emit(invocation_id, operation_data)
 
-    def request_log_meta(self, task_id: int):
-        self._signal_log_meta_has_been_requested.emit(task_id)
+    def request_log_meta(self, task_id: int, operation_data: Optional["LongOperationData"] = None):
+        self._signal_log_meta_has_been_requested.emit(task_id, operation_data)
 
     def request_attributes(self, task_id: int, operation_data: Optional["LongOperationData"] = None):
         self._signal_task_ui_attributes_has_been_requested.emit(task_id, operation_data)
@@ -387,6 +387,14 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         """
         self.request_node_ui(node.get_id())
 
+    def _task_selected(self, task: Task):
+        """
+        task should inform scene when it's selected
+        I guess logically it should be the other way around, but so far
+         it seems that this is the way qt is doing this
+        """
+        pass
+
     #
     #
 
@@ -531,6 +539,28 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
         op = RenameNodeOp(self, node, new_name)
         op.do()
+
+    def fetch_and_open_log(self, invocation_id, callback: Callable[[InvocationLogData, Any], None], callback_data: Any = None):
+        def _fetch_open_log_longop(longop: LongOperation):
+            longop.set_op_status(None, f"fetching log for {invocation_id}")
+            self.request_log(invocation_id, LongOperationData(longop))
+            task_id, logss = yield  # type: int, Dict[int, Dict[int, InvocationLogData]]
+            if len(logss) == 0:
+                logger.error(f'could not find logs for {invocation_id}')
+                return
+            elif len(logss) > 1:
+                logger.error(f'unexpected error! {invocation_id} returned multiple nodes: {list(logss.keys())}')
+                return
+            logs = list(logss.values())[0]  # expect single entry in logs
+            if invocation_id not in logs:
+                logger.error(f'could not find logs for {invocation_id}')
+                return
+            log: InvocationLogData = logs[invocation_id]
+
+            if callback:
+                callback(log, callback_data)
+
+        self.add_long_operation(_fetch_open_log_longop)
 
     # undoes, also async
 
@@ -911,12 +941,15 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                          f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object)
-    def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]]):
+    def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], data: Optional["LongOperationData"] = None):
         task = self.get_task(task_id)
         if task is None:
             logger.warning(f'log fetched, but task not found! {task_id}')
-            return
-        task.update_log(log)
+        else:
+            task.update_log(log)
+        if data is not None:
+            data.data = (task_id, log)
+            self.process_operation(data)
 
     @Slot(object, object)
     def nodeui_fetched(self, node_id: int, nodeui: NodeUi):
@@ -931,10 +964,10 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         task = self.get_task(task_id)
         if task is None:
             logger.warning('attribs fetched, but task not found!')
-            return
-        attribs, env_attribs = all_attribs
-        task.update_attributes(attribs)
-        task.set_environment_attributes(env_attribs)
+        else:
+            attribs, env_attribs = all_attribs
+            task.update_attributes(attribs)
+            task.set_environment_attributes(env_attribs)
         if data is not None:
             data.data = attribs
             self.process_operation(data)
