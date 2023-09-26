@@ -106,7 +106,7 @@ class AsyncOperation(StackAwareOperation):
 
         if self.__was_done:
             raise OperationError('operation was done already')
-        self.__op_processor.add_long_operation(doop, 'undoqueue')  # TODO: move this add_long_operation to an interface, move this class to undo_stack (so no scene dep)
+        self.__op_processor.add_long_operation(doop, 'undo queue')  # TODO: move this add_long_operation to an interface, move this class to undo_stack (so no scene dep)
         return False
 
     def _my_undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
@@ -126,13 +126,19 @@ class AsyncOperation(StackAwareOperation):
 
         if not self.__was_done:
             raise OperationError('operation was not done yet')
-        self.__op_processor.add_long_operation(undoop, 'undoqueue')
+        self.__op_processor.add_long_operation(undoop, 'undo queue')
         return False
 
     def _my_do_longop(self, longop: LongOperation):
+        """
+        :param longop: containing long operation, this op has to report back to given longop when done
+        """
         raise NotImplementedError()
 
     def _my_undo_longop(self, longop: LongOperation):
+        """
+        :param longop: containing long operation, this op has to report back to given longop when done
+        """
         raise NotImplementedError()
 
 

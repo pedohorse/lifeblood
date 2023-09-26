@@ -44,7 +44,7 @@ def length2(v: QPointF):
 
 class NetworkItem(QGraphicsItem):
     def __init__(self, id):
-        super(NetworkItem, self).__init__()
+        super().__init__()
         self.__id = id
 
     def get_id(self):
@@ -752,7 +752,7 @@ class Node(NetworkItemWithUI):
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value and self.scene().get_inspected_item() == self:   # item was just selected, And is the first selected
-                self.scene().request_node_ui(self.get_id())
+                self.scene()._node_selected(self)
         elif change == QGraphicsItem.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
             if len(self.__tasks):
@@ -1026,7 +1026,7 @@ class NodeConnection(NetworkItem):
         circle = QPainterPath()
         circle.addEllipse(event.scenePos(), self.__wire_pick_radius, self.__wire_pick_radius)
         if self.__ui_interactor is None and line.intersects(circle):
-            logger.debug('---GOT A PEAK AT MY DICK---')
+            logger.debug('wire candidate for picking detected')
             wgt = event.widget()
             if wgt is None:
                 return
@@ -1164,6 +1164,7 @@ class Task(NetworkItemWithUI):
 
         # self.__groups = set() if groups is None else set(groups)
         self.__log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]] = {}
+        self.__inv_log: Optional[List[Tuple[int, int, Union[IncompleteInvocationLogData, InvocationLogData]]]] = None  # for presentation - inv_id -> (node_id, log)
         self.__ui_attributes: dict = {}
         self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
         self.__requested_invocs_while_selected = set()
@@ -1438,10 +1439,23 @@ class Task(NetworkItemWithUI):
                         self.__log[node_id][inv_id].invocation_id = logs.invocation_id
                         self.__log[node_id][inv_id].worker_id = logs.worker_id
                         self.__log[node_id][inv_id].invocation_runtime = logs.invocation_runtime
+                        self.__log[node_id][inv_id].return_code = logs.return_code
                         continue
                 self.__log[node_id][inv_id] = logs
+        self.__inv_log = None
 
         self.update_ui()
+
+    def invocation_logs(self) -> List[Tuple[int, int, Union[IncompleteInvocationLogData, InvocationLogData]]]:
+        """
+        TODO: ensure immutable!
+        """
+        if self.__inv_log is None:
+            self.__inv_log = []
+            for node_id, logdict in self.__log.items():
+                for inv_id, log in logdict.items():
+                    self.__inv_log.append((inv_id, node_id, log))
+        return self.__inv_log
 
     def update_attributes(self, attributes: dict):
         logger.debug('attrs updated with %s', attributes)
@@ -1575,6 +1589,7 @@ class Task(NetworkItemWithUI):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             if value and self.__node is not None:   # item was just selected
                 self.refresh_ui()
+                self.scene()._task_selected(self)
             elif not value:
                 self.setFlag(QGraphicsItem.ItemIsSelectable, False)  # we are not selectable any more by band selection until directly clicked
                 pass

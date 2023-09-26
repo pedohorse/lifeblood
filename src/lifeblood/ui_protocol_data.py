@@ -609,16 +609,25 @@ class IncompleteInvocationLogData(IBufferSerializable):
     invocation_id: int
     worker_id: int
     invocation_runtime: Optional[float]
+    return_code: Optional[int]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQ?d', self.invocation_id, self.worker_id, self.invocation_runtime is not None, self.invocation_runtime or 0.0))
+        stream.write(struct.pack('>QQ?d?q',
+                                 self.invocation_id,
+                                 self.worker_id,
+                                 self.invocation_runtime is not None, self.invocation_runtime or 0.0,
+                                 self.return_code is not None, self.return_code or 0
+                                 )
+                     )
 
     @classmethod
     def deserialize(cls, stream: BufferedReader):
-        i_id, w_id, has_i_rt, i_rt = struct.unpack('>QQ?d', stream.readexactly(25))
+        i_id, w_id, has_i_rt, i_rt, has_i_rc, i_rc = struct.unpack('>QQ?d?q', stream.readexactly(34))
         if not has_i_rt:
             i_rt = None
-        return IncompleteInvocationLogData(i_id, w_id, i_rt)
+        if not has_i_rc:
+            i_rc = None
+        return IncompleteInvocationLogData(i_id, w_id, i_rt, i_rc)
 
 
 @dataclass
