@@ -1,4 +1,5 @@
 import os
+from math import log2
 from collections import OrderedDict
 from pathlib import Path
 from types import MappingProxyType
@@ -743,6 +744,28 @@ class NodeEditor(QGraphicsView, Shortcutable):
     @timeit(0.05)
     def drawItems(self, *args, **kwargs):
         return super(NodeEditor, self).drawItems(*args, **kwargs)
+
+    def drawBackground(self, painter, rect):
+        pen = QPen()
+        pen.setStyle(Qt.DotLine)
+        pen.setColor(QColor(192, 192, 192, 12))
+
+        spacing = 200
+        limit_per_width = 10
+
+        top = rect.top()
+        bottom = rect.bottom()
+        left = rect.left()
+        right = rect.right()
+        pen.setWidth(2.5 * max(1.0, pow((right - left) / limit_per_width / spacing, 0.8)))
+        painter.setPen(pen)
+
+        spacing *= 2 ** int(max(1.0, log2((right - left) / limit_per_width / spacing)))
+
+        for x in range(int(rect.left()/spacing)*spacing, int(rect.right())+1, spacing):
+            painter.drawLine(x, bottom, x, top)
+        for y in range(int(rect.top()/spacing)*spacing, int(rect.bottom())+1, spacing):
+            painter.drawLine(left, y, right, y)
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         for overlay in self.__overlays:
