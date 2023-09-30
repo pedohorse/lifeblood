@@ -747,25 +747,46 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     def drawBackground(self, painter, rect):
         pen = QPen()
+        pen2 = QPen()
         pen.setStyle(Qt.DotLine)
-        pen.setColor(QColor(192, 192, 192, 12))
+        pen2.setStyle(Qt.DotLine)
+        pen.setColor(QColor.fromRgbF(0.65, 0.65, 0.75, 0.05))
 
-        spacing = 200
+        spacing = 150
         limit_per_width = 10
 
         top = rect.top()
         bottom = rect.bottom()
         left = rect.left()
         right = rect.right()
-        pen.setWidth(2.5 * max(1.0, pow((right - left) / limit_per_width / spacing, 0.8)))
-        painter.setPen(pen)
 
-        spacing *= 2 ** int(max(1.0, log2((right - left) / limit_per_width / spacing)))
+        spacing_scaling_exp = max(1.0, log2((right - left) / limit_per_width / spacing))
+        width_scale = min(1.0, max(0.0, 1.5 * (1 - pow(spacing_scaling_exp % 1, 0.75))))
 
-        for x in range(int(rect.left()/spacing)*spacing, int(rect.right())+1, spacing):
-            painter.drawLine(x, bottom, x, top)
-        for y in range(int(rect.top()/spacing)*spacing, int(rect.bottom())+1, spacing):
-            painter.drawLine(left, y, right, y)
+        width_base = 1.85 * max(1.0, pow((right - left) / limit_per_width / spacing, 0.95))
+        pen.setWidthF(width_base)
+
+        spacing *= 2 ** int(spacing_scaling_exp)
+        if width_scale < 1.0:
+            pen2.setColor(QColor.fromRgbF(0.65 * width_scale, 0.65 * width_scale, 0.75 * width_scale, 0.05 * width_scale))
+            pen2.setWidthF(width_base * width_scale)
+            spacing2 = 2 * spacing
+            painter.setPen(pen)
+            for x in range(int(rect.left() / spacing2) * spacing2, int(rect.right()) + 1, spacing2):
+                painter.drawLine(x, bottom, x, top)
+            for y in range(int(rect.top() / spacing2) * spacing2, int(rect.bottom()) + 1, spacing2):
+                painter.drawLine(left, y, right, y)
+            painter.setPen(pen2)
+            for x in range(int(rect.left() / spacing2 - 1) * spacing2, int(rect.right()) + 1, spacing2):
+                painter.drawLine(x + spacing, bottom, x + spacing, top)
+            for y in range(int(rect.top() / spacing2 - 1) * spacing2, int(rect.bottom()) + 1, spacing2):
+                painter.drawLine(left, y + spacing, right, y + spacing)
+        else:
+            painter.setPen(pen)
+            for x in range(int(rect.left()/spacing)*spacing, int(rect.right())+1, spacing):
+                painter.drawLine(x, bottom, x, top)
+            for y in range(int(rect.top()/spacing)*spacing, int(rect.bottom())+1, spacing):
+                painter.drawLine(left, y, right, y)
 
     def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
         for overlay in self.__overlays:
