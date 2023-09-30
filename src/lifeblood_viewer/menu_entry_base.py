@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
 
 @dataclass
 class MainMenuLocation:
     location: Tuple[str, ...]
-    label: str
+    label: Union[str, Callable[[], str]]
 
 
 @dataclass
