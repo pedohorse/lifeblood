@@ -275,6 +275,12 @@ class LifebloodViewer(QMainWindow):
                                       _task_list_for_node,
                                       None, None)  # TODO: implement context menu fillings here too
         self.__node_editor.add_action('nodeeditor.create_node', lambda: create_node_popup.popup(), 'Tab', MainMenuLocation(('Nodes',), 'Create'))
+        self.__node_editor.add_action(
+            'nodeeditor.snap_nodes',
+            lambda: self.__node_editor.scene().set_node_snapping_enabled(not self.__node_editor.scene().node_snapping_enabled()),
+            None,
+            MainMenuLocation(('Edit',), lambda: f'{"[x]" if self.__node_editor.scene().node_snapping_enabled() else "[ ]"} Snap Nodes')
+        )
         undo_window.popup()
         op_status_window.popup()
         parameters_window.popup()

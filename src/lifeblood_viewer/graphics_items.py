@@ -847,6 +847,13 @@ class Node(NetworkItemWithUI):
         #     return
         super(Node, self).mouseReleaseEvent(event)
         if self.__move_start_position is not None:
+            if self.scene().node_snapping_enabled():
+                for node in self.__move_start_selection:
+                    pos = node.pos()
+                    snapx = node.base_width / 4
+                    snapy = node.base_height / 4
+                    node.setPos(round(pos.x() / snapx) * snapx,
+                                round(pos.y() / snapy) * snapy)
             self.scene()._nodes_were_moved([(node, node.__move_start_position) for node in self.__move_start_selection])
             for node in self.__move_start_selection:
                 node.__move_start_position = None

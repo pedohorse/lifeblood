@@ -110,6 +110,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self.__node_snapshots = {}  # for undo/redo
         self.__selection_happening = False
 
+        # settings:
+        self.__node_snapping_enabled = True
+
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
             self.__ui_connection_worker = SchedulerConnectionWorker()
@@ -406,6 +409,16 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
     def skip_archived_groups(self) -> bool:
         return self.__ui_connection_worker.skip_archived_groups()  # should be fine and thread-safe in eyes of python
+
+    # settings
+
+    def node_snapping_enabled(self):
+        return self.__node_snapping_enabled
+
+    def set_node_snapping_enabled(self, enabled: bool):
+        self.__node_snapping_enabled = enabled
+
+    #
 
     def _nodes_were_moved(self, nodes_datas: Sequence[Tuple[Node, QPointF]]):
         """
