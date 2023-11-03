@@ -310,9 +310,9 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         return WorkerState((await reply.message_body_as_json())['state'])
 
     async def report_task_done(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
-        async with aiofiles.open(stdout_file, 'r') as f:
+        async with aiofiles.open(stdout_file, 'r', errors='replace') as f:
             stdout = await f.read()
-        async with aiofiles.open(stderr_file, 'r') as f:
+        async with aiofiles.open(stderr_file, 'r', errors='replace') as f:
             stderr = await f.read()
         await self.__client.send_command('worker.done', {
             'task': (await task.serialize_async()).decode('latin1'),
