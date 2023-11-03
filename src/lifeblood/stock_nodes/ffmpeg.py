@@ -15,8 +15,25 @@ from typing import Iterable
 def node_class():
     return Ffmpeg
 
+
 MODE_SEQUENCE_TO_MOVIE = 0
 MODE_MOVIE_TO_SEQUENCE = 1
+
+
+DESCRIPTION = '''
+This node uses FFMPEG to manipulate given movie files and sequences.
+You need to separately download and install FFMPEG to be able to use this node.
+
+in sequence-to-movie mode this node converts sequence or sequences found in the attribute
+of the given name ("images" by default) to a video.
+If "images" is a list of files - those files are treated as individual frames.
+If "images" is a list of sequences - those sequences are treated as parts of a mosaic
+
+in movie-to-sequence mode this node converts input movie into a sequence
+sequence must have ffmpeg sequence pattern, like %04d to specify where to put frame number
+in the file name. 0 there means zero-padded, 4 means use minimum 4 digits for the number. 
+'''
+
 
 class Ffmpeg(BaseNode):
     @classmethod
@@ -30,6 +47,10 @@ class Ffmpeg(BaseNode):
     @classmethod
     def type_name(cls) -> str:
         return 'ffmpeg'
+
+    @classmethod
+    def description(cls) -> str:
+        return DESCRIPTION
 
     def __init__(self, name):
         super(Ffmpeg, self).__init__(name)
