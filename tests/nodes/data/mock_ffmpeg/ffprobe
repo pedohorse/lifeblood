@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+def main():
+    """
+    TODO: add some arg validation, it's too blunt now
+    """
+    print(7)
+
+
+if __name__ == '__main__':
+    main()

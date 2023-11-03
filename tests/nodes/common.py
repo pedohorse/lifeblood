@@ -16,7 +16,7 @@ from lifeblood.processingcontext import ProcessingContext
 from lifeblood.process_utils import oh_no_its_windows
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 class FakeEnvArgs(EnvironmentResolverArguments):
@@ -49,6 +49,19 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                                        runcode: Optional[str] = None,
                                        worker_count: int = 1,
                                        tasks_to_complete=None):
+        """
+        generic logic runner helper.
+        this will start scheduler and worker,
+        then it will run provided "logic",
+
+        logic(sched, workers, tmp_script_path, done_waiter)
+        will be provided with
+        - the instance of scheduler
+        - list of running workers
+        - prepared temp path to store scripts in (will be cleaned after) with given `runcode`
+        - event that will trigger when "task done" is reported by the worker
+
+        """
         purge_db()
         with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch, \
              mock.patch('lifeblood.worker.Worker.scheduler_pinger') as wppatch:
@@ -211,3 +224,70 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     os.unlink(out_exr_path)
         finally:
             shutil.rmtree(tmpdir)
+
+    async def _helper_test_simple_invocation(
+            self,
+            node_type_to_create: str,
+            node_params_to_set: List[Dict[str, Any]],
+            task_attrs: Dict[str, Any],
+            *,
+            add_relative_to_PATH: Optional[Union[str, Path]] = None,
+            commands_to_replace_with_py_mock: List[str] = None,
+    ):
+        """
+        helper for most general node testing:
+
+        give it preparation logic, what node to create, what parameters to set, what attributes should task have
+
+        add_relative_to_PATH - add that to PATH, relative to tests dir
+        command_to_replace_with_py_mock - if you mocked some command with some python script - a hack is needed on windows to run it.
+            it's a nasty and dirty hack that replaces "'command'" with "'python', 'command'" in script files...
+            maybe too specific for all cases
+        """
+
+        async def _logic(scheduler, workers, script_path, done_waiter):
+            node = create_node(node_type_to_create, f'test {node_type_to_create}', scheduler, 1)
+
+            # it's a list of dicts cuz sometimes we need strict ordering of sets
+            for params in node_params_to_set:
+                for param, val in params.items():
+                    node.set_param_value(param, val)
+
+            res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(task_attrs)}))
+
+            ij = res.invocation_job
+            self.assertTrue(ij is not None)
+            if add_relative_to_PATH:
+                ij._set_envresolver_arguments(FakeEnvArgs(add_relative_to_PATH))
+
+            if oh_no_its_windows:
+                # cuz windows does not allow to just run batch/python scripts with no extension...
+                for command in commands_to_replace_with_py_mock:
+                    for filename, contents in list(ij.extra_files().items()):
+                        ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(add_relative_to_PATH) / command))}"))
+
+                    if ij.args()[0] == command:
+                        ij.args().pop(0)
+                        ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
+                        ij.args().insert(0, 'python')
+
+            ij._set_task_id(2345)
+            ij._set_invocation_id(1234)
+            the_worker = workers[0]
+
+            await workers[0].run_task(
+                ij,
+                scheduler.server_message_address()
+            )
+
+            await asyncio.wait([done_waiter], timeout=30)
+
+            # now postprocess task
+            res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
+                **task_attrs,
+                # **updated_attrs  no updated attrs for now
+            })}))
+            # if res.attributes_to_set:
+            #     updated_attrs.update(res.attributes_to_set)
+
+        await self._helper_test_worker_node(_logic)
