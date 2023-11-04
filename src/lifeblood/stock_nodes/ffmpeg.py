@@ -67,7 +67,6 @@ class Ffmpeg(BaseNode):
             ui.add_parameter('sequence', 'sequence attribute name', NodeParameterType.STRING, 'images'
                              ).append_visibility_condition(mode_parm, '==', MODE_SEQUENCE_TO_MOVIE)
             ui.add_parameter('ffmpeg bin path', 'ffmpeg binary', NodeParameterType.STRING, 'ffmpeg')
-            ui.add_parameter('ffprobe bin path', 'ffprobe binary', NodeParameterType.STRING, 'ffprobe')
 
             # sequence to movie params
             stm_params = []
@@ -84,6 +83,7 @@ class Ffmpeg(BaseNode):
 
             # movie to sequence params
             mts_params = []
+            mts_params.append(ui.add_parameter('ffprobe bin path', 'ffprobe binary', NodeParameterType.STRING, 'ffprobe'))
             mts_params.append(ui.add_parameter('in_movie', 'movie path', NodeParameterType.STRING, '`task["file"]`'))
             mts_params.append(ui.add_parameter('out_sequence', 'output sequence', NodeParameterType.STRING, '/tmp/file.%04d.png'))
             mts_params.append(ui.add_parameter('start_frame', 'sequence start frame', NodeParameterType.INT, 1))
@@ -210,7 +210,7 @@ class Ffmpeg(BaseNode):
              f'start_frame = {start_frame}\n'
              f'output_pattern = {repr(output)}\n'
              f'rx = re.compile({repr(rx_str)})''\n'
-             'Path(output_pattern).parent.mkdir(exist_ok=True)\n'
+             'Path(output_pattern).parent.mkdir(parents=True, exist_ok=True)\n'
              f'\n'
              f'out, _ = Popen(\n'
              f'    [{repr(probe_binpath)}, "-v", "error", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", {repr(input)}],\n'
