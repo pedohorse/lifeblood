@@ -71,9 +71,9 @@ In this "How To" it's assumed that you have the simplest and most common individ
     textures, models etc from all work machines, and so that ``path/to/texture1`` leads to the same texture file
     on all machines
 
-
-Prepare To Lunch
-================
+.. _usage_prepare_to_launch:
+Prepare To Launch
+=================
 
 | As said before, the most common use case for Lifeblood needs little to none configuration,
 | However, if you plan to use default standard environment resolver - it needs to detect the location of

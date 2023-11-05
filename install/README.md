@@ -1,5 +1,10 @@
 # Installation scripts
 
+> [!WARNING]
+> These scripts are **outdated**, please use [Lifeblood-Manager](https://github.com/pedohorse/lifeblood-manager/releases)
+> instead!
+
+
 There are multiple way of installing lifeblood, you can easily do it with pip,
 but here you can find even simpler "one-click" solutions
 

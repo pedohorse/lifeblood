@@ -9,3 +9,7 @@
 .bd-sidebar-primary {
     width: 18%;
 }
+
+html[data-theme=dark] img:not(.only-dark):not(.dark-light) {
+  filter:brightness(.975) contrast(1.05);
+}
