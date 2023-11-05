@@ -19,12 +19,12 @@
   </script>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="_static/styles/theme.css?digest=e353d410970836974a52" rel="stylesheet" />
-<link href="_static/styles/bootstrap.css?digest=e353d410970836974a52" rel="stylesheet" />
-<link href="_static/styles/pydata-sphinx-theme.css?digest=e353d410970836974a52" rel="stylesheet" />
+  <link href="_static/styles/theme.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
 
   
-  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=e353d410970836974a52" rel="stylesheet" />
+  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
   <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2" />
 <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2" />
 <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
@@ -33,8 +33,9 @@
     <link rel="stylesheet" type="text/css" href="_static/css/custom.css" />
   
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=e353d410970836974a52" />
-<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52" />
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=365ca57ee442770a23c6" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=365ca57ee442770a23c6" />
+  <script src="_static/vendor/fontawesome/6.1.2/js/all.min.js?digest=365ca57ee442770a23c6"></script>
 
     <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
     <script src="_static/jquery.js"></script>
@@ -57,6 +58,15 @@
   
   
   <a class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
   
   <input type="checkbox"
           class="sidebar-toggle"
@@ -97,7 +107,8 @@
     <span class="fa-solid fa-bars"></span>
   </label>
   
-  <div class="navbar-header-items__start">
+  
+  <div class="col-lg-3 navbar-header-items__start">
     
       <div class="navbar-item">
   
@@ -107,17 +118,17 @@
   
   
   
+  
     
     
     
-    <img src="_static/lifeblood.svg" class="logo__image only-dark" alt="Logo image"/>
-    <script>document.write(`<img src="_static/lifeblood.svg" class="logo__image only-light" alt="Logo image"/>`);</script>
+    <img src="_static/lifeblood.svg" class="logo__image only-dark" alt="Lifeblood 1.0.0 documentation - Home"/>
+    <script>document.write(`<img src="_static/lifeblood.svg" class="logo__image only-light" alt="Lifeblood 1.0.0 documentation - Home"/>`);</script>
   
   
 </a></div>
     
   </div>
-  
   
   <div class="col-lg-9 navbar-header-items">
     
@@ -166,27 +177,27 @@
                       </a>
                     </li>
                 
-            <div class="nav-item dropdown">
-                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links">
                     More
                 </button>
-                <div class="dropdown-menu">
+                <ul id="pst-nav-more-links" class="dropdown-menu">
                     
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="tutorials.html">
+                      <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
                     </li>
                 
 
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="nodes.html">
+                      <a class="nav-link dropdown-item nav-internal" href="nodes.html">
                         Nodes
                       </a>
                     </li>
                 
-                </div>
-            </div>
+                </ul>
+            </li>
             
   </ul>
 </nav></div>
@@ -198,23 +209,25 @@
       
         <div class="navbar-item navbar-persistent--container">
           
-<script>
-document.write(`
-  <button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
     <i class="fa-solid fa-magnifying-glass"></i>
-  </button>
-`);
-</script>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
         </div>
       
       
         <div class="navbar-item">
 <script>
 document.write(`
-  <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
-    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
-    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
   </button>
 `);
 </script></div>
@@ -225,18 +238,20 @@ document.write(`
   
   
     <div class="navbar-persistent--mobile">
-<script>
-document.write(`
-  <button class="btn btn-sm navbar-btn search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
     <i class="fa-solid fa-magnifying-glass"></i>
-  </button>
-`);
-</script>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
     </div>
   
 
   
-    <label class="sidebar-toggle secondary-toggle" for="__secondary">
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
       <span class="fa-solid fa-outdent"></span>
     </label>
   
@@ -299,27 +314,27 @@ document.write(`
                       </a>
                     </li>
                 
-            <div class="nav-item dropdown">
-                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links-2">
                     More
                 </button>
-                <div class="dropdown-menu">
+                <ul id="pst-nav-more-links-2" class="dropdown-menu">
                     
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="tutorials.html">
+                      <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
                     </li>
                 
 
                     <li class="nav-item">
-                      <a class="nav-link nav-internal" href="nodes.html">
+                      <a class="nav-link dropdown-item nav-internal" href="nodes.html">
                         Nodes
                       </a>
                     </li>
                 
-                </div>
-            </div>
+                </ul>
+            </li>
             
   </ul>
 </nav></div>
@@ -333,10 +348,10 @@ document.write(`
           <div class="navbar-item">
 <script>
 document.write(`
-  <button class="theme-switch-button btn btn-sm btn-outline-primary navbar-btn rounded-circle" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <span class="theme-switch" data-mode="light"><i class="fa-solid fa-sun"></i></span>
-    <span class="theme-switch" data-mode="dark"><i class="fa-solid fa-moon"></i></span>
-    <span class="theme-switch" data-mode="auto"><i class="fa-solid fa-circle-half-stroke"></i></span>
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
   </button>
 `);
 </script></div>
@@ -369,8 +384,8 @@ document.write(`
 
 
 
-<nav aria-label="Breadcrumbs">
-  <ul class="bd-breadcrumbs" role="navigation" aria-label="Breadcrumb">
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
     
     <li class="breadcrumb-item breadcrumb-home">
       <a href="index.html" class="nav-link" aria-label="Home">
@@ -414,36 +429,50 @@ while extra machines will only run worker pools.</p>
 <p>Check <a class="reference internal" href="overview.html#overview-scheduler"><span class="std std-ref">overview</span></a> to learn basic components of Lifeblood</p>
 <p>Also check the <a class="reference internal" href="tutorials.html#tutorials-installation"><span class="std std-ref">tutorial section</span></a></p>
 <p>Matrix Notifier installation is described in <a class="reference internal" href="nodes/stock/matrixnotifier.html#nodes-stock-matrixnotifier"><span class="std std-ref">matrix notifier help page</span></a></p>
-<section id="simplest-installation-scripts">
-<h2>Simplest: Installation scripts<a class="headerlink" href="#simplest-installation-scripts" title="Permalink to this heading">#</a></h2>
-<p>the <a class="reference external" href="https://github.com/pedohorse/lifeblood/tree/dev/install">github repo</a> has an <code class="docutils literal notranslate"><span class="pre">install</span></code> folder,
-that folder contains</p>
+<section id="simplest-lifeblood-manager">
+<h2>Simplest: <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases">Lifeblood Manager</a><a class="headerlink" href="#simplest-lifeblood-manager" title="Permalink to this heading">#</a></h2>
+<p>There is a separate program made specifically to simplify Lifeblood installation and management: <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases">Lifeblood-Manager</a>.
+It is not written in python and statically linked specifically to minimize the system software requirements.
+(so you can for example use it on a windows system without python installed, or on linux without any extra packages)</p>
+<p>Put this program into an empty folder where you want to install lifeblood. You do <strong>NOT</strong> need superuser privileges to run this, Lifeblood-Manager only ever makes changes to
+the directory you specify in it (by default it’s the directory where the executable lives). So unless you want to install lifeblood into some “protected” locations, such as
+<code class="docutils literal notranslate"><span class="pre">C:\Program</span> <span class="pre">Files\...</span></code>, or <code class="docutils literal notranslate"><span class="pre">/opt</span></code>, you <strong>do not need</strong> to run it as administrator or root.</p>
+<p>When you run it, it will (or at least should) by default set the <code class="docutils literal notranslate"><span class="pre">base</span> <span class="pre">directory</span></code> to the directory where you put the manager in</p>
+<p>It downloads latest commit from Lifeblood repo and sets up a minimal venv for it to work. It also creates and maintains launch shortcuts <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code>.
+After installation you can easily launch lifeblood components with them. Manager can easily switch which version those shortcuts point to.</p>
+<p>So again:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">install.sh</span></code> - for bash and linux (distribution does not matter, as long as python &gt;=3.8 and &lt;=3.10 is available)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> - a powershell script for windows.</p></li>
+<li><dl class="simple">
+<dt>Put lifeblood-manager into an empty folder you want lifeblood to be installed</dt><dd><ul>
+<li><p>it’s recommended <strong>NOT</strong> to use <code class="docutils literal notranslate"><span class="pre">&lt;home&gt;/lifeblood</span></code>, as this is the place where lifeblood configs will be stored by default.</p></li>
 </ul>
-<p>Just pick one of those scripts and put it into an empty folder.</p>
-<p>Run it! (from console or just double click)</p>
-<p>A fresh version of lifeblood will be brought from github and saved to a subfolder with name taken from the commit hash
-(like 420deadbeef69), and <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> shell script files will be creating pointing to that
-new version installed.</p>
-<section id="notes">
-<h3>Notes<a class="headerlink" href="#notes" title="Permalink to this heading">#</a></h3>
+</dd>
+</dl>
+</li>
+<li><p>run lifeblood-manager</p></li>
+<li><p>press <code class="docutils literal notranslate"><span class="pre">download</span> <span class="pre">freshest</span></code> button</p></li>
+<li><p>now you can use <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> scripts to run lifeblood components. See <a class="reference internal" href="usage.html#usage-prepare-to-launch"><span class="std std-ref">usage section</span></a> on how to use them.</p></li>
+</ul>
+<img alt="_images/manager_overview.png" src="_images/manager_overview.png" />
 <ul class="simple">
-<li><p>by default both scripts will install both Lifeblood Core and Viewer. If you don’t want viewer - give <code class="docutils literal notranslate"><span class="pre">--no-viewer</span></code>
-flag to the script (you will have to do this through console)</p></li>
-<li><p>on Windows <code class="docutils literal notranslate"><span class="pre">install.ps1</span></code> script will download latest embedded python3 from python.org, so you do not have to
-have python installed beforehand</p></li>
-<li><p>on Linux <code class="docutils literal notranslate"><span class="pre">install.sh</span></code> script will try to use system python and create a venv for lifeblood.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">download</span> <span class="pre">freshest</span></code> button will download latest commit from given branch (dev by default for now), and make it <strong>current</strong> (so <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code>
+links will point to it)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rename</span> <span class="pre">selected</span></code> allows you to rename downloaded dir into something human-readable, while preserving links and other things if needed</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">selected</span> <span class="pre">version</span> <span class="pre">current</span></code> button switches selected version to be <strong>current</strong>, meaning <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> links will be pointing to that version.
+This way you can easily switch between experimental and stable versions, if needed.</p></li>
 </ul>
-</section>
 <section id="troubleshooting">
 <h3>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permalink to this heading">#</a></h3>
-<p>In case something went wrong don’t hesitate to delete everything installed and start from scratch.</p>
+<p>In case something went wrong don’t hesitate to delete everything installed and start from scratch. All configuration files live in different location, so there is nothing
+“state” saved in this location, you can remove and reinstall any number of times, that should not make any difference.</p>
 </section>
 </section>
 <section id="simple-using-pip">
 <h2>Simple: Using pip<a class="headerlink" href="#simple-using-pip" title="Permalink to this heading">#</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>pip package versions correspond to tags in the repository, so they are always behind the development edge.</p>
+</div>
 <p>The simplest way to install Lifeblood is to use pip:</p>
 <ul class="simple">
 <li><p>on machines that will be performing work - install just Lifeblood: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">lifeblood</span></code></p></li>
@@ -469,11 +498,10 @@ tasks in a Lifeblood Scheduler</p></li>
               
               
               
-                <footer class="bd-footer-article">
-                  
-<div class="footer-article-items footer-article__inner">
-  
-    <div class="footer-article-item"><!-- Previous / next buttons -->
+              
+              
+                <footer class="prev-next-footer">
+                  <!-- Previous / next buttons -->
 <div class="prev-next-area">
     <a class="left-prev"
        href="invocation_comm_feature.html"
@@ -493,10 +521,7 @@ tasks in a Lifeblood Scheduler</p></li>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
-</div></div>
-  
 </div>
-
                 </footer>
               
             </div>
@@ -511,8 +536,7 @@ tasks in a Lifeblood Scheduler</p></li>
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simplest-installation-scripts">Simplest: Installation scripts</a><ul class="visible nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#notes">Notes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simplest-lifeblood-manager">Simplest: Lifeblood Manager</a><ul class="visible nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#troubleshooting">Troubleshooting</a></li>
 </ul>
 </li>
@@ -542,8 +566,8 @@ tasks in a Lifeblood Scheduler</p></li>
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="_static/scripts/bootstrap.js?digest=e353d410970836974a52"></script>
-<script src="_static/scripts/pydata-sphinx-theme.js?digest=e353d410970836974a52"></script>
+  <script src="_static/scripts/bootstrap.js?digest=365ca57ee442770a23c6"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=365ca57ee442770a23c6"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -569,10 +593,11 @@ tasks in a Lifeblood Scheduler</p></li>
     </div>
   
   
+  
     <div class="footer-items__end">
       
         <div class="footer-item"><p class="theme-version">
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.13.3.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.14.3.
 </p></div>
       
     </div>

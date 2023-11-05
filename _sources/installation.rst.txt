@@ -29,39 +29,49 @@ Also check the :ref:`tutorial section <tutorials_installation>`
 
 Matrix Notifier installation is described in :ref:`matrix notifier help page <nodes/stock/matrixnotifier>`
 
-Simplest: Installation scripts
-==============================
+Simplest: `Lifeblood Manager <https://github.com/pedohorse/lifeblood-manager/releases>`_
+========================================================================================
 
-the `github repo <https://github.com/pedohorse/lifeblood/tree/dev/install>`_ has an ``install`` folder,
-that folder contains
+There is a separate program made specifically to simplify Lifeblood installation and management: `Lifeblood-Manager <https://github.com/pedohorse/lifeblood-manager/releases>`_.
+It is not written in python and statically linked specifically to minimize the system software requirements.
+(so you can for example use it on a windows system without python installed, or on linux without any extra packages)
 
-* ``install.sh`` - for bash and linux (distribution does not matter, as long as python >=3.8 and <=3.10 is available)
-* ``install.ps1`` - a powershell script for windows.
+Put this program into an empty folder where you want to install lifeblood. You do **NOT** need superuser privileges to run this, Lifeblood-Manager only ever makes changes to
+the directory you specify in it (by default it's the directory where the executable lives). So unless you want to install lifeblood into some "protected" locations, such as
+``C:\Program Files\...``, or ``/opt``, you **do not need** to run it as administrator or root.
 
-Just pick one of those scripts and put it into an empty folder.
+When you run it, it will (or at least should) by default set the ``base directory`` to the directory where you put the manager in
 
-Run it! (from console or just double click)
+It downloads latest commit from Lifeblood repo and sets up a minimal venv for it to work. It also creates and maintains launch shortcuts ``lifeblood`` and ``lifeblood_viewer``.
+After installation you can easily launch lifeblood components with them. Manager can easily switch which version those shortcuts point to.
 
-A fresh version of lifeblood will be brought from github and saved to a subfolder with name taken from the commit hash
-(like 420deadbeef69), and ``lifeblood`` and ``lifeblood_viewer`` shell script files will be creating pointing to that
-new version installed.
+So again:
 
-Notes
------
+* Put lifeblood-manager into an empty folder you want lifeblood to be installed
+   * it's recommended **NOT** to use ``<home>/lifeblood``, as this is the place where lifeblood configs will be stored by default.
+* run lifeblood-manager
+* press ``download freshest`` button
+* now you can use ``lifeblood`` and ``lifeblood_viewer`` scripts to run lifeblood components. See :ref:`usage section <usage_prepare_to_launch>` on how to use them.
 
-* by default both scripts will install both Lifeblood Core and Viewer. If you don't want viewer - give ``--no-viewer``
-  flag to the script (you will have to do this through console)
-* on Windows ``install.ps1`` script will download latest embedded python3 from python.org, so you do not have to
-  have python installed beforehand
-* on Linux ``install.sh`` script will try to use system python and create a venv for lifeblood.
+.. image:: /images/manager_overview.png
+
+* ``download freshest`` button will download latest commit from given branch (dev by default for now), and make it **current** (so ``lifeblood`` and ``lifeblood_viewer``
+  links will point to it)
+* ``rename selected`` allows you to rename downloaded dir into something human-readable, while preserving links and other things if needed
+* ``make selected version current`` button switches selected version to be **current**, meaning ``lifeblood`` and ``lifeblood_viewer`` links will be pointing to that version.
+  This way you can easily switch between experimental and stable versions, if needed.
 
 Troubleshooting
 ---------------
 
-In case something went wrong don't hesitate to delete everything installed and start from scratch.
+In case something went wrong don't hesitate to delete everything installed and start from scratch. All configuration files live in different location, so there is nothing
+"state" saved in this location, you can remove and reinstall any number of times, that should not make any difference.
 
 Simple: Using pip
 =================
+
+.. note::
+  pip package versions correspond to tags in the repository, so they are always behind the development edge.
 
 The simplest way to install Lifeblood is to use pip:
 
