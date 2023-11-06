@@ -42,5 +42,11 @@ and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
 - easy cloud deployment
 - be integrateable (to some extent) with existing farm managers
 
+## Installation
+
+There are multiple ways to get Lifeblood to try it out, refer to [installation section in the docs](https://pedohorse.github.io/lifeblood/installation.html#simplest-lifeblood-manager)
+
+In short - easiest way is to use [Lifeblood-Manager](https://github.com/pedohorse/lifeblood-manager/releases), as described in the docs
+
 ## UNDER DEVELOPMENT
 
