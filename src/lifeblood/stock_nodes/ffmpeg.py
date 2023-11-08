@@ -218,7 +218,7 @@ class Ffmpeg(BaseNode):
              f').communicate()\n'
              f'\n'
              f'try:\n'
-             f'    frame_count = int(out.strip())\n'
+             f'    frame_count = int(out.strip().split(b"\\n", 1)[0].strip())\n'
              f'except Exception as e:\n'
              f'    raise RuntimeError(f"failed to get frame count from the movie: {{e}}")\n'
              f'\n'
