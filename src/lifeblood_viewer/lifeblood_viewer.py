@@ -266,7 +266,7 @@ class LifebloodViewer(QMainWindow):
 
         self.__node_editor.add_overlay(TaskHistoryOverlay(self.__node_editor.scene()))
 
-        self.__node_editor.add_action('nodeeditor.undo_history', lambda: undo_window.popup(), 'Ctrl+u', MainMenuLocation(('Edit',), 'Undo Stack'))
+        self.__node_editor.add_action('nodeeditor.undo_history', lambda: undo_window.popup(), 'Ctrl+u', MainMenuLocation(('Edit',), 'Undo Stack'), insert_menu_after_label='Undo')
         self.__node_editor.add_action('nodeeditor.find_node', lambda: find_node_window.popup(), 'Ctrl+f', MainMenuLocation(('Nodes',), 'Find Node'))
         self.__node_editor.add_action('nodeeditor.parameters', lambda: parameters_window.popup(), 'Ctrl+p', MainMenuLocation(('Nodes',), 'Parameters'))
         self.__node_editor.add_action('nodeeditor.task_list', lambda: task_list_window.popup(), 'Ctrl+t', MainMenuLocation(('Windows',), 'Task List'))
