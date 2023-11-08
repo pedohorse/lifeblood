@@ -13,7 +13,7 @@ from .flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
 from .menu_entry_base import MainMenuLocation
-from .utils import MenuStructure
+from .utils import BetterOrderedDict
 from lifeblood.base import TypeMetadata
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
@@ -43,6 +43,8 @@ import imgui
 from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
 from typing import Any, Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union
+
+MenuStructure = BetterOrderedDict
 
 logger = logging.get_logger('viewer')
 

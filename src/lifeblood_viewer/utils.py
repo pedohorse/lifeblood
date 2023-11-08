@@ -1,7 +1,7 @@
 from typing import Any, Callable, Optional
 
 
-class MenuStructure:
+class BetterOrderedDict:
     def __init__(self):
         self.__dict = {}
         self.__key_order = []
