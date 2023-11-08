@@ -1,6 +1,8 @@
 import os
+import random
+
 from math import log2
-from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from enum import Enum
@@ -11,6 +13,7 @@ from .flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
 from .menu_entry_base import MainMenuLocation
+from .utils import MenuStructure
 from lifeblood.base import TypeMetadata
 from lifeblood.misc import timeit, performance_measurer
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
@@ -29,7 +32,7 @@ import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import QObject, Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent, QPainterPath, QPen, QColor, QMouseEvent
+from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent, QPainterPath, QPen, QColor, QMouseEvent, QClipboard
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
@@ -39,7 +42,7 @@ from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 import imgui
 from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
-from typing import Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union, Any
+from typing import Any, Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union
 
 logger = logging.get_logger('viewer')
 
@@ -81,22 +84,37 @@ class Clipboard:
         return self.__contents.get(ctype, (None, None))
 
 
+@dataclass
+class MenuItem:
+    label: str
+    shortcut: Optional[str]
+
+    def __hash__(self):
+        return hash((self.label, self.shortcut))
+
+
+class MenuSeparatorItem:
+    """
+    class representing menu separator for viewer main menu definition
+    """
+    __cnt = 0
+
+    def __init__(self):
+        self.__num = MenuSeparatorItem.__cnt
+        MenuSeparatorItem.__cnt += 1
+
+    def __hash__(self):
+        return self.__num
+
+
 class Shortcutable:
     def __init__(self, config_name):
         assert isinstance(self, QObject)
         self.__shortcuts: Dict[str, QShortcut] = {}
         self.__shortcut_contexts: Dict[str, Set[str]] = {}
-        config = get_config(config_name)
-        defaults = self.default_shortcuts()
-        self.__context_name = 'main'
+        self.__config = get_config(config_name)
 
-        for action, meth in self.default_shortcutable_methods().items():
-            shortcut = config.get_option_noasync(f'shortcuts.{action}', defaults.get(action, None))
-            if shortcut is None:
-                continue
-            self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
-            self.__shortcut_contexts[action] = {'main'}  # TODO: make a way to define shortcut context per shortcut or per action, dunno
-            self.__shortcuts[action].activated.connect(meth)
+        self.__context_name = 'main'
 
     def add_shortcut(self, action: str, context: str, shortcut: str, callback: Callable):
         """
@@ -105,6 +123,9 @@ class Shortcutable:
         if action in self.__shortcuts:
             logger.error(f'action "{action}" is already defined, ignoring')
             return
+
+        shortcut = self.__config.get_option_noasync(f'shortcuts.{action}', shortcut)
+
         self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
         logger.debug(f'adding shortcut: {self.__shortcuts[action]}, {shortcut}')
         self.__shortcut_contexts.setdefault(action, set()).add(context)
@@ -128,12 +149,6 @@ class Shortcutable:
 
     def shortcuts(self):
         return MappingProxyType(self.__shortcuts)
-
-    def default_shortcutable_methods(self) -> Dict[str, Callable]:
-        return {}
-
-    def default_shortcuts(self) -> Dict[str, str]:
-        return {}
 
     def disable_shortcuts(self):
         """
@@ -188,7 +203,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__opened_windows: Set[ImguiWindow] = set()
         self.__overlays: List[NodeEditorOverlayBase] = []
         self.__actions: Dict[str, Callable[[], None]] = {}
-        self.__menu_actions: OrderedDict = OrderedDict()
+        self.__menu_actions: MenuStructure = MenuStructure()
 
         #self.__shortcut_layout = QShortcut(QKeySequence('ctrl+l'), self)
         #self.__shortcut_layout.activated.connect(self.layout_selected_nodes)
@@ -219,23 +234,47 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.rescan_presets()
         self.update()
 
-    def default_shortcutable_methods(self):
-        return {'nodeeditor.layout_graph': self.layout_selected_nodes,
-                'nodeeditor.copy': self.copy_selected_nodes,
-                'nodeeditor.paste': self.paste_copied_nodes,
-                'nodeeditor.focus_selected': self.focus_on_selected,
-                'nodeeditor.undo': self.undo,
-                'nodeeditor.delete': self.delete_selected}
+        # initialize standard actions
+        for action, (callback, shortcut) in self._default_actions().items():
+            self.add_action(action, callback, shortcut)
 
-    def default_shortcuts(self) -> Dict[str, str]:
-        return {'nodeeditor.layout_graph': 'Ctrl+l',
-                'nodeeditor.copy': 'Ctrl+c',
-                'nodeeditor.paste': 'Ctrl+v',
-                'nodeeditor.focus_selected': 'f',
-                'nodeeditor.undo': 'Ctrl+z',
-                'nodeeditor.delete': 'delete'}
+        for action, menu_entry in self._default_menu():
+            menu = self.__menu_actions
+            shortcut = None
+            if qtshortcut := self.shortcuts().get(action):
+                shortcut = qtshortcut.key().toString()
+            for submenu in menu_entry.location:
+                menu = menu.setdefault(submenu, MenuStructure())
+            if menu_entry.label is ...:
+                menu[MenuSeparatorItem()] = None
+            else:
+                menu[MenuItem(menu_entry.label, shortcut)] = self.__actions.get(action, lambda _: ())
 
-    def add_action(self, action_name: str, action_callback: Callable, shortcut: Optional[str], menu_entry: Optional[MainMenuLocation] = None):
+    def _default_menu(self) -> Tuple[Tuple[Optional[str], MainMenuLocation], ...]:
+        return (
+            ('nodeeditor.undo', MainMenuLocation(('Edit',), 'Undo')),
+            (None, MainMenuLocation(('Edit',), ...)),
+            ('nodeeditor.copy', MainMenuLocation(('Edit',), 'Copy')),
+            ('nodeeditor.paste', MainMenuLocation(('Edit',), 'Paste')),
+            (None, MainMenuLocation(('Edit',), ...)),
+            ('nodeeditor.copy_as_code', MainMenuLocation(('Edit',), 'Copy as code')),
+            ('nodeeditor.paste_from_code', MainMenuLocation(('Edit',), 'Paste from code')),
+            (None, MainMenuLocation(('Edit',), ...)),
+        )
+
+    def _default_actions(self) -> Dict[str, Tuple[Callable, str]]:
+        return {
+            'nodeeditor.undo': (self.undo, 'Ctrl+z'),
+            'nodeeditor.copy': (self.copy_selected_nodes, 'Ctrl+c'),
+            'nodeeditor.paste': (self.paste_copied_nodes, 'Ctrl+v'),
+            'nodeeditor.copy_as_code': (self.copy_selected_nodes_to_clipboard, 'Ctrl+Shift+c'),
+            'nodeeditor.paste_from_code': (self.paste_nodes_from_clipboard, 'Ctrl+Shift+v'),
+            'nodeeditor.layout_graph': (self.layout_selected_nodes, 'Ctrl+l'),
+            'nodeeditor.focus_selected': (self.focus_on_selected, 'f'),
+            'nodeeditor.delete': (self.delete_selected, 'delete'),
+        }
+
+    def add_action(self, action_name: str, action_callback: Callable, shortcut: Optional[str], menu_entry: Optional[MainMenuLocation] = None, *, insert_menu_after_label: Optional[str] = None):
         logger.info(f'registering action "{action_name}"')
         if action_name in self.__actions:
             raise RuntimeError(f'action "{action_name}" is already registered')
@@ -243,8 +282,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if menu_entry is not None:
             menu = self.__menu_actions
             for submenu in menu_entry.location:
-                menu = menu.setdefault(submenu, OrderedDict())
-                menu[(menu_entry.label, shortcut)] = action_callback
+                menu = menu.setdefault(submenu, MenuStructure())
+
+            if insert_menu_after_label:
+                try:
+                    index = menu.index(insert_menu_after_label, key_func=lambda x: x.label if isinstance(x, MenuItem) else x) + 1
+                except ValueError:
+                    index = len(menu)
+
+                menu.insert_at(MenuItem(menu_entry.label, shortcut), action_callback, index)
+            else:
+                menu[MenuItem(menu_entry.label, shortcut)] = action_callback
 
         if shortcut:
             self.add_shortcut(action_name, 'main', shortcut, action_callback)
@@ -263,7 +311,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         add new graphical overlay to this viewer
         """
         self.__overlays.append(overlay)
-        self.__menu_actions.setdefault('View', OrderedDict()).setdefault('Overlays', OrderedDict()).setdefault(
+        self.__menu_actions.setdefault('View', MenuStructure()).setdefault('Overlays', MenuStructure()).setdefault(
             lambda: f'{"[x]" if overlay.enabled() else "[ ]"} {overlay.name()}',
             lambda: overlay.toggle()
         )
@@ -357,6 +405,17 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.show_message('Nodes copied', 2)
 
     @Slot()
+    def copy_selected_nodes_to_clipboard(self):
+        """
+        Serializes selected nodes to internal ascii representation and sets it to be to contents of the system clipboard
+        Internal clipboard is not affected by this operation
+        Nodes are not additionally renamed, as they are with standard copy operation
+        """
+        snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
+        QClipboard().setText(snippet.serialize(ascii=True).decode('latin1'), QClipboard.Clipboard)
+        self.show_message('Nodes copied to clipboard', 2)
+
+    @Slot()
     def preset_from_selected_nodes(self, preset_label: Optional[str] = None, file_path: Optional[str] = None):
         """
         saves selected nodes as a preset
@@ -394,6 +453,25 @@ class NodeEditor(QGraphicsView, Shortcutable):
         if clipdata is None:
             return
         self.__scene.nodes_from_snippet(clipdata[1], pos)
+        self.show_message('Nodes pasted', 2)
+
+    @Slot(QPointF)
+    def paste_nodes_from_clipboard(self, pos: Optional[QPointF] = None):
+        """
+        this function expects system clipboard to hold valid node snippet
+        given snippet from clipboard is created.
+        """
+        if pos is None:
+            pos = self.mapToScene(self.mapFromGlobal(QCursor.pos()))
+        clipdata = QClipboard().text(QClipboard.Clipboard)
+        if clipdata is None:
+            return
+        try:
+            data = NodeSnippetData.deserialize(clipdata.encode('latin1'))
+        except Exception as e:
+            self.show_message("Pasting failed: incorrect clipboard contents", 4)
+            return
+        self.__scene.nodes_from_snippet(data, pos)
         self.show_message('Nodes pasted', 2)
 
     @Slot()
@@ -820,18 +898,29 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         # draw main menu
         def _draw_one_level(submenu):
-            for label, something in submenu.items():
-                if isinstance(something, dict):
-                    if imgui.begin_menu(label):
+            for item, something in submenu.items():
+                if isinstance(something, MenuStructure):
+                    assert isinstance(item, str)
+                    if imgui.begin_menu(item):
                         _draw_one_level(something)
                         imgui.end_menu()
                 else:
-                    if isinstance(label, (tuple, list)):
-                        label, shortcut = label
+                    shortcut = None
+                    if isinstance(item, MenuSeparatorItem):
+                        imgui.separator()
+                        continue
+                    elif isinstance(item, MenuItem):
+                        label = item.label
+                        if callable(label):
+                            label = label()
+                        shortcut = item.shortcut
+                    elif isinstance(item, str):
+                        label = item
+                    elif callable(item):
+                        label = item()
                     else:
-                        shortcut = None
-                    if callable(label):
-                        label = label()
+                        raise RuntimeError(f'unknown menu item type: {item}')
+
                     clicked, _ = imgui.menu_item(label, shortcut)
                     if clicked:
                         something()
