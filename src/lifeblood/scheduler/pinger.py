@@ -154,8 +154,10 @@ class Pinger(SchedulerComponentBase):
                 if inv_id is not None:
                     if inv_id not in self.scheduler.data_access.mem_cache_invocations:
                         self.scheduler.data_access.mem_cache_invocations[inv_id] = {}
-                    self.scheduler.data_access.mem_cache_invocations[inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
-                    self.scheduler.ui_state_access.scheduler_reports_task_updated(TaskDelta(task_id, progress=pvalue))
+                    progress_changed = self.scheduler.data_access.mem_cache_invocations[inv_id].get('progress') != pvalue
+                    if progress_changed:
+                        self.scheduler.data_access.mem_cache_invocations[inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
+                        self.scheduler.ui_state_access.scheduler_reports_task_updated(TaskDelta(task_id, progress=pvalue))
                     # Therefore additional cleanup needed later - still better than lock things or check too hard
 
             else:

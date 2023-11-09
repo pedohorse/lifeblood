@@ -19,7 +19,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
     @classmethod
     def tags(cls) -> Iterable[str]:
-        return 'hip', 'houdini', 'driver', 'render', 'stock'
+        return 'hip', 'houdini', 'driver', 'rop', 'render', 'stock'
 
     @classmethod
     def type_name(cls) -> str:

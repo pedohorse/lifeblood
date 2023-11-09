@@ -244,50 +244,58 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             it's a nasty and dirty hack that replaces "'command'" with "'python', 'command'" in script files...
             maybe too specific for all cases
         """
+        updated_attrs = {}
 
         async def _logic(scheduler, workers, script_path, done_waiter):
-            node = create_node(node_type_to_create, f'test {node_type_to_create}', scheduler, 1)
+            with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
+                attr_patch.side_effect = lambda *args, **kwargs: updated_attrs.update(args[1]) \
+                                                                 or print(f'update_task_attributes with {args}, {kwargs}')
+                node = create_node(node_type_to_create, f'test {node_type_to_create}', scheduler, 1)
 
-            # it's a list of dicts cuz sometimes we need strict ordering of sets
-            for params in node_params_to_set:
-                for param, val in params.items():
-                    node.set_param_value(param, val)
+                # it's a list of dicts cuz sometimes we need strict ordering of sets
+                for params in node_params_to_set:
+                    for param, val in params.items():
+                        node.set_param_value(param, val)
 
-            res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(task_attrs)}))
+                res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(task_attrs)}))
+                if res.attributes_to_set:
+                    updated_attrs.update(res.attributes_to_set)
 
-            ij = res.invocation_job
-            self.assertTrue(ij is not None)
-            if add_relative_to_PATH:
-                ij._set_envresolver_arguments(FakeEnvArgs(add_relative_to_PATH))
+                ij = res.invocation_job
+                self.assertTrue(ij is not None)
+                if add_relative_to_PATH:
+                    ij._set_envresolver_arguments(FakeEnvArgs(add_relative_to_PATH))
 
-            if oh_no_its_windows:
-                # cuz windows does not allow to just run batch/python scripts with no extension...
-                for command in commands_to_replace_with_py_mock:
-                    for filename, contents in list(ij.extra_files().items()):
-                        ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(add_relative_to_PATH) / command))}"))
+                if oh_no_its_windows:
+                    # cuz windows does not allow to just run batch/python scripts with no extension...
+                    for command in commands_to_replace_with_py_mock:
+                        for filename, contents in list(ij.extra_files().items()):
+                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(add_relative_to_PATH) / command))}"))
 
-                    if ij.args()[0] == command:
-                        ij.args().pop(0)
-                        ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
-                        ij.args().insert(0, 'python')
+                        if ij.args()[0] == command:
+                            ij.args().pop(0)
+                            ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
+                            ij.args().insert(0, 'python')
 
-            ij._set_task_id(2345)
-            ij._set_invocation_id(1234)
-            the_worker = workers[0]
+                ij._set_task_id(2345)
+                ij._set_invocation_id(1234)
+                the_worker = workers[0]
 
-            await workers[0].run_task(
-                ij,
-                scheduler.server_message_address()
-            )
+                await workers[0].run_task(
+                    ij,
+                    scheduler.server_message_address()
+                )
 
-            await asyncio.wait([done_waiter], timeout=30)
+                await asyncio.wait([done_waiter], timeout=30)
 
-            # now postprocess task
-            res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
-                **task_attrs,
-                # **updated_attrs  no updated attrs for now
-            })}))
-            # if res.attributes_to_set:
-            #     updated_attrs.update(res.attributes_to_set)
+                # now postprocess task
+                res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
+                    **task_attrs,
+                    **updated_attrs
+                })}))
+                if res.attributes_to_set:
+                    updated_attrs.update(res.attributes_to_set)
 
         await self._helper_test_worker_node(_logic)
+
+        return updated_attrs
