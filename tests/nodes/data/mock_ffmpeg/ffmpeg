@@ -2,10 +2,21 @@
 import os.path
 import sys
 import re
-
+import argparse
 
 def main():
     print("i'm ffmpeg!")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', nargs='*')
+
+    opts, _ = parser.parse_known_args()
+    filename = opts.i[0]
+
+    numframes = [int(x) for x in re.match(r'.*?(\d+(?:-\d+)?)\..+', os.path.basename(filename)).group(1).split('-')]
+    print(f'fakefile {filename} has {",".join(str(x) for x in numframes)} frames')
+
+    # for now we just take first "stream"
+    numframes = numframes[0]
 
     waiting_for_number = False
     waiting_for_input = False
@@ -24,7 +35,7 @@ def main():
             waiting_for_number = True
     outseq = sys.argv[-1]
 
-    for frame in range(start_frame, start_frame + 7):  # TODO: this hardcoded 7 should always match the ffprobe value
+    for frame in range(start_frame, start_frame + numframes):
         with open(re.sub(r"%(0)?(\d+)d", lambda m: '{{:{}{}d}}'.format(m.group(1), m.group(2)).format(frame), outseq), 'w') as f:
             f.write(f'boo {frame}')
 
