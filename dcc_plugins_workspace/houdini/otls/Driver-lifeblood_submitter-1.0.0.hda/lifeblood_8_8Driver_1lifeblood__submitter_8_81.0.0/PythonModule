@@ -15,16 +15,23 @@ def submit_button_callback(node):
             return
         hou.hipFile.save()
     try:
-        submit(node)
+        submitted_task = submit(node)
     except hou.Error as e:
         hou.ui.displayMessage('{}: {}'.format(e.exceptionTypeName(), e.instanceMessage()), severity=hou.severityType.Error)
     except IOError as e:
-        hou.ui.displayMessage('Failed to connect to the scheduler: {}'.format(str(e)), severity=hou.severityType.Error)
+        hou.ui.displayMessage('Failed to connect to the scheduler.\n'
+                              'Make sure you have the correct scheduler address set.\n'
+                              '\n'
+                              'Use "Listen to Scheduler\'s broadcast" button to set up address automatically\n'
+                              '\n'
+                              'Error: {}'.format(str(e)), severity=hou.severityType.Error)
     except RuntimeError as e:
         hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
     except Exception as e:
         hou.ui.displayMessage('Failed to submit: {}'.format(str(e)), severity=hou.severityType.Error)
-
+    else:
+        hou.ui.displayMessage('Success!\n'
+                              'task id: {}'.format(submitted_task.id))
 
 def submit(node):
     s_ip = node.parm('sch_ip').evalAsString()
@@ -75,7 +82,7 @@ def submit(node):
             raise NotImplementedError('unsupported attribute type %s' % attrtype)
         task.set_attribute(attrname, val)
     
-    task.submit()
+    return task.submit()
 
     
 def address_from_broadcast(node):
