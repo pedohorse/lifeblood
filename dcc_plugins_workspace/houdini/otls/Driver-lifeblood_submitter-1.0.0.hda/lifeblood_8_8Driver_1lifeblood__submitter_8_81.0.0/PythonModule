@@ -82,8 +82,13 @@ def address_from_broadcast(node):
     import socket
     import struct
     magic = b'=\xe2\x88\x88\xe2\xad\x95\xe2\x88\x8b='
-    s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    if hasattr(socket, 'SO_REUSEPORT'):  # not available on windows
+        reuse_port_flag = socket.SO_REUSEPORT
+    else:
+        reuse_port_flag = socket.SO_REUSEADDR
+    s.setsockopt(socket.SOL_SOCKET, reuse_port_flag, 1)
     s.settimeout(1)
     s.bind((node.parm('brd_ip').evalAsString(), node.parm('brd_port').evalAsInt()))
     
