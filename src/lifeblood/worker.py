@@ -119,8 +119,6 @@ class Worker:
         self.__local_invocation_server_address_string: str = ''
 
         self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
-        self.__resource_db_lock = FileCoupledLock('worker_resources', self.__local_shared_dir)
-        self.__resource_db_path = os.path.join(self.__local_shared_dir, 'resources.db')
         self.__my_resources = WorkerResources(cpu_count=config.get_option_noasync('resources.cpu_count'),
                                               cpu_mem=config.get_option_noasync('resources.cpu_mem'),
                                               gpu_count=config.get_option_noasync('resources.gpu_count'),
@@ -315,8 +313,6 @@ class Worker:
         self.__logger.info('server closed')
         await self.__scheduler_pinger
         self.__logger.info('pinger closed')
-        # await self.__running_resource_checker
-        # self.__logger.info('resource checker closed')
         for waiter in self.__stopping_waiters:
             await waiter
 
@@ -330,126 +326,16 @@ class Worker:
         path = os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()))
         await asyncio.get_event_loop().run_in_executor(None, shutil.rmtree, path)  # assume that deletion MAY take time, so allow util tasks to be processed while we wait
 
-    # This number of methods are related to message exchange mechanism between local workers
-    # it was used to exchange resource usage information, but is not used anymore
-    # however should it ever be needed - it can be uncommented and adjusted according to needs
-    #
-    # async def _start_resource_checker(self):
-    #     """
-    #     starts resource checker task, ensures everything is ready and returns task to await for
-    #     """
-    #     os.makedirs(self.__local_shared_dir, exist_ok=True)
-    #     async with self.__resource_db_lock:
-    #         async with aiosqlite.connect(self.__resource_db_path, timeout=30) as con:
-    #             con.row_factory = aiosqlite.Row
-    #             await con.executescript(db_misc.worker_resource_db_init_script)
-    #     await self.check_update_resources()
-    #     self.__local_negotiator = LocalMessageExchanger('worker_resources', self.__local_message_exchanger_callback)
-    #     self.__local_negotiator.start()
-    #     return asyncio.create_task(self.__resource_checker_wait_till_stops())
-    #
-    # async def __resource_checker_wait_till_stops(self):
-    #     """
-    #     this task should be running as part of worker.start
-    #     it checks and negociates resources with other worker processes on the same machine
-    #     """
-    #     timeout = await get_config('worker').get_option('resources_recheck_interval', 90)
-    #     stop_task = asyncio.create_task(self.__components_stop_event.wait())
-    #     while not self.__components_stop_event.is_set():
-    #         done, _ = await asyncio.wait((stop_task,), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
-    #         if stop_task in done:  # so we're done
-    #             break
-    #         # otherwise - timeout happened, so just check resources
-    #         await self.check_update_resources()
-    #     self.__local_negotiator.stop()
-    #     negotiator = self.__local_negotiator
-    #     self.__local_negotiator = None
-    #     await negotiator.wait_till_stopped()
-    #
-    # async def __local_message_exchanger_callback(self, message):
-    #     return await self.check_update_resources()
-    #
-    # async def check_update_resources(self, *, already_locked=False):
-    #     self.__logger.debug('checking available resources...')
-    #     my_pid = os.getpid()
-    #     res = WorkerResources()
-    #     resource_lock = DummyLock() if already_locked else self.__resource_db_lock
-    #     async with resource_lock:
-    #         self.__logger.debug('got lock' if not already_locked else 'already locked')
-    #         if self.__running_task is not None:
-    #             res -= self.__running_task.requirements().to_min_worker_resources()
-    #         async with aiosqlite.connect(self.__resource_db_path, timeout=30) as con:
-    #             con.row_factory = aiosqlite.Row
-    #             to_delete = []
-    #             async with con.execute('SELECT * FROM resources WHERE pid != ?', (my_pid,)) as cur:
-    #                 async for row in cur:
-    #                     if not psutil.pid_exists(row['pid']):
-    #                         to_delete.append(row['pid'])
-    #                         continue
-    #                     res.cpu_count -= row['cpu_count']
-    #                     res.cpu_mem -= row['cpu_mem']
-    #                     res.gpu_count -= row['gpu_count']
-    #                     res.gpu_mem -= row['gpu_mem']
-    #
-    #             await con.executemany('DELETE FROM resources WHERE pid == ?', [(pid,) for pid in to_delete])
-    #             await con.commit()
-    #
-    #         if self.__my_resources == res:
-    #             self.__logger.debug('no need to inform scheduler about resources')
-    #         else:
-    #             self.__my_resources = res
-    #             await self._inform_scheduler_about_resources()
-    #
-    # async def _inform_scheduler_about_resources(self):
-    #     assert self.__my_resources.is_valid()
-    #     # not updating scheduler any more.
-    #     # scheduler keeps track of resouces by itself
-    #
-    # async def _set_local_resource_usage(self, resouces: WorkerResources, *, already_locked=False):
-    #     resource_lock = DummyLock() if already_locked else self.__resource_db_lock
-    #     async with resource_lock:
-    #         async with aiosqlite.connect(self.__resource_db_path, timeout=30) as con:
-    #             con.row_factory = aiosqlite.Row
-    #             await con.execute('INSERT OR REPLACE INTO resources(pid, cpu_count, cpu_mem, gpu_count, gpu_mem) VALUES (?, ?, ?, ?, ?)',
-    #                               (os.getpid(),
-    #                                resouces.cpu_count,
-    #                                resouces.cpu_mem,
-    #                                resouces.gpu_count,
-    #                                resouces.gpu_mem))
-    #             await con.commit()
-    #     if self.__local_negotiator:
-    #         await self.__local_negotiator.send_sync_event()
-    #
-    # async def _unset_local_resource_usage(self, *, already_locked=False):
-    #     resource_lock = DummyLock() if already_locked else self.__resource_db_lock
-    #     async with resource_lock:
-    #         async with aiosqlite.connect(self.__resource_db_path, timeout=30) as con:
-    #             con.row_factory = aiosqlite.Row
-    #             await con.execute('DELETE FROM resources WHERE pid == ?', (os.getpid(),))
-    #             await con.commit()
-    #     if self.__local_negotiator:
-    #         await self.__local_negotiator.send_sync_event()
-
     async def run_task(self, task: InvocationJob, report_to: AddressChain):
         if self.__stopped:
             raise WorkerNotAvailable()
-        self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}, {self.__resource_db_lock.locked_by_me()}')
-        async with self.__task_changing_state_lock, self.__resource_db_lock:
-            self.__logger.debug('resource+task_change_state locks aquired')
+        self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}')
+        async with self.__task_changing_state_lock:
+            self.__logger.debug('task_change_state locks aquired')
             # we must ensure picking up and finishing tasks is in critical section
-            # among all the local worker processes - hence this resource_db_lock which is file lock
             assert len(task.args()) > 0
             if self.__running_process is not None:
                 raise AlreadyRunning('Task already in progress')
-
-            # # check resources
-            # self.__logger.debug(repr(self.__my_resources))
-            # # await self.check_update_resources(already_locked=True)  # update our resources
-            # task_resource_requirements = task.requirements().to_min_worker_resources()
-            # self.__logger.debug(repr(self.__my_resources))
-            # self.__logger.debug(repr(task_resource_requirements))
-            # if self.__my_resources < task_resource_requirements:
-            #     raise NotEnoughResources()
 
             # prepare logging
             self.__logger.info(f'running task {task}')
@@ -536,13 +422,6 @@ class Worker:
                 assert self.__pool_address is not None
                 with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
                     await wpclient.report_state(self.__worker_id, WorkerState.BUSY)
-
-            # # now adjust shared resource db:
-            # # we are still in the resource lock
-            # self.__my_resources -= task_resource_requirements
-            # assert self.__my_resources.is_valid(), f'bad resources {repr(self.__my_resources)}'
-            # await self._inform_scheduler_about_resources()
-            # await self._set_local_resource_usage(task_resource_requirements, already_locked=True)
 
     # callback awaiter
     async def _awaiter(self):
@@ -709,15 +588,6 @@ class Worker:
 
             await asyncio.wait((cancelling_awaiter,))  # ensure everything is done before we proceed
 
-            # # update resources
-            # async with self.__resource_db_lock:
-            #     await self._unset_local_resource_usage(already_locked=True)
-            #     # self.__my_resources += task_used_resources  # not needed cuz check_update_resources will do it anyway
-            #     # sanity_check_resources = copy.copy(self.__my_resources)
-            #     await self.check_update_resources(already_locked=True)  # this also reports changed resources to scheruler
-            #     # if self.__my_resources != sanity_check_resources:
-            #     #     # no need to panic here - this can happen if resource change event was missed or was not yet processed
-
             # stop ourselves if we are a small task helper
             if self.__singleshot:
                 self.stop()
@@ -761,15 +631,6 @@ class Worker:
             self.__running_awaiter = None  # TODO: lol, this function can be called from awaiter, and if we hand below - awaiter can be gcd, and it's all fucked
             self.__running_task_progress = None
             await self._cleanup_extra_files()
-
-            # # update resources
-            # async with self.__resource_db_lock:
-            #     await self._unset_local_resource_usage(already_locked=True)
-            #     # self.__my_resources += task_used_resources  # not needed cuz check_update_resources will do it anyway
-            #     # sanity_check_resources = copy.copy(self.__my_resources)
-            #     await self.check_update_resources(already_locked=True)  # this also reports changed resources to scheruler
-            #     # if self.__my_resources != sanity_check_resources:
-            #     #     # no need to panic here - this can happen if resource change event was missed or was not yet processed
 
             # stop ourselves if we are a small task helper
             if self.__singleshot:
