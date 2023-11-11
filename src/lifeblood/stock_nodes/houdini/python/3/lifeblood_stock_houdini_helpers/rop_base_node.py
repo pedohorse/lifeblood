@@ -8,6 +8,11 @@ from typing import Iterable, Optional
 
 
 class RopBaseNode(BaseNodeWithTaskRequirements):
+    """
+    helper base class for render nodes that typically produce scene descriptions such as rs, ass, ifd, usd,
+    to be rendered by a different program later
+    """
+
     def __init__(self, name):
         super(RopBaseNode, self).__init__(name)
         ui = self.get_ui()
@@ -186,7 +191,8 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 f'node.parm({repr(scene_file_parm_name)}).set({repr(scene_description_path)})\n'
 
         script += \
-            f'for frame in {repr(frames)}:\n' \
+            f'for i, frame in enumerate({repr(frames)}):\n' \
+            f'    print("ALF_PROGRESS {{}}%".format(int(i*100.0/{len(frames)})))\n' \
             f'    hou.setFrame(frame)\n' \
             f'    skipped = False\n'
         if context.param_value('skip if exists'):
@@ -197,7 +203,8 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             f'        print("output file already exists, skipping frame %d" % frame)\n' \
             f'    else:\n' \
             f'        print("rendering frame %d" % frame)\n' \
-            f'        node.render(frame_range=(frame, frame))\n'
+            f'        node.render(frame_range=(frame, frame), ignore_inputs=True)\n'
+            # TODO: consider input ignoring to be optional
         if spawnlines:
             script += \
                 f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n' \
