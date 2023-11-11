@@ -5,7 +5,7 @@ import toml  # for raw file comparison
 from lifeblood.config import get_config
 
 
-class StandardEnvResTest(unittest.TestCase):
+class StandardConfigTest(unittest.TestCase):
     _stash = None
     config_base_path = None
 
@@ -92,3 +92,26 @@ class StandardEnvResTest(unittest.TestCase):
         self.assertDictEqual({'one': 13.44, 'two': 'beep', 'three': 456}, config.get_option_noasync('main'))
         self.assertDictEqual({'wow': 'cat'}, config.get_option_noasync('some'))
         self.assertDictEqual({'wee': 'so much'}, config.get_option_noasync('body'))
+
+
+class DefaultComponentConfigTest(unittest.TestCase):
+    def test_default_schediler(self):
+        from lifeblood.scheduler import default_config
+        data = toml.loads(default_config)
+        self.assertIn('scheduler', data)
+        self.assertIn('globals', data['scheduler'])
+        self.assertNotEqual('', data['scheduler']['globals']['global_scratch_location'])
+
+    def test_default_worker(self):
+        """
+        simply checking that config is a valid toml
+        """
+        from lifeblood.worker import default_config
+        data = toml.loads(default_config)
+
+    def test_default_viewer(self):
+        """
+        simply checking that config is a valid toml
+        """
+        from lifeblood_viewer import default_config
+        data = toml.loads(default_config)
