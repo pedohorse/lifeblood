@@ -105,6 +105,7 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
             for invoc_id, log_meta in logs:
 
                 invoc_good = log_meta.return_code == 0
+
                 status = "ok" if invoc_good \
                          else ("..." if log_meta.return_code is None else f'fail({log_meta.return_code})')
                 runtime_text = str(timedelta(seconds=round(log_meta.invocation_runtime))) if log_meta.invocation_runtime is not None else "N/A"

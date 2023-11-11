@@ -11,16 +11,7 @@ from .db_misc import sql_init_script
 from lifeblood import paths
 from lifeblood.config import create_default_user_config_file
 
-from . import breeze_resources
-
-
-default_config = '''
-[viewer]
-listen_to_broadcast = true
-
-[imgui]
-# ini_file = "path/to/some/special/imgui.ini"
-'''
+from . import breeze_resources, default_config
 
 
 def main(argv):  # TODO: parse cmdline (argv)
