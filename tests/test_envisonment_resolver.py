@@ -1,10 +1,24 @@
 import os
 import unittest
+from unittest import mock
 from lifeblood import environment_resolver
 from lifeblood.invocationjob import Environment
 from lifeblood.toml_coders import TomlFlatConfigEncoder
 import toml
+from pathlib import Path
 from lifeblood import config
+
+
+class PropertyMock(mock.PropertyMock):
+    """
+    adjusted copy of mock.PropertyMock
+    """
+
+    def __get__(self, obj, obj_type=None):
+        return self(obj)
+
+    def __set__(self, obj, val):
+        self(obj, val)
 
 
 class StandardEnvResTest(unittest.TestCase):
@@ -106,3 +120,32 @@ class StandardEnvResTest(unittest.TestCase):
         # print('\n\n============================\n\n')
         # print(r2)
         self.assertDictEqual(toml.loads(r), toml.loads(r2))
+
+    # TODO: this is a nasty test with too many too specific mocks
+    def test_autodetect_win(self):
+        existing_mock_paths = {
+            r'C:\Program Files\Side Effects Software': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640\bin': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640\houdini': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640\python': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640\python\bin': True,
+            r'C:\Program Files\Side Effects Software\Houdini 19.5.640\python\bin\python3.10.exe': False,
+        }
+        with (mock.patch('pathlib.Path.exists', autospec=True) as pexists,
+              mock.patch('pathlib.Path.iterdir', autospec=True) as piterdir,
+              mock.patch('pathlib.Path.is_dir', autospec=True) as pisdir,
+              mock.patch('pathlib.Path.__truediv__', autospec=True) as pdiv,
+              mock.patch('pathlib.Path.name', new=PropertyMock()) as pname,
+              mock.patch('sys.platform', 'win32')):
+            pathsep = '\\'
+            pexists.side_effect = lambda self, *args, **kwargs: print(str(self)) or str(self) in existing_mock_paths
+            piterdir.side_effect = lambda self, *args, **kwargs: {Path(f"{self}{pathsep}{x[len(str(self))+1:].split(pathsep, 1)[0]}") for x in existing_mock_paths if x.startswith(str(self)) and x != str(self)}
+            pisdir.side_effect = lambda self: existing_mock_paths.get(str(self), False)
+            pdiv.side_effect = lambda path0, path1: Path(pathsep.join((str(path0), str(path1)))) if str(path1) not in ('', '.') else path0
+            pname.side_effect = lambda self: Path(str(self).rsplit(pathsep, 1)[-1])
+
+            result = environment_resolver.StandardEnvironmentResolver.autodetect_houdini()
+            print(result)
+            self.assertIn('houdini.py3', result)
+            self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3']['19.5.640']['env']['PATH']['prepend'])
