@@ -561,6 +561,7 @@ class Worker:
             self.__running_awaiter = None
 
             await kill_process_tree(self.__running_process)
+            self.__running_task.finish(None, time.time() - self.__running_process_start_time)
 
             self.__running_process._transport.close()  # sometimes not closed straight away transport ON EXIT may cause exceptions in __del__ that event loop is closed
 

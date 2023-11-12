@@ -427,7 +427,7 @@ class InvocationJob:
     def task_id(self) -> int:
         return self.__task_id
 
-    def finish(self, exitcode: int, running_time: float):
+    def finish(self, exitcode: Optional[int], running_time: float):
         self.__exitcode = exitcode
         self.__running_time = running_time
 
