@@ -1488,14 +1488,15 @@ class Scheduler:
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f'fetching log metadata for {task_id}')
-            async with con.execute('SELECT "id", node_id, runtime, worker_id, return_code from "invocations" WHERE "task_id" = ?',
+            async with con.execute('SELECT "id", node_id, runtime, worker_id, state, return_code from "invocations" WHERE "task_id" = ?',
                                    (task_id, )) as cur:
                 async for entry in cur:
                     node_id = entry['node_id']
                     logs.setdefault(node_id, []).append(IncompleteInvocationLogData(
                         entry['id'],
                         entry['worker_id'],
-                        entry['runtime'],
+                        entry['runtime'],  # TODO: this should be set to active run time if invocation is running
+                        InvocationState(entry['state']),
                         entry['return_code']
                     ))
             return logs

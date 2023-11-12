@@ -1442,13 +1442,9 @@ class Task(NetworkItemWithUI):
             for inv_id, logs in invocs.items():
                 if inv_id in self.__log[node_id]:
                     assert logs is not None
-                    if isinstance(logs, IncompleteInvocationLogData):  # logs.get('__incompletemeta__', False):
-                        self.__log[node_id][inv_id].invocation_id = logs.invocation_id
-                        self.__log[node_id][inv_id].worker_id = logs.worker_id
-                        self.__log[node_id][inv_id].invocation_runtime = logs.invocation_runtime
-                        self.__log[node_id][inv_id].return_code = logs.return_code
-                        continue
-                self.__log[node_id][inv_id] = logs
+                    self.__log[node_id][inv_id].copy_from(logs)
+                else:
+                    self.__log[node_id][inv_id] = logs
         self.__inv_log = None
 
         self.update_ui()

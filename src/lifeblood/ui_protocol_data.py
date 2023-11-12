@@ -609,25 +609,34 @@ class IncompleteInvocationLogData(IBufferSerializable):
     invocation_id: int
     worker_id: int
     invocation_runtime: Optional[float]
+    invocation_state: InvocationState
     return_code: Optional[int]
 
+    def copy_from(self, other: "IncompleteInvocationLogData"):
+        self.invocation_id = other.invocation_id
+        self.worker_id = other.worker_id
+        self.invocation_runtime = other.invocation_runtime
+        self.invocation_state = other.invocation_state
+        self.return_code = other.return_code
+
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQ?d?q',
+        stream.write(struct.pack('>QQ?d?qI',
                                  self.invocation_id,
                                  self.worker_id,
                                  self.invocation_runtime is not None, self.invocation_runtime or 0.0,
-                                 self.return_code is not None, self.return_code or 0
+                                 self.return_code is not None, self.return_code or 0,
+                                 self.invocation_state.value
                                  )
                      )
 
     @classmethod
     def deserialize(cls, stream: BufferedReader):
-        i_id, w_id, has_i_rt, i_rt, has_i_rc, i_rc = struct.unpack('>QQ?d?q', stream.readexactly(34))
+        i_id, w_id, has_i_rt, i_rt, has_i_rc, i_rc, i_s_raw = struct.unpack('>QQ?d?qI', stream.readexactly(38))
         if not has_i_rt:
             i_rt = None
         if not has_i_rc:
             i_rc = None
-        return IncompleteInvocationLogData(i_id, w_id, i_rt, i_rc)
+        return IncompleteInvocationLogData(i_id, w_id, i_rt, InvocationState(i_s_raw), i_rc)
 
 
 @dataclass
@@ -641,6 +650,17 @@ class InvocationLogData(IBufferSerializable):
     return_code: Optional[int]
     stdout: str
     stderr: str
+
+    def copy_from(self, other: "InvocationLogData"):
+        self.invocation_id = other.invocation_id
+        self.worker_id = other.worker_id
+        self.invocation_runtime = other.invocation_runtime
+        self.task_id = other.task_id
+        self.node_id = other.node_id
+        self.invocation_state = other.invocation_state
+        self.return_code = other.return_code
+        self.stdout = other.stdout
+        self.stderr = other.stderr
 
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>QQ?dQQI?Q', self.invocation_id, self.worker_id, self.invocation_runtime is not None,
