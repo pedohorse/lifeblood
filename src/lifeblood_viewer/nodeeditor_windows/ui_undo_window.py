@@ -8,11 +8,14 @@ class UndoWindow(ImguiViewWindow):
         super().__init__(editor_widget, 'Undo History')
 
     def draw_window_elements(self):
+        something_was_visible = False
         for name in reversed(self.scene().undo_stack_names()):
             if len(name) > 40:
                 name = name[:40] + '...'
             imgui.bullet_text(name)
-            if not imgui.is_item_visible():
+            if not something_was_visible and imgui.is_item_visible():
+                something_was_visible = True
+            elif something_was_visible and not imgui.is_item_visible():
                 break
 
     def initial_geometry(self):
