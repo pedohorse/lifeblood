@@ -75,3 +75,7 @@ def nice_memory_formatting(memory_bytes: int) -> str:
             return f'{prefix}{memory_bytes}{su}'
         memory_bytes //= 1000
     return f'{prefix}{memory_bytes}{next_suff}'
+
+
+def escape(text: str, symbols: str) -> str:
+    return text.translate({ord(i): f'\\{i}' for i in symbols})

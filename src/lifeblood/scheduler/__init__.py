@@ -8,11 +8,13 @@ from ..defaults import scheduler_port as default_scheduler_port, ui_port as defa
 from ..config import get_config, create_default_user_config_file, get_local_scratch_path
 from .. import logging
 from .. import paths
+from ..text import escape
 
 from .scheduler import Scheduler
 
 from typing import Optional
 
+__esc = '\\"'
 
 default_config = f'''
 [core]
@@ -34,7 +36,7 @@ default_config = f'''
 ##
 ## if you use more than 1 machine - you must change this to a network location shared among all workers
 ## by default it's set to scheduler's machine local temp path, and will only work for 1 machine setup 
-global_scratch_location = "{re.escape(get_local_scratch_path())}"
+global_scratch_location = "{escape(get_local_scratch_path(), __esc)}"
 
 [scheduler.database]
 ## you can specify default database path, 
