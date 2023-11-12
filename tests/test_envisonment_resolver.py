@@ -132,12 +132,12 @@ class StandardEnvResTest(unittest.TestCase):
             r'C:\Program Files\Side Effects Software\Houdini 19.5.640\python\bin': True,
             r'C:\Program Files\Side Effects Software\Houdini 19.5.640\python\bin\python3.10.exe': False,
         }
-        with (mock.patch('pathlib.Path.exists', autospec=True) as pexists,
-              mock.patch('pathlib.Path.iterdir', autospec=True) as piterdir,
-              mock.patch('pathlib.Path.is_dir', autospec=True) as pisdir,
-              mock.patch('pathlib.Path.__truediv__', autospec=True) as pdiv,
-              mock.patch('pathlib.Path.name', new=PropertyMock()) as pname,
-              mock.patch('sys.platform', 'win32')):
+        with mock.patch('pathlib.Path.exists', autospec=True) as pexists, \
+             mock.patch('pathlib.Path.iterdir', autospec=True) as piterdir, \
+             mock.patch('pathlib.Path.is_dir', autospec=True) as pisdir, \
+             mock.patch('pathlib.Path.__truediv__', autospec=True) as pdiv, \
+             mock.patch('pathlib.Path.name', new=PropertyMock()) as pname, \
+             mock.patch('sys.platform', 'win32'):
             pathsep = '\\'
             pexists.side_effect = lambda self, *args, **kwargs: print(str(self)) or str(self) in existing_mock_paths
             piterdir.side_effect = lambda self, *args, **kwargs: {Path(f"{self}{pathsep}{x[len(str(self))+1:].split(pathsep, 1)[0]}") for x in existing_mock_paths if x.startswith(str(self)) and x != str(self)}
