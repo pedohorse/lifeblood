@@ -5,6 +5,7 @@ from lifeblood_viewer.code_editor.editor import StringParameterEditor
 from lifeblood_viewer.long_op import LongOperation, LongOperationData
 from lifeblood_viewer.graphics_scene import QGraphicsImguiScene
 from lifeblood_viewer.graphics_items import Task
+from lifeblood.enums import InvocationState
 
 from PySide2.QtCore import Qt, Slot, Signal, QRectF, QPointF
 from PySide2.QtWidgets import QWidget, QGraphicsView
@@ -98,33 +99,19 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
         if self.__highlighted_task is None or self.__buttons is None:
             return
 
+        text_size_est = imgui.calc_text_size('in progress...')
+        window_width = 60 + text_size_est[0]
+
         for node_id, (pos, height, logs) in self.__buttons.items():
             screen_pos = viewer.mapFromScene(pos)
             screen_height = abs(viewer.mapFromScene(0, height).y() - viewer.mapFromScene(0, 0).y())
-            texts = []
-            for invoc_id, log_meta in logs:
-
-                invoc_good = log_meta.return_code == 0
-
-                status = "ok" if invoc_good \
-                         else ("..." if log_meta.return_code is None else f'fail({log_meta.return_code})')
-                runtime_text = str(timedelta(seconds=round(log_meta.invocation_runtime))) if log_meta.invocation_runtime is not None else "N/A"
-                status_text = f'{status}:{runtime_text}'
-                texts.append((invoc_id, invoc_good, status_text))
-
-            # status_text_height = 0
-            status_text_width = 0
-            for _, _, text in texts:
-                estimated_size = imgui.calc_text_size(text)
-                status_text_width = max(status_text_width, estimated_size[0] + 12)  # 16 for scrollbar
-                # status_text_height += estimated_size[1]
-            window_width = 50 + status_text_width
+            approx_height = len(logs) * text_size_est[1]
 
             imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (6.0, 6.0))
             imgui.set_next_window_position(screen_pos.x() - window_width, screen_pos.y() - 15)
-            #imgui.set_next_window_size(window_width, 12 + status_text_height + 4 * len(texts))
             imgui.set_next_window_size_constraints((window_width, 30),
                                                    (window_width, max(30, screen_height)))
+            imgui.set_next_window_size(0, approx_height, imgui.ONCE)
             imgui.begin(f"smth##forground_interface_{node_id}", False,
                         imgui.WINDOW_NO_MOVE | imgui.WINDOW_NO_TITLE_BAR |
                         imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_RESIZE |
@@ -132,14 +119,35 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
                         imgui.WINDOW_NO_NAV_FOCUS | imgui.WINDOW_NO_BRING_TO_FRONT_ON_FOCUS |
                         imgui.WINDOW_ALWAYS_AUTO_RESIZE)
 
-            for invoc_id, invoc_good, status_text in texts:
+            something_was_visible = False
+            for invoc_id, log_meta in logs:
+
+                invoc_state = log_meta.invocation_state
+                ret_good = log_meta.return_code == 0
+
+                status = "ok" if ret_good else \
+                         ("in progress..." if invoc_state != InvocationState.FINISHED else
+                          ('...' if log_meta.return_code is None else
+                           f'fail({log_meta.return_code})'))  # cuz FINISHED, and return_code is no good
+                runtime_text = str(timedelta(seconds=round(log_meta.invocation_runtime))) if log_meta.invocation_runtime is not None else None
+                status_text = f'{status}:{runtime_text}' if runtime_text else status
+
                 if imgui.button(f'log##forground_interface_log_{invoc_id}'):
                     self.__scene.fetch_and_open_log(invoc_id, self._open_log_viewer, viewer)
                 imgui.same_line()
-                clr = (0.55, 0.9, 0.55) if invoc_good else (0.9, 0.55, 0.55)
+                clr = (0.8, 0.8, 0.55) if invoc_state != InvocationState.FINISHED else (
+                      (0.55, 0.9, 0.55) if ret_good else (0.9, 0.55, 0.55))
                 imgui.push_style_color(imgui.COLOR_TEXT, *clr)
                 imgui.text(status_text)
                 imgui.pop_style_color()
+
+                # don't draw too many items if not scrolled
+                if not something_was_visible and imgui.is_item_visible():
+                    something_was_visible = True
+                elif something_was_visible and not imgui.is_item_visible():
+                    break
+
+
             imgui.end()
             imgui.pop_style_var()
 
