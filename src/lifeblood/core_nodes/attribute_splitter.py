@@ -43,7 +43,7 @@ class FramerangeSplitter(BaseNode):
             mode_param = ui.add_parameter('split type', 'mode', NodeParameterType.STRING, 'list') \
                             .add_menu((('Split List', 'list'), ('Split Range', 'range')))
             ui.add_separator()
-            ui.add_parameter('attribute name', 'attribute value to split', NodeParameterType.STRING, 'frames').append_visibility_condition(mode_param, '==', 'list')
+            ui.add_parameter('attribute name', 'attribute to split', NodeParameterType.STRING, 'frames').append_visibility_condition(mode_param, '==', 'list')
             ui.add_parameter('chunk size', 'chunk size', NodeParameterType.INT, 10).append_visibility_condition(mode_param, '==', 'list')
 
             range_mode_param = ui.add_parameter('range mode', 'Range Mode', NodeParameterType.INT, 0) \
@@ -114,7 +114,7 @@ class FramerangeSplitter(BaseNode):
             attrs = context.task_attributes()
             attr_name = context.param_value('attribute name')
             if attr_name not in attrs:
-                raise ProcessingError('attribute "frames" not found')
+                raise ProcessingError(f'attribute "{attr_name}" not found')
             attr_value = attrs[attr_name]
             if not isinstance(attr_value, list):
                 raise ProcessingError(f'attribute "{attr_name}" must be a list')
