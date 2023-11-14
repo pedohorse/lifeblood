@@ -457,7 +457,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                 if row is not None:
                     return row['posx'], row['posy']
 
-    def node_types(self) -> MappingProxyType:
+    def node_types(self) -> MappingProxyType[str, NodeTypeMetadata]:
         return MappingProxyType(self.__cached_nodetypes)
 
     #
