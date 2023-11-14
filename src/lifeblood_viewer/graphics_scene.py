@@ -553,7 +553,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         op = RenameNodeOp(self, node, new_name)
         op.do()
 
-    def fetch_and_open_log(self, invocation_id, callback: Callable[[InvocationLogData, Any], None], callback_data: Any = None):
+    def fetch_log_run_callback(self, invocation_id, callback: Callable[[InvocationLogData, Any], None], callback_data: Any = None):
         def _fetch_open_log_longop(longop: LongOperation):
             longop.set_op_status(None, f"fetching log for {invocation_id}")
             self.request_log(invocation_id, LongOperationData(longop))
