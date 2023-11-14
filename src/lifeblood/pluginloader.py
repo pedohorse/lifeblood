@@ -49,7 +49,7 @@ def _install_node(filepath, plugin_category, parent_package=None):
     try:
         mod = importlib.util.module_from_spec(mod_spec)
         mod_spec.loader.exec_module(mod)
-        mod._plugin_info = plugin_info.PluginInfo(filepath, parent_package)
+        mod._plugin_info = plugin_info.PluginInfo(filepath, plugin_category, parent_package)
     except:
         logger.exception(f'failed to load plugin "{filebasename}". skipping.')
         return

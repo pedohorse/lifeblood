@@ -8,8 +8,9 @@ class PluginInfo:
     class for getting information about a plugin
 
     """
-    def __init__(self, file_path, parent_package=None):
+    def __init__(self, file_path, category, parent_package=None):
         self.__file_path = Path(file_path)
+        self.__category = category
 
         self.__parent_package = Path(parent_package) if parent_package is not None else None
         self.__parent_package_data = None
@@ -19,6 +20,9 @@ class PluginInfo:
                 self.__parent_package_data = None
 
         self.__package_name = None
+
+    def category(self) -> str:
+        return self.__category
 
     def package_name(self) -> Optional[str]:
         if self.__parent_package is None:

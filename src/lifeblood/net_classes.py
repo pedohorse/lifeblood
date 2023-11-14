@@ -10,6 +10,7 @@ from .logging import get_logger
 from typing import Optional, TYPE_CHECKING, Tuple, Type, Union, Set
 if TYPE_CHECKING:
     from .basenode import BaseNode
+    from .plugin_info import PluginInfo
 
 __logger = get_logger('worker_resources')
 
@@ -51,10 +52,25 @@ def _try_parse_mem_spec(s: Union[str, int], default: Optional[int] = None):
     return int(bytes_count)
 
 
+class NodeTypePluginMetadata:
+    def __init__(self, plugin_info: "PluginInfo"):
+        self.__package_name = plugin_info.package_name()
+        self.__category = plugin_info.category()
+
+    @property
+    def package_name(self) -> Optional[str]:
+        return self.__package_name
+
+    @property
+    def category(self) -> str:
+        return self.__category
+
+
 class NodeTypeMetadata(TypeMetadata):
     def __init__(self, node_type: Type["BaseNode"]):
         from . import pluginloader  # here cuz it should only be created from lifeblood, but can be used from viewer too
         self.__type_name = node_type.type_name()
+        self.__plugin_info = NodeTypePluginMetadata(node_type.my_plugin())
         self.__label = node_type.label()
         self.__tags = set(node_type.tags())
         self.__description = node_type.description()
@@ -63,6 +79,10 @@ class NodeTypeMetadata(TypeMetadata):
     @property
     def type_name(self) -> str:
         return self.__type_name
+
+    @property
+    def plugin_info(self) -> NodeTypePluginMetadata:
+        return self.__plugin_info
 
     @property
     def label(self) -> Optional[str]:

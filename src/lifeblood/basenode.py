@@ -246,11 +246,14 @@ class BaseNode:
     # Plugin info
     #
     @classmethod
-    def my_plugin(cls) -> Optional[PluginInfo]:
+    def my_plugin(cls) -> PluginInfo:
         from . import pluginloader
         type_name = cls.type_name()
-        if type_name not in pluginloader.plugins:
-            return None
+        # this case was for nodetypes that are present in DB, but not loaded cuz of configuration errors
+        #  but it doesn't make sense in current form - if node is created - plugin info will be present
+        #  this needs to be rethought
+        # # if type_name not in pluginloader.plugins:
+        # #     return None
         return pluginloader.plugins[type_name]._plugin_info
 
     #
