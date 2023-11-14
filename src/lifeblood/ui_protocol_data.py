@@ -651,16 +651,17 @@ class InvocationLogData(IBufferSerializable):
     stdout: str
     stderr: str
 
-    def copy_from(self, other: "InvocationLogData"):
+    def copy_from(self, other: Union["InvocationLogData", "IncompleteInvocationLogData"]):
         self.invocation_id = other.invocation_id
         self.worker_id = other.worker_id
         self.invocation_runtime = other.invocation_runtime
-        self.task_id = other.task_id
-        self.node_id = other.node_id
         self.invocation_state = other.invocation_state
         self.return_code = other.return_code
-        self.stdout = other.stdout
-        self.stderr = other.stderr
+        if isinstance(other, InvocationLogData):
+            self.task_id = other.task_id
+            self.node_id = other.node_id
+            self.stdout = other.stdout
+            self.stderr = other.stderr
 
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>QQ?dQQI?Q', self.invocation_id, self.worker_id, self.invocation_runtime is not None,
