@@ -6,6 +6,7 @@ from datetime import timedelta
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
+from lifeblood.config import get_config
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
 from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.basenode import BaseNode
@@ -18,7 +19,7 @@ from lifeblood.enums import NodeParameterType
 import PySide2.QtGui
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Qt, Slot, QRectF, QSizeF, QPointF, QAbstractAnimation, QSequentialAnimationGroup
-from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent, QLinearGradient
+from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QKeyEvent, QLinearGradient, QDesktopServices
 
 import imgui
 
@@ -174,6 +175,9 @@ class Node(NetworkItemWithUI):
         self.__vismark = ImplicitSplitVisualizer(self)
         self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
         self.__vismark.setZValue(-2)
+
+        # misc
+        self.__manual_url_base = get_config('viewer').get_option_noasync('manual_base_url', 'https://pedohorse.github.io/lifeblood')
 
     def get_session_id(self):
         """
@@ -729,6 +733,11 @@ class Node(NetworkItemWithUI):
             if self.__nodeui is not None:
                 self.__draw_single_item(self.__nodeui.main_parameter_layout(), drawing_widget=drawing_widget)
         elif self.__ui_selected_tab == 1:
+            if self.__node_type in self.scene().node_types() and imgui.button('open manual page'):
+                plugin_info = self.scene().node_types()[self.__node_type].plugin_info
+                category = plugin_info.category
+                package = plugin_info.package_name
+                QDesktopServices.openUrl(self.__manual_url_base + f'/nodes/{category}{f"/{package}" if package else ""}/{self.__node_type}.html')
             imgui.text(self.scene().node_types()[self.__node_type].description if self.__node_type in self.scene().node_types() else 'error')
 
     def add_connection(self, new_connection: "NodeConnection"):
