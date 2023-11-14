@@ -230,8 +230,21 @@ class StringParameterEditor(QWidget):
     def text(self):
         return self.__textarea.toPlainText()
 
-    def set_text(self, text: str):
+    def set_text(self, text: str, keep_scroll=True, stick_to_bottom=False):
+        """
+        if keep_scroll is set - scrollbar position will be preserbed during text update
+        if stick_to_bottom is set -  if scrollbar position is at the very end - it will be scrolled to the very end after update too
+        """
+        scroll_val = self.__textarea.verticalScrollBar().value()
+        scroll_max = self.__textarea.verticalScrollBar().maximum()
+        print(f'keep pop {scroll_val}/{scroll_max}')
+
         self.__textarea.setPlainText(text)
+        if stick_to_bottom and scroll_val == scroll_max:
+            print(f'new max {self.__textarea.verticalScrollBar().maximum()}')
+            self.__textarea.verticalScrollBar().setValue(self.__textarea.verticalScrollBar().maximum())
+        elif keep_scroll:
+            self.__textarea.verticalScrollBar().setValue(scroll_val)
 
     def set_title(self, title: str):
         self.setWindowTitle(title)
