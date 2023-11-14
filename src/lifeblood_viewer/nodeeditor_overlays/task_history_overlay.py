@@ -12,6 +12,7 @@ from PySide2.QtWidgets import QWidget, QGraphicsView
 from PySide2.QtGui import QPainter, QPainterPath, QPen, QColor, QMouseEvent
 import imgui
 
+from ..editor_scene_integration import fetch_and_open_log_viewer
 from .overlay_base import NodeEditorOverlayBase
 
 
@@ -133,7 +134,10 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
                 status_text = f'{status}:{runtime_text}' if runtime_text else status
 
                 if imgui.button(f'log##forground_interface_log_{invoc_id}'):
-                    self.__scene.fetch_and_open_log(invoc_id, self._open_log_viewer, viewer)
+                    if invoc_state != InvocationState.FINISHED:
+                        fetch_and_open_log_viewer(self.__scene, invoc_id, viewer, update_interval=5)
+                    else:
+                        fetch_and_open_log_viewer(self.__scene, invoc_id, viewer)
                 imgui.same_line()
                 clr = (0.8, 0.8, 0.55) if invoc_state != InvocationState.FINISHED else (
                       (0.55, 0.9, 0.55) if ret_good else (0.9, 0.55, 0.55))
@@ -147,14 +151,6 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
                 elif something_was_visible and not imgui.is_item_visible():
                     break
 
-
             imgui.end()
             imgui.pop_style_var()
 
-    def _open_log_viewer(self, log, parent):
-        hl = StringParameterEditor.SyntaxHighlight.LOG
-        wgt = StringParameterEditor(syntax_highlight=hl, parent=parent)
-        wgt.set_text(log.stdout)
-        wgt.set_readonly(True)
-        wgt.set_title(f'Log: task {log.task_id}, invocation {log.invocation_id}')
-        wgt.show()
