@@ -25,6 +25,7 @@ import imgui
 from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
 from . import nodeeditor
+from .editor_scene_integration import fetch_and_open_log_viewer
 if TYPE_CHECKING:
     from .graphics_scene import QGraphicsImguiScene
 
@@ -1442,9 +1443,10 @@ class Task(NetworkItemWithUI):
             for inv_id, logs in invocs.items():
                 if inv_id in self.__log[node_id]:
                     assert logs is not None
-                    self.__log[node_id][inv_id].copy_from(logs)
-                else:
-                    self.__log[node_id][inv_id] = logs
+                    if isinstance(logs, IncompleteInvocationLogData):
+                        self.__log[node_id][inv_id].copy_from(logs)
+                        continue
+                self.__log[node_id][inv_id] = logs
         self.__inv_log = None
 
         self.update_ui()
@@ -1714,12 +1716,7 @@ class Task(NetworkItemWithUI):
                 else:
                     if invoc_log.stdout:
                         if imgui.button(f'open in viewer##{invoc_id}'):
-                            hl = StringParameterEditor.SyntaxHighlight.LOG
-                            wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
-                            wgt.set_text(invoc_log.stdout)
-                            wgt.set_readonly(True)
-                            wgt.set_title(f'Log: task {self.get_id()}, invocation {invoc_id}')
-                            wgt.show()
+                            fetch_and_open_log_viewer(self.scene(), invoc_id, drawing_widget, update_interval=None if invoc_log.invocation_state == InvocationState.FINISHED else 5)
 
                         imgui.text_unformatted(invoc_log.stdout or '...nothing here...')
                     if invoc_log.invocation_state == InvocationState.IN_PROGRESS:
