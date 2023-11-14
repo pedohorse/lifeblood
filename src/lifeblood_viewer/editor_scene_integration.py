@@ -41,8 +41,7 @@ def _open_log_viewer_with_update(log, callback_data):
             invoc_id,
             lambda new_log, _:
                 (wgt.set_text(new_log.stdout, stick_to_bottom=True),
-                 update_timer.start(),
-                 print('DEBUG ME, TIMER IS OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOn'))
+                 update_timer.start(),)
         )
     )
     wgt._update_timer = update_timer  # we need to keep reference, or pyside will delete underlying qt object

@@ -237,11 +237,9 @@ class StringParameterEditor(QWidget):
         """
         scroll_val = self.__textarea.verticalScrollBar().value()
         scroll_max = self.__textarea.verticalScrollBar().maximum()
-        print(f'keep pop {scroll_val}/{scroll_max}')
 
         self.__textarea.setPlainText(text)
         if stick_to_bottom and scroll_val == scroll_max:
-            print(f'new max {self.__textarea.verticalScrollBar().maximum()}')
             self.__textarea.verticalScrollBar().setValue(self.__textarea.verticalScrollBar().maximum())
         elif keep_scroll:
             self.__textarea.verticalScrollBar().setValue(scroll_val)
