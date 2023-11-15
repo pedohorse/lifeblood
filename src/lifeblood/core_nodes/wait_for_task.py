@@ -69,20 +69,28 @@ class WaitForTaskValue(BaseNode):
     def ready_to_process_task(self, task_dict) -> bool:
         # roughly estimate if we should try processing
         context = ProcessingContext(self, task_dict)
-        task_id = context.task_field('id')
+
         expected_values = shlex.split(context.param_value('expected values'))
         condition_value = context.param_value('condition value')
-        # the "or x == condition_value" case below is for the first run before condition_value of the same task got into set cache
-        return all(x in self.__values_set_cache or x == condition_value for x in expected_values)
+
+        if condition_value not in self.__values_set_cache:
+            return True
+        return all(x in self.__values_set_cache for x in expected_values)
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         task_id = context.task_id()
         expected_values = shlex.split(context.param_value('expected values'))
         condition_value = context.param_value('condition value')
         with self.__main_lock:
-            if self.__values_map.get(task_id) != condition_value:
+            # we use value map to ensure each task contribute only one condition value,
+            # in case task was resubmitted multiple times with changed parameters/attributes
+            existing_value = self.__values_map.get(task_id)
+            if existing_value != condition_value:
                 self.__values_map[task_id] = condition_value
-                self.__values_set_cache = set(self.__values_map.values())
+                if existing_value is None:  # was not set before
+                    self.__values_set_cache.add(condition_value)
+                else:  # else value was changed, task reprocessed, so we should recreate the whole value set cache (cannot just remove cuz maybe another task contributes same value)
+                    self.__values_set_cache = set(self.__values_map.values())
             if all(x in self.__values_set_cache for x in expected_values):
                 res = ProcessingResult()
                 res.set_node_output_name(context.task_field('node_input_name'))
