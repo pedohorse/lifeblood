@@ -23,7 +23,7 @@ class SwitchTasks(BaseNode):
 
     @classmethod
     def type_name(cls) -> str:
-        return 'swtich'
+        return 'switch'
 
     def __init__(self, name: str):
         super(SwitchTasks, self).__init__(name)
