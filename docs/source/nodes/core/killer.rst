@@ -6,7 +6,7 @@ Killer
 
 Kills incoming tasks
 
-"Dead" tasks - are a special state of tasks that are excluded from any processing by Lifeblood, yet kept for keeping all invocaions and other references valid.
+:ref:`"Dead" tasks<dead_tasks>` - are a special state of tasks that are excluded from any processing by Lifeblood, yet kept for keeping all invocaions and other references valid.
 
 Dead tasks can also be easily filtered in the viewer
 

@@ -4,7 +4,7 @@
 Modify Attributes
 =================
 
-Execute some  python code
+Execute some python code
 
 Parameters
 ==========
@@ -23,4 +23,4 @@ Invoke
 Attributes Set
 ==============
 
-    Attributes set by code with something like ``task['attr_name'] = "something"`` will be set to the task
+Attributes set by code with something like ``task['attr_name'] = "something"`` will be set to the task

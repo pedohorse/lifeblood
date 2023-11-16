@@ -4,7 +4,9 @@
 Modify Environment Resolver Arguments
 =====================================
 
-Modifies Environment Resolver information of the task
+Modifies Environment Resolver information of the task.
+
+:ref:`Environment Resolver<environment_resolver>` is one of core concepts related to invocation running.
 
 Parameters
 ==========

@@ -4,7 +4,9 @@
 Split Waiter
 ============
 
-Core task synchronization node.  # TODO: link to core split concept
+Core task synchronization node.
+
+:ref:`Split concept<concept_split>` is one of the core Lifeblood's task concepts.
 
 A Task will be held here until all tasks from the same split this task belongs to have arrived at this task.
 So tasks in a split will be synchronized in this node.

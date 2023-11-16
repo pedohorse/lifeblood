@@ -6,6 +6,8 @@ Wedge Attributes
 
 Split incoming task into some number of split tasks, where each of split tasks will hold a variation of an attribute
 
+:ref:`Split concept<concept_split>` is one of the core Lifeblood's task concepts.
+
 Parameters
 ==========
 

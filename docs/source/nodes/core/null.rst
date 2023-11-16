@@ -1,5 +1,17 @@
 .. _nodes/core/null:
 
 ====
-null
+Null
 ====
+
+Does nothing.
+
+Parameters
+==========
+
+None
+
+Attributes Set
+==============
+
+None

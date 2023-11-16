@@ -4,7 +4,9 @@
 Parent-Children Waiter
 ======================
 
-Core task synchronization node.  # TODO: link to core split concept
+Core task synchronization node.
+
+Tasks' :ref:`parent-children hierarchy<task_parent_hierarchy>` is a core concept of Lifeblood.
 
 Tasks coming from input 1 are treated as parents, tasks coming from input 2 are treated as children.
 
@@ -20,7 +22,7 @@ When tasks are let through - they leave through the output that corresponds to t
 Parameters
 ==========
 
-recursive
+Recursive
     if this is set - tasks coming through second input are treated as both parents and children, therefore tasks coming from input 1 will be waiting
     for all their children, grandchildren and so on.
 

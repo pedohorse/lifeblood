@@ -10,11 +10,11 @@ Parameters
 ==========
 
 delete
-    name of the attribute to delete
+    Name of the attribute to delete
 
-    this does not currently support patterns, only exact names
+    This does not currently support patterns, only exact names
 
-    if attribute does not exist - nothing will be done
+    If attribute does not exist - nothing is be done
 
 Attributes Set
 ==============
