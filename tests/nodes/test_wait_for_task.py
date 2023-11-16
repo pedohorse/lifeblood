@@ -10,6 +10,12 @@ from typing import List
 
 class TestWaitForTaskNode(TestCaseBase):
     async def test_basic_functions(self):
+        """
+        just check thst common case works:
+        task0 needs task1 and task2
+        task1 needs task2
+        task3 needs task0 task1 task2
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -69,6 +75,9 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_trivial1(self):
+        """
+        trivial task with condition and no expectations needs to pass
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -86,6 +95,9 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_trivial1a(self):
+        """
+        spaces should be trimmed from expectations
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -103,6 +115,9 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_trivial2(self):
+        """
+        condition same as expectation should pass by itself
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -120,6 +135,9 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_trivial3(self):
+        """
+        spaces should be trimmed from both condition and expectation
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -137,13 +155,16 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_trivial4(self):
+        """
+        all empty should pass
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
             node.set_param_value('expected values', '`task["exp"]`')
 
             task0 = context.create_pseudo_task_with_attrs({
-                'cond': 'qwe',
+                'cond': '',
                 'exp': ''
             }, 234)
             self.assertTrue(node.ready_to_process_task(task0.task_dict()))
@@ -154,8 +175,14 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     # rescheduler behaviour testings
+    #  all tests below are related to rescheduling task with different condition or expectations
 
     async def test_reschedule_with_different_cond(self):
+        """
+        change cond from "qwe" to "rty"
+        before: task1 should pass, task2 should not
+        after: task2 should pass, task1 should not
+        """
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             node: BaseNode = context.create_node('wait_for_task_value', 'footest')
             node.set_param_value('condition value', '`task["cond"]`')
@@ -199,10 +226,20 @@ class TestWaitForTaskNode(TestCaseBase):
             _logic
         )
 
-    async def test_reschedule_with_from_empty_cond1(self):
+    async def test_reschedule_with_from_empty_cond_no_exp(self):
+        """
+        change condition from empty to "rty", expectation is empty
+        before: task1 task2 should not pass
+        after: task2 should pass, task1 should not
+        """
         await self._helper_test_reschedule_with_from_empty_cond(0)
 
-    async def test_reschedule_with_from_empty_cond2(self):
+    async def test_reschedule_with_from_empty_cond_with_exp(self):
+        """
+        change condition from empty to "rty", expectation is non-empty
+        before: task1 task2 should not pass
+        after: task2 should pass, task1 should not
+        """
         await self._helper_test_reschedule_with_from_empty_cond(1)
 
     async def _helper_test_reschedule_with_from_empty_cond(self, var: int):
@@ -260,9 +297,19 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_reschedule_with_to_empty_cond_without_exp_set(self):
+        """
+        change condition from "qwe" to empty, expectation is non-empty
+        before: task1 should pass, task2 should not
+        after: task1 task2 should not pass
+        """
         await self._helper_test_reschedule_with_to_empty_cond(0)
 
     async def test_reschedule_with_to_empty_cond_with_exp_set(self):
+        """
+        change condition from "qwe" to empty, expectation is non-empty
+        before: task1 should pass, task2 should not
+        after: task1 task2 should not pass
+        """
         await self._helper_test_reschedule_with_to_empty_cond(1)
 
     async def _helper_test_reschedule_with_to_empty_cond(self, var: int):
@@ -323,9 +370,19 @@ class TestWaitForTaskNode(TestCaseBase):
         )
 
     async def test_reschedule_with_both_cond_exp_set_to_nothing(self):
+        """
+        change condition from "qwe" to empty, expectation from "foo" to empty
+        before: task1 should pass, task2 should not
+        after: task1 task2 should not pass
+        """
         await self._helper_test_reschedule_with_to_from_empty_cond_exp(0)
 
     async def test_reschedule_with_both_cond_exp_set_from_nothing(self):
+        """
+        change condition from empty to "qwe", expectation from  empty to "foo"
+        before: task1 task2 should not pass
+        after: task1 should pass, task2 should not
+        """
         await self._helper_test_reschedule_with_to_from_empty_cond_exp(1)
 
     async def _helper_test_reschedule_with_to_from_empty_cond_exp(self, var: int):
