@@ -27,6 +27,11 @@ Addressing
 Address Chain
 -------------
 
+.. _environment_resolver:
+
+Environment Resolver
+--------------------
+
 Task Processing
 ===============
 
@@ -35,8 +40,15 @@ Task Processing
 Processing stage
 ----------------
 
+.. _dead_tasks:
+
+Dead Tasks
+----------
+
 Task Relations
 ==============
+
+.. _task_parent_hierarchy:
 
 Task Parent Hierarchy
 ---------------------
