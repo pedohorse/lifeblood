@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import os
 import shutil
 import tempfile
@@ -7,6 +8,7 @@ import sqlite3
 import json
 from unittest import mock, IsolatedAsyncioTestCase
 from lifeblood.db_misc import sql_init_script
+from lifeblood.basenode import BaseNode
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
 from lifeblood.invocationjob import InvocationJob, Environment
@@ -16,7 +18,7 @@ from lifeblood.processingcontext import ProcessingContext
 from lifeblood.process_utils import oh_no_its_windows
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 
 class FakeEnvArgs(EnvironmentResolverArguments):
@@ -29,6 +31,60 @@ class FakeEnvArgs(EnvironmentResolverArguments):
         return Environment({**os.environ,
                             'PATH': os.pathsep.join((str(Path(__file__).parent / self.__bin_path), os.environ.get('PATH', ''))),
                             'PYTHONUNBUFFERED': '1'})
+
+
+class PseudoTask:
+    def __init__(self, task_id: int, attrs: dict):
+        self.__id = task_id
+        self.__task_dict = {
+            'id': task_id,
+            'attributes':  json.dumps(attrs)
+        }
+
+    def get_context_for(self, node: BaseNode) -> ProcessingContext:
+        return ProcessingContext(node, self.__task_dict)
+
+    def task_dict(self) -> dict:
+        return self.__task_dict
+
+    def attributes(self) -> dict:
+        return json.loads(self.__task_dict['attributes'])
+
+    def update_attribs(self, attribs_to_set: dict, attribs_to_delete: Optional[Set[str]] = None):
+        attrs: dict = json.loads(self.__task_dict['attributes'])
+        attrs.update(attribs_to_set)
+        if attribs_to_delete:
+            for attr in attribs_to_delete:
+                attrs.pop(attr)
+        self.__task_dict['attributes'] = json.dumps(attrs)
+
+
+class PseudoContext:
+    """
+    sorta container for pseudo tasks and nodes for a single test
+    """
+    def __init__(self, scheduler: Scheduler):
+        self.__scheduler = scheduler
+        self.__last_node_id = 135  # cuz why starting with zero?
+        self.__last_task_id = 468
+        self.__tasks: Dict[int, PseudoTask] = {}
+
+    def create_pseudo_task_with_attrs(self, attrs: dict, task_id: Optional[int] = None) -> PseudoTask:
+        if task_id is None:
+            self.__last_task_id += 1
+            task_id = self.__last_task_id
+        task = PseudoTask(task_id, attrs)
+        self.__tasks[task_id] = task
+        return task
+
+    def create_node(self, node_type: str, node_name: str) -> BaseNode:
+        self.__last_node_id += 1
+        return create_node(node_type, node_name, self.__scheduler, self.__last_node_id)
+
+    def _update_attribs(self, task_id: int, update_attribs: dict, delete_attribs: set):
+        if task_id not in self.__tasks:
+            raise ValueError(f'something is wrong with the test - task_id {task_id} not found in pseudo context')
+        self.__tasks[task_id].update_attribs(update_attribs, delete_attribs)
 
 
 
@@ -125,6 +181,24 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     await worker.wait_till_stops()
                 sched.stop()
                 await sched.wait_till_stops()
+
+    async def _helper_test_node_with_arg_update(self,
+                                                logic: Callable):
+        """
+        logic
+        logic(sched, workers, done_waiter, context)
+        """
+
+        async def _logic(sched: Scheduler, workers: List[Worker], tmp_script_path: str, done_waiter: asyncio.Event):
+            context = PseudoContext(sched)
+            with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
+                attr_patch.side_effect = lambda task_id, attributes_to_update, attributes_to_delete, *args, **kwargs: \
+                    (
+                        context._update_attribs(task_id, attributes_to_update, attributes_to_delete)
+                    )
+                return await logic(sched, workers, done_waiter, context)
+
+        return await self._helper_test_worker_node(_logic)
 
     async def _helper_test_render_node(self, node_type_name, scn_ext, command, bin_rel_path):
         the_worker = None
