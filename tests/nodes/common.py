@@ -7,8 +7,10 @@ from pathlib import Path
 import sqlite3
 import json
 from unittest import mock, IsolatedAsyncioTestCase
+from lifeblood.enums import TaskState
 from lifeblood.db_misc import sql_init_script
-from lifeblood.basenode import BaseNode
+from lifeblood.basenode import BaseNode, ProcessingResult
+from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
 from lifeblood.invocationjob import InvocationJob, Environment
@@ -33,19 +35,47 @@ class FakeEnvArgs(EnvironmentResolverArguments):
                             'PYTHONUNBUFFERED': '1'})
 
 
+class PseudoTaskPool:
+    def children_ids_for(self, task_id, active_only=False) -> List[int]:
+        raise NotImplementedError()
+
+
 class PseudoTask:
-    def __init__(self, task_id: int, attrs: dict):
+    def __init__(self, pool: PseudoTaskPool, task_id: int, attrs: dict, parent_id: Optional[int] = None, state: Optional[TaskState] = None):
         self.__id = task_id
+        self.__parent_id = parent_id
+        self.__state = state or TaskState.GENERATING
+        self.__pool = pool
+        self.__input_name = 'main'
         self.__task_dict = {
             'id': task_id,
+            'node_input_name': self.__input_name,
+            'state': self.__state.value,
+            'parent_id': parent_id,
             'attributes':  json.dumps(attrs)
         }
 
+    def id(self) -> int:
+        return self.__id
+
+    def parent_id(self) -> int:
+        return self.__parent_id
+
+    def state(self) -> TaskState:
+        return self.__state
+
+    def set_input_name(self, name: str):
+        self.__input_name = name
+        self.__task_dict['node_input_name'] = self.__input_name
+
     def get_context_for(self, node: BaseNode) -> ProcessingContext:
-        return ProcessingContext(node, self.__task_dict)
+        return ProcessingContext(node, self.task_dict())
 
     def task_dict(self) -> dict:
-        return self.__task_dict
+        return {**self.__task_dict, **{
+            'children_count': len(self.__pool.children_ids_for(self.__id)),
+            'active_children_count': len(self.__pool.children_ids_for(self.__id, True)),
+        }}
 
     def attributes(self) -> dict:
         return json.loads(self.__task_dict['attributes'])
@@ -58,8 +88,15 @@ class PseudoTask:
                 attrs.pop(attr)
         self.__task_dict['attributes'] = json.dumps(attrs)
 
+    def set_state(self, state: TaskState):
+        self.__state = state
+        self.__task_dict['state'] = self.__state.value
 
-class PseudoContext:
+    def children(self, active: bool = False):
+        return self.__pool
+
+
+class PseudoContext(PseudoTaskPool):
     """
     sorta container for pseudo tasks and nodes for a single test
     """
@@ -69,11 +106,11 @@ class PseudoContext:
         self.__last_task_id = 468
         self.__tasks: Dict[int, PseudoTask] = {}
 
-    def create_pseudo_task_with_attrs(self, attrs: dict, task_id: Optional[int] = None) -> PseudoTask:
+    def create_pseudo_task_with_attrs(self, attrs: dict, task_id: Optional[int] = None, parent_id: Optional[int] = None, state: Optional[TaskState] = None) -> PseudoTask:
         if task_id is None:
             self.__last_task_id += 1
             task_id = self.__last_task_id
-        task = PseudoTask(task_id, attrs)
+        task = PseudoTask(self, task_id, attrs, parent_id, state)
         self.__tasks[task_id] = task
         return task
 
@@ -86,7 +123,31 @@ class PseudoContext:
             raise ValueError(f'something is wrong with the test - task_id {task_id} not found in pseudo context')
         self.__tasks[task_id].update_attribs(update_attribs, delete_attribs)
 
+    def children_ids_for(self, task_id, active_only=False) -> List[int]:
+        ids = []
+        for tid, task in self.__tasks.items():
+            if task.parent_id() == task_id and (not active_only or task.state() != TaskState.DEAD):
+                ids.append(tid)
+        return ids
 
+    def id_to_task(self, task_id: int) -> PseudoTask:
+        return self.__tasks[task_id]
+
+    def process_task(self, node: BaseNode, task: PseudoTask, input_name='main') -> Optional[ProcessingResult]:
+        """
+        imitate normal processing.
+        return None if processing raised not ready.
+        other exceptions are propagated
+        """
+        ready = node.ready_to_process_task(task.task_dict())
+        if not ready:
+            return None
+        try:
+            res = node.process_task(task.get_context_for(node))
+        except NodeNotReadyToProcess:
+            return None
+        task.update_attribs(res.attributes_to_set)
+        return res
 
 def purge_db():
     testdbpath = Path('test_swc.db')
@@ -170,6 +231,8 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     td_patch.side_effect = _side_effect
                     done_waiter = asyncio.create_task(done_ev.wait())
                     await logic(sched, workers, tmp_script_path, done_waiter)
+                    if not done_waiter.done():
+                        done_waiter.cancel()
                     self.assertTrue(side_effect_was_good)
             finally:
                 if tmp_script_path:
