@@ -41,7 +41,7 @@ class PseudoTaskPool:
 
 
 class PseudoTask:
-    def __init__(self, pool: PseudoTaskPool, task_id: int, attrs: dict, parent_id: Optional[int] = None, state: Optional[TaskState] = None):
+    def __init__(self, pool: PseudoTaskPool, task_id: int, attrs: dict, parent_id: Optional[int] = None, state: Optional[TaskState] = None, extra_fields: Optional[dict] = None):
         self.__id = task_id
         self.__parent_id = parent_id
         self.__state = state or TaskState.GENERATING
@@ -52,7 +52,8 @@ class PseudoTask:
             'node_input_name': self.__input_name,
             'state': self.__state.value,
             'parent_id': parent_id,
-            'attributes':  json.dumps(attrs)
+            'attributes':  json.dumps(attrs),
+            **(extra_fields or {})
         }
 
     def id(self) -> int:
@@ -104,15 +105,31 @@ class PseudoContext(PseudoTaskPool):
         self.__scheduler = scheduler
         self.__last_node_id = 135  # cuz why starting with zero?
         self.__last_task_id = 468
+        self.__last_split_id = 765
         self.__tasks: Dict[int, PseudoTask] = {}
 
-    def create_pseudo_task_with_attrs(self, attrs: dict, task_id: Optional[int] = None, parent_id: Optional[int] = None, state: Optional[TaskState] = None) -> PseudoTask:
+    def create_pseudo_task_with_attrs(self, attrs: dict, task_id: Optional[int] = None, parent_id: Optional[int] = None, state: Optional[TaskState] = None, extra_fields: Optional[dict] = None) -> PseudoTask:
         if task_id is None:
             self.__last_task_id += 1
             task_id = self.__last_task_id
-        task = PseudoTask(self, task_id, attrs, parent_id, state)
+        task = PseudoTask(self, task_id, attrs, parent_id, state, extra_fields)
         self.__tasks[task_id] = task
         return task
+
+    def create_pseudo_split_of(self, pseudo_task: PseudoTask, attribs_list):
+        """
+        split count will be taken from attrib_list's len
+        """
+        tasks = []
+        self.__last_split_id += 1
+        for i, attribs in enumerate(attribs_list):
+            tasks.append(self.create_pseudo_task_with_attrs(attribs, task_id=None, parent_id=None, state=TaskState.GENERATING, extra_fields={
+                'split_id': self.__last_split_id,
+                'split_count': len(attribs_list),
+                'split_origin_task_id': pseudo_task.id(),
+                'split_element': i,
+            }))
+        return tasks
 
     def create_node(self, node_type: str, node_name: str) -> BaseNode:
         self.__last_node_id += 1
