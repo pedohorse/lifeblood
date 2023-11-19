@@ -55,3 +55,93 @@ class TestWedge(TestCaseBase):
         await self._helper_test_node_with_arg_update(
             _logic
         )
+
+    async def test_wedgings(self):
+        exp_pairs = [
+            (
+                (('att1', 0, 1, 10, 10, 0, 0),),
+                (10, [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,)])
+            ),
+            (
+                (('att1', 1, 1, 0, 0, 10, 1),),
+                (10, [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,)])
+            ),
+
+            (
+                (('att1', 0, 1.5, 10.5, 10, 0, 0),),
+                (10, [(1.5,), (2.5,), (3.5,), (4.5,), (5.5,), (6.5,), (7.5,), (8.5,), (9.5,), (10.5,)])
+            ),
+            (
+                (('att1', 1, 1.5, 0, 0, 10.5, 1),),
+                (10, [(1.5,), (2.5,), (3.5,), (4.5,), (5.5,), (6.5,), (7.5,), (8.5,), (9.5,), (10.5,)])
+            ),
+
+            (
+                (('att1', 0, 1/3, 1/3 + 9, 10, 0, 0),),
+                (10, [(1/3,), (1/3+1,), (1/3+2,), (1/3+3,), (1/3+4,), (1/3+5,), (1/3+6,), (1/3+7,), (1/3+8,), (1/3+9,)])
+            ),
+            (
+                (('att1', 1, 1/3, 0, 0, 1/3 + 9, 1),),
+                (10, [(1/3,), (1/3+1,), (1/3+2,), (1/3+3,), (1/3+4,), (1/3+5,), (1/3+6,), (1/3+7,), (1/3+8,), (1/3+9,)])
+            ),
+
+            (
+                (('att1', 0, 1.567, 2.345, 6, 0, 0),),
+                (6, [(1.567,), (1.7226,), (1.8782,), (2.0338,), (2.1894,), (2.345,)])
+            ),
+            (
+                (('att1', 1, 1.567, 0, 0, 2.345, 0.1556),),
+                (6, [(1.567,), (1.7226,), (1.8782,), (2.0338,), (2.1894,), (2.345,)])
+            ),
+
+            (
+                (('att1', 0, 1, 2.5, 4, 0, 0), ('att2', 0, 11, 15, 3, 0, 0)),
+                (12, [(1.0, 11), (1.0, 13), (1.0, 15), (1.5, 11), (1.5, 13), (1.5, 15), (2.0, 11), (2.0, 13), (2.0, 15), (2.5, 11), (2.5, 13), (2.5, 15)])
+            ),
+            (
+                (('att1', 1, 1, 0, 0, 2.5, 0.5), ('att2', 1, 11, 0, 0, 15, 2)),
+                (12, [(1.0, 11), (1.0, 13), (1.0, 15), (1.5, 11), (1.5, 13), (1.5, 15), (2.0, 11), (2.0, 13), (2.0, 15), (2.5, 11), (2.5, 13), (2.5, 15)])
+            ),
+        ]
+
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+
+            task = context.create_pseudo_task_with_attrs({})
+
+            for exp_inputs, exp_results in exp_pairs:
+
+                node = context.create_node('wedge', 'footest')
+                node.set_param_value('wedge count', len(exp_inputs))
+                attr_name_order = []
+                for i, (attr_name, rmode, rfrom, rto, rcount, rmax, rinc) in enumerate(exp_inputs):
+                    print(i, attr_name, rmode, rfrom, rto, rcount, rmax, rinc)
+                    attr_name_order.append(attr_name)
+                    node.set_param_value(f'wtype_{i}', rmode)  # by count or by inc
+                    node.set_param_value(f'attr_{i}', attr_name)
+                    node.set_param_value(f'from_{i}', rfrom)
+                    node.set_param_value(f'to_{i}', rto)
+                    node.set_param_value(f'count_{i}', rcount)
+                    node.set_param_value(f'max_{i}', rmax)
+                    node.set_param_value(f'inc_{i}', rinc)
+
+                res = context.process_task(node, task)
+
+                self.assertIsNotNone(res)
+                attr_tuples = [tuple(attrs[n] for n in attr_name_order) for attrs in res._split_attribs]
+                self.assertEqual(exp_results[0], len(attr_tuples))
+
+                if exp_results[1] is not None:
+                    # now some elaborate scheming to compare floats with AlmostEqual
+                    if len(exp_results[1]) and any(isinstance(x, float) for x in exp_results[1][0]):
+                        for ex, ac in zip(exp_results[1], attr_tuples):
+                            for xex, xac in zip(ex, ac):
+                                if isinstance(xex, float):
+                                    self.assertAlmostEqual(xex, xac, msg=f'float lists differ at: {ex} vs {ac}. from {exp_results} vs {attr_tuples}')
+                                else:
+                                    self.assertEqual(xex, xac, msg=f'float lists differ at: {ex} vs {ac}. from {exp_results} vs {attr_tuples}')
+                    else:
+                        self.assertListEqual(exp_results[1], attr_tuples)
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
