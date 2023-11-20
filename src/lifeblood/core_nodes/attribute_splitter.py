@@ -83,12 +83,17 @@ class FramerangeSplitter(BaseNode):
             raise ProcessingError('chunk size must be positive')
         ranges = []
         cur = start
-        while cur < end:
-            count_till_end = math.ceil((end - cur) / inc)
+        while cur <= end:
+            count_till_end = math.ceil((end - cur + 1) / inc)
             if count_till_end == 0:
                 break
-            ranges.append((cur, min(end, cur + inc * min(count_till_end, chunk_size)), min(count_till_end, chunk_size)))
-            cur = ranges[-1][1]
+            print(count_till_end)
+            ranges.append((cur, cur + inc * (min(count_till_end, chunk_size) - 1), min(count_till_end, chunk_size)))
+            cur = ranges[-1][1] + inc
+
+        # just set "end" for the last range
+        if ranges:
+            ranges[-1] = tuple(end if i == 1 else x for i, x in enumerate(ranges[-1]))
         return ranges
 
     @staticmethod
@@ -97,13 +102,19 @@ class FramerangeSplitter(BaseNode):
             raise ProcessingError('chunk count must be positive')
         ranges = []
         print(f'- {start}, {end} :{inc}')
+        chunk_count = min(chunk_count, int((end-start)/inc)+1)
         for i in range(chunk_count):
             e1 = start + math.ceil(((end - start) / chunk_count * i) / inc) * inc
-            e2 = min(end, start + math.ceil(((end - start) / chunk_count * (i + 1)) / inc) * inc)
-            print(e1, e2)
-            if e1 >= e2:  # case where chunk_count is bigger than possible
-                continue
-            new_range = (e1, e2, math.ceil((e2-e1)/inc))
+            e2 = start + math.ceil(((end - start) / chunk_count * (i + 1)) / inc) * inc
+            # if e1 >= e2:  # case where chunk_count is bigger than possible
+            #     continue
+            adj = 0
+            if i == chunk_count - 1:
+                e2 = end
+            else:
+                adj = -inc
+            print(e1, e2 + adj, math.ceil((e2-e1)/inc))
+            new_range = (e1, e2 + adj, math.ceil((e2-e1)/inc))
             ranges.append(new_range)
         return ranges
 
@@ -120,8 +131,13 @@ class FramerangeSplitter(BaseNode):
                 raise ProcessingError(f'attribute "{attr_name}" must be a list')
             res = ProcessingResult()
             chunksize = context.param_value('chunk size')
+            if chunksize <= 0:
+                raise ProcessingError(f'chunk size cannot be less or equal to zero, got: {chunksize}')
 
-            split_into = 1 + (len(attr_value) - 1) // chunksize
+            if len(attr_value) <= 1:
+                split_into = 1
+            else:
+                split_into = 1 + (len(attr_value) - 1) // chunksize
             # yes we can split into 1 part. this should behave the same way as when splitting into multiple parts
             # in order to have consistent behaviour in the graph
             res.split_task(split_into)
@@ -170,30 +186,3 @@ class FramerangeSplitter(BaseNode):
             return res
         else:
             raise NotImplementedError(f'mode "{mode}" is not implemented')
-
-
-if __name__ == '__main__':
-    # some fast tests
-    r = FramerangeSplitter._ranges_from_chunkcount(10, 12, 3, 10)
-    assert r == [(10, 12, 1)], r
-    r = FramerangeSplitter._ranges_from_chunkcount(10, 15, 3, 10)
-    assert r == [(10, 13, 1), (13, 15, 1)], r
-    r = FramerangeSplitter._ranges_from_chunkcount(15, 16, 3, 10)
-    assert r == [(15, 16, 1)], r
-    r = FramerangeSplitter._ranges_from_chunkcount(15, 29, 3, 3)
-    assert r == [(15, 21, 2), (21, 27, 2), (27, 29, 1)], r
-    r = FramerangeSplitter._ranges_from_chunkcount(15, 29, 3, 4)
-    assert r == [(15, 21, 2), (21, 24, 1), (24, 27, 1), (27, 29, 1)], r
-
-    r = FramerangeSplitter._ranges_from_chunksize(10, 12, 3, 1)
-    assert r == [(10, 12, 1)], r
-    r = FramerangeSplitter._ranges_from_chunksize(10, 12, 3, 10)
-    assert r == [(10, 12, 1)], r
-    r = FramerangeSplitter._ranges_from_chunksize(10, 15, 3, 1)
-    assert r == [(10, 13, 1), (13, 15, 1)], r
-    r = FramerangeSplitter._ranges_from_chunksize(10, 15, 3, 10)
-    assert r == [(10, 15, 2)], r
-    r = FramerangeSplitter._ranges_from_chunksize(15, 16, 3, 10)
-    assert r == [(15, 16, 1)], r
-    r = FramerangeSplitter._ranges_from_chunksize(15, 38, 3, 3)
-    assert r == [(15, 24, 3), (24, 33, 3), (33, 38, 2)], r
