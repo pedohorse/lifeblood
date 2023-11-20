@@ -95,7 +95,7 @@ class Wedge(BaseNode):
                     fr = int(fr)
                 if int(to) == to:
                     to = int(to)
-                    
+
                 # now create variations
                 if inc == 0:
                     raise ProcessingError('increment cannot be zero')
