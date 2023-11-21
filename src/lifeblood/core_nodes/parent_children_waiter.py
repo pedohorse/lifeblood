@@ -1,5 +1,5 @@
 import json
-from lifeblood.basenode import BaseNode
+from lifeblood.basenode import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.taskspawn import TaskSpawn
 from lifeblood.exceptions import NodeNotReadyToProcess
@@ -72,8 +72,8 @@ class ParentChildrenWaiterNode(BaseNode):
             return children_count == 0 or \
                    task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
 
-        ready: bool = True
         parent_id = context.task_field('parent_id')
+        ready: bool = True
         if context.param_value('recursive') and children_count > 0:
             ready = task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
         ready = ready and (
@@ -82,6 +82,61 @@ class ParentChildrenWaiterNode(BaseNode):
                 self.__cache_children[parent_id].parent_ready
                 )
         return ready
+
+    def __get_promote_attribs_for(self, context, task_id: int) -> dict:
+        result_attribs = {}
+        # transfer attributes
+        num_attribs = context.param_value('transfer_attribs')
+        for i in range(num_attribs):
+            src_attr_name = context.param_value(f'src_attr_name_{i}')
+            transfer_type = context.param_value(f'transfer_type_{i}')
+            dst_attr_name = context.param_value(f'dst_attr_name_{i}')
+            sort_attr_name = context.param_value(f'sort_by_{i}')
+            sort_reversed = context.param_value(f'reversed_{i}')
+            if transfer_type == 'append':
+                gathered_values = []
+                for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                    if src_attr_name not in attribs:
+                        continue
+
+                    attr_val = attribs[src_attr_name]
+                    gathered_values.append(attr_val)
+                result_attribs[dst_attr_name] = gathered_values
+            elif transfer_type == 'extend':
+                gathered_values = []
+                for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                    if src_attr_name not in attribs:
+                        continue
+
+                    attr_val = attribs[src_attr_name]
+                    if isinstance(attr_val, list):
+                        gathered_values.extend(attr_val)
+                    else:
+                        gathered_values.append(attr_val)
+                result_attribs[dst_attr_name] = gathered_values
+            elif transfer_type == 'first':
+                _acd = self.__cache_children[task_id].all_children_dicts
+                if len(_acd) > 0:
+                    if sort_reversed:
+                        attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                    else:
+                        attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                    if src_attr_name in attribs:
+                        result_attribs[dst_attr_name] = attribs[src_attr_name]
+            elif transfer_type == 'sum':
+                # we don't care about the order, assume sum is associative
+                gathered_values = None
+                for attribs in self.__cache_children[task_id].all_children_dicts.values():
+                    if src_attr_name not in attribs:
+                        continue
+                    if gathered_values is None:
+                        gathered_values = attribs[src_attr_name]
+                    else:
+                        gathered_values += attribs[src_attr_name]
+                result_attribs[dst_attr_name] = gathered_values
+            else:
+                raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
+        return result_attribs
 
     def process_task(self, context) -> ProcessingResult:
         task_id = context.task_field('id')
@@ -98,56 +153,9 @@ class ParentChildrenWaiterNode(BaseNode):
                 if children_count == len(self.__cache_children[task_id].children):
                     result = ProcessingResult()
                     # transfer attributes
-                    num_attribs = context.param_value('transfer_attribs')
-                    for i in range(num_attribs):
-                        src_attr_name = context.param_value(f'src_attr_name_{i}')
-                        transfer_type = context.param_value(f'transfer_type_{i}')
-                        dst_attr_name = context.param_value(f'dst_attr_name_{i}')
-                        sort_attr_name = context.param_value(f'sort_by_{i}')
-                        sort_reversed = context.param_value(f'reversed_{i}')
-                        if transfer_type == 'append':
-                            gathered_values = []
-                            for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                if src_attr_name not in attribs:
-                                    continue
-
-                                attr_val = attribs[src_attr_name]
-                                gathered_values.append(attr_val)
-                            result.set_attribute(dst_attr_name, gathered_values)
-                        elif transfer_type == 'extend':
-                            gathered_values = []
-                            for attribs in sorted(self.__cache_children[task_id].all_children_dicts.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                if src_attr_name not in attribs:
-                                    continue
-
-                                attr_val = attribs[src_attr_name]
-                                if isinstance(attr_val, list):
-                                    gathered_values.extend(attr_val)
-                                else:
-                                    gathered_values.append(attr_val)
-                            result.set_attribute(dst_attr_name, gathered_values)
-                        elif transfer_type == 'first':
-                            _acd = self.__cache_children[task_id].all_children_dicts
-                            if len(_acd) > 0:
-                                if sort_reversed:
-                                    attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                else:
-                                    attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                if src_attr_name in attribs:
-                                    result.set_attribute(dst_attr_name, attribs[src_attr_name])
-                        elif transfer_type == 'sum':
-                            # we don't care about the order, assume sum is associative
-                            gathered_values = None
-                            for attribs in self.__cache_children[task_id].all_children_dicts.values():
-                                if src_attr_name not in attribs:
-                                    continue
-                                if gathered_values is None:
-                                    gathered_values = attribs[src_attr_name]
-                                else:
-                                    gathered_values += attribs[src_attr_name]
-                            result.set_attribute(dst_attr_name, gathered_values)
-                        else:
-                            raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
+                    attribs = self.__get_promote_attribs_for(context, task_id)
+                    for attr_name, attr_value in attribs.items():
+                        result.set_attribute(attr_name, attr_value)
                     # release children
                     self.__cache_children[task_id].parent_ready = True
                     return result
@@ -162,28 +170,29 @@ class ParentChildrenWaiterNode(BaseNode):
                         raise NodeNotReadyToProcess()
                     if children_count != len(self.__cache_children[task_id].children):
                         raise NodeNotReadyToProcess()
+                # if recursive and children of this child were not processed -
+                #  then we will never reach this point
 
                 if parent_id not in self.__cache_children:
                     self.__cache_children[parent_id] = ParentChildrenWaiterNode.Entry()
+                if task_id not in self.__cache_children[parent_id].children:
+                    self.__cache_children[parent_id].children.add(task_id)
+                    self.__cache_children[parent_id].all_children_dicts[task_id] = json.loads(context.task_field('attributes'))
+                    self.__cache_children[parent_id].all_children_dicts[task_id]['_builtin_id'] = task_id
+                    # promote children attribs up
+                    if recursive and children_count > 0:
+                        self.__cache_children[parent_id].all_children_dicts.update(self.__cache_children[task_id].all_children_dicts)
 
-                children_attrs_to_pass_up = None
                 if self.__cache_children[parent_id].parent_ready:
                     # in recursive case - mark as ready to release children
                     if recursive and task_id in self.__cache_children:  # if we are parent to smth
                         self.__cache_children[task_id].parent_ready = True
-                        children_attrs_to_pass_up = self.__cache_children[task_id].all_children_dicts
                     # cleanup
                     self.__cache_children[parent_id].children.remove(task_id)
                     if len(self.__cache_children[parent_id].children) == 0:
                         del self.__cache_children[parent_id]
                     return ProcessingResult(node_output_name='children')
 
-                if task_id not in self.__cache_children[parent_id].children:
-                    self.__cache_children[parent_id].children.add(task_id)
-                    self.__cache_children[parent_id].all_children_dicts[task_id] = json.loads(context.task_field('attributes'))
-                    self.__cache_children[parent_id].all_children_dicts[task_id]['_builtin_id'] = task_id
-                    if children_attrs_to_pass_up is not None:
-                        self.__cache_children[parent_id].all_children_dicts.update(children_attrs_to_pass_up)
                 raise NodeNotReadyToProcess()
 
         raise NodeNotReadyToProcess()
@@ -192,6 +201,15 @@ class ParentChildrenWaiterNode(BaseNode):
         res = ProcessingResult()
         res.set_node_output_name(context.task_field('node_output_name', 'main'))
         return res
+
+    def _debug_has_internal_data_for_task(self, task_id: int):
+        """
+        method for debug/testing purposes.
+        returns True if some internal data is present for a given task_id
+        """
+        if task_id in self.__cache_children:
+            return True
+        return any(task_id in l.children for l in self.__cache_children.values())
 
     def __getstate__(self):
         d = super(ParentChildrenWaiterNode, self).__getstate__()
