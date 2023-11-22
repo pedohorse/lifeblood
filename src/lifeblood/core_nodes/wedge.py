@@ -49,7 +49,10 @@ class Wedge(BaseNode):
         for i in range(wedges_count):
             wtype = context.param_value(f'wtype_{i}')
             if wtype == 0:
-                wedge_ranges.append((0, context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'to_{i}'), context.param_value(f'count_{i}')))
+                count = context.param_value(f'count_{i}')
+                if count <= 0:
+                    raise ProcessingError('count cannot be less or equal to zero')
+                wedge_ranges.append((0, context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'to_{i}'), count))
             elif wtype == 1:
                 wedge_ranges.append((1, context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'max_{i}'), context.param_value(f'inc_{i}')))
             else:
@@ -63,13 +66,37 @@ class Wedge(BaseNode):
                 return
             if wedge_ranges[level][0] == 0:
                 _, attr, fr, to, cnt = wedge_ranges[level]
+                # first check if we actually work with ints
+                if int(fr) == fr:
+                    fr = int(fr)
+                if int(to) == to:
+                    to = int(to)
+                inc = None
+                if cnt > 1:
+                    finc = (to - fr) / (cnt - 1)
+                    if int(finc) == finc:
+                        inc = int(finc)
+
+                # now create variations
                 for i in range(cnt):
                     new_vals = cur_vals.copy()
-                    t = i * 1.0 / (cnt-1)
-                    new_vals[attr] = fr*(1-t) + to*t
+                    if inc is None:
+                        t = i * 1.0 / (cnt-1)
+                        new_vals[attr] = fr*(1-t) + to*t
+                    else:
+                        new_vals[attr] = fr + i*inc
                     _do_iter(new_vals, level+1)
             elif wedge_ranges[level][0] == 1:
                 _, attr, fr, to, inc = wedge_ranges[level]
+                # first check if we actually work with ints
+                if int(inc) == inc:
+                    inc = int(inc)
+                if int(fr) == fr:
+                    fr = int(fr)
+                if int(to) == to:
+                    to = int(to)
+
+                # now create variations
                 if inc == 0:
                     raise ProcessingError('increment cannot be zero')
                 elif inc > 0:
@@ -88,6 +115,8 @@ class Wedge(BaseNode):
         _do_iter({})
 
         res = ProcessingResult()
+        if len(all_wedges) == 0:
+            raise ProcessingError('unexpectedly no wedges were created')
         res.split_task(len(all_wedges))
         for i, attrs in enumerate(all_wedges):
             res.set_split_task_attribs(i, attrs)

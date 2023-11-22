@@ -59,6 +59,61 @@ class SplitAwaiterNode(BaseNode):
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
 
+    def __get_promote_attribs(self, context):
+        attribs_to_promote = {}
+        split_id = context.task_field('split_id')
+        num_attribs = context.param_value('transfer_attribs')
+        for i in range(num_attribs):
+            src_attr_name = context.param_value(f'src_attr_name_{i}')
+            transfer_type = context.param_value(f'transfer_type_{i}')
+            dst_attr_name = context.param_value(f'dst_attr_name_{i}')
+            sort_attr_name = context.param_value(f'sort_by_{i}')
+            sort_reversed = context.param_value(f'reversed_{i}')
+            if transfer_type == 'append':
+                gathered_values = []
+                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                    if src_attr_name not in attribs:
+                        continue
+
+                    attr_val = attribs[src_attr_name]
+                    gathered_values.append(attr_val)
+                attribs_to_promote[dst_attr_name] = gathered_values
+            elif transfer_type == 'extend':
+                gathered_values = []
+                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                    if src_attr_name not in attribs:
+                        continue
+
+                    attr_val = attribs[src_attr_name]
+                    if isinstance(attr_val, list):
+                        gathered_values.extend(attr_val)
+                    else:
+                        gathered_values.append(attr_val)
+                attribs_to_promote[dst_attr_name] = gathered_values
+            elif transfer_type == 'first':
+                _acd = self.__cache[split_id]['arrived']
+                if len(_acd) > 0:
+                    if sort_reversed:
+                        attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                    else:
+                        attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
+                    if src_attr_name in attribs:
+                        attribs_to_promote[dst_attr_name] = attribs[src_attr_name]
+            elif transfer_type == 'sum':
+                # we don't care about the order, assume sum is associative
+                gathered_values = None
+                for attribs in self.__cache[split_id]['arrived'].values():
+                    if src_attr_name not in attribs:
+                        continue
+                    if gathered_values is None:
+                        gathered_values = attribs[src_attr_name]
+                    else:
+                        gathered_values += attribs[src_attr_name]
+                attribs_to_promote[dst_attr_name] = gathered_values
+            else:
+                raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
+        return attribs_to_promote
+
     def ready_to_process_task(self, task_dict) -> bool:
         context = ProcessingContext(self, task_dict)
         split_id = context.task_field('split_id')
@@ -96,59 +151,9 @@ class SplitAwaiterNode(BaseNode):
                         res = ProcessingResult()
                         res.kill_task()
                         self.__cache[split_id]['processed'].add(context.task_field('split_element'))
-                        attribs_to_promote = {}
                         if self.__cache[split_id]['first_to_arrive'] == task_id:
                             # transfer attributes  # TODO: delete cache for already processed splits
-                            num_attribs = context.param_value('transfer_attribs')
-                            for i in range(num_attribs):
-                                src_attr_name = context.param_value(f'src_attr_name_{i}')
-                                transfer_type = context.param_value(f'transfer_type_{i}')
-                                dst_attr_name = context.param_value(f'dst_attr_name_{i}')
-                                sort_attr_name = context.param_value(f'sort_by_{i}')
-                                sort_reversed = context.param_value(f'reversed_{i}')
-                                if transfer_type == 'append':
-                                    gathered_values = []
-                                    for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                        if src_attr_name not in attribs:
-                                            continue
-
-                                        attr_val = attribs[src_attr_name]
-                                        gathered_values.append(attr_val)
-                                    attribs_to_promote[dst_attr_name] = gathered_values
-                                elif transfer_type == 'extend':
-                                    gathered_values = []
-                                    for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
-                                        if src_attr_name not in attribs:
-                                            continue
-
-                                        attr_val = attribs[src_attr_name]
-                                        if isinstance(attr_val, list):
-                                            gathered_values.extend(attr_val)
-                                        else:
-                                            gathered_values.append(attr_val)
-                                    attribs_to_promote[dst_attr_name] = gathered_values
-                                elif transfer_type == 'first':
-                                    _acd = self.__cache[split_id]['arrived']
-                                    if len(_acd) > 0:
-                                        if sort_reversed:
-                                            attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                        else:
-                                            attribs = min(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
-                                        if src_attr_name in attribs:
-                                            attribs_to_promote[dst_attr_name] = attribs[src_attr_name]
-                                elif transfer_type == 'sum':
-                                    # we don't care about the order, assume sum is associative
-                                    gathered_values = None
-                                    for attribs in self.__cache[split_id]['arrived'].values():
-                                        if src_attr_name not in attribs:
-                                            continue
-                                        if gathered_values is None:
-                                            gathered_values = attribs[src_attr_name]
-                                        else:
-                                            gathered_values += attribs[src_attr_name]
-                                    attribs_to_promote[dst_attr_name] = gathered_values
-                                else:
-                                    raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
+                            attribs_to_promote = self.__get_promote_attribs(context)
 
                             res.remove_split(attributes_to_set=attribs_to_promote)
                         changed = True
@@ -175,6 +180,13 @@ class SplitAwaiterNode(BaseNode):
 
     def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()
+
+    def _debug_has_internal_data_for_split(self, split_id: int) -> bool:
+        """
+        method for debug/testing purposes.
+        returns True if some internal data is present for a given split_id
+        """
+        return split_id in self.__cache
 
     def __getstate__(self):
         d = super(SplitAwaiterNode, self).__getstate__()
