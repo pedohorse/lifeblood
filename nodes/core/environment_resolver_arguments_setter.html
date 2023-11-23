@@ -450,20 +450,24 @@ document.write(`
 <p><a class="reference internal" href="../../concepts.html#environment-resolver"><span class="std std-ref">Environment Resolver</span></a> is one of core concepts related to invocation running.</p>
 <section id="parameters">
 <h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
-<dl>
-<dt>Mode</dt><dd><ul class="simple">
+<dl class="field-list">
+<dt class="field-odd">Mode<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
 <li><p>Set - sets/resets environment resolver information</p></li>
 <li><p>Modify - modifies existing environment resolver information</p></li>
 </ul>
 </dd>
-<dt>Resolver</dt><dd><p>Environment Resolver type name to set</p>
+<dt class="field-even">Resolver<span class="colon">:</span></dt>
+<dd class="field-even"><p>Environment Resolver type name to set</p>
 </dd>
-<dt>Arguments To Set</dt><dd><p>Environment Resolver arguments to set.</p>
+<dt class="field-odd">Arguments To Set<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Environment Resolver arguments to set.</p>
 <p>For default Lifeblood’s environment resolvers, here you most likely want to set such arguments as
 package names in form of <code class="docutils literal notranslate"><span class="pre">package.&lt;package_name&gt;</span></code> to value that can be iterpreted as version specification by Semantic Versioning standard,
 for example <code class="docutils literal notranslate"><span class="pre">~=1.2.3</span></code></p>
 </dd>
-<dt>Arguments To Delete</dt><dd><p>In Modify mode - list of environment resolver arguments to delete</p>
+<dt class="field-even">Arguments To Delete<span class="colon">:</span></dt>
+<dd class="field-even"><p>In Modify mode - list of environment resolver arguments to delete</p>
 </dd>
 </dl>
 </section>

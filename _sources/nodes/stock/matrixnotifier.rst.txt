@@ -10,25 +10,25 @@ matrix homeserver.
 Parameters
 ==========
 
-backend
+:Backend:
     what to use as a matrix client. By default - a simplest python client
     is provided. It can only send unencrypted messages, which is good enough
     for personal/local homeservers, but not good for public homeservers.
     ``matrix-commander`` may be used as a client instead (also requires libolm).
     see below
-room
+:Room:
     room id to connect to. should have form of !ksdojqlfjalskfj:matrix.smth
-retries
+:Retries:
     how many times to retry if connection fails
-fail task on notification sending error
+:Fail task on notification sending error:
     if after all retries message is not set - set the task into error state.
     if this is disabled - task will be considered done regardless of the
     success or failure of the message sending
-matrix server
+:Matrix server:
     matrix homeserver to use
-message
+:Message:
     message to send
-attach a file
+:Attach a file:
     optionally, a file may be attached to the message. it can be image, video
     or any other file. Be mindful if encryption is used when sending
     sensitive files to public homeservers

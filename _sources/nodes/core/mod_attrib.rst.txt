@@ -9,7 +9,7 @@ Modify incoming task's attributes
 Parameters
 ==========
 
-Name
+:Name:
     Name of the attribute to modify
 
 Attributes Set

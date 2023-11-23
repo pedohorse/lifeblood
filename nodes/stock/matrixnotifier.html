@@ -449,26 +449,33 @@ document.write(`
 matrix homeserver.</p>
 <section id="parameters">
 <h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
-<dl class="simple">
-<dt>backend</dt><dd><p>what to use as a matrix client. By default - a simplest python client
+<dl class="field-list simple">
+<dt class="field-odd">Backend<span class="colon">:</span></dt>
+<dd class="field-odd"><p>what to use as a matrix client. By default - a simplest python client
 is provided. It can only send unencrypted messages, which is good enough
 for personal/local homeservers, but not good for public homeservers.
 <code class="docutils literal notranslate"><span class="pre">matrix-commander</span></code> may be used as a client instead (also requires libolm).
 see below</p>
 </dd>
-<dt>room</dt><dd><p>room id to connect to. should have form of !ksdojqlfjalskfj:matrix.smth</p>
+<dt class="field-even">Room<span class="colon">:</span></dt>
+<dd class="field-even"><p>room id to connect to. should have form of !ksdojqlfjalskfj:matrix.smth</p>
 </dd>
-<dt>retries</dt><dd><p>how many times to retry if connection fails</p>
+<dt class="field-odd">Retries<span class="colon">:</span></dt>
+<dd class="field-odd"><p>how many times to retry if connection fails</p>
 </dd>
-<dt>fail task on notification sending error</dt><dd><p>if after all retries message is not set - set the task into error state.
+<dt class="field-even">Fail task on notification sending error<span class="colon">:</span></dt>
+<dd class="field-even"><p>if after all retries message is not set - set the task into error state.
 if this is disabled - task will be considered done regardless of the
 success or failure of the message sending</p>
 </dd>
-<dt>matrix server</dt><dd><p>matrix homeserver to use</p>
+<dt class="field-odd">Matrix server<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matrix homeserver to use</p>
 </dd>
-<dt>message</dt><dd><p>message to send</p>
+<dt class="field-even">Message<span class="colon">:</span></dt>
+<dd class="field-even"><p>message to send</p>
 </dd>
-<dt>attach a file</dt><dd><p>optionally, a file may be attached to the message. it can be image, video
+<dt class="field-odd">Attach a file<span class="colon">:</span></dt>
+<dd class="field-odd"><p>optionally, a file may be attached to the message. it can be image, video
 or any other file. Be mindful if encryption is used when sending
 sensitive files to public homeservers</p>
 </dd>

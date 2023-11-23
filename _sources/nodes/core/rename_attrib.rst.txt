@@ -9,9 +9,9 @@ Rename task attributes
 Parameters
 ==========
 
-from
+:From:
     rename attribute from this name
-to
+:To:
     to this name
 
 If attribute named **from** is not found - nothing will be done

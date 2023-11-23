@@ -449,12 +449,14 @@ document.write(`
 <p>Execute some python code</p>
 <section id="parameters">
 <h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
-<dl>
-<dt>Process</dt><dd><p>Python code to be executed by scheduler as part of processing stage. Do not perform any heavy operations here,
+<dl class="field-list">
+<dt class="field-odd">Process<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Python code to be executed by scheduler as part of processing stage. Do not perform any heavy operations here,
 instead perform them in the <strong>invoke</strong> code.</p>
 <p>You can call special function <code class="docutils literal notranslate"><span class="pre">schedule()</span></code> here, in that case code from <strong>Invoke</strong> parameter will be scheduled to be executed on a worker.</p>
 </dd>
-<dt>Invoke</dt><dd><p>Python code to be scheduled and executed on a worker.</p>
+<dt class="field-even">Invoke<span class="colon">:</span></dt>
+<dd class="field-even"><p>Python code to be scheduled and executed on a worker.</p>
 <p>Use <code class="docutils literal notranslate"><span class="pre">task</span></code> variable to get task attributes here, e.g. <code class="docutils literal notranslate"><span class="pre">task['attr']</span> <span class="pre">=</span> <span class="pre">123</span></code> will set attribute <code class="docutils literal notranslate"><span class="pre">attr</span></code> on the task to value 123.
 While this code will be executed on remote worker, all calls to task attribute getting methods, like <code class="docutils literal notranslate"><span class="pre">task['smth']</span></code> will be resolved beforehand.</p>
 </dd>

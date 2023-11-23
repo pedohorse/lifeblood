@@ -9,9 +9,9 @@ Set attributes on task
 Parameters
 ==========
 
-Name
+:Name:
     Name of the attribute to set
-Val
+:Val:
     Value to set for the attribute
 
 Attributes Set
