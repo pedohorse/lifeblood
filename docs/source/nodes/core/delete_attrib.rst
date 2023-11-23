@@ -9,7 +9,7 @@ Deletes attributes from the Task
 Parameters
 ==========
 
-delete
+:Delete:
     Name of the attribute to delete
 
     This does not currently support patterns, only exact names

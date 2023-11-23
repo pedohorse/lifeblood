@@ -29,9 +29,9 @@ Tasks from input number N will exit through corresponding output number N.
 Parameters
 ==========
 
-Condition Value
+:Condition Value:
     Value to be contributed to the "Global Pool"
-Expected value(s)
+:Expected Value(s):
     Values that task expects in order to proceed.
 
 Attributes Set

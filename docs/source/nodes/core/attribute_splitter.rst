@@ -27,7 +27,7 @@ respectively
 Parameters
 ==========
 
-Mode
+:Mode:
     Split mode:
 
     * list
@@ -45,23 +45,23 @@ Mode
         will result in incoming task being split into 4 tasks with values of given attributes
         ``out start name``, ``out end name`` or ``out size name`` being set to
         ``(15, 21, 2)``, ``(21, 24, 1)``, ``(24, 27, 1)`` and ``(27, 29, 1)`` respectively
-Attribute To Split
+:Attribute To Split:
     In List mode - the name of the attribute to split and set on split tasks
-Chunk Size
+:Chunk Size:
     Size of the chunks to split list/range into
-Range Mode
+:Range Mode:
     For range mode - type of range to output to splitted tasks
 
     * **start-end** - set starting and ending elements
     * **start-size** - set starting element and the number of elements
     * **start-end-size** - set starting element and both end element and the number of elements
-Start
+:Start:
     For range mode - start of the range to be split
-End
+:End:
     For range mode - end of the range to be split
-Inc
+:Inc:
     For range mode - increment of the range to be split
-Split By
+:Split By:
     How to split given list/range
 
     * chunk size
@@ -69,17 +69,17 @@ Split By
 
     * number of chunks
         Split by desired number of chunks
-Chunk Size
+:Chunk Size:
     Desired number of elements in each chunk
-Chunks Count
+:Chunks Count:
     Desired number of chunks
-Type
+:Type:
     For range mode - type of output range
-Output Range Start Attribute Name
+:Output Range Start Attribute Name:
     For range mode - name of the attribute to set on split tasks that holds the starting number of the range
-Output Range End Attribute Name
+:Output Range End Attribute Name:
     For range mode - name of the attribute to set on split tasks that holds the ending number of the range
-Output Range Size Attribute Name
+:Output Range Size Attribute Name:
     For range mode - name of the attribute to set on split tasks that holds the number of elements in the range
 
 

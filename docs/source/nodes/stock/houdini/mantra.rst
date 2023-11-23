@@ -9,11 +9,11 @@ Renders given IFD file with mantra renderer (part of houdini)
 Parameters
 ==========
 
-ifd file path
+:Ifd file path:
     path to the ifd file to be rendered
-image path
+:Image path:
     path where to save beauty pass
-skip if result already exists
+:Skip if result already exists:
     if set - if ``output image file path`` file already exists - render will be skipped
 
 Attributes Set
@@ -21,5 +21,5 @@ Attributes Set
 
 When render is done, the following attributes are set:
 
-file
+:file:
     set to path of the rendered beauty pass image

@@ -19,13 +19,13 @@ Parameters
 
 Transfer Attributes
 
-attribute
+:Attribute:
     name of an attribute to promote from children to parent
-as
+:As:
     set promoted value to attribute of this name on parent
-sort by
+:Sort By:
     how to sort children task before gathering values for promotion
-reversed
+:Reversed:
     reverse the sort
 
 Attributes Set

@@ -22,19 +22,19 @@ When tasks are let through - they leave through the output that corresponds to t
 Parameters
 ==========
 
-Recursive
+:Recursive:
     if this is set - tasks coming through second input are treated as both parents and children, therefore tasks coming from input 1 will be waiting
     for all their children, grandchildren and so on.
 
-Transfer Attributes
-
-attribute
+:Transfer Attributes:
+    Number of attributes to transfer from children being synced to the parent
+:Attribute:
     name of an attribute to promote from children to parent
-as
+:As:
     set promoted value to attribute of this name on parent
-sort by
+:Sort by:
     how to sort children task before gathering values for promotion
-reversed
+:Reversed:
     reverse the sort
 
 Attributes Set
