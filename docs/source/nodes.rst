@@ -33,3 +33,5 @@ Nodes
     nodes/stock/houdini/mantra
     nodes/stock/matrixnotifier
     nodes/stock/telegram_client/telegram_notifier
+    nodes/stock/redshift/redshift
+    nodes/stock/redshift/hip_rs_generator

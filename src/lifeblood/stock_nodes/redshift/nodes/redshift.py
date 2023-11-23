@@ -13,6 +13,10 @@ def node_class():
 
 class Redshift(BaseNodeWithTaskRequirements):
     @classmethod
+    def description(cls) -> str:
+        return 'Renders given Redshift scene descriptions (.rs files) using redshift\n'
+
+    @classmethod
     def label(cls) -> str:
         return 'redshift'
 
