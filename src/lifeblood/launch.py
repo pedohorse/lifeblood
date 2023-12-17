@@ -31,13 +31,13 @@ def main(argv):
         logging.set_default_loglevel(opts.loglevel)
 
     if opts.command == 'scheduler':
-        from .scheduler import main
+        from .main_scheduler import main
         return main(cmd_argv)
     elif opts.command == 'worker':
-        from .worker import main
+        from .main_worker import main
         return main(cmd_argv)
     elif opts.command == 'pool':
-        from .worker_pool import main
+        from .main_workerpool import main
         return main(cmd_argv)
     elif opts.command == 'viewer':
         try:

@@ -12,15 +12,25 @@ from lifeblood.db_misc import sql_init_script
 from lifeblood.basenode import BaseNode, ProcessingResult
 from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.scheduler import Scheduler
+from lifeblood.main_scheduler import create_default_scheduler
 from lifeblood.worker import Worker
 from lifeblood.invocationjob import InvocationJob, Environment
 from lifeblood.scheduler.pinger import Pinger
-from lifeblood.pluginloader import create_node
+from lifeblood.pluginloader import PluginNodeDataProvider
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.process_utils import oh_no_its_windows
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 from typing import Any, Callable, Dict, List, Optional, Set, Union
+
+
+plugin_data_provider = PluginNodeDataProvider()
+
+
+def create_node(node_type: str, node_name: str, scheduler, node_id):
+    node = plugin_data_provider.node_factory(node_type)(node_name)
+    node.set_parent(scheduler, node_id)
+    return node
 
 
 class FakeEnvArgs(EnvironmentResolverArguments):
@@ -203,7 +213,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             ppatch.return_value = mock.AsyncMock(Pinger)
             wppatch.return_value = mock.AsyncMock()
 
-            sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
             await sched.start()
 
             workers = []

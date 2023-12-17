@@ -15,7 +15,7 @@ from lifeblood.enums import NodeParameterType, TaskState, TaskGroupArchivedState
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
 from lifeblood.uidata import Parameter
-from lifeblood.net_classes import NodeTypeMetadata
+from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.defaults import ui_port

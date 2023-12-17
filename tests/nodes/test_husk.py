@@ -7,12 +7,11 @@ from unittest import IsolatedAsyncioTestCase, mock
 
 from lifeblood.invocationjob import InvocationJob, Environment
 from lifeblood.enums import SpawnStatus
-from lifeblood.pluginloader import create_node
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.process_utils import oh_no_its_windows
 
-from .common import TestCaseBase
+from .common import TestCaseBase, create_node
 
 
 class FakeEnvArgs(EnvironmentResolverArguments):

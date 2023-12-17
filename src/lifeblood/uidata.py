@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import pickle
 import os
 import pathlib
@@ -7,6 +8,7 @@ from copy import deepcopy
 from .enums import NodeParameterType
 from .processingcontext import ProcessingContext
 from .node_visualization_classes import NodeColorScheme
+from .logging import get_logger
 import re
 
 from typing import TYPE_CHECKING, TypedDict, Dict, Any, List, Set, Optional, Tuple, Union, Iterable, FrozenSet, Type, Callable
@@ -610,6 +612,9 @@ class ParametersLayoutBase(ParameterHierarchyItem):
         self.__block_ui_callbacks = False
 
     def initializing_interface_lock(self):
+        return self.block_ui_callbacks()
+
+    def block_ui_callbacks(self):
         class _iiLock:
             def __init__(self, lockable):
                 self.__nui = lockable
@@ -980,6 +985,12 @@ class _SpecialOutputCountChangingLayout(VerticalParametersLayout):
         self.__my_nodeui._outputs_definition_changed()
 
 
+@dataclass
+class ParameterFullValue:
+    unexpanded_value: Union[int, float, str, bool]
+    expression: Optional[str]
+
+
 class NodeUiError(RuntimeError):
     pass
 
@@ -991,6 +1002,7 @@ class NodeUiDefinitionError(RuntimeError):
 class NodeUi(ParameterHierarchyItem):
     def __init__(self, attached_node: "BaseNode"):
         super(NodeUi, self).__init__()
+        self.__logger = get_logger('scheduler.nodeUI')
         self.__parameter_layout = VerticalParametersLayout()
         self.__parameter_layout.set_parent(self)
         self.__attached_node: Optional[BaseNode] = attached_node
@@ -1029,6 +1041,9 @@ class NodeUi(ParameterHierarchyItem):
             raise RuntimeError('NodeUi class is supposed to be tree root')
 
     def initializing_interface_lock(self):
+        return self.block_ui_callbacks()
+
+    def block_ui_callbacks(self):
         class _iiLock:
             def __init__(self, lockable):
                 self.__nui = lockable
@@ -1320,6 +1335,55 @@ class NodeUi(ParameterHierarchyItem):
 
     def items(self, recursive=False) -> Iterable[ParameterHierarchyItem]:
         return self.__parameter_layout.items(recursive=recursive)
+
+    def set_parameters_batch(self, parameters: Dict[str, ParameterFullValue]):
+        """
+        If signal blocking is needed - caller can do it
+
+        for now it's implemented the stupid way
+        """
+        names_to_set = list(parameters.keys())
+        names_to_set.append(None)
+        something_set_this_iteration = False
+        parameters_were_postponed = False
+        for param_name in names_to_set:
+            if param_name is None:
+                if parameters_were_postponed:
+                    if not something_set_this_iteration:
+                        self.__logger.warning(f'failed to set all parameters!')
+                        break
+                    names_to_set.append(None)
+                something_set_this_iteration = False
+                continue
+            assert isinstance(param_name, str)
+            param = self.parameter(param_name)
+            if param is None:
+                parameters_were_postponed = True
+                continue
+            param_value = parameters[param_name]
+            try:
+                param.set_value(param_value.unexpanded_value)
+            except (ParameterReadonly, ParameterLocked):
+                # if value is already correct - just skip
+                if param.unexpanded_value() != param_value.unexpanded_value:
+                    self.__logger.error(f'unable to set value for "{param_name}"')
+                    # shall we just ignore the error?
+            except ParameterError as e:
+                self.__logger.error(f'failed to set value for "{param_name}" because {repr(e)}')
+            if param.can_have_expressions():
+                try:
+                    param.set_expression(param_value.expression)
+                except (ParameterReadonly, ParameterLocked):
+                    # if value is already correct - just skip
+                    if param.expression() != param_value.expression:
+                        self.__logger.error(f'unable to set expression for "{param_name}"')
+                        # shall we just ignore the error?
+                except ParameterError as e:
+                    self.__logger.error(f'failed to set expression for "{param_name}" because {repr(e)}')
+            elif param_value.expression is not None:
+                self.__logger.error(f'parameter "{param_name}" cannot have expressions, yet expression is stored for it')
+
+            something_set_this_iteration = True
 
     def __deepcopy__(self, memo):
         cls = self.__class__

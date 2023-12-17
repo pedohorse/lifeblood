@@ -17,7 +17,7 @@ from lifeblood.uidata import NodeUi, Parameter
 from lifeblood.ui_protocol_data import UiData, TaskGroupBatchData, TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood import logging
-from lifeblood.net_classes import NodeTypeMetadata
+from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder

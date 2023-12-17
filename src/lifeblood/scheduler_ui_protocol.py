@@ -9,9 +9,8 @@ from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBa
 from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from .exceptions import NotSubscribedError
-from . import pluginloader
 from .invocationjob import InvocationJob
-from .net_classes import NodeTypeMetadata
+from .node_type_metadata import NodeTypeMetadata
 from .taskspawn import NewTask
 from .snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from .environment_resolver import EnvironmentResolverArguments
@@ -168,9 +167,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         # node related commands
         async def comm_list_node_types():  # elif command == b'listnodetypes':
             typemetas = []
-            for type_name, module in pluginloader.plugins.items():
-                cls = module.node_class()
-                typemetas.append(NodeTypeMetadata(cls))
+            data_provider = self.__scheduler.node_data_provider()
+            for type_name in data_provider.node_type_names():
+                typemetas.append(NodeTypeMetadata(data_provider, type_name))
             writer.write(struct.pack('>Q', len(typemetas)))
             for typemeta in typemetas:
                 data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, typemeta)
@@ -178,7 +177,13 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 writer.write(data)
 
         async def comm_list_presets():
-            preset_metadata: Dict[str, Dict[str, NodeSnippetDataPlaceholder]] = {pack: {pres: NodeSnippetDataPlaceholder.from_nodesnippetdata(snip) for pres, snip in packdata.items()} for pack, packdata in pluginloader.presets.items()}
+            data_provider = self.__scheduler.node_data_provider()
+            preset_metadata: Dict[str, Dict[str, NodeSnippetDataPlaceholder]] = {
+                pack: {
+                    pres: NodeSnippetDataPlaceholder.from_nodesnippetdata(data_provider.node_preset(pack, pres))
+                    for pres in data_provider.node_preset_names(pack)
+                } for pack in data_provider.node_preset_packages()
+            }
             data: bytes = await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, preset_metadata)
             writer.write(struct.pack('>Q', len(data)))
             writer.write(data)
@@ -186,12 +191,13 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
         async def comm_get_node_preset():
             package_name = await read_string()
             preset_name = await read_string()
-            if package_name not in pluginloader.presets or preset_name not in pluginloader.presets[package_name]:
+            data_provider = self.__scheduler.node_data_provider()
+            if package_name not in data_provider.node_preset_packages() or preset_name not in data_provider.node_preset_names(package_name):
                 self.__logger.warning(f'requested preset {package_name}::{preset_name} is not found')
                 writer.write(struct.pack('>?', False))
                 return
             writer.write(struct.pack('>?', True))
-            data = pluginloader.presets[package_name][preset_name].serialize(ascii=False)
+            data = data_provider.node_preset(package_name, preset_name).serialize(ascii=False)
             writer.write(struct.pack('>Q', len(data)))
             writer.write(data)
 
@@ -408,8 +414,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             settings_name = await read_string()
             try:
-                async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
-                    await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings_name)
+                await self.__scheduler.apply_node_settings(node_id, settings_name)
             except Exception:
                 self.__logger.exception(f'FAILED to apply node settings for node {node_id}, settings name "{settings_name}"')
                 writer.write(b'\0')
@@ -422,8 +427,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             datasize = struct.unpack('>Q', await reader.readexactly(8))[0]
 
             settings = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(datasize))
+            data_provider = self.__scheduler.node_data_provider()
             try:
-                pluginloader.add_settings_to_existing_package('custom_default', node_type_name, settings_name, settings)
+                data_provider.add_settings_to_existing_package('custom_default', node_type_name, settings_name, settings)
             except RuntimeError as e:
                 self.__logger.error(f'failed to add custom node settings: {str(e)}')
                 writer.write(b'\0')
@@ -437,8 +443,9 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 settings_name = await read_string()
             else:
                 settings_name = None
+            data_provider = self.__scheduler.node_data_provider()
             try:
-                pluginloader.set_settings_as_default(node_type_name, settings_name)
+                data_provider.set_settings_as_default(node_type_name, settings_name)
             except RuntimeError:
                 self.__logger.error(f'failed to set node default settings: {str(e)}')
                 writer.write(b'\0')

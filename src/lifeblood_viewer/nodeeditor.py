@@ -20,7 +20,7 @@ from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
 from lifeblood.config import get_config
 from lifeblood import logging
 from lifeblood import paths
-from lifeblood.net_classes import NodeTypeMetadata
+from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
