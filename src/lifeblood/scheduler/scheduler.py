@@ -75,6 +75,7 @@ class Scheduler(NodeGraphHolderBase):
         self.__logger.info('loading core plugins')
         self.__node_objects: Dict[int, BaseNode] = {}
         self.__node_objects_locks: Dict[int, RWLock] = {}
+        self.__node_objects_creation_locks: Dict[int, asyncio.Lock] = {}
         config = get_config('scheduler')
 
         # this lock will prevent tasks from being reported cancelled and done at the same exact time should that ever happen
@@ -247,41 +248,45 @@ class Scheduler(NodeGraphHolderBase):
         """
         if node_id in self.__node_objects:
             return self.__node_objects[node_id]
-        async with self.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
-                node_row = await nodecur.fetchone()
-            if node_row is None:
-                raise RuntimeError('node id is invalid')
-
-            node_type = node_row['type']
-            if not self.__node_data_provider.has_node_factory(node_type):
-                raise RuntimeError('node type is unsupported')
-
-            if node_row['node_object'] is not None:
-                for serializer in self.__node_serializers:
-                    try:
-                        node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'])
-                        break
-                    except FailedToDeserialize as e:
-                        self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
-                        continue
-                else:
-                    raise RuntimeError(f'node entry {node_id} has unknown serialization method')
-                self.__node_objects[node_id] = node_object
+        async with self.__get_node_creation_lock_by_id(node_id):
+            # in case by the time we got here and the node was already created
+            if node_id in self.__node_objects:
                 return self.__node_objects[node_id]
+            # if no - need to create one after all
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                async with con.execute('SELECT * FROM "nodes" WHERE "id" = ?', (node_id,)) as nodecur:
+                    node_row = await nodecur.fetchone()
+                if node_row is None:
+                    raise RuntimeError('node id is invalid')
 
-            # newnode: BaseNode = pluginloader.plugins[node_type].create_node_object(node_row['name'], self)
-            newnode = self.__node_data_provider.node_factory(node_type)(node_row['name'])
-            newnode.set_parent(self, node_id)
+                node_type = node_row['type']
+                if not self.__node_data_provider.has_node_factory(node_type):
+                    raise RuntimeError('node type is unsupported')
 
-            self.__node_objects[node_id] = newnode
-            node_data = await self.__node_serializers[0].serialize_async(newnode)
-            await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
-                              (node_data, node_id))
-            await con.commit()
+                if node_row['node_object'] is not None:
+                    for serializer in self.__node_serializers:
+                        try:
+                            node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'])
+                            break
+                        except FailedToDeserialize as e:
+                            self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
+                            continue
+                    else:
+                        raise RuntimeError(f'node entry {node_id} has unknown serialization method')
+                    self.__node_objects[node_id] = node_object
+                    return self.__node_objects[node_id]
 
-            return newnode
+                newnode = self.__node_data_provider.node_factory(node_type)(node_row['name'])
+                newnode.set_parent(self, node_id)
+
+                self.__node_objects[node_id] = newnode
+                node_data = await self.__node_serializers[0].serialize_async(newnode)
+                await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
+                                  (node_data, node_id))
+                await con.commit()
+
+                return newnode
 
     def get_node_lock_by_id(self, node_id: int) -> RWLock:
         """
@@ -297,6 +302,14 @@ class Scheduler(NodeGraphHolderBase):
         if node_id not in self.__node_objects_locks:
             self.__node_objects_locks[node_id] = RWLock(fast=True)  # read about fast on github. the points is if we have awaits inside critical section - it's safe to use fast
         return self.__node_objects_locks[node_id]
+
+    def __get_node_creation_lock_by_id(self, node_id: int) -> asyncio.Lock:
+        """
+        This lock is for node creation/deserialization sections ONLY
+        """
+        if node_id not in self.__node_objects_creation_locks:
+            self.__node_objects_creation_locks[node_id] = asyncio.Lock()
+        return self.__node_objects_creation_locks[node_id]
 
     async def get_task_attributes(self, task_id: int) -> Tuple[Dict[str, Any], Optional[EnvironmentResolverArguments]]:
         """
@@ -1207,12 +1220,12 @@ class Scheduler(NodeGraphHolderBase):
         """
         old_to_new = {}
         for nid in node_ids:
-            node_obj = await self._get_node_object_by_id(nid)
-            node_type, node_name = await self.get_node_type_and_name_by_id(nid)
-            new_id = await self.add_node(node_type, f'{node_name} copy')
-            new_node_obj = await self._get_node_object_by_id(new_id)
-            node_obj.copy_ui_to(new_node_obj)
-            old_to_new[nid] = new_id
+            async with self.node_object_by_id_for_reading(nid) as node_obj:
+                node_type, node_name = await self.get_node_type_and_name_by_id(nid)
+                new_id = await self.add_node(node_type, f'{node_name} copy')
+                async with self.node_object_by_id_for_writing(new_id) as new_node_obj:
+                    node_obj.copy_ui_to(new_node_obj)
+                    old_to_new[nid] = new_id
 
         # now copy connections
         async with self.data_access.data_connection() as con:
@@ -1232,7 +1245,6 @@ class Scheduler(NodeGraphHolderBase):
     # node reports it's interface was changed. not sure why it exists
     async def node_reports_changes_needs_saving(self, node_id):
         assert node_id in self.__node_objects, 'this may be caused by race condition with node deletion'
-        # TODO: introduce __node_objects lock? or otherwise secure access
         await self.save_node_to_database(node_id)
 
     #
@@ -1249,12 +1261,13 @@ class Scheduler(NodeGraphHolderBase):
         #  why? this happens on ui_update, which can happen cuz of request from viewer.
         #  while node processing happens in a different thread, so this CAN happen at the same time with this
         #  AND THIS IS BAD! (potentially) if a node has changing internal state - this can save some inconsistent snapshot of node state!
+        #  this works now only cuz scheduler_ui_protocol does the locking for param settings
         node_object = self.__node_objects[node_id]
         if node_object is None:
             self.__logger.error('node_object is None while')
             return
+        node_data = await self.__node_serializers[0].serialize_async(node_object)
         async with self.data_access.data_connection() as con:
-            node_data = await self.__node_serializers[0].serialize_async(node_object)
             await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
                               (node_data, node_id))
             await con.commit()
@@ -1346,10 +1359,10 @@ class Scheduler(NodeGraphHolderBase):
             return ret
 
     async def apply_node_settings(self, node_id: int, settings_name: str):
-        node_object = await self._get_node_object_by_id(node_id)
-        settings = self.__node_data_provider.node_settings(node_object.type_name(), settings_name)
-        async with self.node_object_by_id_for_writing(node_id) as node:
-            await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings)
+        async with self.node_object_by_id_for_writing(node_id) as node_object:
+            settings = self.__node_data_provider.node_settings(node_object.type_name(), settings_name)
+            async with self.node_object_by_id_for_writing(node_id) as node:
+                await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings)
 
     async def remove_node(self, node_id: int) -> bool:
         try:
