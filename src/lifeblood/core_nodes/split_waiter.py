@@ -188,8 +188,10 @@ class SplitAwaiterNode(BaseNode):
         """
         return split_id in self.__cache
 
-    def __getstate__(self):
-        d = super(SplitAwaiterNode, self).__getstate__()
-        assert '_SplitAwaiterNode__main_lock' in d
-        del d['_SplitAwaiterNode__main_lock']
-        return d
+    def get_state(self) -> dict:
+        return {
+            'cache': self.__cache,
+        }
+
+    def set_state(self, state: dict):
+        self.__cache = state['cache']

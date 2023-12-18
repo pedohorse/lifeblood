@@ -211,8 +211,10 @@ class ParentChildrenWaiterNode(BaseNode):
             return True
         return any(task_id in l.children for l in self.__cache_children.values())
 
-    def __getstate__(self):
-        d = super(ParentChildrenWaiterNode, self).__getstate__()
-        assert '_ParentChildrenWaiterNode__main_lock' in d
-        del d['_ParentChildrenWaiterNode__main_lock']
-        return d
+    def get_state(self) -> dict:
+        return {
+            'cache_children': self.__cache_children
+        }
+
+    def set_state(self, state: dict):
+        self.__cache_children = state['cache_children']

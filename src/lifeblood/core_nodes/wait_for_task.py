@@ -122,3 +122,13 @@ class WaitForTaskValue(BaseNode):
         assert '_WaitForTaskValue__main_lock' in d
         del d['_WaitForTaskValue__main_lock']
         return d
+
+    def get_state(self) -> dict:
+        return {
+            'values_map': self.__values_map,
+            'values_set_cache': list(self.__values_set_cache)
+        }
+
+    def set_state(self, state: dict):
+        self.__values_map = state['values_map']
+        self.__values_set_cache = set(state['values_set_cache'])

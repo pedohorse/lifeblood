@@ -22,6 +22,53 @@ class TestSplitWaiter(TestCaseBase):
     async def test_basic_functions_nowait_with_garbage(self):
         await self._helper_test_basic_functions(20, False)
 
+    async def test_serialization(self):
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            rng = random.Random(1666661)
+            main_task = context.create_pseudo_task_with_attrs({'boo': 32})
+            tsplits = context.create_pseudo_split_of(main_task, [
+                {'foo': 5},
+                {'foo': 8},
+                {'foo': 1},
+                {'foo': 3},
+            ])
+
+            node: BaseNode = context.create_node('split_waiter', 'footest')
+
+            def _prune_dicts(dic):
+                return {
+                    k: v for k, v in dic.items() if k not in (
+                        '_SplitAwaiterNode__main_lock',  # lock is not part of the state, locks should be unique
+                        '_parameters',  # parameters to be compared separately, by a different, generic test set, they are not part of state anyway
+                        '_BaseNode__parent_nid'  # node ids will be different, state does not cover it
+                    )
+                }
+
+            def _do_test():
+                state = node.get_state()
+                node_test: BaseNode = context.create_node('split_waiter', 'footest')
+                node_test.set_state(state)
+
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
+
+            all_tasks = tsplits + [main_task]
+            for _ in range(100):
+                tasks = list(tsplits)
+                rng.shuffle(tasks)
+                for _ in range(rng.randint(0, 5)):
+                    tasks.append(rng.choice(all_tasks))
+
+                _do_test()
+                for task in tasks:
+                    context.process_task(node, task)
+                    _do_test()
+                context.process_task(node, main_task)
+                _do_test()
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
+
     async def _helper_test_basic_functions_wait(self, garbage_split_count):
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             rng = random.Random(716394)
