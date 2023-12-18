@@ -21,7 +21,7 @@ from lifeblood.logging import set_default_loglevel
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
 from lifeblood.net_messages.address import AddressChain
-from lifeblood import launch
+from lifeblood.main_scheduler import create_default_scheduler
 
 from typing import Awaitable, Callable, List, Optional, Tuple
 
@@ -50,7 +50,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
     async def test_simple_start_stop(self):
         purge_db()
-        sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
         worker = Worker(sched.server_message_address())
@@ -295,7 +295,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
     async def _helper_test_worker_invocation_api(self, runcode: str, logic: Callable, *, worker_count: int = 1, tasks_to_complete=None):
         purge_db()
-        sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
         workers = []
@@ -342,7 +342,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
     async def test_task_get_order(self):
         purge_db()
-        sched = Scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
         worker = Worker(sched.server_message_address(), scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test

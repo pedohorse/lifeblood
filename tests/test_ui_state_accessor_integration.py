@@ -12,6 +12,7 @@ from lifeblood.ui_protocol_data import DataNotSet
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from lifeblood.logging import get_logger
+from lifeblood.main_scheduler import create_default_scheduler
 
 
 def purge_db(testdbpath):
@@ -37,7 +38,7 @@ class EventQueueTest(IsolatedAsyncioTestCase):
             SharedLazyAiosqliteConnection.connection_pools.pop(loop)
 
         purge_db('test_uilog.db')
-        self.sched = Scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        self.sched = create_default_scheduler('test_uilog.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await self.sched.start()
 
     async def asyncTearDown(self) -> None:

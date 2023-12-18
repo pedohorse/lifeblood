@@ -96,7 +96,7 @@ class StandardConfigTest(unittest.TestCase):
 
 class DefaultComponentConfigTest(unittest.TestCase):
     def test_default_schediler(self):
-        from lifeblood.scheduler import default_config
+        from lifeblood.main_scheduler import default_config
         data = toml.loads(default_config)
         self.assertIn('scheduler', data)
         self.assertIn('globals', data['scheduler'])
@@ -106,7 +106,7 @@ class DefaultComponentConfigTest(unittest.TestCase):
         """
         simply checking that config is a valid toml
         """
-        from lifeblood.worker import default_config
+        from lifeblood.main_worker import default_config
         data = toml.loads(default_config)
 
     def test_default_viewer(self):
