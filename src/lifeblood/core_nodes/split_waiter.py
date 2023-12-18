@@ -152,7 +152,7 @@ class SplitAwaiterNode(BaseNode):
                         res.kill_task()
                         self.__cache[split_id]['processed'].add(context.task_field('split_element'))
                         if self.__cache[split_id]['first_to_arrive'] == task_id:
-                            # transfer attributes  # TODO: delete cache for already processed splits
+                            # transfer attributes
                             attribs_to_promote = self.__get_promote_attribs(context)
 
                             res.remove_split(attributes_to_set=attribs_to_promote)

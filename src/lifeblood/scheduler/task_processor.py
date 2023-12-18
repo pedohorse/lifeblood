@@ -178,9 +178,6 @@ class TaskProcessor(SchedulerComponentBase):
                         async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_row['split_origin_task_id'],)) as attcur:
                             attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, (await attcur.fetchone())['attributes'])
                             attributes.update(process_result.split_attributes_to_set)
-                            for k, v in process_result.split_attributes_to_set.items():
-                                if v is None:  # TODO: do this properly, None is a valid value
-                                    del attributes[k]
                             result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                               (result_serialized, task_row['split_origin_task_id']))
