@@ -253,12 +253,15 @@ class BaseNode:
     # Serialize and back
     #
 
-    def get_state(self) -> dict:
+    def get_state(self) -> Optional[dict]:
         """
         override this to be able to save node's unique state if it has one
+        None means node does not and will not have an internal state
+        if node CAN have an internal state and it's just empty - return empty dict instead
+
         note: state will only be saved on normal exit, it won't be saved on crash, it's not part of any transaction
         """
-        return {}
+        return None
 
     def set_state(self, state: dict):
         """
