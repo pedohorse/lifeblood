@@ -1,4 +1,5 @@
 from asyncio import Event
+import json
 import random
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
@@ -283,7 +284,14 @@ class TestWaitForTaskNode(TestCaseBase):
                 node_test.set_param_value('condition value', '`task["cond"]`')
                 node_test.set_param_value('expected values', '`task["exp"]`')
                 node_test.set_state(state)
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
+                # we expect state to be json-serializeable
+                state = json.loads(json.dumps(state))
+                node_test: BaseNode = context.create_node('wait_for_task_value', 'footest')
+                node_test.set_param_value('condition value', '`task["cond"]`')
+                node_test.set_param_value('expected values', '`task["exp"]`')
+                node_test.set_state(state)
                 self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
             all_tasks = [task0, task1, task2, task3]

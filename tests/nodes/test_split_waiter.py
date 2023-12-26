@@ -1,4 +1,5 @@
 import random
+import json
 from asyncio import Event
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
@@ -48,7 +49,12 @@ class TestSplitWaiter(TestCaseBase):
                 state = node.get_state()
                 node_test: BaseNode = context.create_node('split_waiter', 'footest')
                 node_test.set_state(state)
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
+                # we expect state to be json-serializeable
+                state = json.loads(json.dumps(state))
+                node_test: BaseNode = context.create_node('split_waiter', 'footest')
+                node_test.set_state(state)
                 self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
             all_tasks = tsplits + [main_task]

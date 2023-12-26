@@ -1,4 +1,5 @@
 from asyncio import Event
+import json
 import random
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
@@ -72,7 +73,12 @@ class TestParentChildrenWaiter(TestCaseBase):
                 state = node.get_state()
                 node_test: BaseNode = context.create_node('parent_children_waiter', 'footest')
                 node_test.set_state(state)
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
+                # we expect state to be json-serializeable
+                state = json.loads(json.dumps(state))
+                node_test: BaseNode = context.create_node('parent_children_waiter', 'footest')
+                node_test.set_state(state)
                 self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
             all_tasks = (task_child0, task_child1, task_child2, task_parent)
