@@ -81,11 +81,18 @@ class TestNode1(BaseNode):
     def type_name(cls) -> str:
         return 'lelolelolelo'
 
+    _test_state = {
+            'foo': 'barr',
+            'dic': {1: 'foo', 2: 'bar', 'viv': {}, -2.3: False, (1, 'a'): {111: 2.34, 'nope': None}},
+            'tup': (2, 3, 'qwe', {'f': 124, 'y': 44, 'z': -3.1, 'e': {1: 123, '1': 234}}),
+            'seth': {3, 5, -12, (1, 3, 6, 'bobo')}
+    }
+
     def get_state(self) -> Optional[dict]:
-        return {'foo': 'barr'}
+        return self._test_state
 
     def set_state(self, state: dict):
-        assert state == {'foo': 'barr'}
+        assert state == self._test_state
 
     def _ui_changed(self, definition_changed=False):
         print(self, '_ui_changed called')

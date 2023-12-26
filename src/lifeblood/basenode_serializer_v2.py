@@ -19,26 +19,73 @@ class ParameterData:
 
 
 class NodeSerializerV2(NodeSerializerBase):
+    """
+    Universal json-like serializer
+    Note, this supports more things than json, such as:
+    - tuples
+    - sets
+    - int dict keys
+    - tuple dict keys
+    - limited set of dataclasses
+
+    the final string though is json-compliant
+    """
+
     class Serializer(json.JSONEncoder):
-        def default(self, obj):
-            if is_dataclass(obj):
-                dcs = obj.__dict__  # dataclasses.asdict is recursive, kills inner dataclasses
+        def __reform(self, obj):
+            if type(obj) is set:
+                return {
+                    '__special_object_type__': 'set',
+                    'items': self.__reform(list(obj))
+                }
+            elif type(obj) is tuple:
+                return {
+                    '__special_object_type__': 'tuple',
+                    'items': self.__reform(list(obj))
+                }
+            elif type(obj) is dict:  # int keys case
+                if any(isinstance(x, (int, float, tuple)) for x in obj.keys()):
+                    return {
+                        '__special_object_type__': 'kvp',
+                        'items': self.__reform([[k, v] for k, v in obj.items()])
+                    }
+                return {k: self.__reform(v) for k, v in obj.items()}
+            elif is_dataclass(obj):
+                dcs = self.__reform(obj.__dict__)  # dataclasses.asdict is recursive, kills inner dataclasses
                 dcs['__dataclass__'] = obj.__class__.__name__
+                dcs['__special_object_type__'] = 'dataclass'
                 return dcs
             elif isinstance(obj, NodeParameterType):
                 return {'value': obj.value,
-                        '__NodeParameterType__': '==3*E=='
+                        '__special_object_type__': 'NodeParameterType'
                         }
+            elif isinstance(obj, list):
+                return [self.__reform(x) for x in obj]
+            elif isinstance(obj, (int, float, str, bool)) or obj is None:
+                return obj
+            raise NotImplementedError(f'serialization not implemented for type "{type(obj)}"')
+
+        def encode(self, o):
+            return super().encode(self.__reform(o))
+        
+        def default(self, obj):
             return super(NodeSerializerV2.Serializer, self).default(obj)
 
     class Deserializer(json.JSONDecoder):
         def dedata(self, obj):
-            if '__dataclass__' in obj:
-                data = globals()[obj['__dataclass__']](**{k: v for k, v in obj.items() if k != '__dataclass__'})
+            special_type = obj.get('__special_object_type__')
+            if special_type == 'set':
+                return set(obj.get('items'))
+            elif special_type == 'tuple':
+                return tuple(obj.get('items'))
+            elif special_type == 'kvp':
+                return {k: v for k, v in obj.get('items')}
+            elif special_type == 'dataclass':
+                data = globals()[obj['__dataclass__']](**{k: v for k, v in obj.items() if k not in ('__dataclass__', '__special_object_type__')})
                 if obj['__dataclass__'] == 'NodeData':
                     data.pos = tuple(data.pos)
                 return data
-            elif obj.get('__NodeParameterType__', None) == '==3*E==':
+            elif special_type == 'NodeParameterType':
                 return NodeParameterType(obj['value'])
             return obj
 
@@ -89,6 +136,5 @@ class NodeSerializerV2(NodeSerializerBase):
             new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})
         if state:
             new_node.set_state(json.loads(state.decode('latin1'), cls=NodeSerializerV2.Deserializer))
-        # TODO: add ser-de tests!
 
         return new_node
