@@ -1,3 +1,5 @@
+import dataclasses
+from dataclasses import dataclass
 import json
 from lifeblood.basenode import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult
@@ -25,11 +27,11 @@ class ParentChildrenWaiterNode(BaseNode):
     when a task from first input has all it's children arriving from the second input
     possibly recursively
     """
+    @dataclass
     class Entry:
-        def __init__(self):
-            self.children: Set[int] = set()
-            self.parent_ready: bool = False
-            self.all_children_dicts: Dict[int, dict] = {}
+        children: Set[int] = dataclasses.field(default_factory=set)
+        parent_ready: bool = False
+        all_children_dicts: Dict[int, dict] = dataclasses.field(default_factory=dict)
 
     @classmethod
     def label(cls) -> str:
@@ -213,8 +215,20 @@ class ParentChildrenWaiterNode(BaseNode):
 
     def get_state(self) -> dict:
         return {
-            'cache_children': self.__cache_children
+            'cache_children': {
+                name: {
+                    'children': list(val.children),
+                    'parent_ready': val.parent_ready,
+                    'all_children_dicts': val.all_children_dicts,
+                } for name, val in self.__cache_children.items()
+            }
         }
 
     def set_state(self, state: dict):
-        self.__cache_children = state['cache_children']
+        self.__cache_children = {
+            int(name): ParentChildrenWaiterNode.Entry(
+                set(val['children']),
+                val['parent_ready'],
+                {int(k): v for k, v in val['all_children_dicts'].items()},
+            ) for name, val in state['cache_children'].items()
+        }
