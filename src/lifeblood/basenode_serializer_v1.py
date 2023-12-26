@@ -5,7 +5,7 @@ import json
 from .basenode_serialization import NodeSerializerBase, FailedToDeserialize
 from .basenode import BaseNode, NodeParameterType
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Tuple, Union
 
 from .node_dataprovider_base import NodeDataProvider
 from .nodegraph_holder_base import NodeGraphHolderBase
@@ -28,11 +28,10 @@ def create_node_maker(node_data_provider: NodeDataProvider) -> Callable[[str, st
 
 
 class NodeSerializerV1(NodeSerializerBase):
-    def serialize(self, node: BaseNode) -> bytes:
+    def serialize(self, node: BaseNode) -> Tuple[bytes, Optional[bytes]]:
         raise DeprecationWarning('no use this!')
 
-    @classmethod
-    def deserialize(cls, parent: NodeGraphHolderBase, node_id: int, node_data_provider: NodeDataProvider, data: bytes) -> BaseNode:
+    def deserialize(self, parent: NodeGraphHolderBase, node_id: int, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
         # this be pickled
         # we do hacky things here fo backward compatibility
         class Unpickler(pickle.Unpickler):
@@ -40,6 +39,9 @@ class NodeSerializerV1(NodeSerializerBase):
                 if module == 'lifeblood.pluginloader' and name == 'create_node':
                     return create_node_maker(node_data_provider)
                 return super(Unpickler, self).find_class(module, name)
+
+        if state is not None:
+            raise FailedToDeserialize(f'deserialization v1 is not expecting a separate state data')
 
         try:
             newobj: BaseNode = Unpickler(BytesIO(data)).load()
