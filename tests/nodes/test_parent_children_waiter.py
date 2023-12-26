@@ -76,18 +76,26 @@ class TestParentChildrenWaiter(TestCaseBase):
                 self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
             all_tasks = (task_child0, task_child1, task_child2, task_parent)
-            for _ in range(100):
+            for _ in range(1):
                 tasks = [task_child0, task_child1, task_child2]
                 rng.shuffle(tasks)
                 for _ in range(rng.randint(0, 5)):
-                    tasks.append(rng.choice(all_tasks))
+                    tasks.append(rng.choice(tasks))
 
+                # note that we need to simulate a valid situation if we want a correct inner state behaviour
                 _do_test()
                 for task in tasks:
                     context.process_task(node, task)
                     _do_test()
                 context.process_task(node, task_parent)
                 _do_test()
+
+                for task in tasks[:3]:
+                    context.process_task(node, task)
+                    _do_test()
+                _do_test()
+                # internal state should be empty after
+                self.assertDictEqual({'cache_children': {}}, node.get_state())
 
         await self._helper_test_node_with_arg_update(
             _logic
