@@ -1267,7 +1267,6 @@ class Scheduler(NodeGraphHolderBase):
             self.__logger.error('node_object is None while')
             return
         node_data, state_data = await self.__node_serializers[0].serialize_async(node_object)
-        print(state_data)
         async with self.data_access.data_connection() as con:
             await con.execute('UPDATE "nodes" SET node_object = ?, node_object_state = ? WHERE "id" = ?',
                               (node_data, state_data, node_id))
