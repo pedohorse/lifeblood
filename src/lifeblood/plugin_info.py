@@ -46,3 +46,6 @@ class PluginInfo:
 
     def __str__(self):
         return f'Plugin from {self.node_definition_file_path()}, part of {self.package_name()}'
+
+
+empty_plugin_info = PluginInfo('', '', 'invalid', None)
