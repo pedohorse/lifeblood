@@ -267,7 +267,7 @@ class Scheduler(NodeGraphHolderBase):
                 if node_row['node_object'] is not None:
                     for serializer in self.__node_serializers:
                         try:
-                            node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'])
+                            node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
                             break
                         except FailedToDeserialize as e:
                             self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
@@ -281,9 +281,9 @@ class Scheduler(NodeGraphHolderBase):
                 newnode.set_parent(self, node_id)
 
                 self.__node_objects[node_id] = newnode
-                node_data = await self.__node_serializers[0].serialize_async(newnode)
-                await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
-                                  (node_data, node_id))
+                node_data, state_data = await self.__node_serializers[0].serialize_async(newnode)
+                await con.execute('UPDATE "nodes" SET node_object = ?, node_object_state = ? WHERE "id" = ?',
+                                  (node_data, state_data, node_id))
                 await con.commit()
 
                 return newnode
@@ -1266,10 +1266,11 @@ class Scheduler(NodeGraphHolderBase):
         if node_object is None:
             self.__logger.error('node_object is None while')
             return
-        node_data = await self.__node_serializers[0].serialize_async(node_object)
+        node_data, state_data = await self.__node_serializers[0].serialize_async(node_object)
+        print(state_data)
         async with self.data_access.data_connection() as con:
-            await con.execute('UPDATE "nodes" SET node_object = ? WHERE "id" = ?',
-                              (node_data, node_id))
+            await con.execute('UPDATE "nodes" SET node_object = ?, node_object_state = ? WHERE "id" = ?',
+                              (node_data, state_data, node_id))
             await con.commit()
 
     #
