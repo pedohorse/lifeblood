@@ -10,7 +10,7 @@ from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterLocke
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .enums import NodeParameterType, WorkerType
-from .plugin_info import PluginInfo
+from .plugin_info import PluginInfo, empty_plugin_info
 from .nodegraph_holder_base import NodeGraphHolderBase
 
 from typing import TYPE_CHECKING, Iterable
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class BaseNode:
-    _plugin_data = None  # To be set on module level by loader
+    _plugin_data = None  # To be set on module level by loader, set to empty_plugin_info by default
 
     @classmethod
     def label(cls) -> str:
@@ -39,6 +39,8 @@ class BaseNode:
         return 'this node type does not have a description'
 
     def __init__(self, name: str):
+        if BaseNode._plugin_data is None:
+            BaseNode._plugin_data = empty_plugin_info
         self.__parent: NodeGraphHolderBase = None
         self.__parent_nid: int = None
         self._parameters: NodeUi = NodeUi(self)
