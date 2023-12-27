@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS "nodes" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	"type"	TEXT NOT NULL,
 	"name"	TEXT,
-	"node_object"	BLOB
+	"node_object"	BLOB,
+	"node_object_state"	BLOB
 );
 CREATE TABLE IF NOT EXISTS "task_groups" (
 	"task_id"	INTEGER NOT NULL,

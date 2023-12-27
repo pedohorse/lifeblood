@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import time
 import json
 from lifeblood.basenode import BaseNode
@@ -16,9 +17,11 @@ if TYPE_CHECKING:
     from lifeblood.scheduler import Scheduler
 
 
-class SplitAwaiting(TypedDict):
+@dataclass
+class SplitAwaiting:
     arrived: Dict[int, dict]  # num in split -2-> attributes
     awaiting: Set[int]
+    processed: Set[int]
     first_to_arrive: Optional[int]
 
 
@@ -42,7 +45,7 @@ class SplitAwaiterNode(BaseNode):
 
     def __init__(self, name: str):
         super(SplitAwaiterNode, self).__init__(name)
-        self.__cache: Dict[int: SplitAwaiting] = {}
+        self.__cache: Dict[int, SplitAwaiting] = {}
         self.__main_lock = Lock()
         ui = self.get_ui()
         with ui.initializing_interface_lock():
@@ -71,7 +74,7 @@ class SplitAwaiterNode(BaseNode):
             sort_reversed = context.param_value(f'reversed_{i}')
             if transfer_type == 'append':
                 gathered_values = []
-                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                for attribs in sorted(self.__cache[split_id].arrived.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
                     if src_attr_name not in attribs:
                         continue
 
@@ -80,7 +83,7 @@ class SplitAwaiterNode(BaseNode):
                 attribs_to_promote[dst_attr_name] = gathered_values
             elif transfer_type == 'extend':
                 gathered_values = []
-                for attribs in sorted(self.__cache[split_id]['arrived'].values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
+                for attribs in sorted(self.__cache[split_id].arrived.values(), key=lambda x: x.get(sort_attr_name, 0), reverse=sort_reversed):
                     if src_attr_name not in attribs:
                         continue
 
@@ -91,7 +94,7 @@ class SplitAwaiterNode(BaseNode):
                         gathered_values.append(attr_val)
                 attribs_to_promote[dst_attr_name] = gathered_values
             elif transfer_type == 'first':
-                _acd = self.__cache[split_id]['arrived']
+                _acd = self.__cache[split_id].arrived
                 if len(_acd) > 0:
                     if sort_reversed:
                         attribs = max(_acd.values(), key=lambda x: x.get(sort_attr_name, 0))
@@ -102,7 +105,7 @@ class SplitAwaiterNode(BaseNode):
             elif transfer_type == 'sum':
                 # we don't care about the order, assume sum is associative
                 gathered_values = None
-                for attribs in self.__cache[split_id]['arrived'].values():
+                for attribs in self.__cache[split_id].arrived.values():
                     if src_attr_name not in attribs:
                         continue
                     if gathered_values is None:
@@ -120,8 +123,8 @@ class SplitAwaiterNode(BaseNode):
         # we don't even need to lock
         return split_id not in self.__cache or \
                not context.param_value('wait for all') or \
-               context.task_field('split_element') not in self.__cache[split_id]['arrived'] or \
-               self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']
+               context.task_field('split_element') not in self.__cache[split_id].arrived or \
+               self.__cache[split_id].arrived.keys() == self.__cache[split_id].awaiting
 
     def process_task(self, context) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
         orig_id = context.task_field('split_origin_task_id')
@@ -131,15 +134,17 @@ class SplitAwaiterNode(BaseNode):
             return ProcessingResult()
         with self.__main_lock:
             if split_id not in self.__cache:
-                self.__cache[split_id] = {'arrived': {},
-                                          'awaiting': set(range(context.task_field('split_count'))),
-                                          'processed': set(),
-                                          'first_to_arrive': None}
-            if self.__cache[split_id]['first_to_arrive'] is None and len(self.__cache[split_id]['arrived']) == 0:
-                self.__cache[split_id]['first_to_arrive'] = task_id
-            if context.task_field('split_element') not in self.__cache[split_id]['arrived']:
-                self.__cache[split_id]['arrived'][context.task_field('split_element')] = json.loads(context.task_field('attributes'))
-                self.__cache[split_id]['arrived'][context.task_field('split_element')]['_builtin_id'] = task_id
+                self.__cache[split_id] = SplitAwaiting(
+                                          {},
+                                          set(range(context.task_field('split_count'))),
+                                          set(),
+                                          None
+                )
+            if self.__cache[split_id].first_to_arrive is None and len(self.__cache[split_id].arrived) == 0:
+                self.__cache[split_id].first_to_arrive = task_id
+            if context.task_field('split_element') not in self.__cache[split_id].arrived:
+                self.__cache[split_id].arrived[context.task_field('split_element')] = json.loads(context.task_field('attributes'))
+                self.__cache[split_id].arrived[context.task_field('split_element')]['_builtin_id'] = task_id
 
         # we will not wait in loop or we risk deadlocking threadpool
         # check if everyone is ready
@@ -147,12 +152,12 @@ class SplitAwaiterNode(BaseNode):
         try:
             if context.param_value('wait for all'):
                 with self.__main_lock:
-                    if self.__cache[split_id]['arrived'].keys() == self.__cache[split_id]['awaiting']:
+                    if self.__cache[split_id].arrived.keys() == self.__cache[split_id].awaiting:
                         res = ProcessingResult()
                         res.kill_task()
-                        self.__cache[split_id]['processed'].add(context.task_field('split_element'))
-                        if self.__cache[split_id]['first_to_arrive'] == task_id:
-                            # transfer attributes  # TODO: delete cache for already processed splits
+                        self.__cache[split_id].processed.add(context.task_field('split_element'))
+                        if self.__cache[split_id].first_to_arrive == task_id:
+                            # transfer attributes
                             attribs_to_promote = self.__get_promote_attribs(context)
 
                             res.remove_split(attributes_to_set=attribs_to_promote)
@@ -162,16 +167,16 @@ class SplitAwaiterNode(BaseNode):
                 with self.__main_lock:
                     res = ProcessingResult()
                     res.kill_task()
-                    self.__cache[split_id]['processed'].add(context.task_field('split_element'))
-                    if self.__cache[split_id]['first_to_arrive'] == task_id:
+                    self.__cache[split_id].processed.add(context.task_field('split_element'))
+                    if self.__cache[split_id].first_to_arrive == task_id:
                         res.remove_split()
                     changed = True
                     return res
 
         finally:
-            if self.__cache[split_id]['processed'] == self.__cache[split_id]['awaiting']:  # kinda precheck, to avoid extra lockings
+            if self.__cache[split_id].processed == self.__cache[split_id].awaiting:  # kinda precheck, to avoid extra lockings
                 with self.__main_lock:
-                    if self.__cache[split_id]['processed'] == self.__cache[split_id]['awaiting']:  # and proper check inside lock
+                    if self.__cache[split_id].processed == self.__cache[split_id].awaiting:  # and proper check inside lock
                         del self.__cache[split_id]
             # if changed:
             #     self._state_changed()  # this cannot be called from non asyncio thread as this.
@@ -188,8 +193,20 @@ class SplitAwaiterNode(BaseNode):
         """
         return split_id in self.__cache
 
-    def __getstate__(self):
-        d = super(SplitAwaiterNode, self).__getstate__()
-        assert '_SplitAwaiterNode__main_lock' in d
-        del d['_SplitAwaiterNode__main_lock']
-        return d
+    def get_state(self) -> dict:
+        return {
+            'cache': {k: {
+                'arrived': v.arrived,
+                'awaiting': list(v.awaiting),
+                'processed': list(v.processed),
+                'first_to_arrive': v.first_to_arrive,
+            } for k, v in self.__cache.items()},
+        }
+
+    def set_state(self, state: dict):
+        self.__cache = {int(k): SplitAwaiting(
+            {int(i): j for i, j in v['arrived'].items()},
+            set(v['awaiting']),
+            set(v['processed']),
+            v['first_to_arrive']
+        ) for k, v in state['cache'].items()}

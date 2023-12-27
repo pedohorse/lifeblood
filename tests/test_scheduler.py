@@ -12,6 +12,7 @@ from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
 from lifeblood.net_messages.exceptions import MessageTransferError
 from lifeblood.scheduler_task_protocol import SchedulerTaskClient
+from lifeblood.main_scheduler import create_default_scheduler
 
 
 def purge_db(recreate=True):
@@ -37,7 +38,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
 
     async def test_stopping_normal(self):
         purge_db()
-        sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
         # crudely assert that there are corutines running from scheduler
         self.assertTrue(any([Path(x.get_coro().cr_code.co_filename).parts[-3:-1] == ('lifeblood', 'scheduler') for x in asyncio.all_tasks()]))
@@ -56,7 +57,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         tests that scheduler stops even without call to wait_till_stops
         """
         purge_db()
-        sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+        sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
         # crudely assert that there are corutines running from scheduler
         self.assertTrue(any([Path(x.get_coro().cr_code.co_filename).parts[-3:-1] == ('lifeblood', 'scheduler') for x in asyncio.all_tasks()]))
@@ -99,7 +100,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         and it is expected to fail to be opened
         """
         purge_db()
-        sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 11847, 11848))
+        sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 11847, 11848))
         await sched.start()
         proc = TcpJsonMessageProcessor(('127.0.0.1', 11850))
         await proc.start()
@@ -145,7 +146,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         and it is expected to fail to be opened
         """
         purge_db()
-        sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 11847, 11848))
+        sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 11847, 11848))
         await sched.start()
 
         async with SchedulerTaskClient('127.0.0.1', 11847) as client:
@@ -187,7 +188,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch:
             ppatch.return_value = mock.AsyncMock(Pinger)
 
-            sched = Scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+            sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
             await sched.start()
 
             with sqlite3.connect('test_swc1.db') as con:

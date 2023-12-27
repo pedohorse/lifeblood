@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from typing import Optional
+from typing import Optional, Union
 
 
 class PluginInfo:
@@ -8,9 +8,10 @@ class PluginInfo:
     class for getting information about a plugin
 
     """
-    def __init__(self, file_path, category, parent_package=None):
+    def __init__(self, file_path: Union[str, Path], plugin_hash: str, category: str, parent_package: Union[None, str, Path] = None):
         self.__file_path = Path(file_path)
         self.__category = category
+        self.__hash = plugin_hash
 
         self.__parent_package = Path(parent_package) if parent_package is not None else None
         self.__parent_package_data = None
@@ -23,6 +24,9 @@ class PluginInfo:
 
     def category(self) -> str:
         return self.__category
+
+    def hash(self) -> str:
+        return self.__hash
 
     def package_name(self) -> Optional[str]:
         if self.__parent_package is None:
@@ -42,3 +46,6 @@ class PluginInfo:
 
     def __str__(self):
         return f'Plugin from {self.node_definition_file_path()}, part of {self.package_name()}'
+
+
+empty_plugin_info = PluginInfo('', '', 'invalid', None)

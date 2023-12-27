@@ -1,4 +1,5 @@
 from asyncio import Event
+import json
 import random
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
@@ -44,6 +45,67 @@ class TestParentChildrenWaiter(TestCaseBase):
         rng = random.Random(7269321)
         await self._helper_test_recursive(rng.randint(1, 10), 0)
         await self._helper_test_recursive(rng.randint(1, 10), 100)
+
+    async def test_serialization(self):
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            rng = random.Random(1666661)
+            task_parent = context.create_pseudo_task_with_attrs({}, 333, None)
+            task_child0 = context.create_pseudo_task_with_attrs({'foo': 2}, 456, 333)
+            task_child1 = context.create_pseudo_task_with_attrs({'foo': 5}, 123, 333)
+            task_child2 = context.create_pseudo_task_with_attrs({'foo': 9}, 666, 333)
+
+            task_child0.set_input_name('children')
+            task_child1.set_input_name('children')
+            task_child2.set_input_name('children')
+
+            node: BaseNode = context.create_node('parent_children_waiter', 'footest')
+
+            def _prune_dicts(dic):
+                return {
+                    k: v for k, v in dic.items() if k not in (
+                        '_ParentChildrenWaiterNode__main_lock',  # lock is not part of the state, locks should be unique
+                        '_parameters',  # parameters to be compared separately, by a different, generic test set, they are not part of state anyway
+                        '_BaseNode__parent_nid'  # node ids will be different, state does not cover it
+                    )
+                }
+
+            def _do_test():
+                state = node.get_state()
+                node_test: BaseNode = context.create_node('parent_children_waiter', 'footest')
+                node_test.set_state(state)
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
+
+                # we expect state to be json-serializeable
+                state = json.loads(json.dumps(state))
+                node_test: BaseNode = context.create_node('parent_children_waiter', 'footest')
+                node_test.set_state(state)
+                self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
+
+            all_tasks = (task_child0, task_child1, task_child2, task_parent)
+            for _ in range(1):
+                tasks = [task_child0, task_child1, task_child2]
+                rng.shuffle(tasks)
+                for _ in range(rng.randint(0, 5)):
+                    tasks.append(rng.choice(tasks))
+
+                # note that we need to simulate a valid situation if we want a correct inner state behaviour
+                _do_test()
+                for task in tasks:
+                    context.process_task(node, task)
+                    _do_test()
+                context.process_task(node, task_parent)
+                _do_test()
+
+                for task in tasks[:3]:
+                    context.process_task(node, task)
+                    _do_test()
+                _do_test()
+                # internal state should be empty after
+                self.assertDictEqual({'cache_children': {}}, node.get_state())
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
 
     async def _helper_test_regular(self, dying_children_count, random_tasks_count):
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):

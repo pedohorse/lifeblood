@@ -117,8 +117,12 @@ class WaitForTaskValue(BaseNode):
                 return self.__get_default_result(context)
         raise NodeNotReadyToProcess()
 
-    def __getstate__(self):
-        d = super(WaitForTaskValue, self).__getstate__()
-        assert '_WaitForTaskValue__main_lock' in d
-        del d['_WaitForTaskValue__main_lock']
-        return d
+    def get_state(self) -> dict:
+        return {
+            'values_map': self.__values_map,
+            'values_set_cache': list(self.__values_set_cache)
+        }
+
+    def set_state(self, state: dict):
+        self.__values_map = {int(k): v for k,v in state['values_map'].items()}
+        self.__values_set_cache = set(state['values_set_cache'])

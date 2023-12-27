@@ -7,20 +7,21 @@ from copy import copy, deepcopy
 from typing import Dict, Optional, List, Any
 from .nodethings import ProcessingResult, ProcessingError
 from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterLocked, ParameterCannotHaveExpressions, Parameter
-from .pluginloader import create_node, plugin_hash, nodes_settings
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .enums import NodeParameterType, WorkerType
-from .plugin_info import PluginInfo
+from .plugin_info import PluginInfo, empty_plugin_info
+from .nodegraph_holder_base import NodeGraphHolderBase
 
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
-    from .scheduler import Scheduler
     from logging import Logger
 
 
 class BaseNode:
+    _plugin_data = None  # To be set on module level by loader, set to empty_plugin_info by default
+
     @classmethod
     def label(cls) -> str:
         raise NotImplementedError()
@@ -38,7 +39,9 @@ class BaseNode:
         return 'this node type does not have a description'
 
     def __init__(self, name: str):
-        self.__parent: Scheduler = None
+        if BaseNode._plugin_data is None:
+            BaseNode._plugin_data = empty_plugin_info
+        self.__parent: NodeGraphHolderBase = None
         self.__parent_nid: int = None
         self._parameters: NodeUi = NodeUi(self)
         self.__name = name
@@ -49,9 +52,9 @@ class BaseNode:
         self.__logger = get_logger(f'BaseNode.{mytype}' if mytype is not None else 'BaseNode')
         # subclass is expected to add parameters at this point
 
-    def _set_parent(self, parent_scheduler, node_id):
-        self.__parent = parent_scheduler
-        self.__parent_nid = node_id
+    def set_parent(self, graph_holder: NodeGraphHolderBase, node_id_in_graph: int):
+        self.__parent = graph_holder
+        self.__parent_nid = node_id_in_graph
 
     def logger(self) -> "Logger":
         return self.__logger
@@ -211,13 +214,7 @@ class BaseNode:
         to_node._parameters = newui
         newui.attach_to_node(to_node)
 
-    def apply_settings(self, settings_name: str) -> None:
-        mytype = self.type_name()
-        if mytype not in nodes_settings:
-            raise RuntimeError(f'no settings found for "{mytype}"')
-        if settings_name not in nodes_settings[mytype]:
-            raise RuntimeError(f'requested settings "{settings_name}" not found for type "{mytype}"')
-        settings = nodes_settings[mytype][settings_name]
+    def apply_settings(self, settings: Dict[str, Dict[str, Any]]) -> None:
         with self.get_ui().postpone_ui_callbacks():
             for param_name, value in settings.items():
                 try:
@@ -232,10 +229,10 @@ class BaseNode:
                             param.remove_expression()
                         param.set_value(value)
                 except ParameterNotFound:
-                    self.logger().warning(f'applying settings "{settings_name}": skipping unrecognized parameter "{param_name}"')
+                    self.logger().warning(f'applying settings: skipping unrecognized parameter "{param_name}"')
                     continue
                 except ValueError as e:
-                    self.logger().warning(f'applying settings "{settings_name}": skipping parameter "{param_name}": bad value type: {str(e)}')
+                    self.logger().warning(f'applying settings: skipping parameter "{param_name}": bad value type: {str(e)}')
                     continue
 
     # # some helpers
@@ -247,98 +244,32 @@ class BaseNode:
     #
     @classmethod
     def my_plugin(cls) -> PluginInfo:
-        from . import pluginloader
-        type_name = cls.type_name()
         # this case was for nodetypes that are present in DB, but not loaded cuz of configuration errors
         #  but it doesn't make sense in current form - if node is created - plugin info will be present
         #  this needs to be rethought
         # # if type_name not in pluginloader.plugins:
         # #     return None
-        return pluginloader.plugins[type_name]._plugin_info
+        return cls._plugin_data
 
     #
     # Serialize and back
     #
-    def __reduce__(self):
-        # typename = type(self).__module__
-        # if '.' in typename:
-        #     typename = typename.rsplit('.', 1)[-1]
-        return create_node, (self.type_name(), '', None, None), self.__getstate__()
 
-    def __getstate__(self):
-        # TODO: if u ever implement parameter expressions - be VERY careful with pickling expressions referencing across nodes
-        d = copy(self.__dict__)
-        assert '_BaseNode__parent' in d
-        d['_BaseNode__parent'] = None
-        d['_BaseNode__parent_nid'] = None
-        d['_BaseNode__saved_plugin_hash'] = plugin_hash(self.type_name())  # we will use this hash to detect plugin module changes on load
-        return d
-
-    def __setstate__(self, state):
-        # the idea here is to update node's class instance IF plugin hash is different from the saved one
-        # the hash being different means that node's definition was updated - we don't know how
-        # so what we do is save all parameter values, merge old state values with new
-        # and hope for the best...
-
-        hash = plugin_hash(self.type_name())
-        if hash != state.get('_BaseNode__saved_plugin_hash', None):
-            self.__init__(state.get('name', ''))
-            # update all except ui
-            try:
-                if '_parameters' in state:
-                    old_ui: NodeUi = state['_parameters']
-                    del state['_parameters']
-                    self.__dict__.update(state)
-                    new_ui = self.get_ui()
-                    for param in old_ui.parameters():
-                        try:
-                            newparam = new_ui.parameter(param.name())
-                        except ParameterNotFound:
-                            continue
-                        try:
-                            newparam.set_value(param.unexpanded_value())
-                        except ParameterReadonly:
-                            newparam._Parameter__value = param.unexpanded_value()
-                        except ParameterLocked:
-                            newparam.set_locked(False)
-                            newparam.set_value(param.unexpanded_value())
-                            newparam.set_locked(True)
-                        if param.has_expression():
-                            try:
-                                newparam.set_expression(param.expression())
-                            except ParameterCannotHaveExpressions:
-                                pass
-                else:
-                    self.__dict__.update(state)
-            except AttributeError:
-                # something changed so much that some core attrs are different
-                get_logger('BaseNode').exception(f'could not update interface for some node of type {self.type_name()}. resetting node\'s inrerface')
-
-
-            # TODO: if and whenever expressions are introduced - u need to take care of expressions here too!
-        else:
-            self.__dict__.update(state)
-
-    def serialize(self) -> bytes:
+    def get_state(self) -> Optional[dict]:
         """
-        by default we just serialize
-        :return:
+        override this to be able to save node's unique state if it has one
+        None means node does not and will not have an internal state
+        if node CAN have an internal state and it's just empty - return empty dict instead
+
+        note: state will only be saved on normal exit, it won't be saved on crash, it's not part of any transaction
         """
-        return pickle.dumps(self)
+        return None
 
-    async def serialize_async(self) -> bytes:
-        return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
-
-    @classmethod
-    def deserialize(cls, data: bytes, parent_scheduler, node_id):
-        newobj = pickle.loads(data)
-        newobj.__parent = parent_scheduler
-        newobj.__parent_nid = node_id
-        return newobj
-
-    @classmethod
-    async def deserialize_async(cls, data: bytes, parent_scheduler, node_id):
-        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data, parent_scheduler, node_id)
+    def set_state(self, state: dict):
+        """
+        restore state as given by get_state
+        """
+        pass
 
 
 class BaseNodeWithTaskRequirements(BaseNode):

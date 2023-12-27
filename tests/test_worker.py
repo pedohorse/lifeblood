@@ -8,6 +8,7 @@ from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.net_messages.address import AddressChain
+from lifeblood.main_scheduler import create_default_scheduler
 
 
 class RunningSchedulerTests(IsolatedAsyncioTestCase):
@@ -29,7 +30,7 @@ class RunningSchedulerTests(IsolatedAsyncioTestCase):
         print('tearingdown done')
 
     async def asyncSetUp(self) -> None:
-        self.scheduler = Scheduler(self.__db_path, do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 12347, 12345), server_ui_addr=('127.0.0.1', 12346))
+        self.scheduler = create_default_scheduler(self.__db_path, do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 12347, 12345), server_ui_addr=('127.0.0.1', 12346))
         if not self.scheduler.is_started():
             await self.scheduler.start()
 

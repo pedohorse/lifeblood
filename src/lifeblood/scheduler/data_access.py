@@ -8,7 +8,7 @@ from ..scheduler_event_log import SchedulerEventLog
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 
-SCHEDULER_DB_FORMAT_VERSION = 1
+SCHEDULER_DB_FORMAT_VERSION = 2
 
 
 class DataAccess:
@@ -40,6 +40,14 @@ class DataAccess:
                 cur = con.execute('SELECT * FROM lifeblood_metadata')
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
+            elif metadata['version'] != SCHEDULER_DB_FORMAT_VERSION:
+                self.__database_schema_upgrade(con, metadata['version'], SCHEDULER_DB_FORMAT_VERSION)  # returns true if commit needed, but we do update next line anyway
+                con.execute('UPDATE lifeblood_metadata SET "version" = ?', (SCHEDULER_DB_FORMAT_VERSION,))
+                con.commit()
+                # reget metadata
+                cur = con.execute('SELECT * FROM lifeblood_metadata')
+                metadata = cur.fetchone()  # there should be exactly one single row.
+                cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
 
     @property
@@ -63,3 +71,29 @@ class DataAccess:
                                   'WHERE "id"=?',
                                   (cached_row['last_seen'], cached_row['last_checked'], cached_row['ping_state'], wid))
             await con.commit()
+
+    #
+    # db schema update logic
+    #
+    def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
+        if from_version == to_version:
+            return False
+        if from_version < 1 or to_version > 2:
+            raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
+        if to_version < from_version:
+            raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
+        if from_version - to_version > 1:
+            need_commit = False
+            for i in range(from_version, to_version):
+                need_commit = self.__database_schema_upgrade(con, from_version, from_version + 1) or need_commit
+            return need_commit
+
+        # at this point we are sure that from_version +1 = to_version
+        assert from_version + 1 == to_version
+        self.__logger.warning(f'updating database schema from {from_version} to {to_version}')
+
+        # actual logic
+        if to_version == 2:
+            # need to ensure new node_object_state field is present
+            con.execute('ALTER TABLE "nodes" ADD COLUMN "node_object_state" BLOB')
+            return True

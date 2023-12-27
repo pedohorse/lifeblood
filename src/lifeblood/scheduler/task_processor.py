@@ -15,7 +15,6 @@ from ..invocationjob import InvocationJob
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
 from ..exceptions import *
-from .. import pluginloader
 from .. import aiosqlite_overlay
 from ..config import get_config
 from ..ui_events import TaskData, TaskDelta
@@ -179,9 +178,6 @@ class TaskProcessor(SchedulerComponentBase):
                         async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_row['split_origin_task_id'],)) as attcur:
                             attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, (await attcur.fetchone())['attributes'])
                             attributes.update(process_result.split_attributes_to_set)
-                            for k, v in process_result.split_attributes_to_set.items():
-                                if v is None:
-                                    del attributes[k]
                             result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
                             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                               (result_serialized, task_row['split_origin_task_id']))
@@ -473,7 +469,7 @@ class TaskProcessor(SchedulerComponentBase):
                         awaiters = []
                         set_to_stuff = []
                         for task_row in all_task_rows:
-                            if task_row['node_type'] not in pluginloader.plugins:
+                            if task_row['node_type'] not in self.scheduler.node_data_provider().node_type_names():
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.ERROR.value, task_row['id']))
@@ -495,6 +491,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
                                 # NOTE: awaiters are NOT started here, just coroutines created
+                                # TODO: catch node getting errors here and in other places in task_processor.
                                 awaiters.append(self._awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
                                                               abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
                         if set_to_stuff:
@@ -514,7 +511,7 @@ class TaskProcessor(SchedulerComponentBase):
                         awaiters = []
                         set_to_stuff = []
                         for task_row in all_task_rows:
-                            if task_row['node_type'] not in pluginloader.plugins:
+                            if task_row['node_type'] not in self.scheduler.node_data_provider().node_type_names():
                                 self.__logger.error(f'plugin to process "{task_row["node_type"]}" not found!')
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.ERROR.value, task_row['id']))
