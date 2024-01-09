@@ -3,8 +3,6 @@ name: "PYPI publish"
 on:
   push:
     tags: ["v*"]
-  pull_request:
-    branches: [ dev, master ]
 
 jobs:
   build:
@@ -28,7 +26,6 @@ jobs:
           cd pkg_${{ matrix.build_thing }}
           VER=${{ github.ref_name }}
           VER=${VER:1}
-          VER="0.4.1"
           sed -i "s/version = 0.3.0/version = $VER/g" setup.cfg
           ./build_pypi.sh
       - uses: actions/upload-artifact@master
@@ -58,6 +55,6 @@ jobs:
           path: stuff
       - name: "upload to pypi"
         env:
-          TWINE_PASSWORD: ${{ secrets.PYPI_TESTING }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_RELEASE }}
         run: |
-          python -m twine upload --repository testpypi -u __token__ stuff/*
+          python -m twine upload --repository pypi -u __token__ stuff/*
