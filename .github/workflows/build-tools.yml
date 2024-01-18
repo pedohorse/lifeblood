@@ -1,0 +1,20 @@
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  build_houdini_tools:
+    runs-on: ubuntu-latest
+    container: aaronsmithtv/hbuild:latest
+    steps:
+      - run: |
+          apt install zip rsync bash
+      - uses: actions/checkout@v3
+      - run: |
+          export PATH=/opt/houdini/build:$PATH
+      - run: |
+          ls -alhR dcc_plugins
