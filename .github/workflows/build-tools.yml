@@ -1,3 +1,5 @@
+name: "build additional tools"
+
 on:
   push:
     branches:
@@ -11,10 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     container: aaronsmithtv/hbuild:latest
     steps:
-      - run: |
-          apt install zip rsync bash
+      - name: "install dependencies"
+        run: |
+          apt install -y zip rsync bash
       - uses: actions/checkout@v3
       - run: |
           export PATH=/opt/houdini/build:$PATH
+          dcc_plugins_workspace/build_houdini.sh
       - run: |
           ls -alhR dcc_plugins
