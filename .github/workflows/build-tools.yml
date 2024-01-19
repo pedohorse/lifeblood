@@ -1,0 +1,44 @@
+name: "build additional tools"
+
+on:
+  workflow_call:
+    inputs:
+      artifact_prefix:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build_houdini_tools:
+    runs-on: ubuntu-latest
+    container: aaronsmithtv/hbuild:latest
+    steps:
+      - name: "install dependencies"
+        run: |
+          apt install -y zip rsync bash
+      - uses: actions/checkout@v3
+      - name: "build houdini plugin"
+        run: |
+          export PATH=/opt/houdini/build:$PATH
+          dcc_plugins_workspace/build_houdini.sh
+      - run: |
+          ls -alhR dcc_plugins
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}houdini
+          path:
+            dcc_plugins/houdini.zip
+
+  build_blender_tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: "build blender addon"
+        run: |
+          export PATH=/opt/houdini/build:$PATH
+          dcc_plugins_workspace/build_blender.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}blender
+          path:
+            dcc_plugins/blender_lifeblood_addon.zip
