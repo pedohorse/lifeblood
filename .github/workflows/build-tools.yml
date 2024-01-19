@@ -17,8 +17,28 @@ jobs:
         run: |
           apt install -y zip rsync bash
       - uses: actions/checkout@v3
-      - run: |
+      - name: "build houdini plugin"
+        run: |
           export PATH=/opt/houdini/build:$PATH
           dcc_plugins_workspace/build_houdini.sh
       - run: |
           ls -alhR dcc_plugins
+      - uses: actions/upload-artifact@v4
+        with:
+          name: houdini
+          path:
+            dcc_plugins/houdini.zip
+
+  build_blender_tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: "build blender addon"
+        run: |
+          export PATH=/opt/houdini/build:$PATH
+          dcc_plugins_workspace/build_blender.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blender
+          path:
+            dcc_plugins/lifeblood_addon.zip
