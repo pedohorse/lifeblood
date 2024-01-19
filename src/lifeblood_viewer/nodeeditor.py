@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 
 from math import log2
 from dataclasses import dataclass
@@ -874,11 +875,16 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         painter.beginNativePainting()
         if not self.__imgui_init:
-            logger.debug('initializing imgui')
-            self.__imgui_init = True
-            imgui.create_context()
-            self.__imimpl = ProgrammablePipelineRenderer()
-            imguio = imgui.get_io()
+            try:
+                logger.debug('initializing imgui')
+                self.__imgui_init = True
+                imgui.create_context()
+                self.__imimpl = ProgrammablePipelineRenderer()
+                imguio = imgui.get_io()
+            except Exception as e:
+                logger.exception(f'Failed to initialized opengl context for imgui: {e}')
+                logger.critical('viewer cannot work without opengl context, shutting down')
+                sys.exit(1)
             # note that as of imgui 1.3.0 ini_file_name seem to have a bug of not increasing refcount,
             # so there HAS to be some other python variable, like self.__imgui_config_path, to ensure
             # that path is not garbage collected
