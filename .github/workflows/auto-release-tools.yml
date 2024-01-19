@@ -1,0 +1,52 @@
+name: "release additional tools"
+
+on:
+  push:
+    paths:
+      - dcc_plugins*/**
+      - src/lifeblood_client/**
+    branches:
+      - dev
+      - master
+
+jobs:
+  build_all_tools:
+    uses: ./.github/workflows/build-tools.yml
+
+  make_tool_release:
+    needs:
+      - build_all_tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: repo
+          fetch-depth: 0  # to fetch all history, not just a single commit
+      - run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "Tools auto tag"
+          git checkout ${{ github.sha }}
+          git tag
+          git branch --all
+          git log -n5
+          
+          TAG="$(git describe)-tools"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          
+          echo "new tag is $TAG"
+          
+          git tag -a $TAG -m 'tools autobuild update'
+          git push origin $TAG
+        working-directory: ./repo
+      - uses: actions/download-artifact@v4
+        with:
+          path:
+            tools
+      - run: |
+          ls -alR tools
+          echo tag would be $TAG
+      - uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          files:
+            tools/*/*

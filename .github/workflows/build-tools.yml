@@ -1,12 +1,12 @@
 name: "build additional tools"
 
 on:
-  push:
-    branches:
-      - dev
-  pull_request:
-    branches:
-      - dev
+  workflow_call:
+    inputs:
+      artifact_prefix:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build_houdini_tools:
@@ -25,7 +25,7 @@ jobs:
           ls -alhR dcc_plugins
       - uses: actions/upload-artifact@v4
         with:
-          name: houdini
+          name: ${{ inputs.artifact_prefix }}houdini
           path:
             dcc_plugins/houdini.zip
 
@@ -39,6 +39,6 @@ jobs:
           dcc_plugins_workspace/build_blender.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: blender
+          name: ${{ inputs.artifact_prefix }}blender
           path:
-            dcc_plugins/lifeblood_addon.zip
+            dcc_plugins/blender_lifeblood_addon.zip

@@ -34,6 +34,31 @@ jobs:
           path: |
             pkg_${{ matrix.build_thing }}/dist/*
 
+  build_all_tools:
+    uses: ./.github/workflows/build-tools.yml
+
+  make_release:
+    runs-on: "ubuntu-latest"
+    needs:
+      - build
+      - build_all_tools
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path:
+            tools
+      - run: |
+          VER=${{ github.ref_name }}
+          VER=${VER:1}
+          echo "PYPIVER=$VER" >> $GITHUB_ENV
+      - uses: softprops/action-gh-release@v1
+        with:
+          files:
+            tools/*/*
+          append_body: true
+          body: |
+            corresponds to release https://pypi.org/project/lifeblood/${{ env.PYPIVER }}/
+
   publish:
     runs-on: "ubuntu-latest"
     needs: [ "build" ]
