@@ -13,7 +13,7 @@ from PySide2.QtGui import QColor
 from typing import Optional, Dict, List, Any
 
 
-_init_column_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
+_init_column_order = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
 
 
 class WorkerListWidget(QWidget):
@@ -87,7 +87,7 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, WorkerData] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
+        self.__cols = {'id': 'id', 'state': 'state', 'metadata.hostname': 'hostname', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
                        'gpu_count': 'gpus', 'gpu_mem': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
                        'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
         self.__cols_order = _init_column_order
@@ -146,6 +146,9 @@ class WorkerModel(QAbstractTableModel):
                 return None
             elif role == self.SORT_ROLE:  # for sorting
                 return data.value
+        if col_name.startswith('metadata.'):
+            metafield = col_name.split('.', 1)[1]
+            return getattr(worker.metadata, metafield)
         if col_name == 'progress':
             data = worker.current_invocation_progress
             if role == self.SORT_ROLE:  # for sorting
@@ -209,7 +212,7 @@ class WorkerModel(QAbstractTableModel):
     @Slot(object)
     def workers_full_update(self, workers_data: WorkerBatchData):
         with performance_measurer() as pm:
-            new_workers = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
+            new_workers: Dict[str, WorkerData] = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
             new_keys = set(new_workers.keys())
             old_keys = set(self.__workers.keys())
         _perf_preinit = pm.elapsed()
