@@ -3,6 +3,7 @@ from unittest import TestCase
 from io import BytesIO
 from lifeblood.enums import TaskState, WorkerType, WorkerState, TaskGroupArchivedState
 from lifeblood.buffered_connection import BufferedReaderWrapper
+from lifeblood.worker_metadata import WorkerMetadata
 from lifeblood.ui_protocol_data import UiData, NodeGraphStructureData, \
     NodeData, NodeConnectionData, TaskBatchData, TaskData, WorkerData, WorkerResources, WorkerBatchData, \
     TaskGroupData, TaskGroupStatisticsData, TaskGroupBatchData, TaskDelta
@@ -26,7 +27,8 @@ class Tests(TestCase):
             }), WorkerBatchData(0, {
                 121: WorkerData(121, WorkerResources(12.3, 23.4, 929283838, 939384848, 56.7, 67.8, 84847575, 85857676),
                                 '1928374', '127.1.2.333:blo', 1234567, WorkerState.BUSY, WorkerType.STANDARD,
-                                1534, 8273, 7573, 55.5, {"borker", "gorker"})
+                                1534, 8273, 7573, 55.5, {"borker", "gorker"},
+                                WorkerMetadata("fooo"))
             }), TaskGroupBatchData(0, {
                 'grooup foo': TaskGroupData('grooup foo', 2345678, TaskGroupArchivedState.ARCHIVED, 22.3,
                                             TaskGroupStatisticsData(45, 56, 67, 78))
