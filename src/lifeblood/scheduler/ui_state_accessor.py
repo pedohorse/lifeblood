@@ -443,7 +443,8 @@ class UIStateAccessor(SchedulerComponentBase):
                                    'GROUP BY workers."id"') as cur:
                 all_workers = {x['id']: x for x in ({**dict(x),
                                                      'last_seen': self.__data_access.mem_cache_workers_state[x['id']]['last_seen'],
-                                                     'progress': self.__data_access.mem_cache_invocations.get(x['invoc_id'], {}).get('progress', None)
+                                                     'progress': self.__data_access.mem_cache_invocations.get(x['invoc_id'], {}).get('progress', None),
+                                                     'metadata': self.__data_access.get_worker_metadata(x['hwid']),
                                                      } for x in await cur.fetchall())}
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
@@ -655,7 +656,7 @@ def _pack_workers_from_raw(db_uid: int, ui_workers: dict) -> "WorkerBatchData":
         workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
                                         WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
                                         worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
-                                        worker_raw['groups'])
+                                        worker_raw['groups'], worker_raw['metadata'])
 
     return WorkerBatchData(db_uid, workers)
 

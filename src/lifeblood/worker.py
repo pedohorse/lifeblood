@@ -18,8 +18,9 @@ import tempfile
 import signal
 from enum import Enum
 from . import logging
-from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port
+from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port, get_hostname
 from .net_classes import WorkerResources
+from .worker_metadata import WorkerMetadata
 # from .worker_task_protocol import WorkerTaskServerProtocol
 from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning,\
     InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationMessageError
@@ -224,9 +225,10 @@ class Worker:
                 self.__my_addr = AddressChain.from_host_port(my_ip, my_port)
 
             # now report our address to the scheduler
+            metadata = WorkerMetadata(get_hostname())
             try:
                 with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                    self.__scheduler_db_uid = await client.say_hello(self.__my_addr, self.__worker_type, self.__my_resources)
+                    self.__scheduler_db_uid = await client.say_hello(self.__my_addr, self.__worker_type, self.__my_resources, metadata)
             except MessageTransferError as e:
                 self.__logger.error('error connecting to scheduler during start')
                 abort_start = True
@@ -648,6 +650,7 @@ class Worker:
         async def _reintroduce_ourself():
             for attempt in range(5):
                 self.__logger.debug(f'trying to reintroduce myself, attempt: {attempt + 1}')
+                metadata = WorkerMetadata(get_hostname())
                 try:
                     with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                         assert self.__my_addr is not None
@@ -657,7 +660,7 @@ class Worker:
                         self.__logger.debug('cancelling task')
                         await self.cancel_task()
                         self.__logger.debug('saying hello')
-                        self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources)
+                        self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources, metadata)
                         self.__logger.debug('reintroduce done')
                     break
                 except Exception:

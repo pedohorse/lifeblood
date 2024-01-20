@@ -10,6 +10,7 @@ from . import invocationjob
 from .taskspawn import TaskSpawn
 from .enums import WorkerType, SpawnStatus, WorkerState
 from .net_classes import WorkerResources
+from .worker_metadata import WorkerMetadata
 
 from typing import TYPE_CHECKING, Optional, Tuple
 if TYPE_CHECKING:
@@ -78,7 +79,8 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
             reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
             worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
-            await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
+            metadata = WorkerMetadata(await read_string())
+            await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
             writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
 
         async def comm_bye():  # elif command == b'bye':
@@ -302,7 +304,7 @@ class SchedulerTaskClient:
         await self.__writer.drain()
         await self.__reader.readexactly(1)
 
-    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources):
+    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources, metadata: WorkerMetadata):
         await self._ensure_conn_open()
         self.write_string('hello')
         self.write_string(address_to_advertise)
@@ -310,6 +312,8 @@ class SchedulerTaskClient:
         resdata = worker_resources.serialize()
         self.__writer.write(struct.pack('>Q', len(resdata)))
         self.__writer.write(resdata)
+
+        self.write_string(metadata.hostname)
         await self.__writer.drain()
         # as return we get the database's unique id to distinguish it from others
         return struct.unpack('>Q', await self.__reader.readexactly(8))[0]

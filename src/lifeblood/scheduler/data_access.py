@@ -3,10 +3,13 @@ import sqlite3
 import random
 import struct
 from ..db_misc import sql_init_script
+from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..scheduler_event_log import SchedulerEventLog
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
+
+from typing import Dict, Optional
 
 SCHEDULER_DB_FORMAT_VERSION = 2
 
@@ -17,9 +20,13 @@ class DataAccess:
         self.db_path: str = db_path
         self.db_timeout: int = db_connection_timeout
 
+        # "public" members
         self.mem_cache_workers_resources: dict = {}
         self.mem_cache_workers_state: dict = {}
         self.mem_cache_invocations: dict = {}
+        #
+
+        self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
         # ensure database is initialized
         with sqlite3.connect(db_path) as con:
@@ -53,6 +60,12 @@ class DataAccess:
     @property
     def db_uid(self):
         return self.__db_uid
+
+    def get_worker_metadata(self, worker_hwid: int) -> Optional[WorkerMetadata]:
+        return self.__workers_metadata.get(worker_hwid)
+
+    def set_worker_metadata(self, worker_hwid, data: WorkerMetadata):
+        self.__workers_metadata[worker_hwid] = data
 
     def data_connection(self) -> aiosqlite_overlay.ConnectionWithCallbacks:
         return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
