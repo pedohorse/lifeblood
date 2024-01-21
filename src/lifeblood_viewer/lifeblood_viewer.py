@@ -18,7 +18,7 @@ from .nodeeditor_windows.ui_undo_window import UndoWindow
 from .nodeeditor_windows.ui_longop_window import LongOpWindow
 from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .nodeeditor_windows.ui_task_list_window import TaskListWindow
-from .worker_list import WorkerListWidget
+from .widgets.worker_list import WorkerListWidget
 from .nodeeditor_overlays.task_history_overlay import TaskHistoryOverlay
 
 from typing import Dict
