@@ -1531,6 +1531,7 @@ QFrame[width="3"]
 QSplitter::handle
 {
     border: 0.1ex dashed #76797c;
+    background-color: #444455;
 }
 
 QSplitter::handle:hover
@@ -1645,4 +1646,9 @@ QDoubleSpinBox::down-arrow:disabled,
 QDoubleSpinBox::down-arrow:off
 {
    border-image: url(:/dark/down_arrow_disabled.svg);
+}
+
+QGraphicsView
+{
+    background: #232629;
 }
