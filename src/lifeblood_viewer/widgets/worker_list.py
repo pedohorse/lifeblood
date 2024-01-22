@@ -34,13 +34,6 @@ class WorkerListWidget(QWidget):
         ], self)
         self.__sort_model.setSortRole(WorkerModel.SORT_ROLE)
         self.__sort_model.setFilterRole(WorkerModel.SORT_ROLE)
-        # self.__sort_model = QSortFilterProxyModel(self)
-        # self.__sort_model.setSourceModel(self.__worker_model)
-        # self.__sort_model.setSortRole(WorkerModel.SORT_ROLE)
-        # self.__sort_model.setDynamicSortFilter(True)  # careful with this if we choose to modify model through interface in future
-        #
-        # self.__sort_model.setFilterRole(WorkerModel.SORT_ROLE)
-        # self.__sort_model.setFilterKeyColumn(self.__worker_model.column_by_name('state'))
 
         self.__worker_list.setModel(self.__sort_model)
         # self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter

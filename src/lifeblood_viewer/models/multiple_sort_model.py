@@ -26,7 +26,7 @@ class MultipleFilterSortProxyModel(QSortFilterProxyModel):
             self.__filter_models[idx] = model
             self.__filter_models_order.append(model)
 
-        self.setDynamicSortFilter(True)
+        self.setDynamicSortFilter(True)  # careful with this if we choose to modify model through interface in future
 
     def set_filter_for_column(self, column_id: int, filter_wildcard: str):
         if column_id not in self.__filter_models:
