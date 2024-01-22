@@ -1505,23 +1505,23 @@ QStatusBar::item
 
 QSplitter::handle
 {
-    border: 0.1ex dashed #BAB9B8;
+    border: 0.2ex dashed #BAB9B8;
 }
 
 QSplitter::handle:hover
 {
     background-color: #787876;
-    border: 0.1ex solid #BAB9B8;
+    border: 0.2ex solid #BAB9B8;
 }
 
 QSplitter::handle:horizontal
 {
-    width: 0.1ex;
+    width: 0.2ex;
 }
 
 QSplitter::handle:vertical
 {
-    height: 0.1ex;
+    height: 0.2ex;
 }
 
 QProgressBar:horizontal
