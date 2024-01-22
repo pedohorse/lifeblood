@@ -22,7 +22,7 @@ class MultipleFilterSortProxyModel(QSortFilterProxyModel):
             model.setSourceModel(source_model)
             source_model = model
             model.setFilterKeyColumn(idx)
-            model.setFilterWildcard('*')
+            model.setFilterWildcard('')
             self.__filter_models[idx] = model
             self.__filter_models_order.append(model)
 
