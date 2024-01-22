@@ -6,6 +6,7 @@ from io import BytesIO, BufferedIOBase
 from .buffered_connection import BufferedReader
 from .buffer_serializable import IBufferSerializable
 from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState, InvocationState
+from .worker_metadata import WorkerMetadata
 from dataclasses import dataclass
 
 from typing import Dict, List, Tuple, Type, Optional, Set, Union
@@ -442,19 +443,25 @@ class WorkerData(IBufferSerializable):
     current_invocation_id: Optional[int]
     current_invocation_progress: Optional[float]
     groups: Set[str]
+    metadata: Optional[WorkerMetadata]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQII?Q?Q?Q?dQ', self.id, self.last_seen_timestamp, self.state.value, self.type.value,
+        stream.write(struct.pack('>QQII?Q?Q?Q?dQ?', self.id, self.last_seen_timestamp, self.state.value, self.type.value,
                                  self.current_invocation_node_id is not None, self.current_invocation_node_id or 0,
                                  self.current_invocation_task_id is not None, self.current_invocation_task_id or 0,
                                  self.current_invocation_id is not None, self.current_invocation_id or 0,
                                  self.current_invocation_progress is not None, self.current_invocation_progress or 0.0,
-                                 len(self.groups)))
+                                 len(self.groups),
+                                 self.metadata is not None))
         self.worker_resources.serialize(stream)
         _serialize_string(self.hwid, stream)
         _serialize_string(self.last_address, stream)
         for group in self.groups:
             _serialize_string(group, stream)
+
+        # metadata
+        if self.metadata is not None:
+            _serialize_string(self.metadata.hostname, stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "WorkerData":
@@ -463,7 +470,7 @@ class WorkerData(IBufferSerializable):
             has_current_invocation_task_id, current_invocation_task_id, \
             has_current_invocation_id, current_invocation_id, \
             has_current_invocation_progress, current_invocation_progress, \
-            groups_count = struct.unpack('>QQII?Q?Q?Q?dQ', stream.readexactly(68))
+            groups_count, has_metadata = struct.unpack('>QQII?Q?Q?Q?dQ?', stream.readexactly(69))
         if not has_current_invocation_node_id:
             current_invocation_node_id = None
         if not has_current_invocation_task_id:
@@ -478,8 +485,11 @@ class WorkerData(IBufferSerializable):
         groups = set()
         for i in range(groups_count):
             groups.add(_deserialize_string(stream))
+        metadata = None
+        if has_metadata:
+            metadata = WorkerMetadata(_deserialize_string(stream))
         return WorkerData(worker_id, worker_resources, hwid, last_address, last_seen_timestamp, WorkerState(state_value), WorkerType(type_value),
-                          current_invocation_node_id, current_invocation_task_id, current_invocation_id, current_invocation_progress, groups)
+                          current_invocation_node_id, current_invocation_task_id, current_invocation_id, current_invocation_progress, groups, metadata)
 
 
 @dataclass

@@ -88,6 +88,10 @@ def get_localhost():
     return '127.0.0.1'
 
 
+def get_hostname() -> str:
+    return socket.gethostname()
+
+
 def get_default_broadcast_addr():
     addr = get_default_addr()
     net_addrs = psutil.net_if_addrs()

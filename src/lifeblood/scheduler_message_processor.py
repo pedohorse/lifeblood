@@ -11,6 +11,7 @@ from .taskspawn import TaskSpawn
 from .enums import WorkerPingReply, TaskScheduleStatus, WorkerState, WorkerType, SpawnStatus, InvocationState, InvocationMessageResult
 from .worker_messsage_processor import WorkerControlClient
 from .net_classes import WorkerResources
+from .worker_metadata import WorkerMetadata
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
@@ -113,11 +114,12 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             db_uid: scheduler's database uid
         """
         addr = args['worker_addr']
+        metadata = WorkerMetadata(args.get('meta_hostname', str(addr)))
         workertype: WorkerType = WorkerType(args['worker_type'])
         res_data = args['worker_res'].encode('latin1')
 
         worker_hardware: WorkerResources = WorkerResources.deserialize(res_data)
-        await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True)
+        await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
         await client.send_message_as_json({'db_uid': self.__scheduler.db_uid()})
 
     async def _command_bye(self, args: dict, client: CommandJsonMessageClient, original_message: Message):  # 'bye'
@@ -335,11 +337,12 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
 
-    async def say_hello(self, address_to_advertise: AddressChain, worker_type: WorkerType, worker_resources: WorkerResources) -> int:
+    async def say_hello(self, address_to_advertise: AddressChain, worker_type: WorkerType, worker_resources: WorkerResources, worker_metadata: WorkerMetadata) -> int:
         await self.__client.send_command('worker.hello', {
             'worker_addr': str(address_to_advertise),
             'worker_type': worker_type.value,
-            'worker_res': worker_resources.serialize().decode('latin1')
+            'worker_res': worker_resources.serialize().decode('latin1'),
+            'meta_hostname': worker_metadata.hostname,
         })
         reply = await self.__client.receive_message()
         return (await reply.message_body_as_json())['db_uid']

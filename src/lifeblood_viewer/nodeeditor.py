@@ -1,5 +1,3 @@
-import os
-import random
 import sys
 
 from math import log2
@@ -7,17 +5,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from enum import Enum
-from .graphics_items import Task, Node, NodeConnection, NetworkItem, NetworkItemWithUI
+from .graphics_items import Task, Node, NetworkItem
 from .graphics_scene import QGraphicsImguiScene
 from .long_op import LongOperation
-from .flashy_label import FlashyLabel
+from .widgets.flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
 from .menu_entry_base import MainMenuLocation
 from .utils import BetterOrderedDict
 from lifeblood.base import TypeMetadata
-from lifeblood.misc import timeit, performance_measurer
-from lifeblood.enums import TaskState, NodeParameterType, TaskGroupArchivedState
+from lifeblood.misc import timeit
+from lifeblood.enums import TaskState
 from lifeblood.config import get_config
 from lifeblood import logging
 from lifeblood import paths
@@ -27,13 +25,11 @@ from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
-from lifeblood.text import generate_name
-
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import QObject, Qt, Slot, Signal, QThread, QRectF, QPointF, QEvent, QSize
-from PySide2.QtGui import QKeyEvent, QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QShortcutEvent, QPainterPath, QPen, QColor, QMouseEvent, QClipboard
+from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPointF, QEvent, QSize
+from PySide2.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard
 
 from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
@@ -43,7 +39,7 @@ from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 import imgui
 from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
-from typing import Any, Optional, List, Mapping, Tuple, Dict, Set, Callable, Generator, Iterable, Union
+from typing import Any, Optional, List, Tuple, Dict, Set, Callable, Union
 
 MenuStructure = BetterOrderedDict
 

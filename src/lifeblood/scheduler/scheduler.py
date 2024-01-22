@@ -24,6 +24,7 @@ from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import WorkerPool
 from ..nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
 from ..net_classes import WorkerResources
+from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
 from ..basenode import BaseNode
 from ..exceptions import *
@@ -85,7 +86,7 @@ class Scheduler(NodeGraphHolderBase):
 
         self.__all_components = None
         self.__started_event = asyncio.Event()
-        
+
         loop = asyncio.get_event_loop()
 
         if db_file_path is None:
@@ -694,7 +695,14 @@ class Scheduler(NodeGraphHolderBase):
 
     #
     # add new worker to db
-    async def add_worker(self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources, assume_active=True):  # TODO: all resource should also go here
+    async def add_worker(
+            self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources,  # TODO: all resource should also go here
+            *,
+            assume_active: bool = True,
+            worker_metadata: WorkerMetadata):
+        """
+        this is called by network protocol handler when worker reports being up to the scheduler
+        """
         self.__logger.debug(f'worker reported added: {addr}')
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -784,6 +792,7 @@ class Scheduler(NodeGraphHolderBase):
                                worker_resources.total_gpu_mem)
                                )
             await self._update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
+            self.data_access.set_worker_metadata(worker_resources.hwid, worker_metadata)
             await con.commit()
         self.__logger.debug(f'finished worker reported added: {addr}')
         self.poke_task_processor()

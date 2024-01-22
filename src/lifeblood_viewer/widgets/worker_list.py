@@ -4,16 +4,17 @@ from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
 from lifeblood.misc import timeit, performance_measurer
-from .connection_worker import SchedulerConnectionWorker
+from lifeblood_viewer.connection_worker import SchedulerConnectionWorker
+from lifeblood_viewer.models.multiple_sort_model import MultipleFilterSortProxyModel
 
-from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QHeaderView, QMenu
-from PySide2.QtCore import Slot, Signal, Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QPoint
+from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QVBoxLayout, QHeaderView, QMenu, QLineEdit
+from PySide2.QtCore import Slot, Signal, Qt, QAbstractItemModel, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QAbstractProxyModel, QPoint, QObject
 from PySide2.QtGui import QColor
 
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, Iterable, List, Optional
 
 
-_init_column_order = ('id', 'state', 'progress', 'task_id', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
+_init_column_order = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
 
 
 class WorkerListWidget(QWidget):
@@ -22,14 +23,17 @@ class WorkerListWidget(QWidget):
         self.__worker_list = QTableView()
         self.__worker_list.verticalHeader().setDefaultSectionSize(10)
         self.__worker_model = WorkerModel(worker, self)
-        self.__sort_model = QSortFilterProxyModel(self)
-        self.__sort_model.setSourceModel(self.__worker_model)
-        self.__sort_model.setSortRole(WorkerModel.SORT_ROLE)
-        self.__sort_model.setDynamicSortFilter(True)  # careful with this if we choose to modify model through interface in future
 
+        col_id = self.__worker_model.column_by_name('id')
+        col_hostname = self.__worker_model.column_by_name('metadata.hostname')
+        col_task_id = self.__worker_model.column_by_name('task_id')
+        self.__sort_model = MultipleFilterSortProxyModel(self.__worker_model, [
+            col_id,
+            col_hostname,
+            col_task_id,
+        ], self)
+        self.__sort_model.setSortRole(WorkerModel.SORT_ROLE)
         self.__sort_model.setFilterRole(WorkerModel.SORT_ROLE)
-        self.__sort_model.setFilterRegExp(rf'^(?:(?!{WorkerState.UNKNOWN.value}).)*$')
-        self.__sort_model.setFilterKeyColumn(self.__worker_model.column_by_name('state'))
 
         self.__worker_list.setModel(self.__sort_model)
         # self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
@@ -47,7 +51,26 @@ class WorkerListWidget(QWidget):
         self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
         self.__worker_list.setFocusPolicy(Qt.NoFocus)
 
-        layout = QHBoxLayout(self)
+        #
+        search_field1 = QLineEdit()
+        search_field2 = QLineEdit()
+        search_field3 = QLineEdit()
+        search_field1.setPlaceholderText('filter by id')
+        search_field2.setPlaceholderText('filter by task')
+        search_field3.setPlaceholderText('filter by hostname')
+        search_field1.textChanged.connect(lambda text: self.__sort_model.set_filter_for_column(col_id, text))
+        search_field2.textChanged.connect(lambda text: self.__sort_model.set_filter_for_column(col_task_id, text))
+        search_field3.textChanged.connect(lambda text: self.__sort_model.set_filter_for_column(col_hostname, text))
+
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(search_field1)
+        search_layout.addWidget(search_field2)
+        search_layout.addWidget(search_field3)
+
+        #
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(search_layout)
         layout.addWidget(self.__worker_list)
 
         self.__worker_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -87,7 +110,7 @@ class WorkerModel(QAbstractTableModel):
         self.__workers: Dict[str, WorkerData] = {}  # address is the key
         self.__order: List[str] = []
         self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
+        self.__cols = {'id': 'id', 'state': 'state', 'metadata.hostname': 'hostname', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
                        'gpu_count': 'gpus', 'gpu_mem': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
                        'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
         self.__cols_order = _init_column_order
@@ -96,7 +119,7 @@ class WorkerModel(QAbstractTableModel):
 
         self.start()
 
-    def column_by_name(self, name):
+    def column_by_name(self, name) -> int:
         return self.__colname_to_index[name]
 
     def headerData(self, section: int, orientation, role: int = Qt.DisplayRole):
@@ -146,6 +169,9 @@ class WorkerModel(QAbstractTableModel):
                 return None
             elif role == self.SORT_ROLE:  # for sorting
                 return data.value
+        if col_name.startswith('metadata.'):
+            metafield = col_name.split('.', 1)[1]
+            return getattr(worker.metadata, metafield)
         if col_name == 'progress':
             data = worker.current_invocation_progress
             if role == self.SORT_ROLE:  # for sorting
@@ -203,13 +229,19 @@ class WorkerModel(QAbstractTableModel):
         if not index.isValid():
             return
         row = index.row()
-        wid = self.__workers[self.__order[row]]['id']
+        wid = self.__workers[self.__order[row]].id
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
     def workers_full_update(self, workers_data: WorkerBatchData):
+        # we filter UNKNOWNS here, currently i see no point
+        # displaying them any time.
+        # maybe unknowns should not be returned by update at all?
         with performance_measurer() as pm:
-            new_workers = {x.last_address: x for x in workers_data.workers.values()}  # TODO: maybe use id instead of last_address?
+            new_workers: Dict[str, WorkerData] = {
+                x.last_address: x for x in workers_data.workers.values()
+                if x.state != WorkerState.UNKNOWN
+            }  # TODO: maybe use id instead of last_address?
             new_keys = set(new_workers.keys())
             old_keys = set(self.__workers.keys())
         _perf_preinit = pm.elapsed()

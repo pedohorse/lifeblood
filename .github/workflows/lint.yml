@@ -38,4 +38,4 @@ jobs:
           pip install flake8
       - name: Analysing the code with flake8
         run: |
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 ./src --count --exit-zero --max-complexity=10 --max-line-length=256 --statistics --format='::warning file=%(path)s,line=%(row)d,col=%(col)d::%(code)s %(text)s'
