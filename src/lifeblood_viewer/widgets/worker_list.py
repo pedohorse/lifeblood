@@ -236,7 +236,7 @@ class WorkerModel(QAbstractTableModel):
         if not index.isValid():
             return
         row = index.row()
-        wid = self.__workers[self.__order[row]]['id']
+        wid = self.__workers[self.__order[row]].id
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
