@@ -970,7 +970,7 @@ class Scheduler(NodeGraphHolderBase):
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, node_id=node_id))  # ui event
                 await con.commit()
         except aiosqlite.IntegrityError:
-            self.__logger.error('could not remove node connection because of database integrity check')
+            self.__logger.error(f'could not set task {task_id} to node {node_id} because of database integrity check')
         else:
             self.wake()
             self.poke_task_processor()
@@ -1350,7 +1350,7 @@ class Scheduler(NodeGraphHolderBase):
                 await con.commit()
                 self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
-            self.__logger.error('could not remove node connection because of database integrity check')
+            self.__logger.error(f'could not remove node connection {node_connection_id} because of database integrity check')
 
     #
     # add node
@@ -1382,7 +1382,7 @@ class Scheduler(NodeGraphHolderBase):
                 await con.commit()
                 self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
-            self.__logger.error('could not remove node connection because of database integrity check')
+            self.__logger.error(f'could not remove node {node_id} because of database integrity check')
             return False
         return True
 
