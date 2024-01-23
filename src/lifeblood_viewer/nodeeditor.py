@@ -35,6 +35,7 @@ from .dialogs import MessageWithSelectableText
 from .create_task_dialog import CreateTaskDialog
 from .save_node_settings_dialog import SaveNodeSettingsDialog
 from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
+from .undo_stack import OperationResult, OperationResultStatus
 
 import imgui
 from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
@@ -480,7 +481,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     @Slot()
     def delete_selected(self):
-        self.__scene.delete_selected_nodes()
+        def _on_finished(_, result: OperationResult):
+            if result.status == OperationResultStatus.PartialSuccess:
+                self.show_message('::warning::some nodes were not deleted', 1)
+            elif result.status == OperationResultStatus.NotPerformed:
+                self.show_message('::error::no nodes were deleted', 2)
+        self.__scene.delete_selected_nodes(callback=_on_finished)
 
     @Slot(str, str, QPointF)
     def get_snippet_from_scheduler_and_create_nodes(self, package: str, preset_name: str, pos: QPointF):
