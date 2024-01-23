@@ -1,3 +1,5 @@
+from enum import Enum
+from dataclasses import dataclass
 from lifeblood.logging import get_logger
 from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 
@@ -14,11 +16,32 @@ class StackLockedError(OperationError):
     pass
 
 
+class OperationResultStatus(Enum):
+    """
+    This enum represents result of a successfully completed operation.
+    operation is considered FAILED if an error occurred in operation execution/communication itself
+    (especially for async operations that communicate with scheduler)
+
+    Yet a successful operation may still perform not the expected result due to
+     for example hitting scheduler's constraints, like not being able to delete node
+     if that node has tasks.
+    """
+    FullSuccess = 0  # means operation was performed as intended
+    PartialSuccess = 1  # means operation was performed, but not as it was intended (like u wanted to delete 2 nodes, but only 1 was actually deleted)
+    NotPerformed = 2  # means operation was not performed or resulted in no changes
+
+
+@dataclass
+class OperationResult:
+    status: OperationResultStatus
+    details: Optional[str] = None
+
+
 class UndoableOperation:
-    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+    def do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         """
         callback must be executed after done if present
-        return True if operatin was completed, False if operation was started, but will complete asyncronously.
+        return True if operation was completed, False if operation was started, but will complete asynchronously.
          In that case operation must call undo stack's _operation_finalized(self)
         """
         raise NotImplementedError()
@@ -34,7 +57,7 @@ class StackAwareOperation(UndoableOperation):
     def _undo_stack(self):
         return self.__stack
 
-    def do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+    def do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         success = False
         finished = False
         if not self.__stack._start_do_operation(self, callback):
@@ -60,7 +83,7 @@ class StackAwareOperation(UndoableOperation):
                 self.__stack._operation_finalized(self, False, success)
         return True
 
-    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+    def _my_do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         raise NotImplementedError()
 
     def _my_undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
@@ -68,13 +91,13 @@ class StackAwareOperation(UndoableOperation):
 
 
 class SimpleUndoableOperation(StackAwareOperation):
-    def __init__(self, undo_stack: "UndoStack", forward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None], backward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None]):
+    def __init__(self, undo_stack: "UndoStack", forward_op: Callable[[Optional[Callable[["UndoableOperation", OperationResult], None]]], None], backward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None]):
         super().__init__(undo_stack)
         self.__stack = undo_stack
         self.__fwd_op = forward_op
         self.__bkw_op = backward_op
 
-    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+    def _my_do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         self.__fwd_op(callback)
         return True
 
@@ -88,21 +111,34 @@ class AsyncOperation(StackAwareOperation):
         super().__init__(undo_stack)
         self.__op_processor = op_processor
         self.__was_done = False
+        self.__op_result = OperationResult(OperationResultStatus.FullSuccess, None)
 
-    def _my_do(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+    def _set_result(self, op_result: OperationResult):
+        self.__op_result = op_result
+
+    def _my_do_result(self) -> Optional[OperationResult]:
+        if self.__was_done:
+            return self.__op_result
+        return None
+
+    def _my_do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         def doop(longop: LongOperation):
             success = True
+            error_message = None
             try:
                 yield from self._my_do_longop(longop)
                 self.__was_done = True
             except Exception as e:
                 logger.exception(f'exception happened during do operation "{self}"')
+                error_message = str(e)
                 success = False
             finally:
                 self._undo_stack()._operation_finalized(self, True, success)
 
             if success and callback:
-                callback(self)
+                op_result = self._my_do_result()
+                assert op_result is not None
+                callback(self, op_result)
 
         if self.__was_done:
             raise OperationError('operation was done already')
@@ -163,7 +199,7 @@ class UndoStack:
             self.__name_cache = [str(x) for x in self.__operations]
         return self.__name_cache
 
-    def _start_do_operation(self, op: UndoableOperation, callback: Optional[Callable[["UndoableOperation"], None]]) -> bool:
+    def _start_do_operation(self, op: UndoableOperation, callback: Optional[Callable[["UndoableOperation", OperationResult], None]]) -> bool:
         if self.__locked:
             self.__todo_queue.append((op.do, callback))
             return False
