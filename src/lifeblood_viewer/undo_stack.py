@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass
 from lifeblood.logging import get_logger
-from .long_op import LongOperation, LongOperationData, LongOperationProcessor
+from .long_op import LongOperation, LongOperationProcessor
 
 from typing import Callable, List, Optional
 
@@ -9,6 +9,9 @@ logger = get_logger('undoable_operations')
 
 
 class OperationError(RuntimeError):
+    """
+    General Op-related error
+    """
     pass
 
 
@@ -33,13 +36,24 @@ class OperationResultStatus(Enum):
 
 @dataclass
 class OperationResult:
+    """
+    information about a completed operation
+    """
     status: OperationResultStatus
     details: Optional[str] = None
 
 
 class UndoableOperation:
+    """
+    base class for undoable operations
+    undoable operation keeps information how to undo itself
+    """
+
     def do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         """
+        do the operation.
+        operation can be done only once
+
         callback must be executed after done if present
         return True if operation was completed, False if operation was started, but will complete asynchronously.
          In that case operation must call undo stack's _operation_finalized(self)
@@ -47,10 +61,18 @@ class UndoableOperation:
         raise NotImplementedError()
 
     def undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+        """
+        undo the operation.
+        do() is supposed to be called before undo call, otherwise it is incorrect undo call
+        """
         raise NotImplementedError()
 
 
 class StackAwareOperation(UndoableOperation):
+    """
+    helper class
+    undoable operation with the notion of undo stack
+    """
     def __init__(self, undo_stack: "UndoStack"):
         self.__stack = undo_stack
 
@@ -84,13 +106,23 @@ class StackAwareOperation(UndoableOperation):
         return True
 
     def _my_do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
+        """
+        reimplement this function in child classes instead of do()
+        """
         raise NotImplementedError()
 
     def _my_undo(self, callback: Optional[Callable[["UndoableOperation"], None]] = None) -> bool:
+        """
+        reimplement this function in child classes instead of undo()
+        """
         raise NotImplementedError()
 
 
 class SimpleUndoableOperation(StackAwareOperation):
+    """
+    simple undoable operation helper class
+    you just need to provide op and undo as lambdas
+    """
     def __init__(self, undo_stack: "UndoStack", forward_op: Callable[[Optional[Callable[["UndoableOperation", OperationResult], None]]], None], backward_op: Callable[[Optional[Callable[["UndoableOperation"], None]]], None]):
         super().__init__(undo_stack)
         self.__stack = undo_stack
@@ -107,6 +139,13 @@ class SimpleUndoableOperation(StackAwareOperation):
 
 
 class AsyncOperation(StackAwareOperation):
+    """
+    base class for all asynchronous operations
+    async operations relay on LongOperation concept
+    async operations' do and undo complete immediately,
+    so it's more of a fire and forget thing.
+    you may provide callback lambda that will be executed on operation success
+    """
     def __init__(self, undo_stack: "UndoStack", op_processor: LongOperationProcessor):
         super().__init__(undo_stack)
         self.__op_processor = op_processor
@@ -114,6 +153,10 @@ class AsyncOperation(StackAwareOperation):
         self.__op_result = OperationResult(OperationResultStatus.FullSuccess, None)
 
     def _set_result(self, op_result: OperationResult):
+        """
+        your overriden _my_do_longop may call this to define op the state
+        of the operation result
+        """
         self.__op_result = op_result
 
     def _my_do_result(self) -> Optional[OperationResult]:
@@ -124,13 +167,11 @@ class AsyncOperation(StackAwareOperation):
     def _my_do(self, callback: Optional[Callable[["UndoableOperation", OperationResult], None]] = None) -> bool:
         def doop(longop: LongOperation):
             success = True
-            error_message = None
             try:
                 yield from self._my_do_longop(longop)
                 self.__was_done = True
             except Exception as e:
                 logger.exception(f'exception happened during do operation "{self}"')
-                error_message = str(e)
                 success = False
             finally:
                 self._undo_stack()._operation_finalized(self, True, success)
@@ -167,18 +208,27 @@ class AsyncOperation(StackAwareOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         """
+        override this in the subclass
+
         :param longop: containing long operation, this op has to report back to given longop when done
         """
         raise NotImplementedError()
 
     def _my_undo_longop(self, longop: LongOperation):
         """
+        override this in the subclass
+
         :param longop: containing long operation, this op has to report back to given longop when done
         """
         raise NotImplementedError()
 
 
 class UndoStack:
+    """
+    stack of operations.
+    operations can be added to the stack after they have been done,
+    and removed from stack just before performing and undo
+    """
     logger = get_logger('undo_stack')
 
     def __init__(self, max_undos=100):
@@ -194,12 +244,18 @@ class UndoStack:
         if len(self.__operations) > self.__max_undos:
             self.__operations = self.__operations[len(self.__operations)-self.__max_undos:]
 
-    def operation_names(self):
+    def operation_names(self) -> List[str]:
+        """
+        return list of short descriptions of operations on the stack
+        """
         if self.__name_cache is None:
             self.__name_cache = [str(x) for x in self.__operations]
         return self.__name_cache
 
     def _start_do_operation(self, op: UndoableOperation, callback: Optional[Callable[["UndoableOperation", OperationResult], None]]) -> bool:
+        """
+        stack aware operation will call this at the start of do op
+        """
         if self.__locked:
             self.__todo_queue.append((op.do, callback))
             return False
@@ -207,6 +263,9 @@ class UndoStack:
         return True
 
     def _start_undo_operation(self, op: UndoableOperation, callback: Optional[Callable[["UndoableOperation"], None]]) -> bool:
+        """
+        stack aware operation will call this at the start of undo op
+        """
         if self.__locked:
             self.__todo_queue.append((op.undo, callback))
             return False
@@ -214,6 +273,9 @@ class UndoStack:
         return True
 
     def _operation_finalized(self, op: UndoableOperation, add_to_stack: bool, success: bool):
+        """
+        stack aware operation will call this AFTER finished do or undo of an op
+        """
         if not success:
             self.logger.error('undo stack operation failed. clearing undo stack to be safe')
             self.__operations.clear()
