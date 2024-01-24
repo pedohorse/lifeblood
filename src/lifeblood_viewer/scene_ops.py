@@ -18,11 +18,19 @@ __all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'Remo
 
 
 class AsyncSceneOperation(AsyncOperation):
+    """
+    base class for async operations on scene
+    """
     def __init__(self, scene: "QGraphicsImguiScene"):
         super().__init__(scene._undo_stack(), scene)
 
 
 class CompoundAsyncSceneOperation(AsyncSceneOperation):
+    """
+    this is a grouping meta operation.
+    it makes a number of sequentially performed operations looks like one single operation.
+    provided operations are executed sequentially, and undone in the reversed order
+    """
     def __init__(self, scene: "QGraphicsImguiScene", operations: Iterable[AsyncSceneOperation]):
         super().__init__(scene)
         self.__ops = tuple(operations)
