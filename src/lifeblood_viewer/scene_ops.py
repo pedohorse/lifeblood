@@ -1,5 +1,5 @@
 from lifeblood.logging import get_logger
-from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError, AsyncOperation
+from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError, AsyncOperation, OperationCompletionDetails, OperationCompletionStatus
 from .long_op import LongOperation, LongOperationData
 from .ui_snippets import UiNodeSnippetData
 from .graphics_items import Node, NodeConnection
@@ -18,11 +18,19 @@ __all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'Remo
 
 
 class AsyncSceneOperation(AsyncOperation):
+    """
+    base class for async operations on scene
+    """
     def __init__(self, scene: "QGraphicsImguiScene"):
         super().__init__(scene._undo_stack(), scene)
 
 
 class CompoundAsyncSceneOperation(AsyncSceneOperation):
+    """
+    this is a grouping meta operation.
+    it makes a number of sequentially performed operations looks like one single operation.
+    provided operations are executed sequentially, and undone in the reversed order
+    """
     def __init__(self, scene: "QGraphicsImguiScene", operations: Iterable[AsyncSceneOperation]):
         super().__init__(scene)
         self.__ops = tuple(operations)
@@ -116,12 +124,19 @@ class RemoveNodesOp(AsyncSceneOperation):
         not_removed = set(node_ids) - set(removed_ids)
         not_removed_sids = set(self.__scene.get_node(nid).get_session_id() for nid in not_removed)
         self.__node_sids = tuple(sid for sid in self.__node_sids if sid not in not_removed_sids)
+        op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
         if len(not_removed) > 0:
             self.__restoration_snippet.remove_node_temp_ids_from_snippet(not_removed_sids)
+            op_result.status = OperationCompletionStatus.PartialSuccess
+            op_result.details = 'scheduler has not deleted some nodes'
 
         # if nothing was deleted:
         if len(self.__restoration_snippet.nodes_data) == 0:
             self.__is_a_noop = True
+            op_result.status = OperationCompletionStatus.NotPerformed
+            op_result.details = 'scheduler has not deleted any nodes'
+
+        self._set_result(op_result)
 
     def _my_undo_longop(self, longop: LongOperation):
         if self.__is_a_noop:
@@ -175,7 +190,7 @@ class MoveNodesOp(SimpleUndoableOperation):
         self.__scene = scene
         self.__node_info = tuple((scene._session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
 
-    def _doop(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+    def _doop(self, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
             node_id = self.__scene._session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
@@ -183,7 +198,7 @@ class MoveNodesOp(SimpleUndoableOperation):
                 raise OperationError(f'node with session id {node_sid} was not found')
             node.setPos(new_pos)
         if callback:
-            callback(self)
+            callback(self, OperationCompletionDetails(OperationCompletionStatus.FullSuccess))
 
     def _undoop(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
