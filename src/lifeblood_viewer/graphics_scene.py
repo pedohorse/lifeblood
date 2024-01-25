@@ -1277,6 +1277,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             if not newop._start():
                 self.__end_long_operation(newop.opid())
 
+        # just in case - force UI redraw
+        self.invalidate(layers=self.ForegroundLayer)
+
     def long_operation_statuses(self) -> Tuple[Tuple[Tuple[int, Tuple[Optional[float], str]], ...], Dict[str, int]]:
         def _op_status_list(ops) -> Tuple[Tuple[int, Tuple[Optional[float], str]], ...]:
             return tuple((op.opid(), op.status()) for op in ops)
