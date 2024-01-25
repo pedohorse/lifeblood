@@ -1,4 +1,4 @@
-from typing import Optional, Callable, Generator, Any, Tuple
+from typing import Any, Callable, Dict, Generator, Optional, Tuple
 
 
 class LongOperation:
@@ -68,4 +68,14 @@ class LongOperationData:
 
 class LongOperationProcessor:
     def add_long_operation(self, generator_to_call, queue_name: Optional[str] = None):
+        raise NotImplementedError()
+
+    def long_operation_statuses(self) -> Tuple[Tuple[Tuple[int, Tuple[Optional[float], str]], ...], Dict[str, int]]:
+        """
+        statuses on all long operations in all queues
+
+        returns:
+            a tuple of tuples containing a pair of operation id and operation status (that is a tuple of optional completion percentage and status string),
+            and a dict with statistics of queue names to the number of items in that queue
+        """
         raise NotImplementedError()
