@@ -709,7 +709,6 @@ class TaskProcessor(SchedulerComponentBase):
             wdone, _ = await asyncio.wait(sleeping_tasks, timeout=0 if total_state_changes > 0 else self.__processing_interval * self.__processing_interval_mult,
                                           return_when=asyncio.FIRST_COMPLETED)
             if kick_wait_task in wdone:
-                self._reset_poke_event()
                 kick_wait_task = asyncio.create_task(self._poke_event.wait())
 
             # stopping
