@@ -42,7 +42,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     groups_full_update = Signal(object)
     workers_full_update = Signal(object)
 
-    log_fetched = Signal(int, object, object)
+    log_fetched = Signal(int, object, bool, object)
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, tuple, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
@@ -477,7 +477,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         except Exception:
             logger.exception('problems in network operations')
         else:
-            self.log_fetched.emit(task_id, invoc_data, data)
+            self.log_fetched.emit(task_id, invoc_data, True, data)
 
     @Slot(int, object)
     def get_task_attribs(self, task_id: int, data=None):
@@ -524,8 +524,11 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         else:
             if log is None:
                 logger.warning(f'no log found for invocation {invocation_id}')
+                # if data is provided - we still need to propagate it
+                if data is not None:
+                    self.log_fetched.emit(-1, {}, False, data)
                 return
-            self.log_fetched.emit(log.task_id, {log.node_id: {log.invocation_id: log}}, data)
+            self.log_fetched.emit(log.task_id, {log.node_id: {log.invocation_id: log}}, False, data)
 
     @Slot()
     def get_nodeui(self, node_id: int):

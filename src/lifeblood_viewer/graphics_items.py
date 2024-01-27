@@ -1437,15 +1437,19 @@ class Task(NetworkItemWithUI):
     def get_progress(self) -> Optional[float]:
         return self.__raw_data.progress if self.__raw_data else None
 
-    def update_log(self, alllog: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]]):
+    def update_log(self, alllog: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], full_update: bool):
         """
         This function gets called by scene with new shit from worker. Maybe there's more sense to make it "_protected"
         :param alllog: is expected to be a dict of node_id -> (dict of invocation_id -> (invocation dict) )
+        :param full_update: is true, if log dict covers all invocations.
+            otherwise update is considered partial, so only updated information counts, no removes are to be done
         :return:
         """
-        logger.debug('log updated with %s', alllog)
+        logger.debug('log updated (full=%s) with %d entries', full_update, sum(len(x.values()) for _, x in alllog.items()))
         # Note that we assume log deletion is not possible
+        updated_invocations = set()
         for node_id, invocs in alllog.items():
+            updated_invocations.update(invocs.keys())
             if node_id not in self.__log:
                 self.__log[node_id] = invocs
                 continue
@@ -1456,6 +1460,27 @@ class Task(NetworkItemWithUI):
                         self.__log[node_id][inv_id].copy_from(logs)
                         continue
                 self.__log[node_id][inv_id] = logs
+        # if it's full update - we clear invocations that are present in task, but not in updated info
+        if full_update:
+            for node_id, invocs in self.__log.items():
+                for inv_id in list(invocs.keys()):
+                    if inv_id not in updated_invocations:
+                        logger.debug('removing %d invocation from task %d', inv_id, self.get_id())
+                        invocs.pop(inv_id)
+
+        # clear cached inverted dict, it will be rebuilt on next access
+        self.__inv_log = None
+
+        self.update_ui()
+
+    def remove_invocations_log(self, invocation_ids: List[int]):
+        logger.debug('removing invocations for %s', invocation_ids)
+        for _, invocs in self.__log:
+            for invocation_id in invocation_ids:
+                if invocation_id in invocs:
+                    invocs.pop(invocation_id)
+
+        # clear cached inverted dict, it will be rebuilt on next access
         self.__inv_log = None
 
         self.update_ui()

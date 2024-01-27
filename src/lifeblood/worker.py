@@ -451,8 +451,11 @@ class Worker:
                             if progress is not None:
                                 self.__running_task_progress = progress
                             if str != b'':  # this can only happen at eof
-                                await asyncio.gather(stderr.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str),
-                                                     stdout.write(datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str))
+                                message = datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str
+                                await asyncio.gather(
+                                    stderr.write(message),
+                                    stdout.write(message)
+                                )
                                 rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
                                 tasks_to_wait.add(rerr_task)
                         if flush_task in done and not done_task.done():
@@ -557,11 +560,27 @@ class Worker:
 
             # report to scheduler that cancel was a success
             self.__logger.info(f'reporting cancel back to {self.__where_to_report}')
+
+            proc_stdout_filepath = self.get_log_filepath('output', self.__running_task.invocation_id())
+            proc_stderr_filepath = self.get_log_filepath('error', self.__running_task.invocation_id())
+
+            # we want to append worker's message that job was killed
+            try:
+                message = datetime.datetime.now().strftime('\n[WORKER][%d.%m.%y %H:%M:%S] ').encode('UTF-8') + b'killed by worker.\n'
+                async with aiofiles.open(proc_stdout_filepath, 'ab') as stdout, \
+                           aiofiles.open(proc_stderr_filepath, 'ab') as stderr:
+                    await asyncio.gather(
+                        stderr.write(message),
+                        stdout.write(message)
+                    )
+            except Exception as e:
+                self.__logger.warning("failed to append worker message to the logs")
+
             try:
                 with SchedulerWorkerControlClient.get_scheduler_control_client(self.__where_to_report, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
                     await client.report_task_canceled(self.__running_task,
-                                                      self.get_log_filepath('output', self.__running_task.invocation_id()),
-                                                      self.get_log_filepath('error', self.__running_task.invocation_id()))
+                                                      proc_stdout_filepath,
+                                                      proc_stderr_filepath)
             except Exception as e:
                 self.__logger.exception(f'could not report cuz of {e}')
             except:

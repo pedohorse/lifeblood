@@ -135,7 +135,6 @@ class UIStateAccessor(SchedulerComponentBase):
 
             done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__housekeeping_interval, return_when=asyncio.FIRST_COMPLETED)
             if wakeup_task in done:
-                self._reset_poke_event()
                 wakeup_task = None
 
             # end when stop is set

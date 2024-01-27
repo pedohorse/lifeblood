@@ -313,6 +313,7 @@ class TaskProcessor(SchedulerComponentBase):
                 # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
                 if worker_state == WorkerState.OFF:
                     self.__logger.debug('submitter: worker state changed to OFF during submitter work')
+                    # if we reach here - scheduling could not have succeeded, safer to assume it's failed
                     if reply == TaskScheduleStatus.SUCCESS:
                         self.__logger.warning('submitter succeeded, yet worker state changed to OFF in the middle of submission. forcing reply to FAIL')
                         reply = TaskScheduleStatus.FAILED
@@ -345,8 +346,8 @@ class TaskProcessor(SchedulerComponentBase):
                                                      (invocation_id,))
                     # update resource usage to none
                     await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
-                    # TODO: if task was reverted we MIGHT need to poke scheduler after transaction commit to process task again straight awau
-                    #  Or something else, have other things to do now, think about this one later
+                    # we poke scheduler after transaction commit to process task again straight away
+                    submit_transaction.add_after_commit_callback(self.poke)
                 submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, ui_task_delta)  # ui event
                 await submit_transaction.commit()
 
@@ -546,7 +547,8 @@ class TaskProcessor(SchedulerComponentBase):
                         # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
                         where_empty_cache = set()
                         ui_task_deltas = []  # for ui event
-                        for task_row in all_task_rows:
+                        task_rows_to_retry = []
+                        for task_row in itertools.chain(all_task_rows, task_rows_to_retry):
                             # check max attempts first
                             if task_row['work_data_invocation_attempt'] >= self.__invocation_attempts:
                                 state_details = json.dumps({'message': 'maximum invocation attempts reached',
@@ -599,8 +601,12 @@ class TaskProcessor(SchedulerComponentBase):
                             if not con.in_transaction:
                                 await con.execute('BEGIN IMMEDIATE')
                                 async with con.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker['id'],)) as worcur:
-                                    if (await worcur.fetchone())['state'] != WorkerState.IDLE.value:
-                                        self.__logger.debug('submitter: worker changed state while trying to submit, skipping')
+                                    actual_state = (await worcur.fetchone())['state']
+                                    if actual_state != WorkerState.IDLE.value:
+                                        self.__logger.debug(f'submitter: worker changed state (to {actual_state}) while trying to submit, skipping')
+                                        # we add to retry list, and we don't care to limit it,
+                                        # cuz this code is only reachable if we were NOT in a transaction, and now we are
+                                        task_rows_to_retry.append(task_row)
                                         continue
                             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                               (TaskState.INVOKING.value, task_row['id']))
@@ -709,7 +715,6 @@ class TaskProcessor(SchedulerComponentBase):
             wdone, _ = await asyncio.wait(sleeping_tasks, timeout=0 if total_state_changes > 0 else self.__processing_interval * self.__processing_interval_mult,
                                           return_when=asyncio.FIRST_COMPLETED)
             if kick_wait_task in wdone:
-                self._reset_poke_event()
                 kick_wait_task = asyncio.create_task(self._poke_event.wait())
 
             # stopping

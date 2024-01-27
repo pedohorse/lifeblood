@@ -27,15 +27,21 @@ class SchedulerComponentBase(ComponentBase):
 
     @property
     def _poke_event(self):
+        """
+        poke event for the components to wait on, like
+        self._poke_event().wait()
+
+        when something calls `poke()` - all waiter will be awoken
+        """
         return self.__wakeup_event
 
     def poke(self):
         """
-        poke pinger to interrupt sleep and continue pinging immediately
+        poke scheduler components to interrupt sleep and continue pinging immediately.
         """
         self.__wakeup_event.set()
-
-    def _reset_poke_event(self):
+        # set() finishes all current waiters, so it's safe to clear() it straight after.
+        #  BEWARE: i'm not sure if this is asyncio's intended logic or implementation details
         self.__wakeup_event.clear()
 
     def _main_task(self):
