@@ -43,7 +43,6 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     workers_full_update = Signal(object)
 
     log_fetched = Signal(int, object, bool, object)
-    # invocations_removed = Signal(object, object)
     nodeui_fetched = Signal(int, NodeUi)
     task_attribs_fetched = Signal(int, tuple, object)
     task_invocation_job_fetched = Signal(int, InvocationJob)
@@ -528,8 +527,6 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 # if data is provided - we still need to propagate it
                 if data is not None:
                     self.log_fetched.emit(-1, {}, False, data)
-                # # also we emit message that invocation got removed
-                # self.invocations_removed.emit([invocation_id], None)
                 return
             self.log_fetched.emit(log.task_id, {log.node_id: {log.invocation_id: log}}, False, data)
 

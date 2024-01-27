@@ -567,10 +567,15 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     #
 
     def fetch_log_run_callback(self, invocation_id, callback: Callable[[InvocationLogData, Any], None], callback_data: Any = None):
+        """
+        fetch log for given invocation and run callback
+
+        callback is run only in case of success
+        """
         def _fetch_open_log_longop(longop: LongOperation):
             longop.set_op_status(None, f"fetching log for {invocation_id}")
             self.request_log(invocation_id, LongOperationData(longop))
-            task_id, logss = yield  # type: int, Dict[int, Dict[int, InvocationLogData]]
+            _, logss = yield  # type: int, Dict[int, Dict[int, InvocationLogData]]
             if len(logss) == 0:
                 logger.error(f'could not find logs for {invocation_id}')
                 return
@@ -966,13 +971,21 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                          f'{_perf_layout:.04f}:\tlayout\n'
                          f'{_perf_task_groups_update:.04f}:\ttask group update')
 
-    @Slot(object, object)
-    def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], data: Optional["LongOperationData"] = None):
-        task = self.get_task(task_id)
-        if task is None:
-            logger.warning(f'log fetched, but task not found! {task_id}')
-        else:
-            task.update_log(log)
+    @Slot(object, object, bool, object)
+    def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], full_update, data: Optional["LongOperationData"] = None):
+        """
+        this slot to be connected to data provider, whenever log is fetched - this method should be called
+
+        full_update is true, if log dict covers all invocations.
+            otherwise update is considered partial, so only updated information counts, no removes are to be done
+        """
+        if task_id >= 0:  # otherwise it means empty event
+            task = self.get_task(task_id)
+            if task is None:
+                logger.warning(f'log fetched, but task not found! {task_id}')
+            else:
+                task.update_log(log, full_update)
+
         if data is not None:
             data.data = (task_id, log)
             self.process_operation(data)
