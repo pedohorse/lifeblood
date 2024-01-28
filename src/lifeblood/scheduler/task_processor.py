@@ -255,8 +255,9 @@ class TaskProcessor(SchedulerComponentBase):
         ui_task_delta = TaskDelta(task_id)  # for ui event
         work_data = task_row['work_data']
         assert work_data is not None
-        task: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-        if not task.args():
+        job: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
+        if not job.args():
+            # cancel submission as there is nothing to do
             async with self.awaiter_lock, self.scheduler.data_access.data_connection() as skipwork_transaction:
                 await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                                    (TaskState.POST_WAITING.value, task_id))
@@ -268,7 +269,9 @@ class TaskProcessor(SchedulerComponentBase):
                 await skipwork_transaction.commit()
                 return
 
-        # so task.args() is not None
+        #
+        assert job.args() is not None and len(job.args()) > 0, 'logic failed, something is wrong with submission logic'
+        # so job.args() is not None
         async with self.scheduler.data_access.data_connection() as submit_transaction:
             submit_transaction.row_factory = aiosqlite.Row
 
@@ -288,7 +291,7 @@ class TaskProcessor(SchedulerComponentBase):
 
                 # so worker DID change state OR invocation already exists
                 if worker_state != WorkerState.INVOKING or invocation_already_exists:
-                    # just report apropriate thing
+                    # just report appropriate thing
                     if worker_state != WorkerState.INVOKING:
                         self.__logger.warning('worker changed states before invocation was added, current state: %s, consider submission failed', worker_state)
                     else:  # ... or invocation_already_exists
@@ -306,20 +309,28 @@ class TaskProcessor(SchedulerComponentBase):
                         (task_id, worker_row['id'], InvocationState.INVOKING.value, task_row['node_id'])) as incur:
                     invocation_id = incur.lastrowid  # rowid should be an alias to id, acc to sqlite manual
                 await submit_transaction.commit()
+            assert not submit_transaction.in_transaction, "logic failed, we must not be in transaction at this point"
             # first transaction complete here
+            # at this point we've created a new invocation in INVOKING state
+            # worker and task are still in INVOKING state too
 
-            task._set_invocation_id(invocation_id)
-            task._set_task_id(task_id)
+            # set some job attributes
+            job._set_invocation_id(invocation_id)
+            job._set_task_id(task_id)
             async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
                 task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
-            task._set_task_attributes(await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw))
+            job._set_task_attributes(await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw))
+
+            # actually communicating submission to the worker
             self.__logger.debug(f'submitting task to {addr}')
             try:
                 # this is potentially a long operation - db must NOT be locked during it
                 with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
                     # import random
                     # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
-                    reply = await client.give_task(task, self.scheduler.server_message_address())
+                    reply = await client.give_task(job, self.scheduler.server_message_address())
+                    # TODO: introduce optional "worker cookie" - uid that one passes with some commands
+                    #  like give_task to ensure that we are submitting here to the same worker task processing loop selected
                 self.__logger.debug(f'got reply {reply}')
             except Exception as e:
                 self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
@@ -337,6 +348,7 @@ class TaskProcessor(SchedulerComponentBase):
 
                 worker_apparently_restarted = False
                 if maybe_updated_invocation_state != InvocationState.INVOKING:
+                    # the only normal way why this can happen - is if worker reported "bye", that resets invocation
                     self.__logger.warning(f'worker seem to have stopped during submission attempt, ignoring, retrying. reply was: {reply}, worker state is: {worker_state}')
                     worker_apparently_restarted = True
                     reply = TaskScheduleStatus.FAILED
@@ -348,9 +360,10 @@ class TaskProcessor(SchedulerComponentBase):
                     if reply == TaskScheduleStatus.SUCCESS:
                         self.__logger.warning('submitter succeeded, yet worker state changed to OFF in the middle of submission. forcing reply to FAIL')
                         reply = TaskScheduleStatus.FAILED
+                        # note that at this time we cannot be sure if worker actually picked invocation or not,
+                        #  but there is nothing really we can do about it, just wait for pingers to resolve the situation
 
                 # this assert should never break: as hello preserves INVOKING state, and we catch worker restart case
-
                 assert worker_apparently_restarted or worker_state != WorkerState.IDLE, f'worker restarted={worker_apparently_restarted}, state={worker_state}'
 
                 if reply == TaskScheduleStatus.SUCCESS:
