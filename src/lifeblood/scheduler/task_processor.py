@@ -275,6 +275,13 @@ class TaskProcessor(SchedulerComponentBase):
         async with self.scheduler.data_access.data_connection() as submit_transaction:
             submit_transaction.row_factory = aiosqlite.Row
 
+            # get task attributes before starting a transaction
+            async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
+                task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
+            task_attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw)
+            assert not submit_transaction.in_transaction, 'logic failed, something is wrong with submission logic'
+            #
+
             # First main transaction of the submission
             async with self.awaiter_lock:
                 await submit_transaction.execute('BEGIN IMMEDIATE')
@@ -317,9 +324,7 @@ class TaskProcessor(SchedulerComponentBase):
             # set some job attributes
             job._set_invocation_id(invocation_id)
             job._set_task_id(task_id)
-            async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
-                task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
-            job._set_task_attributes(await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw))
+            job._set_task_attributes(task_attributes)
 
             # actually communicating submission to the worker
             self.__logger.debug(f'submitting task to {addr}')
