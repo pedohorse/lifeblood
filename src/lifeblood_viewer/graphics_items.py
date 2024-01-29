@@ -230,11 +230,22 @@ class Node(NetworkItemWithUI):
 
     def regenerate_all_ready_tasks(self):
         """
-        all currently displayed tasks that are in states BEFORE processing, or in ERROR state, will be set to WAITING
+        all currently displayed tasks that are in states BEFORE processing, will be set to WAITING
         """
+        self._change_all_task_states((TaskState.READY,), TaskState.WAITING)
+
+    def retry_all_error_tasks(self):
+        """
+        all currently displayed task that are in ERROR state will be reset to WAITING
+        """
+        self._change_all_task_states((TaskState.ERROR,), TaskState.WAITING)
+
+    def _change_all_task_states(self, from_states: Tuple[TaskState, ...], to_state: TaskState):
         scene: QGraphicsImguiScene = self.scene()
-        scene.set_task_state([x.get_id() for x in self.__tasks if x.state() in (TaskState.READY, TaskState.ERROR)],
-                             TaskState.WAITING)
+        scene.set_task_state(
+            [x.get_id() for x in self.__tasks if x.state() in from_states],
+            to_state
+        )
 
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
