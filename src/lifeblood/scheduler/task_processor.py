@@ -386,6 +386,7 @@ class TaskProcessor(SchedulerComponentBase):
                 else:  # on anything but success - cancel transaction
                     self.__logger.warning(f'submitter failed, rolling back for wid {worker_row["id"]}')
                     ui_task_delta.state = TaskState.READY  # for ui event
+                    # for now invoking invocation are invalidated by deletion (here and in scheduler start)
                     await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
                                                      (invocation_id,))
                     await self.__submitter_finalize_cancel_transaction(submit_transaction, worker_row, worker_state, task_id)
