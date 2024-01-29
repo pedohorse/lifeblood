@@ -651,6 +651,7 @@ class Node(NetworkItemWithUI):
                                 wgt.setAttribute(Qt.WA_DeleteOnClose, True)
                                 wgt.set_text(item.unexpanded_value())
                                 wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: sc.change_node_parameter(id, item, x))
+                                wgt.set_title(f'editing parameter "{param_name}"')
                                 wgt.show()
                         else:
                             changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
