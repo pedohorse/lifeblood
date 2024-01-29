@@ -313,6 +313,7 @@ class Worker:
             return os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()), level)
 
     async def delete_logs(self, invocation_id: int):
+        self.__logger.debug(f'removing logs for {invocation_id}')
         path = os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()))
         await asyncio.get_event_loop().run_in_executor(None, shutil.rmtree, path)  # assume that deletion MAY take time, so allow util tasks to be processed while we wait
 
@@ -321,7 +322,7 @@ class Worker:
             raise WorkerNotAvailable()
         self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}')
         async with self.__task_changing_state_lock:
-            self.__logger.debug('task_change_state locks aquired')
+            self.__logger.debug('run_task: task_change_state locks acquired')
             # we must ensure picking up and finishing tasks is in critical section
             assert len(task.args()) > 0
             if self.__running_process is not None:
@@ -405,13 +406,15 @@ class Worker:
                 raise
 
             self.__running_task = task
-            self.__where_to_report = report_to
             self.__running_awaiter = asyncio.create_task(self._awaiter())
             self.__running_task_progress = 0
             if self.__worker_id is not None:  # TODO: gracefully handle connection fails here \/
                 assert self.__pool_address is not None
+                self.__where_to_report = AddressChain.join_address((self.__pool_address, report_to))
                 with WorkerPoolControlClient.get_worker_pool_control_client(self.__pool_address, self.__message_processor) as wpclient:  # type: WorkerPoolControlClient
                     await wpclient.report_state(self.__worker_id, WorkerState.BUSY)
+            else:
+                self.__where_to_report = report_to
 
     # callback awaiter
     async def _awaiter(self):
@@ -546,6 +549,7 @@ class Worker:
 
     async def cancel_task(self):
         async with self.__task_changing_state_lock:
+            self.__logger.debug('cancel_task: task_change_state locks acquired')
             if self.__running_process is None:
                 return
             self.__logger.info('cancelling running task')
@@ -587,7 +591,10 @@ class Worker:
                 self.__logger.exception('could not report cuz i have no idea')
             # end reporting
 
-            await self.delete_logs(self.__running_task.invocation_id())
+            try:
+                await self.delete_logs(self.__running_task.invocation_id())
+            except OSError:
+                self.__logger.exception("failed to delete logs, ignoring")
 
             self.__running_task = None
             self.__worker_task_comm_queues = {}
@@ -611,6 +618,7 @@ class Worker:
         :return:
         """
         async with self.__task_changing_state_lock:
+            self.__logger.debug('task_finished: task_change_state locks acquired')
             if self.__running_process is None:
                 self.__logger.warning('task_finished called, but there is no running task. This can only normally happen if a task_cancel happened the same moment as finish.')
                 return
@@ -630,8 +638,12 @@ class Worker:
             except:
                 self.__logger.exception('could not report cuz i have no idea')
             # end reporting
+            self.__logger.debug(f'done reporting done back to {self.__where_to_report}')
 
-            await self.delete_logs(self.__running_task.invocation_id())
+            try:
+                await self.delete_logs(self.__running_task.invocation_id())
+            except OSError:
+                self.__logger.exception("failed to delete logs, ignoring")
 
             self.__where_to_report = None
             self.__running_task = None
@@ -700,6 +712,7 @@ class Worker:
                 continue
             # Here we are locking to prevent unexpected task state changes while checking for state inconsistencies
             async with self.__task_changing_state_lock:
+                self.__logger.debug('pinger: task_change_state locks acquired')
                 try:
                     self.__logger.debug('pinging scheduler')
                     with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
