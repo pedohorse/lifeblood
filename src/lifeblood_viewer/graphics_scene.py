@@ -1262,7 +1262,11 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     @Slot(LongOperationData)
     def process_operation(self, op: LongOperationData):
         assert op.op.opid() in self.__long_operations
-        done = op.op._progress(op.data)
+        try:
+            done = op.op._progress(op.data)
+        except Exception as e:
+            logger.exception(f'exception proceeding a long operation: {e}')
+            done = True
         if done:
             self.__end_long_operation(op.op.opid())
 
@@ -1274,7 +1278,16 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             if len(queue) > 1:  # if there is already something in there beside us
                 return
         self.__long_operations[newop.opid()] = (newop, queue_name)
-        if not newop._start():
+        self.__start_long_operation(newop)
+
+    def __start_long_operation(self, newop):
+        try:
+            started_long = newop._start()  # False means operation already finished
+        except Exception as e:
+            logger.exception(f'exception starting a long operation: {e}')
+            self.__end_long_operation(newop.opid())
+            return
+        if not started_long:
             self.__end_long_operation(newop.opid())
 
     def __end_long_operation(self, opid):
@@ -1287,8 +1300,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         if len(queue) > 0:
             newop = LongOperation(queue[-1], lambda opid, opname, opprog: self.operation_progress_updated.emit(opid, opname, opprog))
             self.__long_operations[newop.opid()] = (newop, queue_name)
-            if not newop._start():
-                self.__end_long_operation(newop.opid())
+            self.__start_long_operation(newop)
 
         # just in case - force UI redraw
         self.invalidate(layers=self.ForegroundLayer)
