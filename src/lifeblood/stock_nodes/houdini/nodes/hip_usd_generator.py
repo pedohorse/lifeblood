@@ -77,7 +77,7 @@ class HipUsdGenerator(RopBaseNode):
                           f'    filename = filename_parm.eval()',
                           f'else:',
                           f'    filename = "render.usd"',
-                          f'if os.path.splitext(filename) == ".usd" and hou.licenseCategory() in (hou.licenseCategoryType.Apprentice, hou.licenseCategoryType.ApprenticeHD):',
+                          f'if os.path.splitext(filename)[1] == ".usd" and hou.licenseCategory() in (hou.licenseCategoryType.Apprentice, hou.licenseCategoryType.ApprenticeHD):',
                           f'    filename += "nc"',
                           f'return os.path.join(base, filename)'])
 
