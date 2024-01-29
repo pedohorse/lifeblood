@@ -469,6 +469,8 @@ class Scheduler(NodeGraphHolderBase):
             await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
                               (TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
             await con.execute('UPDATE "invocations" SET "state" = ? WHERE "state" = ?', (InvocationState.FINISHED.value, InvocationState.IN_PROGRESS.value))
+            # for now invoking invocation are invalidated by deletion (here and in task_processor)
+            await con.execute('DELETE FROM invocations WHERE "state" = ?', (InvocationState.INVOKING.value,))
             await con.execute('UPDATE workers SET "ping_state" = ?', (WorkerPingState.UNKNOWN.value,))
             await con.execute('UPDATE "workers" SET "state" = ?', (WorkerState.UNKNOWN.value,))
             await con.commit()
