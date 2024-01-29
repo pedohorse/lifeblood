@@ -218,6 +218,10 @@ class StringParameterEditor(QWidget):
     def closeEvent(self, event):
         self.__closed = True
 
+    def showEvent(self, event):
+        if not event.spontaneous():
+            self.__closed = False
+
     def is_closed(self):
         """
         we need a safe non-qt binded way to check if window was closed (and maybe destroyed)
