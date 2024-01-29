@@ -36,12 +36,16 @@ def _open_log_viewer_with_update(log, callback_data):
     update_timer = QTimer(wgt)
     update_timer.setInterval(int(update_interval * 1000))
     update_timer.setSingleShot(True)  # we will restart timer every time log is received, since that func is async
+    # there is time between log request and log fetch - IF widget is closed and destroyed at that time - we get an error
+    #  that internal C++ qt object was destroyed, unless we make appropriate checks
     update_timer.timeout.connect(
         lambda: scene.fetch_log_run_callback(
             invoc_id,
             lambda new_log, _:
                 (wgt.set_text(new_log.stdout, stick_to_bottom=True),
                  update_timer.start(),)
+                if not wgt.is_closed()
+                else ()  # else do nothing as widget is closed, and it's c++ part destroyed
         )
     )
     wgt._update_timer = update_timer  # we need to keep reference, or pyside will delete underlying qt object
