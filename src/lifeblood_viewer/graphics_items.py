@@ -648,6 +648,7 @@ class Node(NetworkItemWithUI):
                                 if item.syntax_hint() == 'python':
                                     hl = StringParameterEditor.SyntaxHighlight.PYTHON
                                 wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
+                                wgt.setAttribute(Qt.WA_DeleteOnClose, True)
                                 wgt.set_text(item.unexpanded_value())
                                 wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: sc.change_node_parameter(id, item, x))
                                 wgt.show()
