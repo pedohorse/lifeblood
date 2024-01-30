@@ -638,6 +638,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
         menu.addSeparator()
         menu.addAction('regenerate all ready tasks').triggered.connect(node.regenerate_all_ready_tasks)
+        menu.addAction('retry all error tasks').triggered.connect(node.retry_all_error_tasks)
         menu.addSeparator()
 
         if len(self.__scene.selectedItems()) > 0:

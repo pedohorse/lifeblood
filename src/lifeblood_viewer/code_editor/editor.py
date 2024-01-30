@@ -169,6 +169,7 @@ class StringParameterEditor(QWidget):
 
     def __init__(self, syntax_highlight: Union[SyntaxHighlight, Callable[[QTextDocument], StringParameterEditorSyntaxHighlighter]] = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
         super(StringParameterEditor, self).__init__(parent, Qt.Dialog)
+        self.__closed = False
         self.__main_layout = QVBoxLayout(self)
         self.__textarea = QTextEditButTabsAreSpaces()
         font = QFont('monospace')
@@ -213,6 +214,19 @@ class StringParameterEditor(QWidget):
         self.__ok_button.clicked.connect(self._done_editing)
         self.__apply_button.clicked.connect(lambda: self.edit_done.emit(self.text()))
         self.__textarea.cursorPositionChanged.connect(self._cursor_position_changed)
+
+    def closeEvent(self, event):
+        self.__closed = True
+
+    def showEvent(self, event):
+        if not event.spontaneous():
+            self.__closed = False
+
+    def is_closed(self):
+        """
+        we need a safe non-qt binded way to check if window was closed (and maybe destroyed)
+        """
+        return self.__closed
 
     @Slot()
     def _done_editing(self):
