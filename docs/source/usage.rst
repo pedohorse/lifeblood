@@ -7,12 +7,6 @@ How to Use
 .. contents::
     :local:
 
-
-Installation
-============
-
-see :ref:`installation page<installation>`
-
 .. _configuration:
 
 Configuration
@@ -25,6 +19,8 @@ Lifeblood's components will create default configs for themselves on first launc
 You can start with default config and adjust it if such need arises.
 
 All components of Lifeblood are configured by a number of configs files, some of those values can be overriden with command-line arguments
+
+To configure your firewalls to allow lifeblood communications - see :ref:`network_config`
 
 .. _config-dir:
 
@@ -70,8 +66,10 @@ In this "How To" it's assumed that you have the simplest and most common individ
   | This is a reasonable assumption as most commonly you would want to have uniform access to scenes,
     textures, models etc from all work machines, and so that ``path/to/texture1`` leads to the same texture file
     on all machines
+* In case you have firewall setup - see :ref:`network_config` for details on what ports need to be opened where.
 
 .. _usage_prepare_to_launch:
+
 Prepare To Launch
 =================
 
@@ -79,7 +77,27 @@ Prepare To Launch
 | However, if you plan to use default standard environment resolver - it needs to detect the location of
   the software it can resolve.
 
-* TODO: add steps how to generate initial resolver config
+When a worker started and cannot find configuration for :ref:`standard_environment_resolver` - it will generate one.
+It will try it's best to look in the most common locations for certain software, but any small non-standard obstacle
+will prevent auto-detection, so it is safer and better to run auto-detection manually and modify generated config if needed.
+
+To perform software auto-detection run ``lifeblood resolver scan`` - this command will just print out generated config,
+no files will be written. To write auto-detected configuration to the standard lifeblood's :ref:`config-dir` - run
+``lifeblood resolver generate``.
+
+To edit configuration file, you might want to check examples in :ref:`standard_environment_resolver`.
+
+Configuration file is located at :ref:`config-dir` ``/standard_environment_resolver/config.toml``
+
+How you fill it depends fully on your workflow, but, for **example**, in case of houdini, the submitter expects houdini package to look
+something like this (versions adjusted of course):
+
+.. code-block:: toml
+
+    [packages."houdini.py3_10"."20.0.506"]
+    label = "SideFX Houdini 20.0.506"
+    env.PATH.prepend = "/opt/hfs20.0.506/bin"
+
 
 Launch
 ======
