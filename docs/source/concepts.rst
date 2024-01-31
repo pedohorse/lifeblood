@@ -27,10 +27,12 @@ Addressing
 Address Chain
 -------------
 
-.. _environment_resolver:
+.. _environment_resolver_concept:
 
 Environment Resolver
 --------------------
+
+see :ref:`environment_resolver`
 
 Task Processing
 ===============
