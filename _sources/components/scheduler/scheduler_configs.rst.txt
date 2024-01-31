@@ -4,7 +4,7 @@
 Scheduler Config
 ================
 
-All scheduler-related configuration files are loated in :ref:`config-dir` ``/scheduler``
+All scheduler-related configuration files are located in :ref:`config-dir` ``/scheduler``
 
 All configuration files we are going to mention below are located there (unles explicitly
 stated otherwise)

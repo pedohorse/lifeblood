@@ -3,11 +3,11 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-theme="dark">
+<html lang="en" data-content_root="" data-theme="dark">
 
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
     <title>How to Use &#8212; Lifeblood 1.0.0 documentation</title>
   
@@ -19,23 +19,23 @@
   </script>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="_static/styles/theme.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
-<link href="_static/styles/bootstrap.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
-<link href="_static/styles/pydata-sphinx-theme.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
+  <link href="_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
 
   
-  <link href="_static/vendor/fontawesome/6.1.2/css/all.min.css?digest=365ca57ee442770a23c6" rel="stylesheet" />
-  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-solid-900.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-brands-400.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.1.2/webfonts/fa-regular-400.woff2" />
+  <link href="_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/css/custom.css" />
   
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=365ca57ee442770a23c6" />
-<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=365ca57ee442770a23c6" />
-  <script src="_static/vendor/fontawesome/6.1.2/js/all.min.js?digest=365ca57ee442770a23c6"></script>
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
 
     <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
     <script src="_static/jquery.js"></script>
@@ -46,7 +46,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'usage';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Tutorials" href="tutorials.html" />
+    <link rel="next" title="Network Configuration" href="network_config.html" />
     <link rel="prev" title="Installation" href="installation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -57,10 +57,9 @@
 
   
   
-  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
   
   <div id="pst-scroll-pixel-helper"></div>
-
   
   <button type="button" class="btn rounded-pill" id="pst-back-to-top">
     <i class="fa-solid fa-arrow-up"></i>
@@ -101,7 +100,7 @@
 </form></div>
   </div>
   
-    <nav class="bd-header navbar navbar-expand-lg bd-navbar">
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
 <div class="bd-header__inner bd-page-width">
   <label class="sidebar-toggle primary-toggle" for="__primary">
     <span class="fa-solid fa-bars"></span>
@@ -111,6 +110,7 @@
   <div class="col-lg-3 navbar-header-items__start">
     
       <div class="navbar-item">
+
   
 
 <a class="navbar-brand logo" href="index.html">
@@ -134,13 +134,8 @@
     
     <div class="me-auto navbar-header-items__center">
       
-        <div class="navbar-item"><nav class="navbar-nav">
-  <p class="sidebar-header-items__title"
-     role="heading"
-     aria-level="1"
-     aria-label="Site Navigation">
-    Site Navigation
-  </p>
+        <div class="navbar-item">
+<nav class="navbar-nav">
   <ul class="bd-navbar-elements navbar-nav">
     
                     <li class="nav-item">
@@ -184,6 +179,13 @@
                 <ul id="pst-nav-more-links" class="dropdown-menu">
                     
                     <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="network_config.html">
+                        Network Configuration
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
@@ -209,6 +211,7 @@
       
         <div class="navbar-item navbar-persistent--container">
           
+
  <script>
  document.write(`
    <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
@@ -222,6 +225,7 @@
       
       
         <div class="navbar-item">
+
 <script>
 document.write(`
   <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
@@ -238,6 +242,7 @@ document.write(`
   
   
     <div class="navbar-persistent--mobile">
+
  <script>
  document.write(`
    <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
@@ -257,12 +262,15 @@ document.write(`
   
 </div>
 
-    </nav>
+    </header>
   
+
   <div class="bd-container">
     <div class="bd-container__inner bd-page-width">
       
-      <div class="bd-sidebar-primary bd-sidebar hide-on-wide">
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
         
 
   
@@ -271,13 +279,8 @@ document.write(`
     
       <div class="sidebar-header-items__center">
         
-          <div class="navbar-item"><nav class="navbar-nav">
-  <p class="sidebar-header-items__title"
-     role="heading"
-     aria-level="1"
-     aria-label="Site Navigation">
-    Site Navigation
-  </p>
+          <div class="navbar-item">
+<nav class="navbar-nav">
   <ul class="bd-navbar-elements navbar-nav">
     
                     <li class="nav-item">
@@ -321,6 +324,13 @@ document.write(`
                 <ul id="pst-nav-more-links-2" class="dropdown-menu">
                     
                     <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="network_config.html">
+                        Network Configuration
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
                       <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
                         Tutorials
                       </a>
@@ -346,6 +356,7 @@ document.write(`
       <div class="sidebar-header-items__end">
         
           <div class="navbar-item">
+
 <script>
 document.write(`
   <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
@@ -359,6 +370,15 @@ document.write(`
       </div>
     
   </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"></div>
+</nav></div>
+    </div>
   
   
   <div class="sidebar-primary-items__end sidebar-primary__section">
@@ -407,46 +427,42 @@ document.write(`
               
                 
 <div id="searchbox"></div>
-                <article class="bd-article" role="main">
+                <article class="bd-article">
                   
   <section id="how-to-use">
 <span id="usage"></span><h1>How to Use<a class="headerlink" href="#how-to-use" title="Permalink to this heading">#</a></h1>
 <nav class="contents local" id="contents">
 <ul class="simple">
-<li><p><a class="reference internal" href="#installation" id="id2">Installation</a></p></li>
-<li><p><a class="reference internal" href="#configuration" id="id3">Configuration</a></p>
+<li><p><a class="reference internal" href="#configuration" id="id2">Configuration</a></p>
 <ul>
-<li><p><a class="reference internal" href="#config-location" id="id4">Config location</a></p></li>
+<li><p><a class="reference internal" href="#config-location" id="id3">Config location</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#hardware-setup" id="id5">Hardware Setup</a></p></li>
-<li><p><a class="reference internal" href="#prepare-to-launch" id="id6">Prepare To Launch</a></p></li>
-<li><p><a class="reference internal" href="#launch" id="id7">Launch</a></p>
+<li><p><a class="reference internal" href="#hardware-setup" id="id4">Hardware Setup</a></p></li>
+<li><p><a class="reference internal" href="#prepare-to-launch" id="id5">Prepare To Launch</a></p></li>
+<li><p><a class="reference internal" href="#launch" id="id6">Launch</a></p>
 <ul>
-<li><p><a class="reference internal" href="#start-a-scheduler" id="id8">Start a Scheduler</a></p></li>
-<li><p><a class="reference internal" href="#start-workers" id="id9">Start Workers</a></p>
+<li><p><a class="reference internal" href="#start-a-scheduler" id="id7">Start a Scheduler</a></p></li>
+<li><p><a class="reference internal" href="#start-workers" id="id8">Start Workers</a></p>
 <ul>
-<li><p><a class="reference internal" href="#use-pools-instead" id="id10">Use Pools instead</a></p></li>
+<li><p><a class="reference internal" href="#use-pools-instead" id="id9">Use Pools instead</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#start-viewer" id="id11">Start Viewer</a></p></li>
+<li><p><a class="reference internal" href="#start-viewer" id="id10">Start Viewer</a></p></li>
 </ul>
 </li>
 </ul>
 </nav>
-<section id="installation">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">Installation</a><a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h2>
-<p>see <a class="reference internal" href="installation.html#installation"><span class="std std-ref">installation page</span></a></p>
-</section>
 <section id="configuration">
-<span id="id1"></span><h2><a class="toc-backref" href="#id3" role="doc-backlink">Configuration</a><a class="headerlink" href="#configuration" title="Permalink to this heading">#</a></h2>
+<span id="id1"></span><h2><a class="toc-backref" href="#id2" role="doc-backlink">Configuration</a><a class="headerlink" href="#configuration" title="Permalink to this heading">#</a></h2>
 <p>Lifeblood is made in a way so you can start it with minimum to zero pre-configuration.
 But even in simplest cases you might will need to adjust something.</p>
 <p>Lifeblood’s components will create default configs for themselves on first launch.
 You can start with default config and adjust it if such need arises.</p>
 <p>All components of Lifeblood are configured by a number of configs files, some of those values can be overriden with command-line arguments</p>
+<p>To configure your firewalls to allow lifeblood communications - see <a class="reference internal" href="network_config.html#network-config"><span class="std std-ref">Network Configuration</span></a></p>
 <section id="config-location">
-<span id="config-dir"></span><h3><a class="toc-backref" href="#id4" role="doc-backlink">Config location</a><a class="headerlink" href="#config-location" title="Permalink to this heading">#</a></h3>
+<span id="config-dir"></span><h3><a class="toc-backref" href="#id3" role="doc-backlink">Config location</a><a class="headerlink" href="#config-location" title="Permalink to this heading">#</a></h3>
 <p>Config files are generated and stored in location defined by <code class="docutils literal notranslate"><span class="pre">LIFEBLOOD_CONFIG_LOCATION</span></code> environment variable,
 by default it’s:</p>
 <ul class="simple">
@@ -476,7 +492,7 @@ The main config file in most cases is called <code class="docutils literal notra
 </section>
 </section>
 <section id="hardware-setup">
-<h2><a class="toc-backref" href="#id5" role="doc-backlink">Hardware Setup</a><a class="headerlink" href="#hardware-setup" title="Permalink to this heading">#</a></h2>
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Hardware Setup</a><a class="headerlink" href="#hardware-setup" title="Permalink to this heading">#</a></h2>
 <p>In this “How To” it’s assumed that you have the simplest and most common individual network setup:</p>
 <ul>
 <li><p>All your computers on the network can directly communicate to each other</p></li>
@@ -494,21 +510,34 @@ textures, models etc from all work machines, and so that <code class="docutils l
 on all machines</div>
 </div>
 </li>
+<li><p>In case you have firewall setup - see <a class="reference internal" href="network_config.html#network-config"><span class="std std-ref">Network Configuration</span></a> for details on what ports need to be opened where.</p></li>
 </ul>
 </section>
 <section id="prepare-to-launch">
-<span id="usage-prepare-to-launch"></span><h2><a class="toc-backref" href="#id6" role="doc-backlink">Prepare To Launch</a><a class="headerlink" href="#prepare-to-launch" title="Permalink to this heading">#</a></h2>
+<span id="usage-prepare-to-launch"></span><h2><a class="toc-backref" href="#id5" role="doc-backlink">Prepare To Launch</a><a class="headerlink" href="#prepare-to-launch" title="Permalink to this heading">#</a></h2>
 <div class="line-block">
 <div class="line">As said before, the most common use case for Lifeblood needs little to none configuration,</div>
 <div class="line">However, if you plan to use default standard environment resolver - it needs to detect the location of
 the software it can resolve.</div>
 </div>
-<ul class="simple">
-<li><p>TODO: add steps how to generate initial resolver config</p></li>
-</ul>
+<p>When a worker started and cannot find configuration for <a class="reference internal" href="components/worker/environment_resolver.html#standard-environment-resolver"><span class="std std-ref">Standard Environment Resolver</span></a> - it will generate one.
+It will try it’s best to look in the most common locations for certain software, but any small non-standard obstacle
+will prevent auto-detection, so it is safer and better to run auto-detection manually and modify generated config if needed.</p>
+<p>To perform software auto-detection run <code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">resolver</span> <span class="pre">scan</span></code> - this command will just print out generated config,
+no files will be written. To write auto-detected configuration to the standard lifeblood’s <a class="reference internal" href="#config-dir"><span class="std std-ref">Config location</span></a> - run
+<code class="docutils literal notranslate"><span class="pre">lifeblood</span> <span class="pre">resolver</span> <span class="pre">generate</span></code>.</p>
+<p>To edit configuration file, you might want to check examples in <a class="reference internal" href="components/worker/environment_resolver.html#standard-environment-resolver"><span class="std std-ref">Standard Environment Resolver</span></a>.</p>
+<p>Configuration file is located at <a class="reference internal" href="#config-dir"><span class="std std-ref">Config location</span></a> <code class="docutils literal notranslate"><span class="pre">/standard_environment_resolver/config.toml</span></code></p>
+<p>How you fill it depends fully on your workflow, but, for <strong>example</strong>, in case of houdini, the submitter expects houdini package to look
+something like this (versions adjusted of course):</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[packages.&quot;houdini.py3_10&quot;.&quot;20.0.506&quot;]</span>
+<span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;SideFX Houdini 20.0.506&quot;</span>
+<span class="n">env</span><span class="p">.</span><span class="n">PATH</span><span class="p">.</span><span class="n">prepend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/opt/hfs20.0.506/bin&quot;</span>
+</pre></div>
+</div>
 </section>
 <section id="launch">
-<h2><a class="toc-backref" href="#id7" role="doc-backlink">Launch</a><a class="headerlink" href="#launch" title="Permalink to this heading">#</a></h2>
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Launch</a><a class="headerlink" href="#launch" title="Permalink to this heading">#</a></h2>
 <p>You will need to launch Lifeblood’s components.</p>
 <ul class="simple">
 <li><p>single scheduler</p></li>
@@ -516,7 +545,7 @@ the software it can resolve.</div>
 <li><p>veiwers if needed and as needed</p></li>
 </ul>
 <section id="start-a-scheduler">
-<h3><a class="toc-backref" href="#id8" role="doc-backlink">Start a Scheduler</a><a class="headerlink" href="#start-a-scheduler" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">Start a Scheduler</a><a class="headerlink" href="#start-a-scheduler" title="Permalink to this heading">#</a></h3>
 <div class="line-block">
 <div class="line">Scheduler is the central part of Lifeblood: it manages tasks and workers.</div>
 <div class="line">Generally there should always be only one single scheduler running in a local network.</div>
@@ -534,7 +563,7 @@ said above, here we override database location set in config to use sqlite db fi
 </ul>
 </section>
 <section id="start-workers">
-<h3><a class="toc-backref" href="#id9" role="doc-backlink">Start Workers</a><a class="headerlink" href="#start-workers" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Start Workers</a><a class="headerlink" href="#start-workers" title="Permalink to this heading">#</a></h3>
 <div class="line-block">
 <div class="line">Worker is the part of Lifeblood that is responsible for launching things as ordered by scheduler.</div>
 <div class="line">You would have a single scheduler and multiple workers ran across local network.</div>
@@ -547,7 +576,7 @@ or be killed by the system.</div>
 </div>
 <p>Read more <a class="reference internal" href="components/worker/worker.html#worker"><span class="std std-ref">in worker documentation</span></a></p>
 <section id="use-pools-instead">
-<span id="usage-pools"></span><h4><a class="toc-backref" href="#id10" role="doc-backlink">Use Pools instead</a><a class="headerlink" href="#use-pools-instead" title="Permalink to this heading">#</a></h4>
+<span id="usage-pools"></span><h4><a class="toc-backref" href="#id9" role="doc-backlink">Use Pools instead</a><a class="headerlink" href="#use-pools-instead" title="Permalink to this heading">#</a></h4>
 <p>Instead of starting individual workers you will probably want to start some kind of worker pool that will manage workers
 for you</p>
 <p>If you just want to get it started:</p>
@@ -563,7 +592,7 @@ system has resources left to do work.</p>
 </section>
 </section>
 <section id="start-viewer">
-<h3><a class="toc-backref" href="#id11" role="doc-backlink">Start Viewer</a><a class="headerlink" href="#start-viewer" title="Permalink to this heading">#</a></h3>
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Start Viewer</a><a class="headerlink" href="#start-viewer" title="Permalink to this heading">#</a></h3>
 <p>Viewer is a component that is used to connect to the scheduler and:</p>
 <ul>
 <li><p>see the progress of your tasks</p></li>
@@ -588,7 +617,7 @@ By default scheduler with a new database has no nodes, so no tasks can be create
               
               
                 <footer class="prev-next-footer">
-                  <!-- Previous / next buttons -->
+                  
 <div class="prev-next-area">
     <a class="left-prev"
        href="installation.html"
@@ -600,11 +629,11 @@ By default scheduler with a new database has no nodes, so no tasks can be create
       </div>
     </a>
     <a class="right-next"
-       href="tutorials.html"
+       href="network_config.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Tutorials</p>
+        <p class="prev-next-title">Network Configuration</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -617,13 +646,15 @@ By default scheduler with a new database has no nodes, so no tasks can be create
               
                 <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
+
   <div class="sidebar-secondary-item">
-  <div class="page-toc tocsection onthispage">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
     <i class="fa-solid fa-list"></i> On this page
   </div>
-  <nav class="bd-toc-nav page-toc">
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation">Installation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a><ul class="visible nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#config-location">Config location</a></li>
 </ul>
@@ -643,6 +674,7 @@ By default scheduler with a new database has no nodes, so no tasks can be create
   </nav></div>
 
   <div class="sidebar-secondary-item">
+
   <div class="tocsection sourcelink">
     <a href="_sources/usage.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
@@ -663,8 +695,8 @@ By default scheduler with a new database has no nodes, so no tasks can be create
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="_static/scripts/bootstrap.js?digest=365ca57ee442770a23c6"></script>
-<script src="_static/scripts/pydata-sphinx-theme.js?digest=365ca57ee442770a23c6"></script>
+  <script src="_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -672,6 +704,7 @@ By default scheduler with a new database has no nodes, so no tasks can be create
     <div class="footer-items__start">
       
         <div class="footer-item">
+
   <p class="copyright">
     
       © Copyright 10132 BC - 2029 AD, XAPKOHHEH.
@@ -681,6 +714,7 @@ By default scheduler with a new database has no nodes, so no tasks can be create
 </div>
       
         <div class="footer-item">
+
   <p class="sphinx-version">
     Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
     <br/>
@@ -693,8 +727,9 @@ By default scheduler with a new database has no nodes, so no tasks can be create
   
     <div class="footer-items__end">
       
-        <div class="footer-item"><p class="theme-version">
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.14.3.
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
 </p></div>
       
     </div>

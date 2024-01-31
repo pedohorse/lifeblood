@@ -1,0 +1,659 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="" data-theme="dark">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Network Configuration &#8212; Lifeblood 1.0.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "dark";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/css/custom.css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'network_config';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Tutorials" href="tutorials.html" />
+    <link rel="prev" title="How to Use" href="usage.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="dark">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="_static/lifeblood.svg" class="logo__image only-dark" alt="Lifeblood 1.0.0 documentation - Home"/>
+    <script>document.write(`<img src="_static/lifeblood.svg" class="logo__image only-light" alt="Lifeblood 1.0.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="overview.html">
+                        Overview of Lifeblood
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="installation.html">
+                        Installation
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="usage.html">
+                        How to Use
+                      </a>
+                    </li>
+                
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+                    <li class="nav-item current active">
+                      <a class="nav-link dropdown-item nav-internal" href="#">
+                        Network Configuration
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="nodes.html">
+                        Nodes
+                      </a>
+                    </li>
+                
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="components/index.html">
+                        Components
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="overview.html">
+                        Overview of Lifeblood
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="concepts.html">
+                        Main Concepts
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="installation.html">
+                        Installation
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="usage.html">
+                        How to Use
+                      </a>
+                    </li>
+                
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links-2">
+                    More
+                </button>
+                <ul id="pst-nav-more-links-2" class="dropdown-menu">
+                    
+                    <li class="nav-item current active">
+                      <a class="nav-link dropdown-item nav-internal" href="#">
+                        Network Configuration
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
+                        Tutorials
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link dropdown-item nav-internal" href="nodes.html">
+                        Nodes
+                      </a>
+                    </li>
+                
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"></div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page">Network...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="network-configuration">
+<span id="network-config"></span><h1>Network Configuration<a class="headerlink" href="#network-configuration" title="Permalink to this heading">#</a></h1>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#overview" id="id2">Overview</a></p></li>
+<li><p><a class="reference internal" href="#communication-overview" id="id3">Communication Overview</a></p>
+<ul>
+<li><p><a class="reference internal" href="#scheduler-workers-and-worker-pools" id="id4">Scheduler, Workers and Worker Pools</a></p></li>
+<li><p><a class="reference internal" href="#broadcasting" id="id5">Broadcasting</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#example-configuration" id="id6">Example configuration</a></p>
+<ul>
+<li><p><a class="reference internal" href="#machine-with-scheduler" id="id7">Machine with Scheduler</a></p></li>
+<li><p><a class="reference internal" href="#machine-with-simple-worker-pool" id="id8">Machine with Simple Worker Pool</a></p></li>
+<li><p><a class="reference internal" href="#machine-with-viewer" id="id9">Machine with Viewer</a></p></li>
+<li><p><a class="reference internal" href="#id1" id="id10">Broadcasting</a></p></li>
+</ul>
+</li>
+</ul>
+</nav>
+<section id="overview">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Overview</a><a class="headerlink" href="#overview" title="Permalink to this heading">#</a></h2>
+<p>Lifeblood’s components use TCP network connections to communicate. Currently it is limited to ip v4 as this is the most common scenario for
+home/office LAN networks.</p>
+<p>Additionally UDP is used for non-essential (but enabled by default) broadcasting feature.</p>
+<p>This article will help you to open minimal number of ports to allow Lifeblood components to communicate.</p>
+</section>
+<section id="communication-overview">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Communication Overview</a><a class="headerlink" href="#communication-overview" title="Permalink to this heading">#</a></h2>
+<section id="scheduler-workers-and-worker-pools">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">Scheduler, Workers and Worker Pools</a><a class="headerlink" href="#scheduler-workers-and-worker-pools" title="Permalink to this heading">#</a></h3>
+<p>The main components of Lifeblood, such as Scheduler and Workers communicate to each other using messaging.</p>
+<p>Messages can be routed, this way the standard <code class="docutils literal notranslate"><span class="pre">Simple</span> <span class="pre">Worker</span> <span class="pre">Pool</span></code> by default acts as a message proxy for local workers that it spawns.</p>
+<p>Scheduler has 3 main ports:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">server_port</span></code> (default: 1384)</p>
+<p>Simplified controls, usually used by submitters to reach scheduler</p>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">server_message_port</span></code> (default: 1386)</p>
+<p>All message communications to scheduler happen through it.</p>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ui_port</span></code> (default: 1385)</p>
+<p>Viewer connects to scheduler over this port</p>
+</li>
+</ul>
+<p>Message proxies (including <code class="docutils literal notranslate"><span class="pre">Simple</span> <span class="pre">Worker</span> <span class="pre">Pool</span></code>) use this port:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">message_proxy_starting_port</span></code> (default: 22182)</p></li>
+</ul>
+<p>If multiple message proxies are started - they will try to use first available port starting at the value above.</p>
+<p>Therefore it is better to open a couple of consecutive ports starting at 22182, just in case, unless you
+know exactly the configuration you are going to be running.</p>
+<p>Simple Worker Pool communicates with the workers it spawns locally, each worker’s control port is</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">worker_starting_port</span></code> (default: 6969)</p>
+<p>each new worker will attempt to use first available port starting at the given value</p>
+</li>
+</ul>
+</section>
+<section id="broadcasting">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">Broadcasting</a><a class="headerlink" href="#broadcasting" title="Permalink to this heading">#</a></h3>
+<p>Broadcasting (enabled by default) is a method for Lifeblood’s components to automatically find
+the Scheduler on the local network.</p>
+<p>Scheduler sends out a message over <strong>UDP</strong> port to all machines on the local network
+(if the network is configured to support broadcasts/multicasts). Default broadcasting interval is 10 seconds.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">broadcast_port</span></code> (default: 34305)</p></li>
+</ul>
+</section>
+</section>
+<section id="example-configuration">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Example configuration</a><a class="headerlink" href="#example-configuration" title="Permalink to this heading">#</a></h2>
+<p>Assuming all ports are at default values (they are configurable through config files),
+the following configuration may be applied for a tightly configured firewall:</p>
+<p>We assume that firewall allows all local communications, therefore we do not have to think about
+Simple Worker Pool talking to Workers it spawns.</p>
+<section id="machine-with-scheduler">
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">Machine with Scheduler</a><a class="headerlink" href="#machine-with-scheduler" title="Permalink to this heading">#</a></h3>
+<p>Opened Incoming Ports: <code class="docutils literal notranslate"><span class="pre">1384</span> <span class="pre">1385</span> <span class="pre">1386</span></code></p>
+</section>
+<section id="machine-with-simple-worker-pool">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Machine with Simple Worker Pool</a><a class="headerlink" href="#machine-with-simple-worker-pool" title="Permalink to this heading">#</a></h3>
+<p>Opened Incoming Ports: from <code class="docutils literal notranslate"><span class="pre">22182</span></code> to <code class="docutils literal notranslate"><span class="pre">22185</span></code></p>
+<p>If same machine runs both Scheduler and Simple Worker Pool - just combine the two sets of ports</p>
+</section>
+<section id="machine-with-viewer">
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">Machine with Viewer</a><a class="headerlink" href="#machine-with-viewer" title="Permalink to this heading">#</a></h3>
+<p>No incoming connections are happening for the viewer (except possible broadcast)</p>
+</section>
+<section id="id1">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Broadcasting</a><a class="headerlink" href="#id1" title="Permalink to this heading">#</a></h3>
+<p>If you use the Broadcasting feature to make components recognize each other - you need
+to open additional <strong>UDP</strong> port <code class="docutils literal notranslate"><span class="pre">34305</span></code> on <strong>each</strong> machine that needs to receive the broadcast
+from the scheduler (so all worker machines, and all viewer machines, unless you configure some of them
+to not rely on broadcasts)</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="usage.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">How to Use</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="tutorials.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Tutorials</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#communication-overview">Communication Overview</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#scheduler-workers-and-worker-pools">Scheduler, Workers and Worker Pools</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#broadcasting">Broadcasting</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#example-configuration">Example configuration</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-with-scheduler">Machine with Scheduler</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-with-simple-worker-pool">Machine with Simple Worker Pool</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-with-viewer">Machine with Viewer</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Broadcasting</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="_sources/network_config.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 10132 BC - 2029 AD, XAPKOHHEH.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
