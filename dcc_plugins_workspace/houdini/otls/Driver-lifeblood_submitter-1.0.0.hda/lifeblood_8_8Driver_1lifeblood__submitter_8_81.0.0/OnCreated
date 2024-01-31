@@ -8,5 +8,5 @@ node.setParms({'attr_name_0': 'hipfile',
                
 node.parm('env_arg_name_0').setExpression('"user"', language=hou.exprLanguage.Python)
 node.parm('env_arg_val_0').setExpression('import getpass\nreturn getpass.getuser()', language=hou.exprLanguage.Python)
-node.parm('env_arg_name_1').setExpression('import sys\nreturn "package.houdini.py%d" % sys.version_info.major', language=hou.exprLanguage.Python)
+node.parm('env_arg_name_1').setExpression('import sys\nreturn "package.houdini.py%d_%d" % (sys.version_info.major, sys.version_info.minor)', language=hou.exprLanguage.Python)
 node.parm('env_arg_val_1').setExpression('"~=" + hou.applicationVersionString()', language=hou.exprLanguage.Python)
