@@ -267,14 +267,13 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
                     match = houre.match(str(houdir.name))
                     if not match:
                         continue
-                    hpy = match.group(2)
-                    if hpy is None:  # so we don't see explicit python version
-                        for file in (houdir/hfs_prefix/'python'/'bin').iterdir():
-                            pymatch = pyre.match(str(file.name))
-                            if not pymatch:
-                                continue
-                            hpy = pymatch.group(1)
-                            break
+
+                    for file in (houdir/hfs_prefix/'python'/'bin').iterdir():
+                        pymatch = pyre.match(str(file.name))
+                        if not pymatch:
+                            continue
+                        hpy = '_'.join((pymatch.group(1), pymatch.group(2)))
+                        break
                     if f'houdini.py{hpy}' not in packages:
                         packages[f'houdini.py{hpy}'] = {}
                     packages[f'houdini.py{hpy}'][match.group(1)] = {

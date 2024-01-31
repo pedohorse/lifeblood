@@ -147,5 +147,5 @@ class StandardEnvResTest(unittest.TestCase):
 
             result = environment_resolver.StandardEnvironmentResolver.autodetect_houdini()
             print(result)
-            self.assertIn('houdini.py3', result)
-            self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3']['19.5.640']['env']['PATH']['prepend'])
+            self.assertIn('houdini.py3_10', result)
+            self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3_10']['19.5.640']['env']['PATH']['prepend'])
