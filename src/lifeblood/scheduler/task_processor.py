@@ -69,11 +69,29 @@ class TaskProcessor(SchedulerComponentBase):
             async with self.scheduler.get_node_lock_by_id(task_row['node_id']).reader_lock:
                 time_processing_start = time.perf_counter()
                 process_result: ProcessingResult = await loop.run_in_executor(self.awaiter_executor, processor_to_run, task_row)  # TODO: this should have task and node attributes!
-                self.__logger.debug(f'(post)processing for {task_row["node_id"]} took {time.perf_counter()-time_processing_start:.4f}')
-        except NodeNotReadyToProcess:
+                self.__logger.debug(f'(post)processing for t{task_id}:n{task_row["node_id"]} took {time.perf_counter()-time_processing_start:.4f}')
+        except NodeNotReadyToProcess as e:
             async with self.awaiter_lock, self.scheduler.data_access.lazy_data_transaction('awaiter_con') as con:
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (abort_state.value, task_id))
+                if await self.scheduler.data_access.hint_task_needs_blocking(task_id, con=con):  # inc it IN awaiter_lock (it will start transaction if needed)
+                    # for ui event
+                    if abort_state == TaskState.WAITING:
+                        abort_state = TaskState.WAITING_BLOCKED
+                    elif abort_state == TaskState.POST_WAITING:
+                        abort_state = TaskState.POST_WAITING_BLOCKED
+
+                # check if anything needs unblocking
+                if e.tasks_to_unblock():
+                    ids_unblocked = []
+                    for unblock_task_id in e.tasks_to_unblock():
+                        if await self.scheduler.data_access.hint_task_needs_unblocking(unblock_task_id, con=con):  # inc it IN transaction, IN awaiter_lock
+                            ids_unblocked.append(unblock_task_id)
+                    if ids_unblocked:
+                        async with con.execute(f'SELECT "state" FROM tasks WHERE "id" in ({",".join(str(x) for x in ids_unblocked)})') as cur:
+                            ui_task_deltas = [TaskDelta(i, state=TaskState(s['state'])) for (i, s) in zip(ids_unblocked, await cur.fetchall())]
+                        con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, ui_task_deltas)
+
                 con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=abort_state))
                 await con.commit(self.poke)
             self.__logger.debug('node reports: not ready to process yet')
@@ -195,6 +213,19 @@ class TaskProcessor(SchedulerComponentBase):
                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                   (result_serialized, task_id))
             _bench_point_8 = time.perf_counter()
+
+            # unblock given tasks
+            if process_result.tasks_to_unblock:
+                assert con.in_transaction and self.awaiter_lock.locked()  # sanity check
+                ids_unblocked = []
+                for unblock_task_id in process_result.tasks_to_unblock:
+                    if await self.scheduler.data_access.hint_task_needs_unblocking(unblock_task_id, con=con):  # inc it IN transaction, IN awaiter_lock
+                        ids_unblocked.append(unblock_task_id)
+                if ids_unblocked:
+                    async with con.execute(f'SELECT "state" FROM tasks WHERE "id" in ({",".join(str(x) for x in ids_unblocked)})') as cur:
+                        ui_task_deltas = [TaskDelta(i, state=TaskState(s['state'])) for (i, s) in zip(ids_unblocked, await cur.fetchall())]
+                    con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, ui_task_deltas)
+                    # TODO: killer should also unblock parent and slice waiters?
 
             # process environment resolver arguments if provided
             if (envargs := process_result._environment_resolver_arguments) is not None:
@@ -541,11 +572,11 @@ class TaskProcessor(SchedulerComponentBase):
                                 # as it's expected that:
                                 #  - running the function is even faster than locking
                                 #  - function misfire (being highly unlikely) does not have side effects, so will not cause any damage
-                                try:
-                                    if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
-                                        continue
-                                except Exception:
-                                    self.__logger.exception('a node bugged out on fast ready check. ignoring the check')
+                                # try:
+                                #     if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
+                                #         continue
+                                # except Exception:
+                                #     self.__logger.exception('a node bugged out on fast ready check. ignoring the check')
 
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.GENERATING.value, task_row['id']))
@@ -579,8 +610,8 @@ class TaskProcessor(SchedulerComponentBase):
                                 set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
-                                if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
-                                    continue
+                                # if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
+                                #     continue
 
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.POST_GENERATING.value, task_row['id']))
@@ -702,6 +733,7 @@ class TaskProcessor(SchedulerComponentBase):
                                 out_plug_name = task_row['node_output_name'] or 'main'
                             else:
                                 out_plug_name = task_row['node_output_name'] or 'spawned'
+                            await self.scheduler.data_access.reset_task_blocking(task_row['id'], con=con)
                             async with con.execute('SELECT * FROM node_connections WHERE node_id_out = ? AND out_name = ?',
                                                    (task_row['node_id'], out_plug_name)) as wire_cur:
                                 all_wires = await wire_cur.fetchall()

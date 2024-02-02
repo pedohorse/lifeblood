@@ -18,7 +18,7 @@ class SchedulerComponentBase(ComponentBase):
         self.__mode = SchedulerMode.STANDARD
 
     @property
-    def scheduler(self):
+    def scheduler(self) -> "Scheduler":
         return self.__scheduler
 
     @property
