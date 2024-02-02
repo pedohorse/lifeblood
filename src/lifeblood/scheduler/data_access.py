@@ -1,8 +1,11 @@
+import asyncio
+
 import aiosqlite
 import sqlite3
 import random
 import struct
 from ..db_misc import sql_init_script
+from ..enums import TaskState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..scheduler_event_log import SchedulerEventLog
@@ -25,6 +28,8 @@ class DataAccess:
         self.mem_cache_workers_state: dict = {}
         self.mem_cache_invocations: dict = {}
         #
+
+        self.__task_blocking_values: Dict[int, int] = {}
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
@@ -56,6 +61,68 @@ class DataAccess:
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
+    async def hint_task_needs_blocking(self, task_id: int, *, inc_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
+        """
+        Indicate "intent" that given task needs to be blocked for time being.
+
+        counter is limited by max 1, but not min limited
+        this is to avoid certain race conditions but allowing for some extra processing, which does not hurt
+        and is something we can afford.
+        TODO: add link to proposal
+        """
+        if con is None:
+            with self.data_connection() as con:
+                ret = await self.hint_task_needs_blocking(task_id, inc_amount=inc_amount, con=con)
+                await con.commit()
+            return ret
+
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
+        self.__task_blocking_values[task_id] = min(1, self.__task_blocking_values.get(task_id, 0) + inc_amount)
+        blocking_counter = self.__task_blocking_values[task_id]
+        is_blocked = blocking_counter > 0
+        if is_blocked:  # if blocking - do blocking instead of simple abort
+            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ? AND ("state" = ? OR "state" = ?)',
+                              (TaskState.WAITING_BLOCKED.value, task_id, TaskState.WAITING.value, TaskState.GENERATING.value))
+            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ? AND ("state" = ? OR "state" = ?)',
+                              (TaskState.POST_WAITING_BLOCKED.value, task_id, TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
+        return is_blocked
+
+    async def hint_task_needs_unblocking(self, task_id: int, *, dec_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
+        """
+        unblock blocked task
+        """
+        if con is None:
+            with self.data_connection() as con:
+                ret = await self.hint_task_needs_unblocking(task_id, dec_amount=dec_amount, con=con)
+                await con.commit()
+            return ret
+
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
+        self.__task_blocking_values[task_id] = min(1, self.__task_blocking_values.get(task_id, 0) - dec_amount)
+        blocking_counter = self.__task_blocking_values[task_id]
+        is_unblocked = blocking_counter <= 0
+        if is_unblocked:  # time to unblock
+            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ? AND "state" = ?',
+                              (TaskState.WAITING.value, task_id, TaskState.WAITING_BLOCKED.value))
+            await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ? AND "state" = ?',
+                              (TaskState.POST_WAITING.value, task_id, TaskState.POST_WAITING_BLOCKED.value))
+        return is_unblocked
+
+    async def reset_task_blocking(self, task_id: int, con: Optional[aiosqlite.Connection] = None):
+        """
+        reset task's blocking counter
+        blocked task will be unblocked
+        """
+        # if it's not there - do nothing
+        if task_id not in self.__task_blocking_values:
+            return
+
+        await self.hint_task_needs_unblocking(task_id, dec_amount=self.__task_blocking_values[task_id], con=con)
+        # we just remove task_id from dict, as default value is 0
+        self.__task_blocking_values.pop(task_id)
 
     @property
     def db_uid(self):
