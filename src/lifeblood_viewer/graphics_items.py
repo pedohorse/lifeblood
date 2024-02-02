@@ -232,7 +232,7 @@ class Node(NetworkItemWithUI):
         """
         all currently displayed tasks that are in states BEFORE processing, will be set to WAITING
         """
-        self._change_all_task_states((TaskState.READY,), TaskState.WAITING)
+        self._change_all_task_states((TaskState.READY, TaskState.WAITING_BLOCKED), TaskState.WAITING)
 
     def retry_all_error_tasks(self):
         """
@@ -1244,7 +1244,9 @@ class Task(NetworkItemWithUI):
                               TaskState.ERROR: QBrush(QColor(192, 32, 32, 192)),
                               TaskState.SPAWNED: QBrush(QColor(32, 32, 32, 192)),
                               TaskState.DEAD: QBrush(QColor(16, 19, 22, 192)),
-                              TaskState.SPLITTED: QBrush(QColor(64, 32, 64, 192))}
+                              TaskState.SPLITTED: QBrush(QColor(64, 32, 64, 192)),
+                              TaskState.WAITING_BLOCKED: QBrush(QColor(40, 40, 50, 192)),
+                              TaskState.POST_WAITING_BLOCKED: QBrush(QColor(40, 40, 60, 192))}
             for k, v in Task.__brushes.items():
                 ocolor = v.color()
                 Task.__brushes[k] = []
