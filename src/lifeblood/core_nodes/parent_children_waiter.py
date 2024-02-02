@@ -11,7 +11,7 @@ from lifeblood.processingcontext import ProcessingContext
 
 from threading import Lock
 
-from typing import Dict, TypedDict, Set, Iterable, Optional, Any, TYPE_CHECKING
+from typing import Any, Dict, Iterable, List, Optional,  Set, TypedDict , TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lifeblood.scheduler import Scheduler
@@ -65,25 +65,6 @@ class ParentChildrenWaiterNode(BaseNode):
                     ui.add_parameter('dst_attr_name', 'sort by', NodeParameterType.STRING, 'attr1')
                     ui.add_parameter('sort_by', None, NodeParameterType.STRING, '_builtin_id')
                     ui.add_parameter('reversed', 'reversed', NodeParameterType.BOOL, False)
-
-    def ready_to_process_task(self, task_dict) -> bool:
-        context = ProcessingContext(self, task_dict)
-        task_id = context.task_field('id')
-        children_count = context.task_field('active_children_count')
-        if context.task_field('node_input_name') == 'main':
-            return children_count == 0 or \
-                   task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
-
-        parent_id = context.task_field('parent_id')
-        ready: bool = True
-        if context.param_value('recursive') and children_count > 0:
-            ready = task_id in self.__cache_children and children_count == len(self.__cache_children[task_id].children)
-        ready = ready and (
-                parent_id not in self.__cache_children or
-                task_id not in self.__cache_children[parent_id].children or
-                self.__cache_children[parent_id].parent_ready
-                )
-        return ready
 
     def __get_promote_attribs_for(self, context, task_id: int) -> dict:
         result_attribs = {}
@@ -140,6 +121,18 @@ class ParentChildrenWaiterNode(BaseNode):
                 raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
         return result_attribs
 
+    def __get_children_for(self, task_id: int, recursive=False) -> List[int]:
+        children = list(self.__cache_children[task_id].children) if task_id in self.__cache_children else []
+        if not recursive:
+            return children
+
+        for child in children:
+            if child not in self.__cache_children:
+                continue
+            children.extend(self.__cache_children[child].children)
+
+        return children
+
     def process_task(self, context) -> ProcessingResult:
         task_id = context.task_field('id')
         children_count = context.task_field('active_children_count')
@@ -160,6 +153,7 @@ class ParentChildrenWaiterNode(BaseNode):
                         result.set_attribute(attr_name, attr_value)
                     # release children
                     self.__cache_children[task_id].parent_ready = True
+                    result.tasks_to_unblock = self.__get_children_for(task_id, recursive)
                     return result
 
                 raise NodeNotReadyToProcess()
@@ -193,9 +187,13 @@ class ParentChildrenWaiterNode(BaseNode):
                     self.__cache_children[parent_id].children.remove(task_id)
                     if len(self.__cache_children[parent_id].children) == 0:
                         del self.__cache_children[parent_id]
-                    return ProcessingResult(node_output_name='children')
 
-                raise NodeNotReadyToProcess()
+                    # release children if it's recursive case
+                    res = ProcessingResult(node_output_name='children')
+                    res.tasks_to_unblock = self.__get_children_for(task_id, recursive)
+                    return res
+
+                raise NodeNotReadyToProcess(tasks_to_unblock=[parent_id])
 
         raise NodeNotReadyToProcess()
 
