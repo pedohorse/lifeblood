@@ -73,6 +73,12 @@ class Python(BaseNodeWithTaskRequirements):
                     self.__todel.remove(key)
                 self.__overrides[key] = value
 
+            def get(self, item, default=None):
+                try:
+                    return self[item]
+                except KeyError:
+                    return default
+
             def __delitem__(self, key):
                 if key in self.__todel:
                     raise KeyError(f'key {key} was already deleted')
