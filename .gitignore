@@ -4,6 +4,7 @@ venv_docs
 .idea
 .run
 *.db*
+!/tests/nodes/data/**.db
 **.pyc
 **/__pycache__
 imgui.ini
