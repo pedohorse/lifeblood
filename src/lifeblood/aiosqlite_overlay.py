@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 import sqlite3
 from warnings import warn
-from aiosqlite import *
+from aiosqlite import Connection
 from .logging import get_logger
 
 from typing import Any, Callable, List, Optional, Tuple, Union
