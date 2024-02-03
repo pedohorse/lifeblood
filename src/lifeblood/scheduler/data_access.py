@@ -4,17 +4,27 @@ import aiosqlite
 import sqlite3
 import random
 import struct
+from dataclasses import dataclass
 from ..db_misc import sql_init_script
-from ..enums import TaskState
+from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..scheduler_event_log import SchedulerEventLog
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 SCHEDULER_DB_FORMAT_VERSION = 2
+
+
+@dataclass
+class InvocationStatistics:
+    invoking: int
+    in_progress: int
+    finished_good: int
+    finished_bad: int
+    total: int
 
 
 class DataAccess:
@@ -72,7 +82,7 @@ class DataAccess:
         TODO: add link to proposal
         """
         if con is None:
-            with self.data_connection() as con:
+            async with self.data_connection() as con:
                 ret = await self.hint_task_needs_blocking(task_id, inc_amount=inc_amount, con=con)
                 await con.commit()
             return ret
@@ -94,7 +104,7 @@ class DataAccess:
         unblock blocked task
         """
         if con is None:
-            with self.data_connection() as con:
+            async with self.data_connection() as con:
                 ret = await self.hint_task_needs_unblocking(task_id, dec_amount=dec_amount, con=con)
                 await con.commit()
             return ret
@@ -111,7 +121,7 @@ class DataAccess:
                               (TaskState.POST_WAITING.value, task_id, TaskState.POST_WAITING_BLOCKED.value))
         return is_unblocked
 
-    async def reset_task_blocking(self, task_id: int, con: Optional[aiosqlite.Connection] = None):
+    async def reset_task_blocking(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None):
         """
         reset task's blocking counter
         blocked task will be unblocked
@@ -123,6 +133,36 @@ class DataAccess:
         await self.hint_task_needs_unblocking(task_id, dec_amount=self.__task_blocking_values[task_id], con=con)
         # we just remove task_id from dict, as default value is 0
         self.__task_blocking_values.pop(task_id)
+
+    # statistics
+
+    async def invocations_statistics(self, *, con: Optional[aiosqlite.Connection] = None) -> InvocationStatistics:
+        if con is None:
+            async with self.data_connection() as con:
+                con.row_factory = sqlite3.Row
+                ret = await self.invocations_statistics(con=con)
+                await con.commit()
+            return ret
+
+        async with con.execute(
+                f'SELECT '
+                f'sum(CASE "state" WHEN {InvocationState.INVOKING.value} THEN 1 ELSE 0 END) AS "invoking", '
+                f'sum(CASE "state" WHEN {InvocationState.IN_PROGRESS.value} THEN 1 ELSE 0 END) AS "in_progress", '
+                f'sum(CASE WHEN "state" == {InvocationState.FINISHED.value} AND "return_code" IS NOT NULL THEN 1 ELSE 0 END) AS "finished_good", '
+                f'sum(CASE WHEN "state" == {InvocationState.FINISHED.value} AND "return_code" IS NULL THEN 1 ELSE 0 END) AS "finished_bad", '
+                f'count("id") AS "total" '
+                f'FROM invocations') as cur:
+            row = await cur.fetchone()
+
+        return InvocationStatistics(
+            row['invoking'],
+            row['in_progress'],
+            row['finished_good'],
+            row['finished_bad'],
+            row['total'],
+        )
+
+    #
 
     @property
     def db_uid(self):
