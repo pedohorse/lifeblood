@@ -1,25 +1,9 @@
 import os
-import asyncio
 import re
 import shutil
 import tempfile
 from pathlib import Path
-from unittest import IsolatedAsyncioTestCase, mock
-
-from lifeblood.invocationjob import InvocationJob, Environment
-from lifeblood.enums import SpawnStatus
-from lifeblood.processingcontext import ProcessingContext
-from lifeblood.environment_resolver import EnvironmentResolverArguments
-from lifeblood.process_utils import oh_no_its_windows
-
-from .common import TestCaseBase, create_node
-
-
-class FakeEnvArgs(EnvironmentResolverArguments):
-    def get_environment(self):
-        return Environment({**os.environ,
-                            'PATH': os.pathsep.join((str(Path(__file__).parent / 'data' / 'mock_ffmpeh'), os.environ.get('PATH', ''))),
-                            'PYTHONUNBUFFERED': '1'})
+from lifeblood_testing_common.nodes_common import TestCaseBase
 
 
 class FFMPEGTestCase(TestCaseBase):
@@ -51,7 +35,7 @@ class FFMPEGTestCase(TestCaseBase):
                     }
                 ],
                 {},
-                add_relative_to_PATH=Path('data') / 'mock_ffmpeg',
+                add_relative_to_PATH=Path(__file__).parent / 'data' / 'mock_ffmpeg',
                 commands_to_replace_with_py_mock=['ffmpeg', 'ffprobe'],
             )
 

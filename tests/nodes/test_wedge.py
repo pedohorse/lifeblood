@@ -2,9 +2,8 @@ import random
 from asyncio import Event
 from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
-from lifeblood.basenode import BaseNode, ProcessingError
-from lifeblood.exceptions import NodeNotReadyToProcess
-from .common import TestCaseBase, PseudoContext
+from lifeblood.basenode import ProcessingError
+from lifeblood_testing_common.nodes_common import TestCaseBase, PseudoContext
 
 from typing import List
 
