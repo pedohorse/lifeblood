@@ -1,9 +1,5 @@
 from lifeblood_testing_common.integration_common import FullIntegrationTestCase
 
-from lifeblood.logging import set_default_loglevel, get_logger
-set_default_loglevel("DEBUG")
-get_logger('scheduler.worker_pinger').setLevel("INFO")
-
 from typing import Iterable
 
 
@@ -28,6 +24,12 @@ class ParentChildrenIntegrationTest(FullIntegrationTestCase):
             1: {'foo': list(range(123, 123+20))},
             2: {'fee': list(reversed(range(531, 531+20*2, 2)))},
         }
+
+    async def _additional_checks_on_finish(self):
+        stat = await self.scheduler.data_access.invocations_statistics()
+        self.assertEqual(60, stat.total)
+        self.assertEqual(60, stat.finished_good)
+        self.assertEqual(0, stat.finished_bad)
 
     def _timeout(self) -> float:
         return 60.0
