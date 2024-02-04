@@ -122,6 +122,9 @@ class DataAccess:
         this is to avoid certain race conditions but allowing for some extra processing, which does not hurt
         and is something we can afford.
         TODO: add link to proposal
+
+        It should be safe to call these 3 task-blocking related methods from multiple async tasks and even threads,
+         as data change is protected by a db transaction
         """
         if con is None:
             async with self.data_connection() as con:
@@ -144,6 +147,9 @@ class DataAccess:
     async def hint_task_needs_unblocking(self, task_id: int, *, dec_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
         """
         unblock blocked task
+
+        It should be safe to call these 3 task-blocking related methods from multiple async tasks and even threads,
+         as data change is protected by a db transaction
         """
         if con is None:
             async with self.data_connection() as con:
@@ -167,13 +173,25 @@ class DataAccess:
         """
         reset task's blocking counter
         blocked task will be unblocked
+
+        It should be safe to call these 3 task-blocking related methods from multiple async tasks and even threads,
+         as data change is protected by a db transaction
         """
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.reset_task_blocking(task_id, con=con)
+                await con.commit()
+            return ret
+
         # if it's not there - do nothing
         if task_id not in self.__task_blocking_values:
             return
 
+        if not con.in_transaction:
+            await con.execute('BEGIN IMMEDIATE')
         await self.hint_task_needs_unblocking(task_id, dec_amount=self.__task_blocking_values[task_id], con=con)
         # we just remove task_id from dict, as default value is 0
+        # And we ensure it is done within a transaction
         self.__task_blocking_values.pop(task_id)
 
     async def is_task_blocked(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None) -> bool:
