@@ -2,6 +2,7 @@ import aiosqlite
 import sqlite3
 import random
 import struct
+import json
 from dataclasses import dataclass
 from ..db_misc import sql_init_script
 from ..enums import TaskState, InvocationState
@@ -9,8 +10,9 @@ from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
+from ..environment_resolver import EnvironmentResolverArguments
 
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 SCHEDULER_DB_FORMAT_VERSION = 2
 
@@ -22,6 +24,17 @@ class InvocationStatistics:
     finished_good: int
     finished_bad: int
     total: int
+
+
+@dataclass
+class TaskSpawnData:
+    name: str
+    parent_id: Optional[int]
+    attributes: Dict[str, Any]
+    state: TaskState
+    node_id: int
+    node_output_name: str
+    environment_resolver_arguments: Optional[EnvironmentResolverArguments]
 
 
 class DataAccess:
@@ -68,6 +81,38 @@ class DataAccess:
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
+    async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.create_node(node_type, node_name, con=con)
+                await con.commit()
+            return ret
+
+        async with con.execute('INSERT INTO "nodes" ("type", "name") VALUES (?,?)',
+                               (node_type, node_name)) as cur:
+            ret = cur.lastrowid
+        return ret
+
+    async def create_task(self, newtask: TaskSpawnData, *, con: Optional[aiosqlite.Connection] = None) -> int:
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        # TODO: add test that ensures input validity check, including db consistency (node_id, parent_id)
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.create_task(newtask, con=con)
+                await con.commit()
+            return ret
+
+        async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
+                               (newtask.name, json.dumps(newtask.attributes), newtask.parent_id,  # TODO: run dumps in executor
+                                newtask.state.value,
+                                newtask.node_id, newtask.node_output_name,
+                                newtask.environment_resolver_arguments.serialize() if newtask.environment_resolver_arguments is not None else None)) as newcur:
+            new_id = newcur.lastrowid
+        return new_id
 
     async def hint_task_needs_blocking(self, task_id: int, *, inc_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
         """
@@ -131,6 +176,24 @@ class DataAccess:
         # we just remove task_id from dict, as default value is 0
         self.__task_blocking_values.pop(task_id)
 
+    async def is_task_blocked(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None) -> bool:
+        """
+        is task blocked
+        TODO: use get_task_state when it's moved here from scheduler
+        """
+        if con is None:
+            async with self.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                ret = await self.is_task_blocked(task_id, con=con)
+                await con.commit()
+            return ret
+
+        async with con.execute('SELECT "state" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            raise ValueError(f'task {task_id} does not exist')
+        return TaskState(row['state']) in (TaskState.WAITING_BLOCKED, TaskState.POST_WAITING_BLOCKED)
+
     # statistics
 
     async def invocations_statistics(self, *, con: Optional[aiosqlite.Connection] = None) -> InvocationStatistics:
@@ -172,6 +235,7 @@ class DataAccess:
         self.__workers_metadata[worker_hwid] = data
 
     def data_connection(self) -> aiosqlite_overlay.ConnectionWithCallbacks:
+        # TODO: con.row_factory = aiosqlite.Row must be here, ALMOST all places use it anyway, need to prune
         return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
 
     def lazy_data_transaction(self, key_name: str):
