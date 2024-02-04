@@ -13,7 +13,7 @@ from lifeblood.net_messages.address import AddressChain
 from lifeblood.taskspawn import TaskSpawn
 from lifeblood.enums import SpawnStatus
 
-from typing import Dict, Iterable, Tuple, Union
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 
 class FullIntegrationTestCase(IsolatedAsyncioTestCase):
@@ -38,6 +38,7 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCase):
             scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
             minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
             minimal_total_to_ensure=self._minimal_total_to_ensure(),
+            maximum_total=self._maximum_total(),
         )
 
         await self.scheduler.start()
@@ -108,10 +109,12 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCase):
         ) for task_id in expected_states.keys()}
         return actual == expected_states
 
-    async def _create_node(self, *, task_name: str = 'test task', node_name: str = 'TEST IN', output_name: str = 'main'):
+    async def _create_task(self, *, task_name: str = 'test task', node_name: str = 'TEST IN', output_name: str = 'main', attributes: Optional[dict] = None):
+        if attributes is None:
+            attributes = {}
         node_ids = await self.scheduler.node_name_to_id(node_name)
         self.assertEqual(1, len(node_ids))
-        task_spawn = TaskSpawn(task_name)
+        task_spawn = TaskSpawn(task_name, task_attributes=attributes)
         task_spawn.force_set_node_task_id(node_ids[0], None)
         task_spawn.set_node_output_name(output_name)
 
@@ -158,3 +161,6 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCase):
 
     def _minimal_total_to_ensure(self) -> int:
         return 0
+
+    def _maximum_total(self) -> int:
+        return 16
