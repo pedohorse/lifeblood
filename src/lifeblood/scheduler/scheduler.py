@@ -577,6 +577,26 @@ class Scheduler(NodeGraphHolderBase):
     #
     # worker reports done task
     async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
+        """
+        scheduler comm protocols should call this when a task is done
+         TODO: this is almost the same code as for task_cancel_reported, maybe unify?
+        """
+        for attempt in range(120):  # TODO: this should be configurable
+            # if invocation is super fast - this may happen even before submission is completed,
+            # so we might need to wait a bit
+            try:
+                return await self.__task_done_reported_inner(task, stdout, stderr)
+            except NeedToRetryLater:
+                self.__logger.debug('attempt %d to report invocation %d done notified it needs to wait', attempt, task.invocation_id())
+                await asyncio.sleep(0.5)  # TODO: this should be configurable
+                continue
+        else:
+            self.__logger.error(f'out of attempts trying to report done invocation {task.invocation_id()}, probably something is not right with the state of the database')
+
+    async def __task_done_reported_inner(self, task: InvocationJob, stdout: str, stderr: str):
+        """
+
+        """
         async with self.__invocation_reporting_lock, \
                    self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -587,8 +607,10 @@ class Scheduler(NodeGraphHolderBase):
                 if invoc is None:
                     self.__logger.error('reported task has non existing invocation id %d' % task.invocation_id())
                     return
-                if invoc['state'] != InvocationState.IN_PROGRESS.value:
-                    self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
+                if invoc['state'] == InvocationState.INVOKING.value:  # means _submitter has not yet finished, we should wait
+                    raise NeedToRetryLater()
+                elif invoc['state'] != InvocationState.IN_PROGRESS.value:
+                    self.__logger.warning(f'reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results. (state={invoc["state"]})')
                     return
             await con.execute('UPDATE invocations SET "state" = ?, "return_code" = ?, "runtime" = ? WHERE "id" = ?',
                               (InvocationState.FINISHED.value, task.exit_code(), task.running_time(), task.invocation_id()))
@@ -653,6 +675,22 @@ class Scheduler(NodeGraphHolderBase):
     #
     # worker reports canceled task
     async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
+        """
+        scheduler comm protocols should call this when a task is cancelled
+        """
+        for attempt in range(120):  # TODO: this should be configurable
+            # if invocation is super fast - this may happen even before submission is completed,
+            # so we might need to wait a bit
+            try:
+                return await self.__task_cancel_reported_inner(task, stdout, stderr)
+            except NeedToRetryLater:
+                self.__logger.debug('attempt %d to report invocation  %d cancelled notified it needs to wait', attempt, task.invocation_id())
+                await asyncio.sleep(0.5)  # TODO: this should be configurable
+                continue
+        else:
+            self.__logger.error(f'out of attempts trying to report cancel invocation {task.invocation_id()}, probably something is not right with the state of the database')
+
+    async def __task_cancel_reported_inner(self, task: InvocationJob, stdout: str, stderr: str):
         async with self.__invocation_reporting_lock,\
                    self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -663,8 +701,10 @@ class Scheduler(NodeGraphHolderBase):
                 if invoc is None:
                     self.__logger.error('reported task has non existing invocation id %d' % task.invocation_id())
                     return
-                if invoc['state'] != InvocationState.IN_PROGRESS.value:
-                    self.__logger.warning('reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results.')
+                if invoc['state'] == InvocationState.INVOKING.value:  # means _submitter has not yet finished, we should wait
+                    raise NeedToRetryLater()
+                elif invoc['state'] != InvocationState.IN_PROGRESS.value:
+                    self.__logger.warning(f'reported task for a finished invocation. assuming that worker failed to cancel task previously and ignoring invocation results. (state={invoc["state"]})')
                     return
             await con.execute('UPDATE invocations SET "state" = ?, "runtime" = ? WHERE "id" = ?',
                               (InvocationState.FINISHED.value, task.running_time(), task.invocation_id()))
@@ -686,8 +726,8 @@ class Scheduler(NodeGraphHolderBase):
                                   (task.invocation_id(),))
                 tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
-                              (TaskState.WAITING.value, invocation['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.WAITING))  # ui event
+                              (TaskState.READY.value, invocation['task_id']))
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.READY))  # ui event
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
@@ -899,11 +939,11 @@ class Scheduler(NodeGraphHolderBase):
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
             await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
-            await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.WAITING.value, x["task_id"]) for x in invocations))
+            await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.READY.value, x["task_id"]) for x in invocations))
             await self._update_worker_resouce_usage(wid, hwid=hwid, connection=con)
             del self.data_access.mem_cache_workers_resources[wid]  # remove from cache
             if len(invocations) > 0:
-                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(x["task_id"], state=TaskState.WAITING) for x in invocations])  # ui event
+                con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(x["task_id"], state=TaskState.READY) for x in invocations])  # ui event
             await con.commit()
         self.__logger.debug(f'finished worker reported stopped: {addr}')
 

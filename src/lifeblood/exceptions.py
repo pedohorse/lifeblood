@@ -13,6 +13,15 @@ class NodeNotReadyToProcess(Exception):
     pass
 
 
+class NeedToRetryLater(RuntimeError):
+    """
+    Special exception that can be raised by certain functions
+    that signify that the method called needs to wait for some db state to change before it can be performed.
+    This is made to simplify implementation of functions that may need some number of attempts
+    """
+    pass
+
+
 class AlreadyRunning(RuntimeError):
     pass
 
