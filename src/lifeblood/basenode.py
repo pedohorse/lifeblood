@@ -1,17 +1,17 @@
 import asyncio
-from enum import Enum
-import pickle
-import json
 import re
-from copy import copy, deepcopy
-from typing import Dict, Optional, List, Any
-from .nodethings import ProcessingResult, ProcessingError
-from .uidata import NodeUi, ParameterNotFound, ParameterReadonly, ParameterLocked, ParameterCannotHaveExpressions, Parameter
+from copy import deepcopy
+from typing import Dict, Optional, Any
+from .nodethings import ProcessingResult
+from .uidata import NodeUi, ParameterNotFound, Parameter
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .enums import NodeParameterType, WorkerType
 from .plugin_info import PluginInfo, empty_plugin_info
 from .nodegraph_holder_base import NodeGraphHolderBase
+
+# reexport
+from .nodethings import ProcessingError
 
 from typing import TYPE_CHECKING, Iterable
 
@@ -166,20 +166,6 @@ class BaseNode:
     #         #  so IF node subclass has internal state - it has to deal with ensuring state is consistent at time or writing
     #         #  this may also apply to _ui_changed above, but nodes really SHOULD NOT change their own parameters during processing
     #         asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
-
-    def ready_to_process_task(self, task_dict) -> bool:
-        """
-        must be VERY fast - this will be run in main thread
-        there is no context wrapper just to skip unnessesary overhead as not many nodes will ever override this
-        """
-        return True
-
-    def ready_to_postprocess_task(self, task_dict) -> bool:
-        """
-        must be VERY fast - this will be run in main thread
-        there is no context wrapper just to skip unnessesary overhead as not many nodes will ever override this
-        """
-        return True
 
     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!

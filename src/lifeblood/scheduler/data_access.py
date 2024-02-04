@@ -1,5 +1,3 @@
-import asyncio
-
 import aiosqlite
 import sqlite3
 import random
@@ -9,11 +7,10 @@ from ..db_misc import sql_init_script
 from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
-from ..scheduler_event_log import SchedulerEventLog
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 SCHEDULER_DB_FORMAT_VERSION = 2
 

@@ -35,9 +35,9 @@ def create_node(node_type: str, node_name: str, scheduler, node_id):
 
 
 class FakeEnvArgs(EnvironmentResolverArguments):
-    def __init__(self, rel_path_to_bin: str):
+    def __init__(self, path_to_bin: str):
         super().__init__()
-        self.__bin_path = Path(rel_path_to_bin)
+        self.__bin_path = Path(path_to_bin)
 
     def get_environment(self):
         return Environment({**os.environ,
@@ -166,9 +166,6 @@ class PseudoContext(PseudoTaskPool):
         return None if processing raised not ready.
         other exceptions are propagated
         """
-        # ready = node.ready_to_process_task(task.task_dict())
-        # if not ready:
-        #     return None
         try:
             res = node.process_task(task.get_context_for(node))
         except NodeNotReadyToProcess:

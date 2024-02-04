@@ -568,16 +568,6 @@ class TaskProcessor(SchedulerComponentBase):
                                 set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
-                                # note that ready_to_process_task is ran not inside the read lock
-                                # as it's expected that:
-                                #  - running the function is even faster than locking
-                                #  - function misfire (being highly unlikely) does not have side effects, so will not cause any damage
-                                # try:
-                                #     if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_process_task(task_row):
-                                #         continue
-                                # except Exception:
-                                #     self.__logger.exception('a node bugged out on fast ready check. ignoring the check')
-
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
@@ -610,9 +600,6 @@ class TaskProcessor(SchedulerComponentBase):
                                 set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
                                 total_state_changes += 1
                             else:
-                                # if not (await self.scheduler._get_node_object_by_id(task_row['node_id'])).ready_to_postprocess_task(task_row):
-                                #     continue
-
                                 # await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                 #                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.POST_GENERATING.value, task_row['id']))

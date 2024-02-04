@@ -16,6 +16,7 @@ class NodeNotReadyToProcess(Exception):
     def tasks_to_unblock(self) -> Optional[Tuple[int]]:
         return self.__tasks_to_unblock
 
+
 class NeedToRetryLater(RuntimeError):
     """
     Special exception that can be raised by certain functions

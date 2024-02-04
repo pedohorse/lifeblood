@@ -41,6 +41,7 @@ class ConnectionWithCallbacks(Connection):
         await super().rollback()
         self.__callbacks = []
 
+
 #
 # the function below is a direct copy from aiosqlite with the change of Connection class
 # PLEASE don't forget to check this is asyncio version changes much
