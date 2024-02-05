@@ -5,6 +5,7 @@ venv_docs
 .run
 *.db*
 !/tests/nodes/data/**.db
+!/tests/data/**.db
 **.pyc
 **/__pycache__
 imgui.ini
