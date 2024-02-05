@@ -104,8 +104,8 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCase):
 
     async def __check_tasks(self, expected_states: Dict[int, Tuple[TaskState, int]]) -> bool:
         actual = {task_id: (
-            *(await self.scheduler.get_task_state(task_id)),
-            await self.scheduler.get_task_node(task_id)
+            *(await self.scheduler.data_access.get_task_state(task_id)),
+            await self.scheduler.data_access.get_task_node(task_id)
         ) for task_id in expected_states.keys()}
         return actual == expected_states
 

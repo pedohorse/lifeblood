@@ -12,7 +12,7 @@ from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 SCHEDULER_DB_FORMAT_VERSION = 2
 
@@ -194,6 +194,8 @@ class DataAccess:
         # And we ensure it is done within a transaction
         self.__task_blocking_values.pop(task_id)
 
+    # task query
+
     async def is_task_blocked(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None) -> bool:
         """
         is task blocked
@@ -203,7 +205,7 @@ class DataAccess:
             async with self.data_connection() as con:
                 con.row_factory = aiosqlite.Row
                 ret = await self.is_task_blocked(task_id, con=con)
-                await con.commit()
+                assert not con.in_transaction, 'expectations failure'
             return ret
 
         async with con.execute('SELECT "state" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
@@ -211,6 +213,47 @@ class DataAccess:
         if row is None:
             raise ValueError(f'task {task_id} does not exist')
         return TaskState(row['state']) in (TaskState.WAITING_BLOCKED, TaskState.POST_WAITING_BLOCKED)
+
+    async def get_task_state(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None) -> Tuple[TaskState, bool]:
+        """
+        get task state given task id
+
+        :return: tuple of TaskState and paused
+        """
+        if con is None:
+            async with self.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                ret = await self.get_task_state(task_id, con=con)
+                assert not con.in_transaction, 'expectations failure'
+            return ret
+
+        async with con.execute('SELECT "state", paused FROM tasks WHERE "id" == ?', (task_id,)) as cur:
+            res = await cur.fetchone()
+        if res is None:
+            raise ValueError('task with specified id was not found')
+
+        return TaskState(res['state']), res['paused']
+
+    async def get_task_node(self, task_id, *, con: Optional[aiosqlite.Connection] = None) -> int:
+        """
+        get node_id of the node the given task belongs to at the moment
+
+        :return: tuple of node_id
+        """
+        if con is None:
+            async with self.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                ret = await self.get_task_node(task_id, con=con)
+                assert not con.in_transaction, 'expectations failure'
+            return ret
+
+        async with con.execute('SELECT "node_id" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
+            res = await cur.fetchone()
+        if res is None:
+            raise ValueError('task with specified id was not found')
+
+        return res['node_id']
+
 
     # statistics
 

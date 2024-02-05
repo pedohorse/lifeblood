@@ -347,34 +347,6 @@ class Scheduler(NodeGraphHolderBase):
                 raise RuntimeError('task with specified id was not found')
             return dict(res)
 
-    async def get_task_state(self, task_id: int) -> Tuple[TaskState, bool]:
-        """
-        get task state given task id
-
-        :return: tuple of TaskState and paused
-        """
-        async with self.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT "state", paused FROM tasks WHERE "id" == ?', (task_id,)) as cur:
-                res = await cur.fetchone()
-            if res is None:
-                raise ValueError('task with specified id was not found')
-        return TaskState(res['state']), res['paused']
-
-    async def get_task_node(self, task_id) -> int:
-        """
-        get node_id of the node the given task belongs to at the moment
-
-        :return: tuple of node_id
-        """
-        async with self.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT "node_id" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
-                res = await cur.fetchone()
-            if res is None:
-                raise ValueError('task with specified id was not found')
-        return res['node_id']
-
     async def task_name_to_id(self, name: str) -> List[int]:
         """
         get the list of task ids that have specified name
