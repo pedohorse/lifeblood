@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 import sqlite3
 from warnings import warn
-from aiosqlite import *
+from aiosqlite import Connection
 from .logging import get_logger
 
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -20,8 +20,9 @@ class ConnectionWithCallbacks(Connection):
     def add_after_commit_callback(self, callable: Callable, *args, **kwargs):
         self.__callbacks.append((callable, args, kwargs))
 
-    async def __aenter__(self) -> Connection:
+    async def __aenter__(self) -> "ConnectionWithCallbacks":
         con = await super().__aenter__()
+        assert isinstance(con, ConnectionWithCallbacks)
         if self.__post_connect_pragmas is not None:
             for statement in self.__post_connect_pragmas:
                 await con.execute(f'PRAGMA {statement}')
@@ -39,6 +40,7 @@ class ConnectionWithCallbacks(Connection):
     async def rollback(self) -> None:
         await super().rollback()
         self.__callbacks = []
+
 
 #
 # the function below is a direct copy from aiosqlite with the change of Connection class

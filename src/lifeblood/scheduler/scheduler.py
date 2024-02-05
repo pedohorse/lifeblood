@@ -98,7 +98,7 @@ class Scheduler(NodeGraphHolderBase):
         self.__logger.debug(f'starting scheduler with database: {db_file_path}')
 
         self.db_path = db_file_path
-        self.data_access = DataAccess(db_file_path, 30)
+        self.data_access: DataAccess = DataAccess(db_file_path, 30)
         ##
 
         self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
@@ -467,7 +467,11 @@ class Scheduler(NodeGraphHolderBase):
             await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
                               (TaskState.WAITING.value, TaskState.GENERATING.value))
             await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.WAITING.value, TaskState.WAITING_BLOCKED.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
                               (TaskState.POST_WAITING.value, TaskState.POST_GENERATING.value))
+            await con.execute('UPDATE "tasks" SET "state" = ? WHERE "state" = ?',
+                              (TaskState.POST_WAITING.value, TaskState.POST_WAITING_BLOCKED.value))
             await con.execute('UPDATE "invocations" SET "state" = ? WHERE "state" = ?', (InvocationState.FINISHED.value, InvocationState.IN_PROGRESS.value))
             # for now invoking invocation are invalidated by deletion (here and in task_processor)
             await con.execute('DELETE FROM invocations WHERE "state" = ?', (InvocationState.INVOKING.value,))
@@ -1010,6 +1014,8 @@ class Scheduler(NodeGraphHolderBase):
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 await con.execute('UPDATE tasks SET "node_id" = ? WHERE "id" = ?', (node_id, task_id))
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, node_id=node_id))  # ui event
+                # reset blocking too
+                await self.data_access.reset_task_blocking(task_id, con=con)
                 await con.commit()
         except aiosqlite.IntegrityError:
             self.__logger.error(f'could not set task {task_id} to node {node_id} because of database integrity check')
@@ -1049,7 +1055,8 @@ class Scheduler(NodeGraphHolderBase):
                     continue
 
                 await con.execute(query, (task_id,))
-                #await con.executemany(query, ((x,) for x in task_ids))
+                # just in case we also reset blocking
+                await self.data_access.reset_task_blocking(task_id, con=con)
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=state))  # ui event
                 await con.commit()  # TODO: this can be optimized into a single transaction
         #print('boop')

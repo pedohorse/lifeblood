@@ -21,6 +21,7 @@ class ProcessingResult:
         self.do_split_remove: bool = False
         self.split_attributes_to_set: Optional[Dict[str, Any]] = {}
         self.output_name: str = node_output_name
+        self.tasks_to_unblock: List[int] = []
         self._split_attribs = None
         self._environment_resolver_arguments: Optional[EnvironmentResolverArguments] = None
 

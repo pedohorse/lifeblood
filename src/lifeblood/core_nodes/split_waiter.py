@@ -117,15 +117,6 @@ class SplitAwaiterNode(BaseNode):
                 raise NotImplementedError(f'transfer type "{transfer_type}" is not implemented')
         return attribs_to_promote
 
-    def ready_to_process_task(self, task_dict) -> bool:
-        context = ProcessingContext(self, task_dict)
-        split_id = context.task_field('split_id')
-        # we don't even need to lock
-        return split_id not in self.__cache or \
-               not context.param_value('wait for all') or \
-               context.task_field('split_element') not in self.__cache[split_id].arrived or \
-               self.__cache[split_id].arrived.keys() == self.__cache[split_id].awaiting
-
     def process_task(self, context) -> ProcessingResult: #TODO: not finished, attrib not taken into account, rethink return type
         orig_id = context.task_field('split_origin_task_id')
         split_id = context.task_field('split_id')
@@ -154,6 +145,9 @@ class SplitAwaiterNode(BaseNode):
                 with self.__main_lock:
                     if self.__cache[split_id].arrived.keys() == self.__cache[split_id].awaiting:
                         res = ProcessingResult()
+                        res.tasks_to_unblock = [
+                            attrs['_builtin_id'] for _, attrs in self.__cache[split_id].arrived.items() if attrs['_builtin_id'] != task_id
+                        ]
                         res.kill_task()
                         self.__cache[split_id].processed.add(context.task_field('split_element'))
                         if self.__cache[split_id].first_to_arrive == task_id:

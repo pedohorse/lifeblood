@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Iterable, Optional, Tuple
 
 
 class ConfigurationError(RuntimeError):
@@ -10,7 +10,11 @@ class SchedulerConfigurationError(ConfigurationError):
 
 
 class NodeNotReadyToProcess(Exception):
-    pass
+    def __init__(self, *, tasks_to_unblock: Optional[Iterable[int]] = None):
+        self.__tasks_to_unblock = tuple(tasks_to_unblock) if tasks_to_unblock is not None else None
+
+    def tasks_to_unblock(self) -> Optional[Tuple[int]]:
+        return self.__tasks_to_unblock
 
 
 class NeedToRetryLater(RuntimeError):

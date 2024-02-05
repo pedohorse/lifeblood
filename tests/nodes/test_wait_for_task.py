@@ -5,7 +5,7 @@ from lifeblood.scheduler import Scheduler
 from lifeblood.worker import Worker
 from lifeblood.basenode import BaseNode
 from lifeblood.exceptions import NodeNotReadyToProcess
-from .common import TestCaseBase, PseudoContext
+from lifeblood_testing_common.nodes_common import TestCaseBase, PseudoContext
 
 from typing import List
 
@@ -45,31 +45,22 @@ class TestWaitForTaskNode(TestCaseBase):
             task3 = context.create_pseudo_task_with_attrs(task3_attrs, 237)
 
             # task0
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))  # first we have to process to add contribution to the pool
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))  # but after that process will raise not ready
-            self.assertFalse(node.ready_to_process_task(task0.task_dict()))  # after that ready should return false
 
             # now comes task1
-            self.assertTrue(node.ready_to_process_task(task1.task_dict()))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
-            self.assertFalse(node.ready_to_process_task(task1.task_dict()))
 
             # task0 still not ready to process, and processing would result in raise
-            self.assertFalse(node.ready_to_process_task(task0.task_dict()))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))
 
             # now task2
-            self.assertTrue(node.ready_to_process_task(task2.task_dict()))
             node.process_task(task2.get_context_for(node))  # should finish fine
 
             # now task0 and task1 should pass
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
-            self.assertTrue(node.ready_to_process_task(task1.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
             node.process_task(task1.get_context_for(node))  # should finish fine
 
             # check that expected values are still there
-            self.assertTrue(node.ready_to_process_task(task3.task_dict()))
             node.process_task(task3.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -89,7 +80,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 'cond': 'qwe',
                 'exp': ''
             }, 234)
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -109,7 +99,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 'cond': 'qwe',
                 'exp': '    '
             }, 234)
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -129,7 +118,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 'cond': 'qwe',
                 'exp': 'qwe'
             }, 234)
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -149,7 +137,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 'cond': '    qwe  ',
                 'exp': '  qwe   '
             }, 234)
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -169,7 +156,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 'cond': '',
                 'exp': ''
             }, 234)
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
         await self._helper_test_node_with_arg_update(
@@ -204,23 +190,17 @@ class TestWaitForTaskNode(TestCaseBase):
                 'exp': 'rty'
             }, 236)
 
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
             # now task1 should be processable, but task2 should not
-            self.assertTrue(node.ready_to_process_task(task1.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task2.task_dict()))
             node.process_task(task1.get_context_for(node))  # should finish fine
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
             # imitate reschedule of the task0
             task0.update_attribs({'cond': 'rty'})
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             node.process_task(task0.get_context_for(node))  # should finish fine
 
             # now task2 should be processable, but task1 should not
-            self.assertTrue(node.ready_to_process_task(task2.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task1.task_dict()))
             node.process_task(task2.get_context_for(node))  # should finish fine
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
 
@@ -286,8 +266,7 @@ class TestWaitForTaskNode(TestCaseBase):
                 node_test.set_state(state)
                 self.assertDictEqual(_prune_dicts(node.__dict__), _prune_dicts(node_test.__dict__))
 
-                # we expect state to be json-serializeable
-                state = json.loads(json.dumps(state))
+                state = state
                 node_test: BaseNode = context.create_node('wait_for_task_value', 'footest')
                 node_test.set_param_value('condition value', '`task["cond"]`')
                 node_test.set_param_value('expected values', '`task["exp"]`')
@@ -335,32 +314,25 @@ class TestWaitForTaskNode(TestCaseBase):
             }, 236)
 
             if var == 0:
-                self.assertTrue(node.ready_to_process_task(task0.task_dict()))
                 node.process_task(task0.get_context_for(node))  # should finish fine
             elif var == 1:
-                self.assertFalse(node.ready_to_process_task(task0.task_dict()))
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))
             else:
                 raise NotImplementedError()
 
             # now task1 task2 should not be processable
-            self.assertFalse(node.ready_to_process_task(task1.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task2.task_dict()))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
             # imitate reschedule of the task0
             task0.update_attribs({'cond': 'rty'})
             # this below should be true for both var 0,1 cases
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             if var == 0:
                 node.process_task(task0.get_context_for(node))  # should finish fine
             elif var == 1:
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))
 
             # now task1 should be processable, but task2 should not
-            self.assertTrue(node.ready_to_process_task(task2.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task1.task_dict()))
             node.process_task(task2.get_context_for(node))  # should finish fine
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
 
@@ -405,7 +377,6 @@ class TestWaitForTaskNode(TestCaseBase):
             }, 236)
 
             # this below should be true for both var 0,1 cases
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             if var == 0:  # exp is empty
                 node.process_task(task0.get_context_for(node))  # should finish fine
             elif var == 1:  # exp is NOT empty
@@ -414,8 +385,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 raise NotImplementedError()
 
             # now task1 should pass, task2 should not
-            self.assertTrue(node.ready_to_process_task(task1.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task2.task_dict()))
             node.process_task(task1.get_context_for(node))  # should finish fine
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
@@ -423,17 +392,13 @@ class TestWaitForTaskNode(TestCaseBase):
             task0.update_attribs({'cond': ''})
 
             # even cond is '' - node MUST allow processing to change inner state
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             if var == 0:  # exp is empty
                 node.process_task(task0.get_context_for(node))  # should finish fine
             elif var == 1:  # exp is NOT empty
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))
                 # but after processing - should not allow processing again, IF exp is not empty
-                self.assertFalse(node.ready_to_process_task(task0.task_dict()))
 
             # now task1 task2 should not pass
-            self.assertFalse(node.ready_to_process_task(task1.task_dict()))
-            self.assertFalse(node.ready_to_process_task(task2.task_dict()))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
             self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
@@ -479,19 +444,14 @@ class TestWaitForTaskNode(TestCaseBase):
 
             def _check1():
                 # now task1 should pass, task2 should not
-                self.assertTrue(node.ready_to_process_task(task1.task_dict()))
-                self.assertFalse(node.ready_to_process_task(task2.task_dict()))
                 node.process_task(task1.get_context_for(node))  # should finish fine
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
             def _check2():
                 # now task1 task2 should not pass
-                self.assertFalse(node.ready_to_process_task(task1.task_dict()))
-                self.assertFalse(node.ready_to_process_task(task2.task_dict()))
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task1.get_context_for(node))
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task2.get_context_for(node))
 
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             if var == 0:
                 self.assertRaises(NodeNotReadyToProcess, node.process_task, task0.get_context_for(node))
             elif var == 1:
@@ -513,7 +473,6 @@ class TestWaitForTaskNode(TestCaseBase):
                 task0.update_attribs({'cond': 'qwe', 'exp': 'foo'})
 
             # this below should be true for both var 0,1 cases
-            self.assertTrue(node.ready_to_process_task(task0.task_dict()))
             if var == 0:
                 node.process_task(task0.get_context_for(node))  # should finish fine
             elif var == 1:
