@@ -287,21 +287,8 @@ class TaskProcessor(SchedulerComponentBase):
         work_data = task_row['work_data']
         assert work_data is not None
         job: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-        if not job.args():
-            # cancel submission as there is nothing to do
-            async with self.awaiter_lock, self.scheduler.data_access.data_connection() as skipwork_transaction:
-                await skipwork_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                                   (TaskState.POST_WAITING.value, task_id))
-                await skipwork_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                                   (WorkerState.IDLE.value, worker_row['id']))
-                # unset resource usage
-                await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=skipwork_transaction)
-                skipwork_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=TaskState.POST_WAITING))
-                await skipwork_transaction.commit()
-                return
+        # empty job test will happen within transaction later
 
-        #
-        assert job.args() is not None and len(job.args()) > 0, 'logic failed, something is wrong with submission logic'
         # so job.args() is not None
         async with self.scheduler.data_access.data_connection() as submit_transaction:
             submit_transaction.row_factory = aiosqlite.Row
@@ -335,11 +322,30 @@ class TaskProcessor(SchedulerComponentBase):
                     else:  # ... or invocation_already_exists
                         self.__logger.warning('worker is in INVOKING state, but another INVOKING invocation exists.'
                                               'This should only happen in case worker got restarted during submission')
-                    await self.__submitter_finalize_cancel_transaction(submit_transaction, worker_row, worker_state, task_id)
+                    # rever task, but NOT revert worker, as another invocation is dealing with it
+                    # case 1 when it's just not INVOKING - we clearly don't control that worker
+                    # case 2 when there's multiple invocations - we don't touch worker as another invocation deals with it
+                    await self.__submitter_finalize_cancel_transaction(submit_transaction, None, worker_state, task_id)
+
                     # we poke scheduler after transaction commit to process task again straight away
                     submit_transaction.add_after_commit_callback(self.poke)
                     await submit_transaction.commit()
                     return
+
+                # now check if invocation even needs to be created
+                if not job.args():
+                    # cancel submission as there is nothing to do
+                    await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                                                     (TaskState.POST_WAITING.value, task_id))
+                    await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                                                     (WorkerState.IDLE.value, worker_row['id']))
+                    # unset resource usage
+                    await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
+                    submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=TaskState.POST_WAITING))
+                    await submit_transaction.commit()
+                    return
+
+                assert job.args() is not None and len(job.args()) > 0, 'logic failed, something is wrong with submission logic'
 
                 # if worker has not changed state - we can start adding invocation
                 async with submit_transaction.execute(
@@ -434,6 +440,11 @@ class TaskProcessor(SchedulerComponentBase):
         await submit_transaction.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                                          (TaskState.READY.value,
                                           task_id))
+
+        # in some cases (like invocation race conditions) we do NOT want to reset worker
+        if worker_row is None:
+            return
+        #
         await submit_transaction.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                                          (WorkerState.IDLE.value if worker_state != WorkerState.OFF else WorkerState.OFF.value,
                                           worker_row['id']))
