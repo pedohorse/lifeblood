@@ -115,7 +115,7 @@ class Scheduler(NodeGraphHolderBase):
                 raise RuntimeError('cannot write to external log location provided')
 
         self.__pinger: Pinger = Pinger(self)
-        self.__task_processor: TaskProcessor = TaskProcessor(self)
+        self.task_processor: TaskProcessor = TaskProcessor(self)
         self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
         server_ip = None
@@ -135,12 +135,12 @@ class Scheduler(NodeGraphHolderBase):
         self.__cleanup_tasks = None
 
         self.__server = None
-        self.__server_coro = loop.create_server(self._scheduler_protocol_factory, server_ip, server_port, backlog=16)
+        self.__server_coro_args = {'protocol_factory': self._scheduler_protocol_factory, 'host': server_ip, 'port': server_port, 'backlog': 16}
         self.__server_address = ':'.join((server_ip, str(server_port)))
         self.__message_processor: Optional[SchedulerMessageProcessor] = None
         self.__message_address: Tuple[str, int] = (server_ip, message_server_port)
         self.__ui_server = None
-        self.__ui_server_coro = loop.create_server(self._ui_protocol_factory, ui_ip, ui_port, backlog=16)
+        self.__ui_server_coro_args = {'protocol_factory': self._ui_protocol_factory, 'host': ui_ip, 'port': ui_port, 'backlog': 16}
         self.__ui_address = ':'.join((ui_ip, str(ui_port)))
         if do_broadcasting is None:
             do_broadcasting = config.get_option_noasync('core.broadcast', True)
@@ -193,7 +193,7 @@ class Scheduler(NodeGraphHolderBase):
 
         :return:
         """
-        self.__task_processor.wake()
+        self.task_processor.wake()
         self.__pinger.wake()
 
     def poke_task_processor(self):
@@ -205,10 +205,10 @@ class Scheduler(NodeGraphHolderBase):
 
         :return:
         """
-        self.__task_processor.poke()
+        self.task_processor.poke()
 
     def _component_changed_mode(self, component: SchedulerComponentBase, mode: SchedulerMode):
-        if component == self.__task_processor and mode == SchedulerMode.DORMANT:
+        if component == self.task_processor and mode == SchedulerMode.DORMANT:
             self.__logger.info('task processor switched to DORMANT mode')
             self.__pinger.sleep()
 
@@ -418,7 +418,7 @@ class Scheduler(NodeGraphHolderBase):
         async def _server_closer():
             # ensure all components stop first
             await self.__pinger.wait_till_stops()
-            await self.__task_processor.wait_till_stops()
+            await self.task_processor.wait_till_stops()
             await self.__worker_pool.wait_till_stops()
             await self.__ui_server.wait_closed()
             if self.__server is not None:
@@ -431,7 +431,7 @@ class Scheduler(NodeGraphHolderBase):
 
         async def _db_cache_writeback():
             await self.__pinger.wait_till_stops()
-            await self.__task_processor.wait_till_stops()
+            await self.task_processor.wait_till_stops()
             await self.__server_closing_task
             await self._save_all_cached_nodes_to_db()
             await self.data_access.write_back_cache()
@@ -445,7 +445,7 @@ class Scheduler(NodeGraphHolderBase):
         self.__logger.info('STOPPING SCHEDULER')
         self.__stop_event.set()  # this will stop things including task_processor
         self.__pinger.stop()
-        self.__task_processor.stop()
+        self.task_processor.stop()
         self.ui_state_access.stop()
         self.__worker_pool.stop()
         self.__server_closing_task = asyncio.create_task(_server_closer())  # we ensure worker pool stops BEFORE server, so workers have chance to report back
@@ -485,8 +485,9 @@ class Scheduler(NodeGraphHolderBase):
                     self.data_access.mem_cache_workers_state[row['id']] = {k: row[k] for k in dict(row)}
 
         # start
-        self.__server = await self.__server_coro
-        self.__ui_server = await self.__ui_server_coro
+        loop = asyncio.get_event_loop()
+        self.__server = await loop.create_server(**self.__server_coro_args)
+        self.__ui_server = await loop.create_server(**self.__ui_server_coro_args)
         # start message processor
         self.__message_processor = SchedulerMessageProcessor(self, self.__message_address)
         await self.__message_processor.start()
@@ -497,12 +498,12 @@ class Scheduler(NodeGraphHolderBase):
         #
         if self.__broadcasting_server_coro is not None:
             self.__broadcasting_server = await self.__broadcasting_server_coro
-        await self.__task_processor.start()
+        await self.task_processor.start()
         await self.__pinger.start()
         await self.ui_state_access.start()
         # run
         self.__all_components = \
-              asyncio.gather(self.__task_processor.wait_till_stops(),
+              asyncio.gather(self.task_processor.wait_till_stops(),
                              self.__pinger.wait_till_stops(),
                              self.ui_state_access.wait_till_stops(),
                              self.__server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
@@ -859,6 +860,7 @@ class Scheduler(NodeGraphHolderBase):
         :param connection: opened db connection. expected to have Row as row factory
         :return: if commit is needed on connection (if db set operation happened)
         """
+        assert connection.in_transaction, 'expectation failure'
         resource_fields = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')
 
         workers_resources = self.data_access.mem_cache_workers_resources
