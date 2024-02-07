@@ -29,7 +29,7 @@ from ..taskspawn import TaskSpawn
 from ..basenode import BaseNode
 from ..exceptions import *
 from ..node_dataprovider_base import NodeDataProvider
-from ..basenode_serialization import NodeSerializerBase, FailedToDeserialize
+from ..basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod
 from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, \
     SchedulerMode, TaskGroupArchivedState
 from ..config import get_config
@@ -270,7 +270,7 @@ class Scheduler(NodeGraphHolderBase):
                         try:
                             node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
                             break
-                        except FailedToDeserialize as e:
+                        except IncompatibleDeserializationMethod as e:
                             self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
                             continue
                     else:

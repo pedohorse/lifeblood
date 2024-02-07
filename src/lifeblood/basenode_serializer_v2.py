@@ -1,6 +1,6 @@
 from dataclasses import dataclass, is_dataclass
 import json
-from .basenode_serialization import NodeSerializerBase, FailedToDeserialize
+from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToApplyNodeState, FailedToApplyParameters
 from .basenode import BaseNode, NodeParameterType
 from .uidata import ParameterFullValue
 
@@ -124,17 +124,23 @@ class NodeSerializerV2(NodeSerializerBase):
         try:
             data_dict = json.loads(data.decode('latin1'), cls=NodeSerializerV2.Deserializer)
         except json.JSONDecodeError:
-            raise FailedToDeserialize('not a json') from None
+            raise IncompatibleDeserializationMethod('not a json') from None
         for musthave in ('format_version', 'type_name', 'type_definition_hash', 'parameters', 'name', 'ingraph_id'):
             if musthave not in data_dict:
-                raise FailedToDeserialize('missing required fields')
+                raise IncompatibleDeserializationMethod('missing required fields')
         if (fv := data_dict['format_version']) != 2:
-            raise FailedToDeserialize(f'format_version {fv} is not supported')
+            raise IncompatibleDeserializationMethod(f'format_version {fv} is not supported')
         new_node = node_data_provider.node_factory(data_dict['type_name'])(data_dict['name'])
         new_node.set_parent(parent, node_id)
-        with new_node.get_ui().block_ui_callbacks():
-            new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})
+        try:
+            with new_node.get_ui().block_ui_callbacks():
+                new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})
+        except Exception:
+            raise FailedToApplyParameters(bad_parameters=data_dict['parameters'].keys())
         if state:
-            new_node.set_state(json.loads(state.decode('latin1'), cls=NodeSerializerV2.Deserializer))
+            try:
+                new_node.set_state(json.loads(state.decode('latin1'), cls=NodeSerializerV2.Deserializer))
+            except Exception as e:
+                raise FailedToApplyNodeState(wrapped_expection=e)
 
         return new_node

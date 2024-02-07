@@ -2,7 +2,7 @@ import pickle
 from io import BytesIO
 from dataclasses import dataclass, is_dataclass
 import json
-from .basenode_serialization import NodeSerializerBase, FailedToDeserialize
+from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod
 from .basenode import BaseNode, NodeParameterType
 
 from typing import Callable, Optional, Tuple, Union
@@ -41,12 +41,12 @@ class NodeSerializerV1(NodeSerializerBase):
                 return super(Unpickler, self).find_class(module, name)
 
         if state is not None:
-            raise FailedToDeserialize(f'deserialization v1 is not expecting a separate state data')
+            raise IncompatibleDeserializationMethod(f'deserialization v1 is not expecting a separate state data')
 
         try:
             newobj: BaseNode = Unpickler(BytesIO(data)).load()
         except Exception as e:
-            raise FailedToDeserialize(f'error loading pickle: {e}') from None
+            raise IncompatibleDeserializationMethod(f'error loading pickle: {e}') from None
 
         newobj.set_parent(parent, node_id)
         return newobj

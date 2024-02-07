@@ -3,11 +3,25 @@ from .basenode import BaseNode
 from .node_dataprovider_base import NodeDataProvider
 from .nodegraph_holder_base import NodeGraphHolderBase
 
-from typing import Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 
 class FailedToDeserialize(RuntimeError):
     pass
+
+
+class IncompatibleDeserializationMethod(FailedToDeserialize):
+    pass
+
+
+class FailedToApplyNodeState(FailedToDeserialize):
+    def __init__(self, wrapped_expection: Exception):
+        self.wrapped_exception: Exception = wrapped_expection
+
+
+class FailedToApplyParameters(FailedToDeserialize):
+    def __init__(self, bad_parameters: Iterable[str]):
+        self.bad_parameters: List[str] = list(bad_parameters)
 
 
 class NodeSerializerBase:

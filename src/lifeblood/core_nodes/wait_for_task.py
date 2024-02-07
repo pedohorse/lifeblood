@@ -154,5 +154,5 @@ class WaitForTaskValue(BaseNode):
     def set_state(self, state: dict):
         self.__values_map = state['values_map']
         self.__values_set_cache = state['values_set_cache']
-        self.__expect_map = state['expect_map']
-        self.__awaiters_map = state['awaiters_map']
+        self.__expect_map = state.get('expect_map', {})
+        self.__awaiters_map = state.get('awaiters_map', {})
