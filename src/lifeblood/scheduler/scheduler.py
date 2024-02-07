@@ -1471,7 +1471,6 @@ class Scheduler(NodeGraphHolderBase):
 
     #
     # spawning new task callback
-    @alocking()
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite_overlay.ConnectionWithCallbacks] = None) -> Union[Tuple[SpawnStatus, Optional[int]], Tuple[Tuple[SpawnStatus, Optional[int]], ...]]:
         """
 
@@ -1484,6 +1483,9 @@ class Scheduler(NodeGraphHolderBase):
             result = []
             new_tasks = []
             current_timestamp = int(datetime.utcnow().timestamp())
+            assert len(newtasks) > 0, 'expectations failure'
+            if not con.in_transaction:  # IF this is called from multiple async tasks with THE SAME con - this may cause race conditions
+                await con.execute('BEGIN IMMEDIATE')
             for newtask in newtasks:
                 if newtask.source_invocation_id() is not None:
                     async with con.execute('SELECT node_id, task_id FROM invocations WHERE "id" = ?',
@@ -1566,6 +1568,8 @@ class Scheduler(NodeGraphHolderBase):
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
             return_single = True
+        if len(newtasks) == 0:
+            return ()
         if con is not None:
             stuff = await _inner_shit()
         else:
