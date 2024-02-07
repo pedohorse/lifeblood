@@ -16,13 +16,22 @@ from lifeblood.enums import SpawnStatus
 from typing import Dict, Iterable, Optional, Tuple, Union
 
 
-class FullIntegrationTestCase(IsolatedAsyncioTestCase):
+class IsolatedAsyncioTestCaseWithDb(IsolatedAsyncioTestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.db_file = f'tmp/test_{cls.__name__}.db'
+
+    def setUp(self):
+        if os.path.exists(self.db_file):
+            os.unlink(self.db_file)
+        os.makedirs('tmp', exist_ok=True)
+
+
+class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
     __test__ = False
 
     async def asyncSetUp(self):
-        db_name = f'test_{self.__class__.__name__}.db'
-        if os.path.exists(db_name):
-            os.unlink(db_name)
+        db_name = self.db_file
         shutil.copy2(Path(inspect.getmodule(self.__class__).__file__).parent / self._initial_db_file(), db_name)
 
         test_server_port1 = 18273
