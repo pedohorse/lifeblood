@@ -67,7 +67,7 @@ class NodeSerializerV2(NodeSerializerBase):
 
         def encode(self, o):
             return super().encode(self.__reform(o))
-        
+
         def default(self, obj):
             return super(NodeSerializerV2.Serializer, self).default(obj)
 
@@ -136,6 +136,8 @@ class NodeSerializerV2(NodeSerializerBase):
             with new_node.get_ui().block_ui_callbacks():
                 new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})
         except Exception:
+            # actually set_parameters_batch catches all reasonable exceptions and treats them as warnings,
+            #  so this seems unreachable, but if something does happen - we treat it as fail to set all params
             raise FailedToApplyParameters(bad_parameters=data_dict['parameters'].keys())
         if state:
             try:
