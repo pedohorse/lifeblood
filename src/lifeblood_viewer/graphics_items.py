@@ -904,7 +904,7 @@ class Node(NetworkItemWithUI):
         self.__hoverover_pos = event.pos()
 
     def hoverLeaveEvent(self, event):
-        self.__hoverover_pos = event.pos()
+        self.__hoverover_pos = None
         self.update()
 
     @Slot(object)
@@ -1097,6 +1097,7 @@ class NodeConnection(NetworkItem):
                 event.accept()
                 return
 
+            # this way we report to scene event handler that we are candidates for picking
             if hasattr(event, 'wire_candidates'):
                 event.wire_candidates.append((self.distance_to_point(p), self))
 
@@ -1206,6 +1207,8 @@ class Task(NetworkItemWithUI):
 
     def __init__(self, task_data: TaskData):
         super(Task, self).__init__(task_data.id)
+        self.setAcceptHoverEvents(True)
+        self.__hoverover_pos = None
         #self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setZValue(1)
         # self.__name = name
@@ -1245,6 +1248,7 @@ class Task(NetworkItemWithUI):
 
         if self.__borderpen is None:
             Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
+                                QPen(QColor(128, 128, 128, 255), self.__line_width),
                                 QPen(QColor(192, 192, 192, 255), self.__line_width)]
         if self.__brushes is None:
             # brushes and paused_pen are precalculated for several layers with different alphas, just not to calc them in paint
@@ -1340,7 +1344,12 @@ class Task(NetworkItemWithUI):
             painter.drawPath(self._get_pausedpath())
 
         if screen_rect.width() > 7:
-            painter.setPen(self.__borderpen[int(self.isSelected())])
+            if self.isSelected():
+                painter.setPen(self.__borderpen[2])
+            elif self.__hoverover_pos is not None:
+                painter.setPen(self.__borderpen[1])
+            else:
+                painter.setPen(self.__borderpen[0])
             painter.drawPath(path)
 
     def set_selected(self, selected: bool):
@@ -1723,6 +1732,13 @@ class Task(NetworkItemWithUI):
 
         else:
             super(Task, self).mouseReleaseEvent(event)
+
+    def hoverMoveEvent(self, event):
+        self.__hoverover_pos = event.pos()
+
+    def hoverLeaveEvent(self, event):
+        self.__hoverover_pos = None
+        self.update()
 
     @staticmethod
     def _draw_dict_table(attributes: dict, table_name: str):
