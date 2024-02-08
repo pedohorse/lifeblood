@@ -29,6 +29,7 @@ from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.ui_events import TaskEvent, TasksRemoved, TasksUpdated, TasksChanged, TaskFullState
+from lifeblood.config import get_config
 
 from PySide2.QtWidgets import *
 from PySide2.QtCore import Slot, Signal, QThread, QRectF, QPointF
@@ -97,6 +98,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     def __init__(self, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
         # to debug fuching bsp # self.setItemIndexMethod(QGraphicsScene.NoIndex)
+        self.__config = get_config('viewer')
         self.__task_dict: Dict[int, Task] = {}
         self.__node_dict: Dict[int, Node] = {}
         self.__node_connections_dict: Dict[int, NodeConnection] = {}
@@ -109,7 +111,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
         self.__tasks_to_try_reparent_during_node_update = {}
 
-        self.__undo_stack = UndoStack(max_undos=100)  # TODO: config
+        self.__undo_stack: UndoStack = UndoStack()
+        self.reset_undo_stack()
+
         self.__session_node_id_mapping = {}  # for consistent redo-undo involving node creation/deletion, as node_id will change on repetition
         self.__session_node_id_mapping_rev = {}
         self.__next_session_node_id = -1
@@ -199,6 +203,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self._signal_poke_graph_and_tasks_update.connect(self.__ui_connection_worker.poke_graph_and_tasks_update)
         self._signal_poke_task_groups_update.connect(self.__ui_connection_worker.poke_task_groups_update)
         self._signal_poke_workers_update.connect(self.__ui_connection_worker.poke_workers_update)
+
+    def reset_undo_stack(self):
+        self.__undo_stack = UndoStack(max_undos=self.__config.get_option_noasync('viewer.max_undo_history_size', 100))
 
     def request_log(self, invocation_id: int, operation_data: Optional["LongOperationData"] = None):
         self._signal_log_has_been_requested.emit(invocation_id, operation_data)
@@ -616,6 +623,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             self.clear()
             self.__db_uid = None
             self.__nodes_table_name = None
+            self.reset_undo_stack()
             # this means we probably reconnected to another scheduler, so existing nodes need to be dropped
 
         if self.__db_uid is None:
@@ -623,6 +631,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             self.__nodes_table_name = f'nodes_{self.__db_uid}'
             with sqlite3.connect(self.__db_path) as con:
                 con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
+            self.reset_undo_stack()
 
     @timeit(0.05)
     @Slot(object)
