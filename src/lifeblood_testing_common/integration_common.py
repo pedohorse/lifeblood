@@ -10,7 +10,7 @@ from lifeblood.main_scheduler import create_default_scheduler
 from lifeblood.nethelpers import get_default_addr
 from lifeblood.simple_worker_pool import WorkerPool
 from lifeblood.net_messages.address import AddressChain
-from lifeblood.taskspawn import TaskSpawn
+from lifeblood.taskspawn import NewTask
 from lifeblood.enums import SpawnStatus
 
 from typing import Dict, Iterable, Optional, Tuple, Union
@@ -72,11 +72,11 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             expected_states = {tid: (expected_states[0], expected_states[1], node_ids[0]) for tid in task_ids}
         else:
             expected_states = {
-                tid: (
+                task_ids[idx]: (
                     exp[0],
                     exp[1],
                     (await self.scheduler.node_name_to_id(exp[2]))[0],
-                ) for tid, exp in expected_states.items()
+                ) for idx, exp in expected_states.items()
             }
         print(f'expecting {expected_states}')
         # so expected_states is dict of task id to (state, is paused, node_id), not node name
@@ -123,8 +123,7 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             attributes = {}
         node_ids = await self.scheduler.node_name_to_id(node_name)
         self.assertEqual(1, len(node_ids))
-        task_spawn = TaskSpawn(task_name, task_attributes=attributes)
-        task_spawn.force_set_node_task_id(node_ids[0], None)
+        task_spawn = NewTask(task_name, task_attributes=attributes, node_id=node_ids[0])
         task_spawn.set_node_output_name(output_name)
 
         statuses = await self.scheduler.spawn_tasks([task_spawn])
@@ -147,14 +146,18 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         should return either one single tuple of (task state, is paused, node name)
         or a dict of which of created test tasks are in what state
 
+        Keys in returned dict are NOT task_id, as task_ids are not know till test run.
+        They are instead indexes into _create_test_tasks returned array,
+        as at least that array's length is predictable by the test writer
+
         Default impl expects all test tasks to be done and paused
         """
         return TaskState.DONE, True, 'TEST OUT'
 
     def _expected_task_attributes(self) -> Dict[int, dict]:
         """
-        keys in returned dict are NOT task_id, as task_ids are not know till test run.
-        they are instead indexes into _create_test_tasks returned array,
+        Keys in returned dict are NOT task_id, as task_ids are not know till test run.
+        They are instead indexes into _create_test_tasks returned array,
         as at least that array's length is predictable by the test writer
         """
         return {}

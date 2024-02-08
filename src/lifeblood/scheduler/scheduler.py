@@ -29,7 +29,7 @@ from ..taskspawn import TaskSpawn
 from ..basenode import BaseNode
 from ..exceptions import *
 from ..node_dataprovider_base import NodeDataProvider
-from ..basenode_serialization import NodeSerializerBase, FailedToDeserialize
+from ..basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToDeserialize
 from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, \
     SchedulerMode, TaskGroupArchivedState
 from ..config import get_config
@@ -78,6 +78,7 @@ class Scheduler(NodeGraphHolderBase):
         self.__node_objects_locks: Dict[int, RWLock] = {}
         self.__node_objects_creation_locks: Dict[int, asyncio.Lock] = {}
         config = get_config('scheduler')
+        self.__config = config
 
         # this lock will prevent tasks from being reported cancelled and done at the same exact time should that ever happen
         # this lock is overkill already, but we can make it even more overkill by using set of locks for each invoc id
@@ -90,7 +91,6 @@ class Scheduler(NodeGraphHolderBase):
         loop = asyncio.get_event_loop()
 
         if db_file_path is None:
-            config = get_config('scheduler')
             db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
         if not db_file_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
             db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
@@ -266,17 +266,23 @@ class Scheduler(NodeGraphHolderBase):
                     raise RuntimeError('node type is unsupported')
 
                 if node_row['node_object'] is not None:
-                    for serializer in self.__node_serializers:
-                        try:
-                            node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
-                            break
-                        except FailedToDeserialize as e:
-                            self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
-                            continue
-                    else:
-                        raise RuntimeError(f'node entry {node_id} has unknown serialization method')
-                    self.__node_objects[node_id] = node_object
-                    return self.__node_objects[node_id]
+                    try:
+                        for serializer in self.__node_serializers:
+                            try:
+                                node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
+                                break
+                            except IncompatibleDeserializationMethod as e:
+                                self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
+                                continue
+                        else:
+                            raise FailedToDeserialize(f'node entry {node_id} has unknown serialization method')
+                        self.__node_objects[node_id] = node_object
+                        return self.__node_objects[node_id]
+                    except FailedToDeserialize:
+                        if self.__config.get_option_noasync('core.ignore_node_deserialization_failures', False):
+                            pass  # ignore errors, recreate node
+                        else:
+                            raise
 
                 newnode = self.__node_data_provider.node_factory(node_type)(node_row['name'])
                 newnode.set_parent(self, node_id)
@@ -1465,7 +1471,6 @@ class Scheduler(NodeGraphHolderBase):
 
     #
     # spawning new task callback
-    @alocking()
     async def spawn_tasks(self, newtasks: Union[Iterable[TaskSpawn], TaskSpawn], con: Optional[aiosqlite_overlay.ConnectionWithCallbacks] = None) -> Union[Tuple[SpawnStatus, Optional[int]], Tuple[Tuple[SpawnStatus, Optional[int]], ...]]:
         """
 
@@ -1478,6 +1483,9 @@ class Scheduler(NodeGraphHolderBase):
             result = []
             new_tasks = []
             current_timestamp = int(datetime.utcnow().timestamp())
+            assert len(newtasks) > 0, 'expectations failure'
+            if not con.in_transaction:  # IF this is called from multiple async tasks with THE SAME con - this may cause race conditions
+                await con.execute('BEGIN IMMEDIATE')
             for newtask in newtasks:
                 if newtask.source_invocation_id() is not None:
                     async with con.execute('SELECT node_id, task_id FROM invocations WHERE "id" = ?',
@@ -1560,6 +1568,8 @@ class Scheduler(NodeGraphHolderBase):
         if isinstance(newtasks, TaskSpawn):
             newtasks = (newtasks,)
             return_single = True
+        if len(newtasks) == 0:
+            return ()
         if con is not None:
             stuff = await _inner_shit()
         else:

@@ -8,6 +8,7 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
+from ..basenode_serialization import FailedToDeserialize
 from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
 from ..worker_messsage_processor import WorkerControlClient
@@ -584,8 +585,17 @@ class TaskProcessor(SchedulerComponentBase):
                                 set_to_stuff.append((TaskState.GENERATING.value, task_row['id']))
                                 total_state_changes += 1
                                 # NOTE: awaiters are NOT started here, just coroutines created
-                                # TODO: catch node getting errors here and in other places in task_processor.
-                                awaiters.append(self._awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._process_task_wrapper, dict(task_row),
+                                try:
+                                    node_object = await self.scheduler._get_node_object_by_id(task_row['node_id'])
+                                except FailedToDeserialize:
+                                    self.__logger.error(f'failed to deserialize node {task_row["node_id"]}, failing task {task_row["id"]} that require it.')
+                                    set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
+                                    continue
+                                except Exception:
+                                    self.__logger.exception('unexpected exception in deserialization, failing affected tasks')
+                                    set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
+                                    continue
+                                awaiters.append(self._awaiter(node_object._process_task_wrapper, dict(task_row),
                                                               abort_state=TaskState.WAITING, skip_state=TaskState.POST_WAITING))
                         if set_to_stuff:
                             # ui event
@@ -615,8 +625,17 @@ class TaskProcessor(SchedulerComponentBase):
                                 #                   (TaskState.POST_GENERATING.value, task_row['id']))
                                 set_to_stuff.append((TaskState.POST_GENERATING.value, task_row['id']))
                                 total_state_changes += 1
-
-                                awaiters.append(self._awaiter((await self.scheduler._get_node_object_by_id(task_row['node_id']))._postprocess_task_wrapper, dict(task_row),
+                                try:
+                                    node_object = await self.scheduler._get_node_object_by_id(task_row['node_id'])
+                                except FailedToDeserialize:
+                                    self.__logger.error(f'failed to deserialize node {task_row["node_id"]}, failing task {task_row["id"]} that require it.')
+                                    set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
+                                    continue
+                                except Exception:
+                                    self.__logger.exception('unexpected exception in deserialization, failing affected tasks')
+                                    set_to_stuff.append((TaskState.ERROR.value, task_row['id']))
+                                    continue
+                                awaiters.append(self._awaiter(node_object._postprocess_task_wrapper, dict(task_row),
                                                               abort_state=TaskState.POST_WAITING, skip_state=TaskState.DONE))
                         if set_to_stuff:
                             # ui event
