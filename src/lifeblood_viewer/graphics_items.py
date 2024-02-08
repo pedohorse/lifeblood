@@ -1,5 +1,6 @@
 import json
 
+import itertools
 from math import sqrt
 from types import MappingProxyType
 from datetime import timedelta
@@ -126,12 +127,15 @@ class Node(NetworkItemWithUI):
     def __init__(self, id: int, type: str, name: str):
         super(Node, self).__init__(id)
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
+        self.setAcceptHoverEvents(True)
+        self.__hoverover_pos: Optional[QPointF] = None
         self.__height = self.base_height
         self.__width = self.base_width
         self.__pivot_x = 0
         self.__pivot_y = 0
 
-        self.__input_radius = 8
+        self.__input_radius = 12
+        self.__input_visible_radius = 8
         self.__line_width = 1
         self.__name = name
         self.__tasks: List["Task"] = []
@@ -153,6 +157,8 @@ class Node(NetworkItemWithUI):
         self.__borderpen.setWidthF(self.__line_width)
         self.__header_brush = QBrush(QColor(48, 64, 48, 192))
         self.__body_brush = QBrush(QColor(48, 48, 48, 128))
+        self.__connector_brush = QBrush(QColor(48, 48, 48, 192))
+        self.__connector_brush_hovered = QBrush(QColor(96, 96, 96, 128))
 
         self.__nodeui: Optional[NodeUi] = None
         self.__nodeui_menucache = {}
@@ -330,7 +336,11 @@ class Node(NetworkItemWithUI):
         if self.__cached_bounds is None:
             lw = self.__width + self.__line_width
             lh = self.__height + self.__line_width
-            self.__cached_bounds = QRectF(-0.5 * lw - self.__pivot_x, -0.5 * lh - self.__input_radius - self.__pivot_y, lw, lh + 2 * self.__input_radius)
+            self.__cached_bounds = QRectF(
+                -0.5 * lw - self.__pivot_x,
+                -0.5 * lh - (max(self.__input_radius, self.__input_visible_radius) + 0.5 * self.__line_width) - self.__pivot_y,
+                lw,
+                lh + 2 * (max(self.__input_radius, self.__input_visible_radius) + 0.5 * self.__line_width))
         return self.__cached_bounds
 
     def _get_nodeshape(self):
@@ -389,21 +399,24 @@ class Node(NetworkItemWithUI):
         if screen_rect.width() > 40 and self.__inputs is not None and self.__outputs is not None:
             ninputs = len(self.__inputs)
             noutputs = len(self.__outputs)
-            for i in range(len(self.__inputs)):
+            r2 = (self.__input_radius + 0.5*self.__line_width)**2
+            for fi in range(ninputs + noutputs):
                 path = QPainterPath()
-                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(ninputs + 1) - self.__pivot_x,
-                                        -0.5 * self.__height - self.__pivot_y),
-                                self.__input_radius, self.__input_radius)
+                is_inputs = fi < ninputs
+                i = fi if is_inputs else fi - ninputs
+                input_point = QPointF(-0.5 * self.__width + (i + 1) * self.__width/((ninputs if is_inputs else noutputs) + 1) - self.__pivot_x,
+                                      (-0.5 if is_inputs else 0.5) * self.__height - self.__pivot_y)
+                path.addEllipse(input_point,
+                                self.__input_visible_radius, self.__input_visible_radius)
                 path -= nodeshape
-                painter.setPen(self.__borderpen)
-                painter.drawPath(path)
-            for i in range(len(self.__outputs)):
-                path = QPainterPath()
-                path.addEllipse(QPointF(-0.5 * self.__width + (i + 1) * self.__width/(noutputs + 1) - self.__pivot_x,
-                                        0.5 * self.__height - self.__pivot_y),
-                                self.__input_radius, self.__input_radius)
-                path -= nodeshape
-                painter.setPen(self.__borderpen)
+                pen = self.__borderpen
+                brush = self.__connector_brush
+                if self.__hoverover_pos is not None:
+                    if QPointF.dotProduct(input_point - self.__hoverover_pos, input_point - self.__hoverover_pos) <= r2:
+                        pen = self.__borderpen_selected
+                        brush = self.__connector_brush_hovered
+                painter.setPen(pen)
+                painter.fillPath(path, brush)
                 painter.drawPath(path)
 
         headershape = self._get_headershape()
@@ -424,9 +437,15 @@ class Node(NetworkItemWithUI):
             painter.setPen(self.__borderpen)
         painter.fillPath(headershape, self.__header_brush)
         painter.fillPath(bodyshape, self.__body_brush)
-        painter.fillPath(self._get_expandbutton_shape(), self.__header_brush)
+        expand_button_shape = self._get_expandbutton_shape()
+        painter.fillPath(expand_button_shape, self.__header_brush)
         painter.drawPath(nodeshape)
+        # draw highlighted elements on top
+        if self.__hoverover_pos and expand_button_shape.contains(self.__hoverover_pos):
+            painter.setPen(self.__borderpen_selected)
+            painter.drawPath(expand_button_shape)
 
+        # draw header/text last
         if screen_rect.width() > 50:
             painter.setPen(self.__caption_pen)
             painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.__name)
@@ -881,6 +900,13 @@ class Node(NetworkItemWithUI):
             for node in self.__move_start_selection:
                 node.__move_start_position = None
 
+    def hoverMoveEvent(self, event):
+        self.__hoverover_pos = event.pos()
+
+    def hoverLeaveEvent(self, event):
+        self.__hoverover_pos = None
+        self.update()
+
     @Slot(object)
     def _ui_interactor_finished(self, snap_point: Optional["NodeConnSnapPoint"]):
         assert self.__ui_interactor is not None
@@ -1071,6 +1097,7 @@ class NodeConnection(NetworkItem):
                 event.accept()
                 return
 
+            # this way we report to scene event handler that we are candidates for picking
             if hasattr(event, 'wire_candidates'):
                 event.wire_candidates.append((self.distance_to_point(p), self))
 
@@ -1180,6 +1207,8 @@ class Task(NetworkItemWithUI):
 
     def __init__(self, task_data: TaskData):
         super(Task, self).__init__(task_data.id)
+        self.setAcceptHoverEvents(True)
+        self.__hoverover_pos = None
         #self.setFlags(QGraphicsItem.ItemIsSelectable)
         self.setZValue(1)
         # self.__name = name
@@ -1219,6 +1248,7 @@ class Task(NetworkItemWithUI):
 
         if self.__borderpen is None:
             Task.__borderpen = [QPen(QColor(96, 96, 96, 255), self.__line_width),
+                                QPen(QColor(128, 128, 128, 255), self.__line_width),
                                 QPen(QColor(192, 192, 192, 255), self.__line_width)]
         if self.__brushes is None:
             # brushes and paused_pen are precalculated for several layers with different alphas, just not to calc them in paint
@@ -1314,7 +1344,12 @@ class Task(NetworkItemWithUI):
             painter.drawPath(self._get_pausedpath())
 
         if screen_rect.width() > 7:
-            painter.setPen(self.__borderpen[int(self.isSelected())])
+            if self.isSelected():
+                painter.setPen(self.__borderpen[2])
+            elif self.__hoverover_pos is not None:
+                painter.setPen(self.__borderpen[1])
+            else:
+                painter.setPen(self.__borderpen[0])
             painter.drawPath(path)
 
     def set_selected(self, selected: bool):
@@ -1697,6 +1732,13 @@ class Task(NetworkItemWithUI):
 
         else:
             super(Task, self).mouseReleaseEvent(event)
+
+    def hoverMoveEvent(self, event):
+        self.__hoverover_pos = event.pos()
+
+    def hoverLeaveEvent(self, event):
+        self.__hoverover_pos = None
+        self.update()
 
     @staticmethod
     def _draw_dict_table(attributes: dict, table_name: str):
