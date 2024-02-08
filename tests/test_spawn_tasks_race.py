@@ -1,12 +1,8 @@
 import asyncio
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
+from lifeblood_testing_common.common import chain
 from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
-
-
-async def chain(*coros):
-    for coro in coros:
-        await coro
 
 
 class TestSpawnTasksRace(IsolatedAsyncioTestCaseWithDb):

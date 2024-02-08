@@ -3,6 +3,7 @@ import asyncio
 import os
 from contextlib import contextmanager
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
+from lifeblood_testing_common.common import chain
 from unittest import mock
 from lifeblood.enums import TaskState, WorkerState, WorkerPingState, TaskScheduleStatus, InvocationState
 from lifeblood.invocationjob import InvocationJob
@@ -29,11 +30,6 @@ def get_worker_control_client_mock(*args, **kwargs) -> "WorkerControlClient":
     m = mock.MagicMock()
     m.give_task = foowait
     yield m
-
-
-async def chain(*coros):
-    for coro in coros:
-        await coro
 
 
 class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
