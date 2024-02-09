@@ -75,10 +75,38 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
             await self._helper_test_basic(rnd)
             await asyncio.sleep(1)
 
+    async def test_back_to_idle_min1(self):
+        rng = random.Random(48172)
+        await self._helper_test_min_from_idle(rng, 1, False)
+
+    async def test_back_to_total_min1(self):
+        rng = random.Random(48173)
+        await self._helper_test_min_from_idle(rng, 1, True)
+
+    async def test_back_to_idle_min2(self):
+        rng = random.Random(48174)
+        await self._helper_test_min_from_idle(rng, 2, False)
+
+    async def test_back_to_total_min2(self):
+        rng = random.Random(48175)
+        await self._helper_test_min_from_idle(rng, 2, True)
+
+    async def test_back_to_idle_min3(self):
+        rng = random.Random(48176)
+        await self._helper_test_min_from_idle(rng, 3, False)
+
+    async def test_back_to_total_min3(self):
+        rng = random.Random(48177)
+        await self._helper_test_min_from_idle(rng, 3, True)
+
     async def _helper_test_min1(self, rnd):
         mint = 4
         mini = 1
-        swp = await create_worker_pool(minimal_total_to_ensure=mint, minimal_idle_to_ensure=mini, worker_suspicious_lifetime=0, scheduler_address=WorkerPoolTests.sched_addr)
+        swp = await create_worker_pool(
+            minimal_total_to_ensure=mint,
+            minimal_idle_to_ensure=mini,
+            worker_suspicious_lifetime=0,
+            scheduler_address=WorkerPoolTests.sched_addr)
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
@@ -88,6 +116,61 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
         await asyncio.sleep(rnd.uniform(1, 4))
+        swp.stop()
+        await swp.wait_till_stops()
+
+    async def _helper_test_min_from_idle(self, rnd, mini: int, test_total: bool = False):
+        if test_total:
+            step1_total = mini * 2
+            step1_idle = 0
+            step2_total = mini
+            step2_idle = 0
+        else:
+            step1_total = mini * 2
+            step1_idle = mini
+            step2_total = 0
+            step2_idle = mini
+
+        swp = await create_worker_pool(
+            minimal_total_to_ensure=step1_total,  # force extras to start
+            minimal_idle_to_ensure=step1_idle,
+            worker_suspicious_lifetime=0,
+            housekeeping_interval=0.2,
+            idle_timeout=0.3,
+            scheduler_address=WorkerPoolTests.sched_addr)
+        await asyncio.sleep(rnd.uniform(0, 1))
+        workers = swp.list_workers()
+        self.assertEqual(mini*2, len(workers))
+        # preparation completed
+
+        swp.set_minimum_total_workers(step2_total)
+        swp.set_minimum_idle_workers(step2_idle)
+        time_mark = time.perf_counter()
+        now = time_mark
+        while now - time_mark < 2:
+            # if worker count drops below min - means we have some flawed logic in worker pool
+            self.assertLessEqual(mini, len(swp.list_workers()))
+            await asyncio.sleep(0.000001)
+            now = time.perf_counter()
+
+        # we calc list, but allow some workers to be not actually dead yet
+        num_all = len(swp.list_workers())
+        num_all_no_term = len([w for w, d in swp.list_workers().items() if not d.sent_term_signal])
+        self.assertEqual(mini, num_all_no_term)
+        if num_all != num_all_no_term:  # so we are waiting for some workers to report terminated - we wait
+            print('WAITING FOR WORKERS TO FINISH')
+            time_mark = time.perf_counter()
+            now = time_mark
+            while now - time_mark < 10:
+                self.assertLessEqual(mini, len(swp.list_workers()))
+                if len(swp.list_workers()) == mini:
+                    break
+                await asyncio.sleep(0.1)
+                now = time.perf_counter()
+            else:
+                raise AssertionError('unfinished workers never finished')
+
+        await asyncio.sleep(0)
         swp.stop()
         await swp.wait_till_stops()
 
