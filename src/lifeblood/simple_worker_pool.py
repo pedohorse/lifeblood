@@ -28,10 +28,11 @@ from typing import Tuple, Dict, List, Optional
 
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
                              minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
-                             idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[AddressChain] = None):
+                             idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
+                             priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[AddressChain] = None):
     swp = WorkerPool(worker_type,
                      minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
-                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, priority=priority, scheduler_address=scheduler_address)
+                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, housekeeping_interval=housekeeping_interval, priority=priority, scheduler_address=scheduler_address)
     await swp.start()
     return swp
 
@@ -51,7 +52,8 @@ class ProcData:
 class WorkerPool:  # TODO: split base class, make this just one of implementations
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *,
                  minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
-                 idle_timeout=10, worker_suspicious_lifetime=4, priority=ProcessPriorityAdjustment.NO_CHANGE,
+                 idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
+                 priority=ProcessPriorityAdjustment.NO_CHANGE,
                  scheduler_address: Optional[AddressChain] = None):
         """
         manages a pool of workers.
@@ -75,6 +77,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__maximum_total = maximum_total
         self.__worker_type = worker_type
         self.__idle_timeout = idle_timeout  # after this amount of idling worker will be stopped if total count is above minimum
+        self.__housekeeping_interval = housekeeping_interval
         self.__worker_priority = priority
         self.__scheduler_address = scheduler_address
 
@@ -158,6 +161,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         if self.__stopped:
             self.__logger.warning('add_worker called after stop()')
             return
+        # below we count all Worker processes, including those that are being awaited after terminate signal was called
+        #  so it's not just "active" ones that we count
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
@@ -193,6 +198,14 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
     def set_maximum_workers(self, maximum: int):
         self.__maximum_total = maximum
 
+    def total_active_worker_count(self):
+        return len([k for k, v in self.__id_to_procdata.items()
+                    if not v.sent_term_signal])
+
+    def idle_active_worker_count(self):
+        return len([k for k, v in self.__id_to_procdata.items()
+                    if v.state in (WorkerState.IDLE, WorkerState.OFF) and not v.sent_term_signal])  # consider OFF ones as IDLEs that just boot up
+
     #
     # local worker pool manager
     async def local_worker_pool_manager(self):
@@ -205,14 +218,17 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             await asyncio.sleep(timeout)
             event.clear()
 
-        check_timeout = 10
         stop_waiter = asyncio.create_task(self.__stop_event.wait())
         poke_waiter = asyncio.create_task(self.__poke_event.wait())
         no_adding_workers = asyncio.Event()
         wait_event_task = None
         try:
             while True:
-                done, pending = await asyncio.wait(itertools.chain(self.__worker_pool.keys(), (stop_waiter, poke_waiter)), timeout=check_timeout, return_when=asyncio.FIRST_COMPLETED)
+                done, pending = await asyncio.wait(
+                    itertools.chain(self.__worker_pool.keys(), (stop_waiter, poke_waiter)),
+                    timeout=min(self.__housekeeping_interval, self.__idle_timeout),
+                    return_when=asyncio.FIRST_COMPLETED
+                )
                 time_to_stop = False
                 if wait_event_task is not None and wait_event_task.done():
                     wait_event_task = None
@@ -248,9 +264,10 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                 self.__workers_to_merge.clear()
 
                 # check for idle workers
-                idle_guys = len([k for k, v in self.__id_to_procdata.items() if v.state in (WorkerState.IDLE, WorkerState.OFF)])  # consider OFF ones as IDLEs that just boot up
-                if idle_guys > self.__ensure_minimum_idle and len(self.__id_to_procdata) > self.__ensure_minimum_total:
-                    max_to_kill = min(idle_guys - self.__ensure_minimum_idle, len(self.__id_to_procdata) - self.__ensure_minimum_total)
+                idle_guys = self.idle_active_worker_count()
+                total_guys = self.total_active_worker_count()
+                if idle_guys > self.__ensure_minimum_idle and total_guys > self.__ensure_minimum_total:
+                    max_to_kill = min(idle_guys - self.__ensure_minimum_idle, total_guys - self.__ensure_minimum_total)
                     # if we above minimum - we can kill some idle ones
                     now = time.time()
                     for procdata in self.__worker_pool.values():
@@ -271,8 +288,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                 # ensure the ensure
                 if not no_adding_workers.is_set():
                     just_added = 0
-                    if len(self.__worker_pool) < self.__ensure_minimum_total:
-                        for _ in range(self.__ensure_minimum_total - len(self.__worker_pool)):
+                    if total_guys < self.__ensure_minimum_total:
+                        for _ in range(self.__ensure_minimum_total - total_guys):
                             await self.add_worker()
                             just_added += 1  # cuz add_worker will not add to __id_to_procdata or __worker_pool - we do on next iteration
 
