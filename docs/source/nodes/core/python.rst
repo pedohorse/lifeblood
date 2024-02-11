@@ -1,13 +1,23 @@
 .. _nodes/core/python:
 
-=================
-Modify Attributes
-=================
+======
+Python
+======
 
 Execute some python code
 
 Parameters
 ==========
+
+:good exit codes:
+    What invocation process exit codes to consider as "good". Default: ``0``
+
+    This only affects code in ``Invoke`` parameter
+
+:retry exit codes:
+    What invocation process exit codes should signal scheduler to retry the invocation as opposed to setting task into ERROR state.
+
+    This only affects code in ``Invoke`` parameter
 
 :Process:
     Python code to be executed by scheduler as part of processing stage. Do not perform any heavy operations here,

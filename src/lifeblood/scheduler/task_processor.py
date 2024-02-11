@@ -410,8 +410,7 @@ class TaskProcessor(SchedulerComponentBase):
                 assert worker_apparently_restarted or worker_state != WorkerState.IDLE, f'worker restarted={worker_apparently_restarted}, state={worker_state}'
 
                 if reply == TaskScheduleStatus.SUCCESS:
-                    await submit_transaction.execute('UPDATE tasks SET state = ?, '
-                                                     '"work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 '
+                    await submit_transaction.execute('UPDATE tasks SET state = ? '
                                                      'WHERE "id" = ?',
                                                      (TaskState.IN_PROGRESS.value, task_id))
                     ui_task_delta.state = TaskState.IN_PROGRESS  # for ui event
