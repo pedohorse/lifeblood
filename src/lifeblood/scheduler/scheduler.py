@@ -646,7 +646,7 @@ class Scheduler(NodeGraphHolderBase):
 
             ui_task_delta = TaskDelta(invocation['task_id'])  # for ui event
             if task.finished_needs_retry():  # max retry count will be checked by task processor
-                await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
+                await con.execute('UPDATE tasks SET "state" = ?, "work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
                 ui_task_delta.state = TaskState.READY  # for ui event
             elif task.finished_with_error():
