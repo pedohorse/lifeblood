@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
-    <title>Modify Attributes &#8212; Lifeblood 1.0.0 documentation</title>
+    <title>Python &#8212; Lifeblood 1.0.0 documentation</title>
   
   
   
@@ -385,7 +385,7 @@ document.write(`
 <li class="toctree-l1"><a class="reference internal" href="mod_attrib.html">Modify Attributes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="null.html">Null</a></li>
 <li class="toctree-l1"><a class="reference internal" href="parent_children_waiter.html">Parent-Children Waiter</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Modify Attributes</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Python</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rename_attrib.html">Rename Attributes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="set_attrib.html">Set Attributes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="spawn_children.html">Spawn Children</a></li>
@@ -439,7 +439,7 @@ document.write(`
     
     <li class="breadcrumb-item"><a href="../../nodes.html" class="nav-link">Nodes</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page">Modify Attributes</li>
+    <li class="breadcrumb-item active" aria-current="page">Python</li>
   </ul>
 </nav>
 </div>
@@ -456,12 +456,20 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="modify-attributes">
-<span id="nodes-core-python"></span><h1>Modify Attributes<a class="headerlink" href="#modify-attributes" title="Permalink to this heading">#</a></h1>
+  <section id="python">
+<span id="nodes-core-python"></span><h1>Python<a class="headerlink" href="#python" title="Permalink to this heading">#</a></h1>
 <p>Execute some python code</p>
 <section id="parameters">
 <h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
 <dl class="field-list">
+<dt class="field-odd">good exit codes<span class="colon">:</span></dt>
+<dd class="field-odd"><p>What invocation process exit codes to consider as “good”. Default: <code class="docutils literal notranslate"><span class="pre">0</span></code></p>
+<p>This only affects code in <code class="docutils literal notranslate"><span class="pre">Invoke</span></code> parameter</p>
+</dd>
+<dt class="field-even">retry exit codes<span class="colon">:</span></dt>
+<dd class="field-even"><p>What invocation process exit codes should signal scheduler to retry the invocation as opposed to setting task into ERROR state.</p>
+<p>This only affects code in <code class="docutils literal notranslate"><span class="pre">Invoke</span></code> parameter</p>
+</dd>
 <dt class="field-odd">Process<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Python code to be executed by scheduler as part of processing stage. Do not perform any heavy operations here,
 instead perform them in the <strong>invoke</strong> code.</p>
