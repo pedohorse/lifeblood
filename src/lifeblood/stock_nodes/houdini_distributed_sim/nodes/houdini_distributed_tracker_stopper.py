@@ -1,10 +1,9 @@
-import socket
+import sys
 
 from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult, InvocationJob
 from lifeblood.invocationjob import InvocationRequirements
 from lifeblood.enums import NodeParameterType, WorkerType
-from lifeblood.taskspawn import TaskSpawn
 
 from typing import Iterable
 
@@ -31,18 +30,20 @@ class HoudiniDistributedTrackerStopper(BaseNode):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
-            ui.add_parameter('host', 'sim tracker host', NodeParameterType.STRING, "`task['SIMTRACKER_HOST']`")
-            ui.add_parameter('kport', 'kill port', NodeParameterType.INT, 19377)  # TODO: make default to be expression returning attrib kill port
-            #ui.add_parameter('use helper', 'run on scheduler helper', NodeParameterType.BOOL, True)
+            ui.add_parameter('target_iid', 'simtracker invocation id', NodeParameterType.INT, 0).set_expression("task['tracker_control_iid']")
+            ui.add_parameter('target_addressee', 'simtracker identifier', NodeParameterType.STRING, "`task['tracker_control_addressee']`")
+            ui.add_parameter('message_timeout', 'timeout', NodeParameterType.FLOAT, 90)
 
     def process_task(self, context) -> ProcessingResult:
-        addr = (context.param_value('host'), context.param_value('kport'))
-        s = socket.socket()
-        s.connect(addr)
-        try:
-            s.sendall(b'\0')
-        finally:
-            s.close()
-
-        res = ProcessingResult()
+        invoc = InvocationJob([
+            sys.executable,  # we can use sys.executable only because we run killer only on SCHEDULER_HELPERs
+            ':/work_to_do.py',
+            str(context.param_value('target_iid')),
+            str(context.param_value('target_addressee')),
+            str(context.param_value('message_timeout')),
+        ])
+        code = (self.my_plugin().package_data() / 'killer.py').read_text()
+        invoc.set_extra_file('work_to_do.py', code)
+        invoc.set_requirements(InvocationRequirements(worker_type=WorkerType.SCHEDULER_HELPER))
+        res = ProcessingResult(invoc)
         return res
