@@ -155,6 +155,10 @@ class ParentChildrenWaiterNode(BaseNode):
                     self.__cache_children[task_id].parent_ready = True
                     result.tasks_to_unblock = self.__get_children_for(task_id, recursive)
                     return result
+                elif children_count < len(self.__cache_children[task_id].children):  # so more children arrived than parent has
+                    self.logger().warning(f'more children arrived than parent has for {task_id}, trying to reset cache to resolve the situation')
+                    self.__cache_children.pop(task_id)
+                    raise NodeNotReadyToProcess(tasks_to_unblock=self.__get_children_for(task_id, recursive))
 
                 raise NodeNotReadyToProcess()
             else:  # child task
