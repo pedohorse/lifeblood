@@ -179,3 +179,12 @@ async def aperformance_measurer(threshold_to_report=None, name=None):
         tm.stop()
         if threshold_to_report and tm.elapsed() > threshold_to_report:
             logging.debug(f'ran {name} in {tm.elapsed()}s')
+
+
+@asynccontextmanager
+async def event_set_context(event: asyncio.Event):
+    event.set()
+    try:
+        yield
+    finally:
+        event.clear()
