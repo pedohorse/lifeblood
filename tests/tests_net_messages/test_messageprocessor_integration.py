@@ -1,5 +1,7 @@
 import asyncio
 import random
+import time
+import unittest.mock
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.logging import get_logger, set_default_loglevel
 from lifeblood.nethelpers import get_localhost
@@ -318,7 +320,24 @@ class TestIntegration(IsolatedAsyncioTestCase):
         logger.info('assume all started')
         try:
             logger.info('running test logic')
-            await logic(proc1, proc2, proxies)
+            _time = 0.0
+            _count = 0
+
+            async def _foo(*args, **kwargs):
+                nonlocal _time, _count
+                _t1 = time.perf_counter()
+                res = await _stored(*args, **kwargs)
+                _time += time.perf_counter() - _t1
+                _count += 1
+                return res
+
+            _stored = MessageClient.send_message
+            MessageClient.send_message = _foo
+            try:
+                await logic(proc1, proc2, proxies)
+            finally:
+                MessageClient.send_message = _stored
+            logger.warning(f'average send_message time: {_time/max(1, _count)}s ({_count} calls)')
 
         finally:
             logger.info('stopping')
