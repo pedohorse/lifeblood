@@ -3,55 +3,38 @@ import sys
 import os
 import errno
 import shutil
-import copy
-import traceback
 import threading
 import asyncio
-import subprocess
 import aiofiles
-import aiosqlite
-import json
 import psutil
 import datetime
 import time
 import tempfile
-import signal
-from enum import Enum
 from . import logging
-from .nethelpers import get_addr_to, get_default_addr, get_localhost, address_to_ip_port, get_hostname
+from .nethelpers import get_addr_to, get_localhost, get_hostname
 from .net_classes import WorkerResources
 from .worker_metadata import WorkerMetadata
-# from .worker_task_protocol import WorkerTaskServerProtocol
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning,\
-    InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationMessageError
-# from .scheduler_task_protocol import SchedulerTaskClient
+from .exceptions import ProcessInitializationError, WorkerNotAvailable, AlreadyRunning,\
+    InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationCancelled
 from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
 from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
-#from .worker_pool_protocol import WorkerPoolClient
 from .worker_pool_message_processor import WorkerPoolControlClient
-from .broadcasting import await_broadcast
 from .invocationjob import InvocationJob
-from .config import get_config, create_default_user_config_file
+from .config import get_config
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
 from .paths import config_path
-from .local_notifier import LocalMessageExchanger
-from .filelock import FileCoupledLock
 from .process_utils import create_process, kill_process_tree
-from . import db_misc
-from .misc import DummyLock
+from .misc import event_set_context
 from .net_messages.address import AddressChain, DirectAddress
-# from .net_messages.impl.tcp_message_processor import TcpMessageProcessor
 from .net_messages.exceptions import MessageTransferError
-from .defaults import worker_pool_port as default_worker_pool_port, \
-                      scheduler_port as default_scheduler_port, \
-                      worker_start_port as default_worker_start_port
+from .defaults import worker_start_port as default_worker_start_port
 
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
 
-from typing import Any, Optional, Dict, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 
 is_posix = not sys.platform.startswith('win')
@@ -113,6 +96,7 @@ class Worker:
                                               gpu_count=config.get_option_noasync('resources.gpu_count'),
                                               gpu_mem=config.get_option_noasync('resources.gpu_mem'))
         self.__task_changing_state_lock = asyncio.Lock()
+        self.__task_switching_event = asyncio.Event()  # this will signal invocation message waiters to cancel what they are doing
         self.__stop_lock = threading.Lock()
         self.__start_lock = asyncio.Lock()  # cant use threading lock in async methods - it can yeild out, and deadlock on itself
         self.__where_to_report: Optional[AddressChain] = None
@@ -493,6 +477,10 @@ class Worker:
     async def deliver_invocation_message(self, destination_invocation_id: int, destination_addressee: str, source_invocation_id: Optional[int], message_body: bytes, addressee_timeout: float = 90.0):
         """
         deliver message to task
+
+        the idea is to deliver ONLY when message is waited for.
+        so queues are added/removed by receiver, not by this deliver method
+        current impl is NOT thread safe, it relies on async to separate important regions
         """
         while True:
             # while we wait - invocation MAY change.
@@ -529,14 +517,42 @@ class Worker:
 
         :returns: sender invocation id, message body
         """
-        if addressee not in self.__worker_task_comm_queues:
-            self.__worker_task_comm_queues[addressee] = asyncio.Queue()
+        if self.__task_switching_event.is_set():
+            self.__logger.warning('cannot wait for invocation message when task is being cancelled')
+            raise InvocationCancelled()
+
+        # get ref to queues, so if it's replaced under us we stay consistent
+        queues = self.__worker_task_comm_queues
+        # TODO: (j) need tests for multiple waits on SAME addressee at the same time
+        if addressee not in queues:
+            queues[addressee] = asyncio.Queue()
+
+        cancel_event_waiter = asyncio.create_task(self.__task_switching_event.wait())
+        queue_getter = asyncio.create_task(queues[addressee].get())
+        value = None
         try:
-            value = await asyncio.wait_for(self.__worker_task_comm_queues[addressee].get(), timeout=timeout)
-            assert self.__worker_task_comm_queues[addressee].get_nowait() == ()
+            done, pend = await asyncio.wait([queue_getter, cancel_event_waiter], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            if queue_getter in done:
+                value = queue_getter.result()
+            else:
+                queue_getter.cancel()
+            if cancel_event_waiter in done:
+                # note - at this point both tasks are done or cancelled
+                raise InvocationCancelled()
+            else:
+                cancel_event_waiter.cancel()
+            # check for timeout
+            if len(done) == 0:
+                raise asyncio.TimeoutError()
+
+            assert value is not None, 'internal logic error, value cannot be None here'
+
+            # value = await asyncio.wait_for(queues[addressee].get(), timeout=timeout)
+            assert queues[addressee].get_nowait() == ()
             # this way above we ensure one single deliver_task deliver to one single addressee_wait
         finally:
-            self.__worker_task_comm_queues.pop(addressee)
+            if queues[addressee].empty():  # TODO: see TODO (j) above
+                queues.pop(addressee)
 
         return value
 
@@ -548,7 +564,7 @@ class Worker:
         return self.__stopped
 
     async def cancel_task(self):
-        async with self.__task_changing_state_lock:
+        async with self.__task_changing_state_lock, event_set_context(self.__task_switching_event):
             self.__logger.debug('cancel_task: task_change_state locks acquired')
             if self.__running_process is None:
                 return
@@ -617,7 +633,7 @@ class Worker:
         is called when current process finishes
         :return:
         """
-        async with self.__task_changing_state_lock:
+        async with self.__task_changing_state_lock, event_set_context(self.__task_switching_event):
             self.__logger.debug('task_finished: task_change_state locks acquired')
             if self.__running_process is None:
                 self.__logger.warning('task_finished called, but there is no running task. This can only normally happen if a task_cancel happened the same moment as finish.')

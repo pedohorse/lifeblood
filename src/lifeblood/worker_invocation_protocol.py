@@ -1,10 +1,13 @@
 import asyncio
+import time
+
 import aiofiles
 import struct
 import json
 from .enums import TaskScheduleStatus, TaskExecutionStatus, TaskExecutionStatus, WorkerPingReply, SpawnStatus
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning, CouldNotNegotiateProtocolVersion
+from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning, CouldNotNegotiateProtocolVersion, InvocationCancelled
 from .scheduler_message_processor import SchedulerExtraControlClient, SchedulerInvocationMessageClient
+from .net_messages.exceptions import MessageReceivingError
 from .environment_resolver import ResolutionImpossibleError
 from .taskspawn import TaskSpawn
 from . import logging
@@ -113,6 +116,10 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
                 cancelled, = struct.unpack('>?', await reader.readexactly(1))
                 if cancelled:
                     return
+            except InvocationCancelled:
+                # we do not attempt to report - we know the process is being killed right now
+                self.__logger.warning('dropping receiving invocation message as invocation is cancelled')
+                return
         assert src_iid is not None
         writer.write(struct.pack('>?QQ', True, src_iid, len(data)))
         writer.write(data)
@@ -168,13 +175,29 @@ class WorkerInvocationServerProtocol(asyncio.StreamReaderProtocol):
             await writer.drain()
         except asyncio.TimeoutError:
             self.__logger.error('operation timeout')
-            raise
-        except EOFError:
+            return
+        except (EOFError, ConnectionResetError):
             self.__logger.error('connection was abruptly closed')
+            return
+        except (ConnectionError, OSError):
+            self.__logger.exception('connection error')
+            return
+        except Exception:
+            self.__logger.exception('unhandled exception')
             raise
         finally:
-            writer.close()
-            await writer.wait_closed()
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (EOFError, ConnectionResetError):
+                self.__logger.error('attempt to finalize invoc stream: connection was abruptly closed')
+                return
+            except OSError:
+                self.__logger.exception('attempt to finalize invoc stream: connection error')
+                return
+            except Exception:
+                self.__logger.exception('attempt to finalize invoc stream: unhandled exception')
+                raise
             # according to the note in the beginning of the function - now reference can be cleared
             self.__saved_references.remove(asyncio.current_task())
 
