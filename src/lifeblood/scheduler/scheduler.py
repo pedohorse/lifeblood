@@ -1019,8 +1019,28 @@ class Scheduler(NodeGraphHolderBase):
         try:
             async with self.data_access.data_connection() as con:
                 con.row_factory = aiosqlite.Row
+                await con.execute('BEGIN IMMEDIATE')
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
-                await con.execute('UPDATE tasks SET "node_id" = ? WHERE "id" = ?', (node_id, task_id))
+                async with con.execute('SELECT "state" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
+                    row = await cur.fetchone()
+                if row is None:
+                    self.__logger.warning(f'failed to force task node: task {task_id} not found')
+                    await con.rollback()
+                    return
+
+                state = TaskState(row['state'])
+                new_state = None
+                if state in (TaskState.WAITING, TaskState.READY, TaskState.POST_WAITING):
+                    new_state = TaskState.WAITING
+                elif state == TaskState.DONE:
+                    new_state = TaskState.DONE
+                # if new_state was not set - means state was invalid
+                if new_state is None:
+                    self.__logger.warning(f'changing node of a task in state {state.name} is not allowed')
+                    await con.rollback()
+                    return
+
+                await con.execute('UPDATE tasks SET "node_id" = ?, "state" = ? WHERE "id" = ?', (node_id, new_state.value, task_id))
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, node_id=node_id))  # ui event
                 # reset blocking too
                 await self.data_access.reset_task_blocking(task_id, con=con)
