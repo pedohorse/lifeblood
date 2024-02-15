@@ -137,6 +137,9 @@ class TaskProcessor(SchedulerComponentBase):
             if process_result.do_kill_task:
                 await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                                   (TaskState.DEAD.value, task_id))
+                # killed tasks MAY unblock a parent that waits for children somewhere, so it's generally safe to do this
+                if task_row['parent_id'] is not None:
+                    await self.scheduler.data_access.hint_task_needs_unblocking(task_row['parent_id'], con=con)
                 ui_task_delta.state = TaskState.DEAD  # for ui event
             else:
                 if process_result.invocation_job is None:  # if no job to do

@@ -15,6 +15,7 @@ class ParentChildrenIntegrationTest(FullIntegrationTestCase):
             *await self._create_task(node_name='TEST IN'),
             *await self._create_task(node_name='TEST IN RECURSIVE'),
             *await self._create_task(node_name='TEST IN MULTI'),
+            *await self._create_task(node_name='TEST IN KILL'),
         ]
         return tasks
 
@@ -23,12 +24,13 @@ class ParentChildrenIntegrationTest(FullIntegrationTestCase):
             0: {'foo': list(range(11, 11+10*2, 2))},
             1: {'foo': list(range(123, 123+20))},
             2: {'fee': list(reversed(range(531, 531+20*2, 2)))},
+            3: {'foo': list(range(11, 11+20*2, 4))},
         }
 
     async def _additional_checks_on_finish(self):
         stat = await self.scheduler.data_access.invocations_statistics()
-        self.assertEqual(60, stat.total)
-        self.assertEqual(60, stat.finished_good)
+        self.assertEqual(75, stat.total)
+        self.assertEqual(75, stat.finished_good)
         self.assertEqual(0, stat.finished_bad)
 
     def _minimal_idle_to_ensure(self) -> int:
