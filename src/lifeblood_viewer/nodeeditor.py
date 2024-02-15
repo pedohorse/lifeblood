@@ -581,11 +581,22 @@ class NodeEditor(QGraphicsView, Shortcutable):
             menu.addAction('pause further processing').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_tasks_paused([x], True))
 
         if task.state() == TaskState.IN_PROGRESS:
-            action_text = 'cancel' if task.paused() else 'cancel and reschedule'
-            menu.addAction(action_text).triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
+            if task.paused():
+                menu.addAction('cancel').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
+            else:
+                menu.addAction('cancel and reschedule').triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.request_task_cancel(x))
+                # TODO: two actions in lambda below are async and not guaranteed to execute in any order.
+                #  we don't care much, but in certain race conditions task may get rescheduled after cancel and before pause.
+                #  For now it's not that important
+                menu.addAction('cancel and pause').triggered.connect(lambda checked=False, x=task.get_id(): (self.__scene.set_tasks_paused([x], True),
+                                                                                                             self.__scene.request_task_cancel(x)))
+
         elif task.state() in (TaskState.READY, TaskState.ERROR):
             action_text = 'retry' if task.state() == TaskState.ERROR else 'regenerate'
             menu.addAction(action_text).triggered.connect(lambda checked=False, x=task.get_id(): self.__scene.set_task_state([x], TaskState.WAITING))
+            if task.paused():
+                menu.addAction(f'unpause and {action_text}').triggered.connect(lambda checked=False, x=task.get_id(): (self.__scene.set_task_state([x], TaskState.WAITING),
+                                                                                                                       self.__scene.set_tasks_paused([x], False)))
         elif task.state() == TaskState.DONE and task.paused():
             menu.addAction('retry').triggered.connect(
                 lambda checked=False, x=task.get_id(): (
