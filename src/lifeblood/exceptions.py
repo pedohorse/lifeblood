@@ -74,3 +74,12 @@ class InvocationMessageWrongInvocationId(InvocationMessageError):
 
 class InvocationMessageAddresseeTimeout(InvocationMessageError):
     pass
+
+
+class InvocationCancelled(RuntimeError):
+    """
+    represents error for invocation-related tasks in worker
+    if worker's currently running task got cancelled, and related tasks loose meaning
+    and need to be cancelled/stopped
+    """
+    pass

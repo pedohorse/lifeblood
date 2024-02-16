@@ -161,7 +161,8 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         """
         invoc_id = args['dst_invoc_id']
         invoc_state = await self.__scheduler.get_invocation_state(invoc_id)
-        if invoc_state != InvocationState.IN_PROGRESS:
+        # invoking is included too, as message might be sent before submission is finalized on scheduler's side
+        if invoc_state not in (InvocationState.IN_PROGRESS, InvocationState.INVOKING):
             await client.send_message_as_json({
                 'result': InvocationMessageResult.ERROR_IID_NOT_RUNNING.value
             })

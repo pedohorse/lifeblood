@@ -79,6 +79,8 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
                         done, pending = await asyncio.wait(potentially_pending_tasks, return_when=asyncio.FIRST_COMPLETED)
                         if stop_waiter in done:
                             self.__logger.debug('explicitly asked to stop')
+                            if message_waiter.done():
+                                message_waiter.result()  # this will re-raise exceptions if any
                             message_waiter.cancel()
                             stop_waiter = None
                             break
