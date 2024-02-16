@@ -24,6 +24,10 @@ class NoopMessageServer(TcpMessageProcessor):
         super().__init__(*args, **kwargs)
         self.test_messages_count = 0
 
+    # async def new_message_received(self, message: Message) -> bool:
+    #     self.test_messages_count += 1
+    #     return True
+
     async def process_message(self, message: Message, client: MessageClient):
         self.test_messages_count += 1
 
@@ -54,29 +58,37 @@ class ThreadedFoo(threading.Thread):
 
 class TestBenchmarkSendReceive(IsolatedAsyncioTestCase):
     async def test1(self):
-        data = ''.join(random.choice(string.ascii_letters) for _ in range(1024)).encode('latin1')
+        data = ''.join(random.choice(string.ascii_letters) for _ in range(16000)).encode('latin1')
         server1 = NoopMessageServer((get_localhost(), 28385))
         server2 = NoopMessageServer((get_localhost(), 28386))
         server1_runner = ThreadedFoo(server1)
         server1_runner.start()
         await server2.start()
+        pure_send_time = 0.0
+
+        messages_per_client = 10
+        total_clients = 100
 
         async def test_foo():
+            nonlocal pure_send_time
             with server2.message_client(AddressChain(f'{get_localhost()}:28385')) as client:  # type: MessageClient
-                for _ in range(10):
+                beforesend = time.perf_counter()
+                for _ in range(messages_per_client):
                     await client.send_message(data)
+                pure_send_time += time.perf_counter() - beforesend
 
         tasks = []
-        for _ in range(100):
+        for _ in range(total_clients):
             tasks.append(asyncio.create_task(test_foo()))
 
         timestamp = time.perf_counter()
         await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
         total_time = time.perf_counter() - timestamp
+        pure_send_time /= total_clients
 
         server2.stop()
         server1_runner.stop()
         await server2.wait_till_stops()
         server1_runner.join()
-        self.assertEqual(1000, server1.test_messages_count)
-        print(f'total go {server1.test_messages_count} in {total_time}s, avg {server1.test_messages_count/total_time} msg/s')
+        print(f'total go {server1.test_messages_count} in {total_time}s (pure send: {pure_send_time}s, avg {server1.test_messages_count/total_time} (pure: {server1.test_messages_count/pure_send_time}) msg/s')
+        self.assertEqual(total_clients * messages_per_client, server1.test_messages_count)
