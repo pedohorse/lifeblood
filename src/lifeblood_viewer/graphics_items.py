@@ -332,6 +332,38 @@ class Node(NetworkItemWithUI):
     def output_names(self) -> Set[str]:
         return self.__outputs or set()
 
+    def input_nodes(self, inname: Optional[str] = None) -> Set["Node"]:
+        """
+        get input nodes as viewer (not scheduler) sees them
+
+        :param inname: intput name to follow or None for all intputs
+        """
+        if inname is None:
+            con_names = list(self.input_names())
+        else:
+            con_names = [inname]
+
+        nodes = set()
+        for con_name in con_names:
+            nodes.update(con.output()[0] for con in self.input_connections(con_name))
+        return nodes
+
+    def output_nodes(self, outname: Optional[str] = None) -> Set["Node"]:
+        """
+        get output nodes as viewer (not scheduler) sees them
+
+        :param outname: output name to follow or None for all outputs
+        """
+        if outname is None:
+            con_names = list(self.output_names())
+        else:
+            con_names = [outname]
+
+        nodes = set()
+        for con_name in con_names:
+            nodes.update(con.input()[0] for con in self.output_connections(con_name))
+        return nodes
+
     def boundingRect(self) -> QRectF:
         if self.__cached_bounds is None:
             lw = self.__width + self.__line_width
@@ -863,6 +895,28 @@ class Node(NetworkItemWithUI):
         super(Node, self).mousePressEvent(event)
         self.__move_start_selection = {self}
         self.__move_start_position = None
+
+        # check for special picking: shift+move should move all upper connected nodes
+        if event.modifiers() & Qt.ShiftModifier or event.modifiers() & Qt.ControlModifier:
+            selecting_inputs = event.modifiers() & Qt.ShiftModifier
+            selecting_outputs = event.modifiers() & Qt.ControlModifier
+            extra_selected_nodes = set()
+            if selecting_inputs:
+                extra_selected_nodes.update(self.input_nodes())
+            if selecting_outputs:
+                extra_selected_nodes.update(self.output_nodes())
+
+            extra_selected_nodes_ordered = list(extra_selected_nodes)
+            for relnode in extra_selected_nodes_ordered:
+                relnode.setSelected(True)
+                relrelnodes = set()
+                if selecting_inputs:
+                    relrelnodes.update(node for node in (relnode.input_nodes() if selecting_inputs else relnode.output_nodes()) if node not in extra_selected_nodes)
+                if selecting_outputs:
+                    relrelnodes.update(node for node in (relnode.output_nodes() if selecting_inputs else relnode.output_nodes()) if node not in extra_selected_nodes)
+                extra_selected_nodes_ordered.extend(relrelnodes)
+                extra_selected_nodes.update(relrelnodes)
+            self.setSelected(True)
         for item in self.scene().selectedItems():
             if isinstance(item, Node):
                 self.__move_start_selection.add(item)
@@ -936,6 +990,7 @@ class NodeConnection(NetworkItem):
     def __init__(self, id: int, nodeout: Node, nodein: Node, outname: str, inname: str):
         super(NodeConnection, self).__init__(id)
         self.setFlags(QGraphicsItem.ItemSendsGeometryChanges)  # QGraphicsItem.ItemIsSelectable |
+        self.setAcceptHoverEvents(True)  # for highlights
         self.__nodeout = nodeout
         self.__nodein = nodein
         self.__outname = outname
@@ -945,6 +1000,7 @@ class NodeConnection(NetworkItem):
         self.__wire_pick_radius = 15
         self.__pick_radius2 = 100**2
         self.__curv = 150
+        self.__wire_highlight_radius = 5
 
         self.__temporary_invalid = False
 
@@ -955,12 +1011,16 @@ class NodeConnection(NetworkItem):
 
         self.__pen = QPen(QColor(64, 64, 64, 192))
         self.__pen.setWidthF(3)
+        self.__pen_highlight = QPen(QColor(92, 92, 92, 192))
+        self.__pen_highlight.setWidthF(3)
         self.__thick_pen = QPen(QColor(144, 144, 144, 128))
         self.__thick_pen.setWidthF(4)
         self.__last_drawn_path: Optional[QPainterPath] = None
 
         self.__stroker = QPainterPathStroker()
         self.__stroker.setWidth(2*self.__wire_pick_radius)
+
+        self.__hoverover_pos = None
 
         nodein.add_connection(self)
         nodeout.add_connection(self)
@@ -1036,10 +1096,16 @@ class NodeConnection(NetworkItem):
             return
         line = self.get_painter_path()
 
+        painter.setPen(self.__pen)
+
+        hldiag = QPointF(self.__wire_highlight_radius, self.__wire_highlight_radius)
+        if self.__hoverover_pos is not None:
+            if line.intersects(QRectF(self.__hoverover_pos - hldiag, self.__hoverover_pos + hldiag)):
+                painter.setPen(self.__pen_highlight)
+
         if self.isSelected():
             painter.setPen(self.__thick_pen)
-            painter.drawPath(line)
-        painter.setPen(self.__pen)
+
         painter.drawPath(line)
         # painter.drawRect(self.boundingRect())
         self.__last_drawn_path = line
@@ -1073,6 +1139,13 @@ class NodeConnection(NetworkItem):
             self.__nodein.add_connection(self)
         else:
             self.__inname = input_name
+
+    def hoverMoveEvent(self, event):
+        self.__hoverover_pos = event.pos()
+
+    def hoverLeaveEvent(self, event):
+        self.__hoverover_pos = None
+        self.update()
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
         event.ignore()
