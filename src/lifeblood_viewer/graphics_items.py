@@ -911,9 +911,9 @@ class Node(NetworkItemWithUI):
                 relnode.setSelected(True)
                 relrelnodes = set()
                 if selecting_inputs:
-                    relrelnodes.update(node for node in (relnode.input_nodes() if selecting_inputs else relnode.output_nodes()) if node not in extra_selected_nodes)
+                    relrelnodes.update(node for node in relnode.input_nodes() if node not in extra_selected_nodes)
                 if selecting_outputs:
-                    relrelnodes.update(node for node in (relnode.output_nodes() if selecting_inputs else relnode.output_nodes()) if node not in extra_selected_nodes)
+                    relrelnodes.update(node for node in relnode.output_nodes() if node not in extra_selected_nodes)
                 extra_selected_nodes_ordered.extend(relrelnodes)
                 extra_selected_nodes.update(relrelnodes)
             self.setSelected(True)
@@ -1098,8 +1098,8 @@ class NodeConnection(NetworkItem):
 
         painter.setPen(self.__pen)
 
-        hldiag = QPointF(self.__wire_highlight_radius, self.__wire_highlight_radius)
         if self.__hoverover_pos is not None:
+            hldiag = QPointF(self.__wire_highlight_radius, self.__wire_highlight_radius)
             if line.intersects(QRectF(self.__hoverover_pos - hldiag, self.__hoverover_pos + hldiag)):
                 painter.setPen(self.__pen_highlight)
 
