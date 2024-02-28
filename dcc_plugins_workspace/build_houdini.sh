@@ -9,7 +9,7 @@ mkdir -p $OUT/otls
 # assume houdini environment is initialized
 hotl -l houdini/otls/Driver-lifeblood_submitter-1.0.0.hda $OUT/otls/Driver-lifeblood_submitter-1.0.0.hda
 
-rsync -arhv houdini/presets $OUT/presets
+rsync -arhv houdini/presets $OUT
 
 # copy client module
 rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python2.7libs
