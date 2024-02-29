@@ -1,0 +1,35 @@
+name: send notifications
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  notify_telegram:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+      - run: sudo apt install jq
+      - name: "post to telegram"
+        shell: bash
+        env:
+          TELEGRAM_BOT_SECRET: ${{ secrets.TELEGRAM_INFO_BOT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_INFO_CHANNEL_ID }}
+        run: |
+          echo '#!/usr/bin/env bash' > send_update.sh
+          git fetch --tags 
+          
+          echo '{"chat_id":'"$TELEGRAM_CHAT_ID"',"text":"' > info_message
+          echo 'New Release ${{ github.ref_name }}!\n' >> info_message
+          git tag -l --format='%(contents)' ${{ github.ref_name }} | jq -Rsa . | cut -c2- >> info_message
+          echo '}' >> info_message
+          cat info_message
+          
+          # only for curl8
+          # curl --variable '%TELEGRAM_BOT_SECRET' --expand-url="https://api.telegram.org/bot{{TELEGRAM_BOT_SECRET}}/sendMessage" --json @info_message
+          
+          curl -s -X POST -H "Content-Type:application/json" "https://api.telegram.org/bot""${TELEGRAM_BOT_SECRET}""/sendMessage" --data @info_message
+          rm info_message
