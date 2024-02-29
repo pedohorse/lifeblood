@@ -55,9 +55,6 @@ jobs:
         with:
           files:
             tools/*/*
-          append_body: true
-          body: |
-            corresponds to release https://pypi.org/project/lifeblood/${{ env.PYPIVER }}/
 
   publish:
     runs-on: "ubuntu-latest"
