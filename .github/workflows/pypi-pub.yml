@@ -80,3 +80,21 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_RELEASE }}
         run: |
           python -m twine upload --repository pypi -u __token__ stuff/*
+
+  notify:
+    uses: ./.github/workflows/release-notify.yml
+    secrets:
+      TELEGRAM_INFO_BOT_ID: ${{ secrets.TELEGRAM_INFO_BOT_ID }}
+      TELEGRAM_INFO_CHANNEL_ID: ${{ secrets.TELEGRAM_INFO_CHANNEL_ID }}
+    with:
+      message_prepend: "🩸 Lifeblood update ${{ github.ref_name }}!\n\n"
+      message_body_command: "git tag -l --format='%(contents)' ${{ github.ref_name }}"
+      message_append: |-
+
+        https://github.com/${{ github.repository}}/releases/tag/${{ github.ref_name }}
+        https://pypi.org/project/lifeblood/
+        https://pypi.org/project/lifeblood-viewer/
+
+        #lifeblood
+
+    needs: [ "make_release" ]
