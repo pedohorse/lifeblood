@@ -17,12 +17,15 @@ jobs:
     needs:
       - build_all_tools
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.derive_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v3
         with:
           path: repo
           fetch-depth: 0  # to fetch all history, not just a single commit
-      - run: |
+      - id: derive_tag
+        run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "Tools auto tag"
           git checkout ${{ github.sha }}
@@ -32,6 +35,7 @@ jobs:
           
           TAG="$(git describe)-tools"
           echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           
           echo "new tag is $TAG"
           
@@ -50,3 +54,17 @@ jobs:
           tag_name: ${{ env.TAG }}
           files:
             tools/*/*
+
+  notify:
+    uses: ./.github/workflows/release-notify.yml
+    secrets:
+      TELEGRAM_INFO_BOT_ID: ${{ secrets.TELEGRAM_INFO_BOT_ID }}
+      TELEGRAM_INFO_CHANNEL_ID: ${{ secrets.TELEGRAM_INFO_CHANNEL_ID }}
+    with:
+      message_prepend: "🔧 dcc plugins autoupdate ${{ needs.make_tool_release.outputs.tag }}!\n"
+      message_append: |-
+        https://github.com/${{ github.repository}}/releases/tag/${{ needs.make_tool_release.outputs.tag }}
+
+        #tools
+
+    needs: [ "make_tool_release" ]
