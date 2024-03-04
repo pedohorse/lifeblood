@@ -247,7 +247,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 try:
                     tmp_sock = socket.create_connection((sche_addr, sche_port), timeout=5)
                     tmp_sock.sendall(b'\0\1\0\0')
-                except ConnectionError:
+                except (ConnectionError, OSError):  # some errors such as "No route to host" are OSErrors
                     logger.info('last known address didn\'t work')
                     sche_addr, sche_port = None, None
                 finally:
