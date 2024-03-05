@@ -374,13 +374,15 @@ class TaskProcessor(SchedulerComponentBase):
                 with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
                     # import random
                     # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
-                    reply = await client.give_task(job, self.scheduler.server_message_address())
+                    reply, fail_class, reply_message = await client.give_task(job, self.scheduler.server_message_address())
                     # TODO: introduce optional "worker cookie" - uid that one passes with some commands
                     #  like give_task to ensure that we are submitting here to the same worker task processing loop selected
-                self.__logger.debug(f'got reply {reply}')
+                self.__logger.debug(f'got reply {reply} ({fail_class}), ({reply_message})')
             except Exception as e:
                 self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
                 reply = TaskScheduleStatus.FAILED
+                fail_class = 'submission'
+                reply_message = None
 
             # Second main transaction of the submission
             async with self.awaiter_lock:
@@ -431,6 +433,19 @@ class TaskProcessor(SchedulerComponentBase):
                                                      (invocation_id,))
                     await self.__submitter_finalize_cancel_transaction(submit_transaction, worker_row, worker_state, task_id)
 
+                    if reply == TaskScheduleStatus.FAILED:
+                        if reply_message:
+                            state_details = json.dumps({'message': f'worker {worker_row["id"]} failed to take task: {reply_message}',
+                                                        'happened_at': task_row['state'],
+                                                        'type': fail_class,
+                                                        })
+                            await submit_transaction.execute('UPDATE tasks SET state_details = ? WHERE "id" == ?',
+                                                             (state_details, task_id))
+                        # for some fail reasons we put workers into a temporary suspend list,
+                        #  not to spam and get same error hundreds of times per second
+                        if fail_class in ('environment_resolver', 'spawn'):
+                            self.scheduler.data_access.suspend_hwid(task_id, worker_row['hwid'])
+
                     # we poke scheduler after transaction commit to process task again straight away
                     submit_transaction.add_after_commit_callback(self.poke)
                 submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, ui_task_delta)  # ui event
@@ -454,6 +469,13 @@ class TaskProcessor(SchedulerComponentBase):
         # update resource usage to none
         await self.scheduler._update_worker_resouce_usage(worker_row['id'], hwid=worker_row['hwid'], connection=submit_transaction)
 
+    @atimeit(0)
+    async def __task_processor_housekeeping(self):
+        """
+        some cleanup operations that can be done every once in a rare while
+        """
+        self.scheduler.data_access.prune_suspended_hwids()
+
     #
 
     async def task_processor(self):
@@ -462,6 +484,8 @@ class TaskProcessor(SchedulerComponentBase):
         stop_task = asyncio.create_task(self._stop_event.wait())
         kick_wait_task = asyncio.create_task(self._poke_event.wait())
         gc_counter = 0
+        housekeeping_timestamp = time.monotonic()
+        housekeeping_interval = await get_config('scheduler').get_option('task_processor.housekeeping_interval', 60)
         # tm_counter = 0
         self._main_task_is_ready_now()
         while not self._stop_event.is_set():
@@ -530,6 +554,12 @@ class TaskProcessor(SchedulerComponentBase):
                     except Exception as e:
                         self.__logger.exception('awaited task raised some problems')
             tasks_to_wait -= to_remove
+
+            # housekeeping
+            housekeeping_now = time.monotonic()
+            if housekeeping_now - housekeeping_timestamp > housekeeping_interval:
+                await self.__task_processor_housekeeping()
+                housekeeping_timestamp = housekeeping_now
 
             # now proceed with processing
             _debug_con = time.perf_counter()
@@ -652,96 +682,7 @@ class TaskProcessor(SchedulerComponentBase):
                     #
                     # real scheduling should happen here
                     elif task_state == TaskState.READY:
-                        submitters = []
-                        # there may be a lot of similar queries, and if there's nothing available at some point - we may just leave it for next submission iteration
-                        # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
-                        where_empty_cache = set()
-                        ui_task_deltas = []  # for ui event
-                        task_rows_to_retry = []
-                        for task_row in itertools.chain(all_task_rows, task_rows_to_retry):
-                            # check max attempts first
-                            if task_row['work_data_invocation_attempt'] >= self.__invocation_attempts:
-                                state_details = json.dumps({'message': 'maximum invocation attempts reached',
-                                                               'happened_at': task_row['state'],
-                                                               'type': 'limit',
-                                                               'limit_threshold': self.__invocation_attempts,
-                                                               'limit_value': task_row['work_data_invocation_attempt']})
-                                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value,
-                                                   state_details,
-                                                   task_row['id']))
-                                total_state_changes += 1
-                                ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
-                                self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
-                                continue
-                            #
-                            requirements_clause_sql: str = task_row["_invoc_requirement_clause"]
-                            requirements_clause_dict = None
-                            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:
-                                requirements_clause_dict = json.loads(requirements_clause_sql[splitpos+3:])
-                                requirements_clause_sql = requirements_clause_sql[:splitpos]
-                            if requirements_clause_sql in where_empty_cache:
-                                continue
-                            try:
-                                self.__logger.debug('submitter selecting worker')
-                                async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
-                                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
-                                    worker = await worcur.fetchone()
-                            except aiosqlite.Error as e:
-                                state_details = json.dumps({'message': traceback.format_exc(),
-                                                               'happened_at': task_row['state'],
-                                                               'type': 'exception',
-                                                               'exception_str': str(e),
-                                                               'exception_type': str(type(e))})
-                                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
-                                                  (TaskState.ERROR.value,
-                                                   state_details,
-                                                   task_row['id']))
-                                total_state_changes += 1
-                                ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
-                                self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
-                                continue
-                            if worker is None:  # nothing available
-                                where_empty_cache.add(requirements_clause_sql)
-                                continue
-                            # note that there might be no implicit transaction here yet, so previously selected
-                            # worker might have changed states between that select and this update
-                            # so we doublecheck in a transaction
-                            if not con.in_transaction:
-                                await con.execute('BEGIN IMMEDIATE')
-                                async with con.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker['id'],)) as worcur:
-                                    actual_state = (await worcur.fetchone())['state']
-                                    if actual_state != WorkerState.IDLE.value:
-                                        self.__logger.debug(f'submitter: worker changed state (to {actual_state}) while trying to submit, skipping')
-                                        # we add to retry list, and we don't care to limit it,
-                                        # cuz this code is only reachable if we were NOT in a transaction, and now we are
-                                        task_rows_to_retry.append(task_row)
-                                        continue
-                            await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
-                                              (TaskState.INVOKING.value, task_row['id']))
-                            total_state_changes += 1
-                            ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.INVOKING))  # for ui event
-                            await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
-                                              (WorkerState.INVOKING.value, worker['id']))
-                            # set resource usage straight away
-                            try:
-                                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
-                            except NotEnoughResources:
-                                self.__logger.warning(f'inconsistence in worker resource tracking! could not submit to worker {worker["id"]}')
-                                continue
-
-                            submitters.append(self._submitter(dict(task_row), dict(worker)))
-                            self.__logger.debug('submitter scheduled')
-                        # ui event
-                        if ui_task_deltas:
-                            con.add_after_commit_callback(
-                                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, ui_task_deltas
-                            )
-                        #
-                        await con.commit()
-                        for coro in submitters:
-                            tasks_to_wait.add(asyncio.create_task(coro))
+                        total_state_changes += await self.__process_ready(all_task_rows, tasks_to_wait, con=con)
                     #
                     # means task is done being processed by current node,
                     # now it should be passed to the next node
@@ -841,6 +782,126 @@ class TaskProcessor(SchedulerComponentBase):
         if len(tasks_to_wait) > 0:
             await asyncio.wait(tasks_to_wait, return_when=asyncio.ALL_COMPLETED)
         self.__logger.info('task processor finished')
+
+    async def __process_ready(self, all_task_rows, tasks_to_wait, *, con: aiosqlite_overlay.ConnectionWithCallbacks) -> int:
+        """
+        does all the processing for tasks in READY state
+        helper for task_processor routine
+
+        returns number of tasks that had changes
+        """
+        total_state_changes = 0
+        submitters = []
+        # there may be a lot of similar queries, and if there's nothing available at some point - we may just leave it for next submission iteration
+        # and anyway - if transaction has already started - there won't be any new idle worker, since sqlite block everything
+        requirements_to_worker_ids_cache = {}
+        ui_task_deltas = []  # for ui event
+        task_rows_to_retry = []
+        for task_row in itertools.chain(all_task_rows, task_rows_to_retry):
+            # check max attempts first
+            if task_row['work_data_invocation_attempt'] >= self.__invocation_attempts:
+                state_details = json.dumps({'message': 'maximum invocation attempts reached',
+                                            'happened_at': task_row['state'],
+                                            'type': 'limit',
+                                            'limit_threshold': self.__invocation_attempts,
+                                            'limit_value': task_row['work_data_invocation_attempt']})
+                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                  (TaskState.ERROR.value,
+                                   state_details,
+                                   task_row['id']))
+                total_state_changes += 1
+                ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
+                self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
+                continue
+            #
+            requirements_clause_sql: str = task_row["_invoc_requirement_clause"]
+            requirements_clause_dict = None
+            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:
+                requirements_clause_dict = json.loads(requirements_clause_sql[splitpos + 3:])
+                requirements_clause_sql = requirements_clause_sql[:splitpos]
+
+            # we cache (for this for loop only) query results for particular requirements
+            if requirements_clause_sql in requirements_to_worker_ids_cache:
+                self.__logger.debug('submitter using cached worker selection')
+                worker_ids = requirements_to_worker_ids_cache[requirements_clause_sql]
+            else:  # not cached
+                try:
+                    self.__logger.debug('submitter selecting worker')
+                    async with con.execute(f'SELECT workers.id from workers '
+                                           f'INNER JOIN resources ON workers.hwid=resources.hwid '
+                                           f'WHERE state == ? AND ( {requirements_clause_sql} ) ORDER BY RANDOM()', (WorkerState.IDLE.value,)) as worcur:
+                        worker_ids = [x['id'] for x in await worcur.fetchall()]
+                    requirements_to_worker_ids_cache[requirements_clause_sql] = worker_ids
+                except aiosqlite.Error as e:  # wait, how can this happen?
+                    state_details = json.dumps({'message': traceback.format_exc(),
+                                                'happened_at': task_row['state'],
+                                                'type': 'exception',
+                                                'exception_str': str(e),
+                                                'exception_type': str(type(e))})
+                    await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                      (TaskState.ERROR.value,
+                                       state_details,
+                                       task_row['id']))
+                    total_state_changes += 1
+                    ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
+                    self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
+                    continue
+
+            if len(worker_ids) == 0:  # nothing available
+                continue
+
+            banned_hwids = set(self.scheduler.data_access.get_suspended_hwids(task_row['id']))
+            # note that there might be no implicit transaction here yet, so previously selected
+            # worker might have changed states between that select and this update
+            # so we doublecheck in a transaction
+            if not con.in_transaction:
+                await con.execute('BEGIN IMMEDIATE')
+            worker = None
+            for worker_id in worker_ids:
+                async with con.execute('SELECT "id", "state", "hwid", "last_address" FROM workers WHERE "id" == ?', (worker_id,)) as worcur:
+                    worker = await worcur.fetchone()
+                actual_state = worker['state']
+                if actual_state != WorkerState.IDLE.value:
+                    self.__logger.debug(f'submitter: worker changed state (to {actual_state}) while trying to submit, skipping')
+                    # we add to retry list, and we don't care to limit it,
+                    # cuz this code is only reachable if we were NOT in a transaction, and now we are
+                    worker = None
+                    continue
+                if worker['hwid'] in banned_hwids:
+                    worker = None
+                    continue
+                # remove it from cache
+                worker_ids.remove(worker_id)
+                break
+            if worker is None:
+                continue
+
+            await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
+                              (TaskState.INVOKING.value, task_row['id']))
+            total_state_changes += 1
+            ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.INVOKING))  # for ui event
+            await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
+                              (WorkerState.INVOKING.value, worker['id']))
+            # set resource usage straight away
+            try:
+                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
+            except NotEnoughResources:
+                self.__logger.warning(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
+                continue
+
+            submitters.append(self._submitter(dict(task_row), dict(worker)))
+            self.__logger.debug('submitter scheduled')
+        # ui event
+        if ui_task_deltas:
+            con.add_after_commit_callback(
+                self.scheduler.ui_state_access.scheduler_reports_tasks_updated, ui_task_deltas
+            )
+        #
+        await con.commit()
+        for coro in submitters:
+            tasks_to_wait.add(asyncio.create_task(coro))
+
+        return total_state_changes
 
     # helpers
 
