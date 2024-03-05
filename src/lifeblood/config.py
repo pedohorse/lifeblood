@@ -83,7 +83,7 @@ class Config:
 
         self.__config_paths_to_check = [config_path]
         if configd_path.exists() and configd_path.is_dir():
-            self.__config_paths_to_check.extend(configd_path.iterdir())
+            self.__config_paths_to_check.extend(sorted(filepath for filepath in configd_path.iterdir() if filepath.suffix == '.toml'))
 
         self.__stuff = {}
 
