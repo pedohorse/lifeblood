@@ -22,7 +22,7 @@ async def foowait(*args, **kwargs):
     await asyncio.sleep(1.0)
     print("mock_waiting done")
     foowait_call_count += 1
-    return TaskScheduleStatus.SUCCESS
+    return TaskScheduleStatus.SUCCESS, '', ''
 
 
 @contextmanager
