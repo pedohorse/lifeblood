@@ -20,7 +20,7 @@ jobs:
     outputs:
       tag: ${{ steps.derive_tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           path: repo
           fetch-depth: 0  # to fetch all history, not just a single commit

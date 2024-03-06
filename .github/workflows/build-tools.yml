@@ -16,7 +16,7 @@ jobs:
       - name: "install dependencies"
         run: |
           apt install -y zip rsync bash
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: "build houdini plugin"
         run: |
           export PATH=/opt/houdini/build:$PATH
@@ -32,7 +32,7 @@ jobs:
   build_blender_tools:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: "build blender addon"
         run: |
           export PATH=/opt/houdini/build:$PATH
