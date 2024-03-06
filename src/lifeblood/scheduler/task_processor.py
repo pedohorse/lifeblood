@@ -793,8 +793,8 @@ class TaskProcessor(SchedulerComponentBase):
         total_state_changes = 0
         submitters = []
         # there may be a lot of similar queries, and if there's nothing available at some point - we may just leave it for next submission iteration
-        # and anyway - if transaction has already started - there won't be any new idle worker, since sqlite block everything
-        requirements_to_worker_ids_cache = {}
+        # and anyway - if transaction has already started - there wont be any new idle worker, since sqlite block everything
+        where_empty_cache = set()
         ui_task_deltas = []  # for ui event
         task_rows_to_retry = []
         for task_row in itertools.chain(all_task_rows, task_rows_to_retry):
@@ -819,61 +819,60 @@ class TaskProcessor(SchedulerComponentBase):
             if (splitpos := requirements_clause_sql.rfind(':::')) > -1:
                 requirements_clause_dict = json.loads(requirements_clause_sql[splitpos + 3:])
                 requirements_clause_sql = requirements_clause_sql[:splitpos]
-
-            # we cache (for this for loop only) query results for particular requirements
-            if requirements_clause_sql in requirements_to_worker_ids_cache:
-                self.__logger.debug('submitter using cached worker selection')
-                worker_ids = requirements_to_worker_ids_cache[requirements_clause_sql]
-            else:  # not cached
-                try:
-                    self.__logger.debug('submitter selecting worker')
-                    async with con.execute(f'SELECT workers.id from workers '
-                                           f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                           f'WHERE state == ? AND ( {requirements_clause_sql} ) ORDER BY RANDOM()', (WorkerState.IDLE.value,)) as worcur:
-                        worker_ids = [x['id'] for x in await worcur.fetchall()]
-                    requirements_to_worker_ids_cache[requirements_clause_sql] = worker_ids
-                except aiosqlite.Error as e:  # wait, how can this happen?
-                    state_details = json.dumps({'message': traceback.format_exc(),
-                                                'happened_at': task_row['state'],
-                                                'type': 'exception',
-                                                'exception_str': str(e),
-                                                'exception_type': str(type(e))})
-                    await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
-                                      (TaskState.ERROR.value,
-                                       state_details,
-                                       task_row['id']))
-                    total_state_changes += 1
-                    ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
-                    self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
-                    continue
-
-            if len(worker_ids) == 0:  # nothing available
+            if requirements_clause_sql in where_empty_cache:
                 continue
-
-            banned_hwids = set(self.scheduler.data_access.get_suspended_hwids(task_row['id']))
+            try:
+                self.__logger.debug('submitter selecting worker')
+                # we get total for further optimizations
+                async with con.execute(f'SELECT COUNT(workers.id) as "total" from workers '
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
+                                       f'WHERE state == ? AND ( {requirements_clause_sql} )', (WorkerState.IDLE.value,)) as worcur:
+                    potential_count = (await worcur.fetchone())['total']
+                # actual selecting workers
+                async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
+                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) '
+                                       f'AND workers.hwid NOT IN ({",".join(str(x) for x in self.scheduler.data_access.get_suspended_hwids(task_row["id"]))}) '
+                                       f'ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
+                    worker = await worcur.fetchone()
+            except aiosqlite.Error as e:  # wait, how can this happen?
+                state_details = json.dumps({'message': traceback.format_exc(),
+                                            'happened_at': task_row['state'],
+                                            'type': 'exception',
+                                            'exception_str': str(e),
+                                            'exception_type': str(type(e))})
+                await con.execute('UPDATE tasks SET "state" = ?, "state_details" = ? WHERE "id" = ?',
+                                  (TaskState.ERROR.value,
+                                   state_details,
+                                   task_row['id']))
+                total_state_changes += 1
+                ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.ERROR, state_details=state_details))  # for ui event
+                self.__logger.exception(f'error matching workers for the task {task_row["id"]}')
+                continue
+            if potential_count == 0:  # nothing available
+                where_empty_cache.add(requirements_clause_sql)
+            if worker is None:
+                self.__logger.debug('submitter: no worker available')
+                continue
             # note that there might be no implicit transaction here yet, so previously selected
             # worker might have changed states between that select and this update
             # so we doublecheck in a transaction
             if not con.in_transaction:
                 await con.execute('BEGIN IMMEDIATE')
-            worker = None
-            for worker_id in worker_ids:
-                async with con.execute('SELECT "id", "state", "hwid", "last_address" FROM workers WHERE "id" == ?', (worker_id,)) as worcur:
-                    worker = await worcur.fetchone()
-                actual_state = worker['state']
-                if actual_state != WorkerState.IDLE.value:
-                    self.__logger.debug(f'submitter: worker changed state (to {actual_state}) while trying to submit, skipping')
-                    # we add to retry list, and we don't care to limit it,
-                    # cuz this code is only reachable if we were NOT in a transaction, and now we are
-                    worker = None
-                    continue
-                if worker['hwid'] in banned_hwids:
-                    worker = None
-                    continue
-                # remove it from cache
-                worker_ids.remove(worker_id)
-                break
-            if worker is None:
+                async with con.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker['id'],)) as worcur:
+                    actual_state = (await worcur.fetchone())['state']
+                    if actual_state != WorkerState.IDLE.value:
+                        self.__logger.debug(f'submitter: worker changed state (to {actual_state}) while trying to submit, skipping')
+                        # we add to retry list, and we don't care to limit it,
+                        # cuz this code is only reachable if we were NOT in a transaction, and now we are
+                        task_rows_to_retry.append(task_row)
+                        continue
+
+            # set resource usage straight away
+            try:
+                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
+            except NotEnoughResources:
+                self.__logger.error(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
                 continue
 
             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
@@ -882,12 +881,6 @@ class TaskProcessor(SchedulerComponentBase):
             ui_task_deltas.append(TaskDelta(task_row['id'], state=TaskState.INVOKING))  # for ui event
             await con.execute('UPDATE workers SET state = ? WHERE "id" = ?',
                               (WorkerState.INVOKING.value, worker['id']))
-            # set resource usage straight away
-            try:
-                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
-            except NotEnoughResources:
-                self.__logger.warning(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
-                continue
 
             submitters.append(self._submitter(dict(task_row), dict(worker)))
             self.__logger.debug('submitter scheduled')
