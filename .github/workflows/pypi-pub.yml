@@ -14,7 +14,7 @@ jobs:
           - lifeblood_viewer
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -28,7 +28,7 @@ jobs:
           VER=${VER:1}
           sed -i "s/version = 0.3.0/version = $VER/g" setup.cfg
           ./build_pypi.sh
-      - uses: actions/upload-artifact@master
+      - uses: actions/upload-artifact@4
         with:
           name: build_${{ matrix.build_thing }}
           path: |
@@ -55,9 +55,6 @@ jobs:
         with:
           files:
             tools/*/*
-          append_body: true
-          body: |
-            corresponds to release https://pypi.org/project/lifeblood/${{ env.PYPIVER }}/
 
   publish:
     runs-on: "ubuntu-latest"
@@ -68,7 +65,7 @@ jobs:
           - lifeblood
           - lifeblood_viewer
     steps:
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
       - name: "install requirements"
@@ -83,3 +80,21 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_RELEASE }}
         run: |
           python -m twine upload --repository pypi -u __token__ stuff/*
+
+  notify:
+    uses: ./.github/workflows/release-notify.yml
+    secrets:
+      TELEGRAM_INFO_BOT_ID: ${{ secrets.TELEGRAM_INFO_BOT_ID }}
+      TELEGRAM_INFO_CHANNEL_ID: ${{ secrets.TELEGRAM_INFO_CHANNEL_ID }}
+    with:
+      message_prepend: "🩸 Lifeblood update ${{ github.ref_name }}!\n\n"
+      message_body_command: "git tag -l --format='%(contents)' ${{ github.ref_name }}"
+      message_append: |-
+
+        https://github.com/${{ github.repository}}/releases/tag/${{ github.ref_name }}
+        https://pypi.org/project/lifeblood/
+        https://pypi.org/project/lifeblood-viewer/
+
+        #lifeblood
+
+    needs: [ "make_release" ]

@@ -1,8 +1,8 @@
 [Documentation](https://pedohorse.github.io/lifeblood)
 
-|master|dev|
-|---|---|
-|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=master)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|[![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)<br>[![Tests windows](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/tests-win.yml)|
+| dev                                                                                                                                                                         |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
 
 ![](icon/lifeblood.svg)
 
@@ -24,6 +24,8 @@ This system overview should be very familiar to anyone who saw at least one rend
 
 check [documentation here](https://pedohorse.github.io/lifeblood)  
 and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
+
+## UNDER DEVELOPMENT
 
 ### Features:
 - instantly and easily deployable
@@ -48,5 +50,8 @@ There are multiple ways to get Lifeblood to try it out, refer to [installation s
 
 In short - easiest way is to use [Lifeblood-Manager](https://github.com/pedohorse/lifeblood-manager/releases), as described in the docs
 
-## UNDER DEVELOPMENT
+## Links
 
+- [blog + support](https://www.patreon.com/xapkohheh)
+- [telegram support/discussion group](https://t.me/+v9klFGZcKVY2MjYy)
+- [documentation](https://pedohorse.github.io/lifeblood)
