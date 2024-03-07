@@ -5,6 +5,8 @@ import struct
 import json
 from dataclasses import dataclass
 from ..db_misc import sql_init_script
+from ..expiring_collections import ExpiringValuesSetMap
+from ..config import get_config
 from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
@@ -12,7 +14,7 @@ from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 SCHEDULER_DB_FORMAT_VERSION = 2
 
@@ -50,6 +52,10 @@ class DataAccess:
         #
 
         self.__task_blocking_values: Dict[int, int] = {}
+        # on certain submission errors we might want to ban hwid for some time, as it can be assumed
+        # that consecutive submission attempts will result in the same error (like package resolution error)
+        self.__banned_hwids_per_task: ExpiringValuesSetMap = ExpiringValuesSetMap()
+        self.__ban_time = get_config('scheduler').get_option_noasync('data_access.hwid_ban_timeout', 10)
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
@@ -194,7 +200,18 @@ class DataAccess:
         # And we ensure it is done within a transaction
         self.__task_blocking_values.pop(task_id)
 
+    #
+
+    def suspend_hwid(self, task_id: int, hwid: int):
+        self.__banned_hwids_per_task.add_expiring_value(task_id, hwid, self.__ban_time)
+
     # task query
+
+    def get_suspended_hwids(self, task_id: int) -> Iterable[int]:
+        return self.__banned_hwids_per_task.get_values(task_id, prune=True)
+
+    def prune_suspended_hwids(self):
+        self.__banned_hwids_per_task.prune()
 
     async def is_task_blocked(self, task_id: int, *, con: Optional[aiosqlite.Connection] = None) -> bool:
         """

@@ -86,21 +86,32 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
         except AlreadyRunning:
             self.__logger.debug('BUSY. rejecting task')
             reply['status'] = TaskScheduleStatus.BUSY.value
+            reply['message'] = 'worker already working on a task'
         except ResolutionImpossibleError:
             self.__logger.info('Worker failed to resolve required environment. rejecting task')
             reply['status'] = TaskScheduleStatus.FAILED.value
+            reply['message'] = 'failed to resolve requested environment'
+            reply['error_class'] = 'environment_resolver'
         except ProcessInitializationError:
             self.__logger.info('Failed to initialize payload process. rejecting task')
             reply['status'] = TaskScheduleStatus.FAILED.value
-        except NotEnoughResources:
+            reply['message'] = 'failed to start the process'
+            reply['error_class'] = 'spawn'
+        except NotEnoughResources:  # currently not raised by worker
             self.__logger.warning('Not enough resources (this is unusual error - scheduler should know our resources). rejecting task')
             reply['status'] = TaskScheduleStatus.FAILED.value
+            reply['message'] = 'not enough resources'
+            reply['error_class'] = 'resources'
         except WorkerNotAvailable:
             self.__logger.warning('Got a task, but Worker is not available. Most probably is stopping right now')
             reply['status'] = TaskScheduleStatus.FAILED.value
+            reply['message'] = 'worker is stopping'
+            reply['error_class'] = 'stopping'
         except Exception as e:
             self.__logger.exception('no, cuz %s', e)
             reply['status'] = TaskScheduleStatus.FAILED.value
+            reply['message'] = f'error happened: {e}'
+            reply['error_class'] = 'exception'
 
         await client.send_message_as_json(reply)
 
@@ -222,7 +233,7 @@ class WorkerControlClient:
         data_json = await reply_message.message_body_as_json()
         return WorkerPingReply(data_json['ps']), float(data_json['pv'])
 
-    async def give_task(self, task: invocationjob.InvocationJob, reply_address: Optional[AddressChain] = None) -> TaskScheduleStatus:
+    async def give_task(self, task: invocationjob.InvocationJob, reply_address: Optional[AddressChain] = None) -> Tuple[TaskScheduleStatus, str, str]:
         """
         if reply_address is not given - message source address will be used
         """
@@ -232,7 +243,7 @@ class WorkerControlClient:
         })
 
         reply = await (await self.__client.receive_message()).message_body_as_json()
-        return TaskScheduleStatus(reply['status'])
+        return TaskScheduleStatus(reply['status']), reply.get('error_class', ''), reply.get('message', '')
 
     async def quit_worker(self):
         await self.__client.send_command('quit', {})
