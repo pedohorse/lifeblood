@@ -21,7 +21,7 @@ class PropertyMock(mock.PropertyMock):
         self(obj, val)
 
 
-class StandardEnvResTest(unittest.TestCase):
+class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
     _stash = None
     @classmethod
     def setUpClass(cls) -> None:
@@ -33,10 +33,10 @@ class StandardEnvResTest(unittest.TestCase):
         if cls._stash is not None:
             os.environ['LIFEBLOOD_CONFIG_LOCATION'] = cls._stash
 
-    def test_one(self):
+    async def test_one(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
+        env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", origenv.get('PATH', ''), "/whatever/you/want/to/append"]),
@@ -48,11 +48,11 @@ class StandardEnvResTest(unittest.TestCase):
             env['PYTHONPATH']
         )
 
-    def test_two(self):
+    async def test_two(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
-                                   'package.assmouth': '~=2.3.2'})
+        env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
+                                         'package.assmouth': '~=2.3.2'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", "bananus", origenv.get('PATH', ''), "who/are/you", "/whatever/you/want/to/append"]),

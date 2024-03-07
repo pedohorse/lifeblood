@@ -18,21 +18,25 @@ import json
 import inspect
 import pathlib
 import re
+import shutil
 from copy import deepcopy
 from semantic_version import Version, SimpleSpec
 from types import MappingProxyType
 from . import invocationjob, paths, logging
 from .config import get_config
 from .toml_coders import TomlFlatConfigEncoder
-from .process_utils import oh_no_its_windows
+from .process_utils import create_process, oh_no_its_windows
+from .exceptions import ProcessInitializationError
 
-from typing import Dict, Mapping, Optional, Type, Iterable
+from typing import Dict,  Iterable, List, Mapping, Optional, Type
 
 
 _resolvers: Dict[str, Type["BaseEnvironmentResolver"]] = {}  # this should be loaded from plugins
 
 
 def _populate_resolvers():
+    # TODO: This horrible logic needs refactoring. All plugins must be loaded with pluginloader
+    #  everything is tightly coupled here, interdependent... no planing
     for k, v in dict(globals()).items():
         if not inspect.isclass(v) \
                 or not issubclass(v, BaseEnvironmentResolver) \
@@ -53,7 +57,7 @@ class ResolutionImpossibleError(RuntimeError):
 
 class EnvironmentResolverArguments:
     """
-    this class objects specity requirements a task/invocation have for int's worker environment wrapper.
+    this class objects specify requirements a task/invocation have for it's worker environment wrapper.
     """
     def __init__(self, resolver_name=None, arguments: Optional[Mapping] = None):
         """
@@ -86,8 +90,8 @@ class EnvironmentResolverArguments:
     def get_resolver(self):
         return get_resolver(self.__resolver_name)
 
-    def get_environment(self) -> "invocationjob.Environment":
-        return get_resolver(self.name()).get_environment(self.arguments())
+    async def get_environment(self) -> "invocationjob.Environment":
+        return await get_resolver(self.name()).get_environment(self.arguments())
 
     def serialize(self) -> bytes:
         return json.dumps(self.__dict__).encode('utf-8')
@@ -107,7 +111,7 @@ class EnvironmentResolverArguments:
 
 
 class BaseEnvironmentResolver:
-    def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
         """
         this is the main reason for environment wrapper's existance.
         give it your specific arguments
@@ -118,17 +122,48 @@ class BaseEnvironmentResolver:
         """
         raise NotImplementedError()
 
+    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
+        """
+        this should create process, maybe in a special way
 
-class TrivialEnvironmentResolver(BaseEnvironmentResolver):
+        :param arguments: EnvironmentResolverArguments for the resolver
+        :param call_args: what to call: process and arguments
+        :param env: optional environment to launch process in. If None - get_environment should be called
+        :param cwd: current working directory for the process
+        """
+        raise NotImplementedError()
+
+
+class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
+    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
+        if env is None:
+            env = await self.get_environment(arguments)
+
+        if os.path.isabs(call_args[0]):
+            bin_path = call_args[0]
+        else:
+            bin_path = shutil.which(call_args[0], path=env.get('PATH'))
+        if bin_path is None:
+            raise ProcessInitializationError(f'"{call_args[0]}" was not found. Check environment resolver arguments and system setup')
+
+        if cwd is None:
+            cwd = os.path.dirname(bin_path)
+
+        return await create_process(call_args, env, cwd)
+
+
+class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolver):
     """
     trivial environment wrapper does nothing
     """
-    def get_environment(self, arguments: dict) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
         env = invocationjob.Environment(os.environ)
+        for key, value in arguments.items():
+            env[key] = value
         return env
 
 
-class StandardEnvironmentResolver(BaseEnvironmentResolver):
+class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolver):
     """
     will initialize environment based on requested software versions and it's own config
     will raise ResolutionImpossibleError if he doesn't know how to resolve given configuration
@@ -162,7 +197,7 @@ class StandardEnvironmentResolver(BaseEnvironmentResolver):
             self.logger.error('environment resolver configs found, but all have errors! Aborting!')
             raise RuntimeError('all resolver configs are broken')
 
-    def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
         """
 
         :param arguments: are expected to be in format of package_name: version_specification
@@ -377,21 +412,21 @@ def main(args):
 
     opts = parser.parse_args(args)
 
+    logger = logging.get_logger('environment resolver')
+    logger.info('auto detecting packages...')
     packages = StandardEnvironmentResolver.autodetect_software()
     if opts.basepath:
         for basepath in opts.basepath.split(','):
             packages.update(StandardEnvironmentResolver.autodetect_software(basepath))
+    for pkgname, v in packages.items():
+        for verstr in v.keys():
+            logger.info(f'found {pkgname} : {verstr}')
 
     if opts.command == 'generate':
         config = get_config('standard_environment_resolver')
         if opts.output:
             config.override_config_save_location(opts.output)
         config.set_toml_encoder_generator(TomlFlatConfigEncoder)
-        logger = logging.get_logger('environment resolver')
-        logger.info('standard environment resolver is used, but no configuration found. auto generating configuration...')
-        for pkgname, v in packages.items():
-            for verstr in v.keys():
-                logger.info(f'found {pkgname} : {verstr}')
 
         if opts.override:  # do full config override
             config.set_option_noasync('packages', packages)
@@ -413,6 +448,7 @@ def main(args):
                 config.set_option_noasync('packages', conf_packages)
 
     elif opts.command == 'scan':
+        print('\n')
         for pkgname, stuff in packages.items():
             print(f'{pkgname}:')
             for ver, meta in stuff.items():

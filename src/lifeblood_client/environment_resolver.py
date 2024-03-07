@@ -8,7 +8,7 @@ import json
 
 class EnvironmentResolverArguments:
     """
-    this class objects specity requirements a task/invocation have for int's worker environment wrapper.
+    this class objects specify requirements a task/invocation have for it's worker environment wrapper.
     """
     def __init__(self, resolver_name=None, arguments=None):
         """
