@@ -14,7 +14,7 @@ from . import logging
 from .nethelpers import get_addr_to, get_localhost, get_hostname
 from .net_classes import WorkerResources
 from .worker_metadata import WorkerMetadata
-from .exceptions import ProcessInitializationError, WorkerNotAvailable, AlreadyRunning,\
+from .exceptions import WorkerNotAvailable, AlreadyRunning, \
     InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationCancelled
 from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
@@ -25,7 +25,7 @@ from .config import get_config
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
 from .paths import config_path
-from .process_utils import create_process, kill_process_tree
+from .process_utils import kill_process_tree
 from .misc import event_set_context
 from .net_messages.address import AddressChain, DirectAddress
 from .net_messages.exceptions import MessageTransferError
@@ -344,10 +344,14 @@ class Worker:
             try:
                 if task.environment_resolver_arguments() is None:
                     config = get_config('worker')
-                    env = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))\
-                        .get_environment(config.get_option_noasync('default_env_wrapper.arguments', {}))
+                    resolver = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))
+                    resolver_arguments = config.get_option_noasync('default_env_wrapper.arguments', {})
                 else:
-                    env = task.environment_resolver_arguments().get_environment()
+                    env_res_args = task.environment_resolver_arguments()
+                    resolver = env_res_args.get_resolver()
+                    resolver_arguments = env_res_args.arguments()
+
+                env = await resolver.get_environment(resolver_arguments)
             except environment_resolver.ResolutionImpossibleError as e:
                 self.__logger.error(f'cannot run the task: Unable to resolve environment: {str(e)}')
                 raise
@@ -377,14 +381,11 @@ class Worker:
                 # TODO: proper child process priority adjustment should be done, for now it's implemented in constructor.
                 self.__running_process_start_time = time.time()
 
-                if os.path.isabs(args[0]):
-                    bin_path = args[0]
-                else:
-                    bin_path = shutil.which(args[0], path=env.get('PATH'))
-                if bin_path is None:
-                    raise ProcessInitializationError(f'"{args[0]}" was not found. Check environment resolver arguments and system setup')
-
-                self.__running_process: asyncio.subprocess.Process = await create_process(args, env, os.path.dirname(bin_path))
+                self.__running_process: asyncio.subprocess.Process = await resolver.create_process(
+                    resolver_arguments,
+                    args,
+                    env=env
+                )
             except Exception as e:
                 self.__logger.exception('task creation failed with error: %s' % (repr(e),))
                 raise
