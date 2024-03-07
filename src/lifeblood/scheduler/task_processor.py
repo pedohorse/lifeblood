@@ -474,6 +474,7 @@ class TaskProcessor(SchedulerComponentBase):
         """
         some cleanup operations that can be done every once in a rare while
         """
+        self.__logger.debug('performing housekeeping')
         self.scheduler.data_access.prune_suspended_hwids()
 
     #

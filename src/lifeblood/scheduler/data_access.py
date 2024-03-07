@@ -208,7 +208,7 @@ class DataAccess:
     # task query
 
     def get_suspended_hwids(self, task_id: int) -> Iterable[int]:
-        return self.__banned_hwids_per_task.get_values(task_id)
+        return self.__banned_hwids_per_task.get_values(task_id, prune=True)
 
     def prune_suspended_hwids(self):
         self.__banned_hwids_per_task.prune()
