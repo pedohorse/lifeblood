@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest import mock
 from lifeblood import environment_resolver
+from lifeblood_client import environment_resolver as client_environment_resolver
 from lifeblood.invocationjob import Environment
 from lifeblood.toml_coders import TomlFlatConfigEncoder
 import toml
@@ -149,3 +150,23 @@ class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
             print(result)
             self.assertIn('houdini.py3_10', result)
             self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3_10']['19.5.640']['env']['PATH']['prepend'])
+
+
+class TestMainVsClientCompatibility(unittest.TestCase):
+    def test_serde1(self):
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
+        data = client_envarg.serialize()
+        envarg = environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())
+
+    def test_serde1inv(self):
+        envarg = environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
+        data = envarg.serialize()
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())
