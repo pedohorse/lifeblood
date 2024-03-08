@@ -8,7 +8,7 @@ import json
 
 class EnvironmentResolverArguments:
     """
-    this class objects specity requirements a task/invocation have for int's worker environment wrapper.
+    this class objects specify requirements a task/invocation have for it's worker environment wrapper.
     """
     def __init__(self, resolver_name=None, arguments=None):
         """
@@ -30,10 +30,15 @@ class EnvironmentResolverArguments:
         return self.__args
 
     def serialize(self):  # type: () -> bytes
-        return json.dumps(self.__dict__).encode('utf-8')
+        return json.dumps({
+            '_EnvironmentResolverArguments__resolver_name': self.__resolver_name,
+            '_EnvironmentResolverArguments__args': self.__args,
+        }).encode('utf-8')
 
     @classmethod
     def deserialize(cls, data):  # type: (bytes) -> EnvironmentResolverArguments
         wrp = EnvironmentResolverArguments(None)
-        wrp.__dict__.update(json.loads(data.decode('utf-8')))
+        data_dict = json.loads(data.decode('utf-8'))
+        wrp.__resolver_name = data_dict['_EnvironmentResolverArguments__resolver_name']
+        wrp.__args = data_dict['_EnvironmentResolverArguments__args']
         return wrp

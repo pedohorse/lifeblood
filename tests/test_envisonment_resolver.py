@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest import mock
 from lifeblood import environment_resolver
+from lifeblood_client import environment_resolver as client_environment_resolver
 from lifeblood.invocationjob import Environment
 from lifeblood.toml_coders import TomlFlatConfigEncoder
 import toml
@@ -21,7 +22,7 @@ class PropertyMock(mock.PropertyMock):
         self(obj, val)
 
 
-class StandardEnvResTest(unittest.TestCase):
+class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
     _stash = None
     @classmethod
     def setUpClass(cls) -> None:
@@ -33,10 +34,10 @@ class StandardEnvResTest(unittest.TestCase):
         if cls._stash is not None:
             os.environ['LIFEBLOOD_CONFIG_LOCATION'] = cls._stash
 
-    def test_one(self):
+    async def test_one(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
+        env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", origenv.get('PATH', ''), "/whatever/you/want/to/append"]),
@@ -48,11 +49,11 @@ class StandardEnvResTest(unittest.TestCase):
             env['PYTHONPATH']
         )
 
-    def test_two(self):
+    async def test_two(self):
         ser = environment_resolver.StandardEnvironmentResolver()
         origenv = Environment(os.environ)
-        env = ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
-                                   'package.assmouth': '~=2.3.2'})
+        env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
+                                         'package.assmouth': '~=2.3.2'})
 
         self.assertEqual(
             os.pathsep.join(["/path/to/hfs/bin", "/some/other/path/dunno", "bananus", origenv.get('PATH', ''), "who/are/you", "/whatever/you/want/to/append"]),
@@ -149,3 +150,23 @@ class StandardEnvResTest(unittest.TestCase):
             print(result)
             self.assertIn('houdini.py3_10', result)
             self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3_10']['19.5.640']['env']['PATH']['prepend'])
+
+
+class TestMainVsClientCompatibility(unittest.TestCase):
+    def test_serde1(self):
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
+        data = client_envarg.serialize()
+        envarg = environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())
+
+    def test_serde1inv(self):
+        envarg = environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
+        data = envarg.serialize()
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())

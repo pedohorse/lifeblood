@@ -20,9 +20,9 @@ from lifeblood.scheduler.pinger import Pinger
 from lifeblood.pluginloader import PluginNodeDataProvider
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.process_utils import oh_no_its_windows
-from lifeblood.environment_resolver import EnvironmentResolverArguments
+from lifeblood.environment_resolver import EnvironmentResolverArguments, BaseSimpleProcessSpawnEnvironmentResolver
 
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Union
 
 
 plugin_data_provider = PluginNodeDataProvider()
@@ -34,15 +34,24 @@ def create_node(node_type: str, node_name: str, scheduler, node_id):
     return node
 
 
+class FakeResolver(BaseSimpleProcessSpawnEnvironmentResolver):
+    def __init__(self, path_to_bin: str):
+        super().__init__()
+        self.__bin_path = Path(path_to_bin)
+
+    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+        return Environment({**os.environ,
+                            'PATH': os.pathsep.join((str(self.__bin_path), os.environ.get('PATH', ''))),
+                            'PYTHONUNBUFFERED': '1'})
+
+
 class FakeEnvArgs(EnvironmentResolverArguments):
     def __init__(self, path_to_bin: str):
         super().__init__()
         self.__bin_path = Path(path_to_bin)
 
-    def get_environment(self):
-        return Environment({**os.environ,
-                            'PATH': os.pathsep.join((str(self.__bin_path), os.environ.get('PATH', ''))),
-                            'PYTHONUNBUFFERED': '1'})
+    def get_resolver(self):
+        return FakeResolver(self.__bin_path)
 
 
 class PseudoTaskPool:

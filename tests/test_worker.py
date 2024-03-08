@@ -7,6 +7,7 @@ from lifeblood.worker import Worker
 from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
+from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.main_scheduler import create_default_scheduler
 
@@ -53,10 +54,14 @@ class WorkerRunTest(RunningSchedulerTests):
         expected_env.set_variable('asd', 'fgh')
         expected_args = ['arg0', '-1', 'ass']
         job = InvocationJob(expected_args, env=expected_env, invocation_id=1123)
+        job._set_envresolver_arguments(EnvironmentResolverArguments('TrivialEnvironmentResolver', {
+            'wawawa': 1234,
+            'rororo': 'flofloflo',
+        }))
         job._set_task_attributes({'test1': 42, 'TesT2': 'food', '_bad': 2.3, '__bbad': 'no',
                                   'nolists1': [1, 2, 3], 'nolists2': [],
                                   'nodicts1': {'a': 'b'}, 'nodicts2': {}})
-        with mock.patch('lifeblood.worker.create_process') as m,\
+        with mock.patch('lifeblood.environment_resolver.create_process') as m, \
                 mock.patch('shutil.which') as sw:
             sw.return_value = os.path.join(os.getcwd(), 'arg0')
             m.side_effect = Moxecption('expected exception')
@@ -70,13 +75,17 @@ class WorkerRunTest(RunningSchedulerTests):
         print(test_env)
         print(test_cwd)
         self.assertListEqual(expected_args, test_args)
-        self.assertEqual(test_env, {**test_env, **expected_env.resolve()})
+        self.assertDictEqual({**test_env, **expected_env.resolve()}, test_env)
         self.assertEqual(os.getcwd(), test_cwd)
 
         # test that task's attributes were set to env correctly
         self.assertIn('LBATTR_test1', test_env)
         self.assertEqual('42', test_env['LBATTR_test1'])
         self.assertIn('LBATTR_TesT2', test_env)
+        self.assertIn('wawawa', test_env)
+        self.assertIn('rororo', test_env)
+        self.assertEqual('1234', test_env['wawawa'])
+        self.assertEqual('flofloflo', test_env['rororo'])
         self.assertEqual('food', test_env['LBATTR_TesT2'])
         self.assertNotIn('LBATTR__bad', test_env)
         self.assertNotIn('LBATTR_bad', test_env)
