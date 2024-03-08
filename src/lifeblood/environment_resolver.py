@@ -142,7 +142,7 @@ class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
         if os.path.isabs(call_args[0]):
             bin_path = call_args[0]
         else:
-            bin_path = shutil.which(call_args[0], path=env.get('PATH'))
+            bin_path = shutil.which(call_args[0], path=env.get('PATH', ''))
         if bin_path is None:
             raise ProcessInitializationError(f'"{call_args[0]}" was not found. Check environment resolver arguments and system setup')
 
@@ -152,7 +152,24 @@ class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
         return await create_process(call_args, env, cwd)
 
 
-class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolver):
+class BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(BaseSimpleProcessSpawnEnvironmentResolver):
+    # even though lifeblood worker runs with python interpreter - it does NOT expect
+    #  python to be available in run environment. User might want to have multiple versions of packaged python.
+    #  However, simple one user artist might not care, and would just want python code to work without any packages setup.
+    #  So to simplify the life of smaller setup users, this hack was introduced.
+    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
+        """
+        This introduces path to sys.executable if no python is found in PATH, yet `python` is first arg in call_args
+        """
+        if env is None:
+            env = await self.get_environment(arguments)
+        if call_args[0] in ('python', 'python.exe') and shutil.which(call_args[0], path=env.get('PATH', '')) is None:
+            env.append('PATH', os.path.dirname(sys.executable))
+
+        return await super().create_process(arguments, call_args, env=env, cwd=cwd)
+
+
+class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat):
     """
     trivial environment wrapper does nothing
     """
@@ -163,7 +180,7 @@ class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolver):
         return env
 
 
-class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolver):
+class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat):
     """
     will initialize environment based on requested software versions and it's own config
     will raise ResolutionImpossibleError if he doesn't know how to resolve given configuration
