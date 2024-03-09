@@ -338,12 +338,19 @@ class LifebloodViewer(QMainWindow):
         # start
         self.start()
 
+    def resizeEvent(self, event):
+        self.__layout_overlay_items()
+        return super().resizeEvent(event)
+
     @Slot()
     def _show_connection_message(self):
         self.__overlay_connection_message.setText('disconnected. trying to reconnect...')
         self.__overlay_connection_message.resize(self.__overlay_connection_message.sizeHint())
-        self.__overlay_connection_message.move(self.width() // 2 - self.__overlay_connection_message.width() // 2, self.height() * 1 // 6)
+        self.__layout_overlay_items()
         self.__overlay_connection_message.show()
+
+    def __layout_overlay_items(self):
+        self.__overlay_connection_message.move(self.width() // 2 - self.__overlay_connection_message.width() // 2, self.height() * 1 // 6)
 
     @Slot()
     def _hide_connection_message(self):
