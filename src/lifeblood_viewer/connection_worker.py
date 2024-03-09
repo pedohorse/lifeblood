@@ -41,6 +41,8 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     tasks_events_arrived = Signal(object, bool)
     groups_full_update = Signal(object)
     workers_full_update = Signal(object)
+    scheduler_connection_lost = Signal()
+    scheduler_connection_established = Signal()
 
     log_fetched = Signal(int, object, bool, object)
     nodeui_fetched = Signal(int, NodeUi)
@@ -226,6 +228,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def ensure_connected(self) -> bool:
         if self.__client is not None:
             return True
+        self.scheduler_connection_lost.emit()
 
         async def _interrupt_waiter():
             while True:
@@ -299,6 +302,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 break
 
         assert self.__client is not None
+        self.scheduler_connection_established.emit()
         config.set_option_noasync('viewer.last_scheduler_address', f'{sche_addr}:{sche_port}')
         return True
 
