@@ -235,6 +235,10 @@ class LifebloodViewer(QMainWindow):
         self.__node_editor = NodeEditor(db_path, self.__ui_connection_worker)
         self.__group_list = GroupsView()
         self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.__overlay_connection_message = QLabel(self)  # no layout for this one
+        font = self.__overlay_connection_message.font()
+        font.setPixelSize(18)
+        self.__overlay_connection_message.setFont(font)
         # main menu
         mbar: QMenuBar = self.menuBar()
         main_menu = mbar.addMenu('main')
@@ -319,6 +323,8 @@ class LifebloodViewer(QMainWindow):
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiScene)
         self.__ui_connection_worker.groups_full_update.connect(self.update_groups)
+        self.__ui_connection_worker.scheduler_connection_lost.connect(self._show_connection_message)
+        self.__ui_connection_worker.scheduler_connection_established.connect(self._hide_connection_message)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
         self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
@@ -331,6 +337,17 @@ class LifebloodViewer(QMainWindow):
 
         # start
         self.start()
+
+    @Slot()
+    def _show_connection_message(self):
+        self.__overlay_connection_message.setText('disconnected. trying to reconnect...')
+        self.__overlay_connection_message.resize(self.__overlay_connection_message.sizeHint())
+        self.__overlay_connection_message.move(self.width() // 2 - self.__overlay_connection_message.width() // 2, self.height() * 1 // 6)
+        self.__overlay_connection_message.show()
+
+    @Slot()
+    def _hide_connection_message(self):
+        self.__overlay_connection_message.hide()
 
     if mem_debug:
         def _tmlc_print(self):
