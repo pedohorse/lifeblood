@@ -27,7 +27,7 @@ jobs:
           VER=${VER:1}
           sed -i "s/version = 0.3.0/version = $VER/g" setup.cfg
           ./build_pypi.sh
-      - uses: actions/upload-artifact@4
+      - uses: actions/upload-artifact@v4
         with:
           name: build_${{ matrix.build_thing }}
           path: |
