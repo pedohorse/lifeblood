@@ -49,7 +49,7 @@ jobs:
       - run: |
           ls -alR tools
           echo tag would be $TAG
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           files:
