@@ -395,7 +395,7 @@ class UIStateAccessor(SchedulerComponentBase):
                 # print(f'fetch groups: {time.perf_counter() - _dbg}')
                 for task_row in grp_tasks:
                     task = dict(task_row)
-                    task['progress'] = self.__data_access.mem_cache_invocations.get(task['invoc_id'], {}).get('progress', None)
+                    task['progress'] = self.__data_access.get_invocation_progress(task['invoc_id'])
                     task['groups'] = set(task['groups'].split(','))
                     if task['id'] in all_tasks:
                         all_tasks[task['id']]['groups'].update(task['groups'])
@@ -442,7 +442,7 @@ class UIStateAccessor(SchedulerComponentBase):
                                    'GROUP BY workers."id"') as cur:
                 all_workers = {x['id']: x for x in ({**dict(x),
                                                      'last_seen': self.__data_access.mem_cache_workers_state[x['id']]['last_seen'],
-                                                     'progress': self.__data_access.mem_cache_invocations.get(x['invoc_id'], {}).get('progress', None),
+                                                     'progress': self.__data_access.get_invocation_progress(x['invoc_id']),
                                                      'metadata': self.__data_access.get_worker_metadata(x['hwid']),
                                                      } for x in await cur.fetchall())}
                 for worker_data in all_workers.values():
