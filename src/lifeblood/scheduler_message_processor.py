@@ -40,6 +40,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             'worker.dropped': self._command_dropped,
             'worker.hello': self._command_hello,
             'worker.bye': self._command_bye,
+            'worker.progress_report': self._command_progress_report,
             'forward_invocation_message': self._command_forward_invocation_message,
         }
 
@@ -85,6 +86,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
 
         stdout = args['stdout']
         stderr = args['stderr']
+        self._logger.debug('command: worker done invoc %s', task.invocation_id())
         await self.__scheduler.task_done_reported(task, stdout, stderr)
         await client.send_message_as_json({'ok': True})
 
@@ -99,6 +101,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
 
         stdout = args['stdout']
         stderr = args['stderr']
+        self._logger.debug('command: worker dropped invoc %s', task.invocation_id())
         await self.__scheduler.task_cancel_reported(task, stdout, stderr)
         await client.send_message_as_json({'ok': True})
 
@@ -118,6 +121,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         workertype: WorkerType = WorkerType(args['worker_type'])
         res_data = args['worker_res'].encode('latin1')
 
+        self._logger.debug('command: worker hello %s', addr)
         worker_hardware: WorkerResources = WorkerResources.deserialize(res_data)
         await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
         await client.send_message_as_json({'db_uid': self.__scheduler.db_uid()})
@@ -132,7 +136,18 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             ok: ok is ok
         """
         addr = args['worker_addr']
+        self._logger.debug('command: worker bye %s', addr)
         await self.__scheduler.worker_stopped(addr)
+        await client.send_message_as_json({'ok': True})
+
+    async def _command_progress_report(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        worker reports progress on currently running invocation
+        """
+        invoc_id = args['invocation_id']
+        progress = args['progress']
+        self._logger.debug('command: update progress of %d to %f', invoc_id, progress)
+        await self.__scheduler.update_invocation_progress(invoc_id, progress)
         await client.send_message_as_json({'ok': True})
 
     async def _command_pulse3way(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
@@ -334,6 +349,14 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
             'task': (await task.serialize_async()).decode('latin1'),
             'stdout': stdout,
             'stderr': stderr
+        })
+        reply = await self.__client.receive_message()
+        assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
+
+    async def report_invocation_progress(self, invocation_id: int, progress: float):
+        await self.__client.send_command('worker.progress_report', {
+            'invocation_id': invocation_id,
+            'progress': progress,
         })
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
