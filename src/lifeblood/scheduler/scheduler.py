@@ -1623,8 +1623,8 @@ class Scheduler(NodeGraphHolderBase):
             con.row_factory = aiosqlite.Row
             logs = {}
             self.__logger.debug(f'fetching log metadata for {task_id}')
-            async with con.execute('SELECT "id", node_id, runtime, worker_id, state, return_code from "invocations" WHERE "task_id" = ?',
-                                   (task_id, )) as cur:
+            async with con.execute('SELECT "id", node_id, runtime, worker_id, state, return_code from "invocations" WHERE "state" != ? AND "task_id" == ?',
+                                   (InvocationState.INVOKING.value, task_id)) as cur:
                 async for entry in cur:
                     node_id = entry['node_id']
                     logs.setdefault(node_id, []).append(IncompleteInvocationLogData(
