@@ -22,10 +22,10 @@ class Pinger(SchedulerComponentBase):
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
         config = get_config('scheduler')
 
-        self.__ping_interval = config.get_option_noasync('scheduler.pinger.ping_interval', 1)  # inverval for active workers (workers doing work)
-        self.__ping_idle_interval = config.get_option_noasync('scheduler.pinger.ping_idle_interval', 10)  # interval for idle workers
-        self.__ping_off_interval = config.get_option_noasync('scheduler.pinger.ping_off_interval', 30)  # interval for off/errored workers  (not really used since workers need to report back first)
-        self.__dormant_mode_ping_interval_multiplier = config.get_option_noasync('scheduler.pinger.dormant_ping_multiplier', 6)
+        self.__ping_interval = config.get_option_noasync('scheduler.pinger.ping_interval', 10)  # interval for active workers (workers doing work)
+        self.__ping_idle_interval = config.get_option_noasync('scheduler.pinger.ping_idle_interval', 30)  # interval for idle workers
+        self.__ping_off_interval = config.get_option_noasync('scheduler.pinger.ping_off_interval', 60)  # interval for off/errored workers  (not really used since workers need to report back first)
+        self.__dormant_mode_ping_interval_multiplier = config.get_option_noasync('scheduler.pinger.dormant_ping_multiplier', 5)
         self.__ping_interval_mult = 1
 
     def _main_task(self):
@@ -143,22 +143,7 @@ class Pinger(SchedulerComponentBase):
             if ping_code == WorkerPingReply.IDLE:  # TODO, just like above - add warnings, but leave solving to worker
                 pass
             elif ping_code == WorkerPingReply.BUSY:
-                # in this case received pvalue is current task's progress. u cannot rely on it's precision: some invocations may not support progress reporting
-                # TODO: think, can there be race condition here so that worker is already doing something else?
-                inv_id = None
-                async with con.execute('SELECT "id", task_id FROM invocations WHERE "state" = ? AND "worker_id" = ?', (InvocationState.IN_PROGRESS.value, worker_row['id'])) as invcur:
-                    inv_row = await invcur.fetchone()
-                    if inv_row is not None:
-                        inv_id = inv_row['id']
-                        task_id = inv_row['task_id']
-                if inv_id is not None:
-                    if inv_id not in self.scheduler.data_access.mem_cache_invocations:
-                        self.scheduler.data_access.mem_cache_invocations[inv_id] = {}
-                    progress_changed = self.scheduler.data_access.mem_cache_invocations[inv_id].get('progress') != pvalue
-                    if progress_changed:
-                        self.scheduler.data_access.mem_cache_invocations[inv_id].update({'progress': pvalue})  # Note: this in theory AND IN PRACTICE causes racing with del on task finished/cancelled.
-                        self.scheduler.ui_state_access.scheduler_reports_task_updated(TaskDelta(task_id, progress=pvalue))
-                    # Therefore additional cleanup needed later - still better than lock things or check too hard
+                pass
 
             else:
                 raise NotImplementedError(f'not a known ping_code {ping_code}')
