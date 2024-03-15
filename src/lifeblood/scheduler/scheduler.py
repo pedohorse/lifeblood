@@ -641,8 +641,7 @@ class Scheduler(NodeGraphHolderBase):
                                   (task.invocation_id(),))
                 tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
 
-            if task.invocation_id() in self.data_access.mem_cache_invocations:
-                del self.data_access.mem_cache_invocations[task.invocation_id()]
+            self.data_access.clear_invocation_progress(task.invocation_id())
 
             ui_task_delta = TaskDelta(invocation['task_id'])  # for ui event
             if task.finished_needs_retry():  # max retry count will be checked by task processor
@@ -722,8 +721,8 @@ class Scheduler(NodeGraphHolderBase):
             async with con.execute('SELECT * FROM invocations WHERE "id" = ?', (task.invocation_id(),)) as incur:
                 invocation = await incur.fetchone()
             assert invocation is not None
-            if task.invocation_id() in self.data_access.mem_cache_invocations:
-                del self.data_access.mem_cache_invocations[task.invocation_id()]
+
+            self.data_access.clear_invocation_progress(task.invocation_id())
 
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?',
                               (WorkerState.IDLE.value, invocation['worker_id']))
@@ -921,6 +920,28 @@ class Scheduler(NodeGraphHolderBase):
 
         await connection.execute(f'UPDATE resources SET {", ".join(f"{k}={v}" for k, v in available_res.items())} WHERE hwid == ?', (hwid,))
         return True
+
+    #
+    #
+    async def update_invocation_progress(self, invocation_id: int, progress: float):
+        """
+        report progress update on invocation that is being worked on
+        there are not too many checks here, as progress report is considered non-vital information,
+        so if such message comes after invocation is finished - it's not big deal
+        """
+        prev_progress = self.data_access.get_invocation_progress(invocation_id)
+        self.data_access.set_invocation_progress(invocation_id, progress)
+        if prev_progress != progress:
+            task_id = None
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                async with con.execute('SELECT task_id FROM invocations WHERE "state" == ? AND "id" == ?',
+                                       (InvocationState.IN_PROGRESS.value, invocation_id,)) as cur:
+                    task_id_row = await cur.fetchone()
+                    if task_id_row is not None:
+                        task_id = task_id_row['task_id']
+            if task_id is not None:
+                self.ui_state_access.scheduler_reports_task_updated(TaskDelta(task_id, progress=progress))
 
     #
     # worker reports it being stopped
@@ -1220,7 +1241,7 @@ class Scheduler(NodeGraphHolderBase):
                         (InvocationState.IN_PROGRESS.value, task_id)) as cur:
                     task_row = await cur.fetchone()
                 if task_row is not None:
-                    progress = self.data_access.mem_cache_invocations.get(task_row['invoc_id'], {}).get('progress', None)
+                    progress = self.data_access.get_invocation_progress(task_row['invoc_id'])
                     con.add_after_commit_callback(
                         self.ui_state_access.scheduler_reports_task_added,
                         TaskData(task_id, task_row['parent_id'], task_row['children_count'], task_row['active_children_count'], TaskState(task_row['state']),
