@@ -120,6 +120,38 @@ class DataAccess:
             new_id = newcur.lastrowid
         return new_id
 
+    async def housekeeping(self):
+        """
+        i don't like this explicit cleanup
+        TODO: when all db manipulation is moved to data_access - there should be no need for this crap
+        """
+        await self.__prune_cached_invocation_progress()
+
+    #
+    async def __prune_cached_invocation_progress(self):
+        async with self.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute('SELECT "id" FROM invocations WHERE state == ?',
+                                   (InvocationState.IN_PROGRESS.value,)) as inv:
+                filtered_invocs = set(x['id'] for x in await inv.fetchall())
+        for inv in tuple(self.mem_cache_invocations.keys()):
+            if inv not in filtered_invocs:  # Note: since task finish/cancel reporting is in the same thread as this - there will not be race conditions for del, as there's no await
+                self.clear_invocation_progress(inv)
+
+    def clear_invocation_progress(self, invocation_id: int):
+        if invocation_id in self.mem_cache_invocations:
+            self.mem_cache_invocations.pop(invocation_id)
+
+    def set_invocation_progress(self, invocation_id: int, progress: float):
+        self.mem_cache_invocations.setdefault(invocation_id, {})['progress'] = progress
+
+    def get_invocation_progress(self, invocation_id: int) -> Optional[float]:
+        """
+        None is returned if there is no data for progress for given invocation_id
+        """
+        return self.mem_cache_invocations.get(invocation_id, {}).get('progress', None)
+    #
+
     async def hint_task_needs_blocking(self, task_id: int, *, inc_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
         """
         Indicate "intent" that given task needs to be blocked for time being.
