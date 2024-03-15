@@ -477,7 +477,9 @@ class TaskProcessor(SchedulerComponentBase):
         self.__logger.debug('performing housekeeping')
         self.scheduler.data_access.prune_suspended_hwids()
 
-    #
+        # pruning db_cache
+        await self.scheduler.data_access.housekeeping()
+        # prune done
 
     async def task_processor(self):
         # this will hold references to tasks created with asyncio.create_task
@@ -511,18 +513,6 @@ class TaskProcessor(SchedulerComponentBase):
                         if isinstance(v, dict):
                             sz += _gszofdr(v)
                     return sz
-
-                # pruning db_cache
-                async with data_access.data_connection() as con:
-                    con.row_factory = aiosqlite.Row
-                    async with con.execute('SELECT "id" FROM invocations WHERE state == ?',
-                                           (InvocationState.IN_PROGRESS.value,)) as inv:
-                        filtered_invocs = set(x['id'] for x in await inv.fetchall())
-                for inv in tuple(data_access.mem_cache_invocations.keys()):
-                    if inv not in filtered_invocs:  # Note: since task finish/cancel reporting is in the same thread as this - there will not be race conditions for del, as there's no await
-                        del data_access.mem_cache_invocations[inv]
-                filtered_invocs.clear()
-                # prune done
 
                 self.__logger.debug(f'size of temp db cache: {_gszofdr({1: data_access.mem_cache_invocations, 2: data_access.mem_cache_workers_resources, 3: data_access.mem_cache_workers_state})}')
                 self.__logger.debug('================================================================')
