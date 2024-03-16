@@ -419,6 +419,8 @@ class Worker:
                 progress_reporting_task = None
                 minimum_progress_reporting_interval = await get_config('worker').get_option('minimum_progress_reporting_interval', 1.0)
                 last_progress_reported_timestamp = time.monotonic() - minimum_progress_reporting_interval
+                last_progress_reported = None
+                last_progress_attempted_to_report = None
 
                 tasks_to_wait = {}
                 try:
@@ -429,7 +431,6 @@ class Worker:
                     tasks_to_wait = {rout_task, rerr_task, done_task, flush_task}
                     while len(tasks_to_wait) != 0:
                         done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
-                        prev_progress = self.__running_task_progress
                         if rout_task in done:
                             buff_line = rout_task.result()
                             progress = self.__running_task.match_stdout_progress(buff_line)
@@ -461,14 +462,17 @@ class Worker:
                                 self.__logger.warning('failed report invocation progress cuz of: %s', e)
                             except Exception as e:
                                 self.__logger.warning('failed report invocation progress, unexpected error: %s', e)
+                            else:
+                                last_progress_reported = last_progress_attempted_to_report
                             progress_reporting_task = None
                             last_progress_reported_timestamp = time.monotonic()
 
                         # report progress if can
-                        if prev_progress != self.__running_task_progress \
+                        if last_progress_reported != self.__running_task_progress \
                                 and progress_reporting_task is None \
                                 and time.monotonic() - last_progress_reported_timestamp > minimum_progress_reporting_interval:
                             progress_reporting_task = asyncio.create_task(self.__helper_report_progress(self.running_invocation().invocation_id(), self.__running_task_progress))
+                            last_progress_attempted_to_report = self.__running_task_progress
 
                         if flush_task in done and not done_task.done():
                             flush_task = asyncio.create_task(_flush())
