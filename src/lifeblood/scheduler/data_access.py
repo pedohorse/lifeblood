@@ -1,3 +1,4 @@
+import sys
 import aiosqlite
 import sqlite3
 import random
@@ -48,7 +49,7 @@ class DataAccess:
         # "public" members
         self.mem_cache_workers_resources: dict = {}
         self.mem_cache_workers_state: dict = {}
-        self.mem_cache_invocations: dict = {}
+        self.__mem_cache_invocations: dict = {}
         #
 
         self.__task_blocking_values: Dict[int, int] = {}
@@ -127,6 +128,22 @@ class DataAccess:
         """
         await self.__prune_cached_invocation_progress()
 
+    def debug_get_cached_data_size(self) -> int:
+        """
+        Returns size in bytes of in-memory cached tables
+        This info is provided for profiling/debugging purposes and is somewhat of an estimation.
+        """
+        def _gszofdr(obj) -> int:
+            sz = sys.getsizeof(obj)
+            for k, v in obj.items():
+                sz += sys.getsizeof(k)
+                sz += sys.getsizeof(v)
+                if isinstance(v, dict):
+                    sz += _gszofdr(v)
+            return sz
+
+        return _gszofdr({1: self.__mem_cache_invocations, 2: self.mem_cache_workers_resources, 3: self.mem_cache_workers_state})
+
     #
     async def __prune_cached_invocation_progress(self):
         async with self.data_connection() as con:
@@ -134,22 +151,22 @@ class DataAccess:
             async with con.execute('SELECT "id" FROM invocations WHERE state == ?',
                                    (InvocationState.IN_PROGRESS.value,)) as inv:
                 filtered_invocs = set(x['id'] for x in await inv.fetchall())
-        for inv in tuple(self.mem_cache_invocations.keys()):
+        for inv in tuple(self.__mem_cache_invocations.keys()):
             if inv not in filtered_invocs:  # Note: since task finish/cancel reporting is in the same thread as this - there will not be race conditions for del, as there's no await
                 self.clear_invocation_progress(inv)
 
     def clear_invocation_progress(self, invocation_id: int):
-        if invocation_id in self.mem_cache_invocations:
-            self.mem_cache_invocations.pop(invocation_id)
+        if invocation_id in self.__mem_cache_invocations:
+            self.__mem_cache_invocations.pop(invocation_id)
 
     def set_invocation_progress(self, invocation_id: int, progress: float):
-        self.mem_cache_invocations.setdefault(invocation_id, {})['progress'] = progress
+        self.__mem_cache_invocations.setdefault(invocation_id, {})['progress'] = progress
 
     def get_invocation_progress(self, invocation_id: int) -> Optional[float]:
         """
         None is returned if there is no data for progress for given invocation_id
         """
-        return self.mem_cache_invocations.get(invocation_id, {}).get('progress', None)
+        return self.__mem_cache_invocations.get(invocation_id, {}).get('progress', None)
     #
 
     async def hint_task_needs_blocking(self, task_id: int, *, inc_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:

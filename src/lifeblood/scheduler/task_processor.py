@@ -505,16 +505,7 @@ class TaskProcessor(SchedulerComponentBase):
                     self.__logger.debug(f'loose threads after cleanup: {len(threading._shutdown_locks)}')
                 self.__logger.debug(f'total tasks: {len(asyncio.all_tasks())}')
 
-                def _gszofdr(obj):
-                    sz = sys.getsizeof(obj)
-                    for k, v in obj.items():
-                        sz += sys.getsizeof(k)
-                        sz += sys.getsizeof(v)
-                        if isinstance(v, dict):
-                            sz += _gszofdr(v)
-                    return sz
-
-                self.__logger.debug(f'size of temp db cache: {_gszofdr({1: data_access.mem_cache_invocations, 2: data_access.mem_cache_workers_resources, 3: data_access.mem_cache_workers_state})}')
+                self.__logger.debug(f'size of temp db cache: {data_access.debug_get_cached_data_size()}')
                 self.__logger.debug('================================================================')
                 self.__logger.debug('========')
 
