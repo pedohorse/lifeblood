@@ -914,7 +914,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
             style.frame_rounding = 4
             style.tab_rounding = 4
 
-        imgui.get_io().display_size = self.rect().size().toTuple()  # rect.size().toTuple()
+        imgui_io = imgui.get_io()
+        imgui_io.display_size = self.rect().size().toTuple()
+        # whether we can or cannot react to screenChange event - depends on system setup
+        #  non-native windows are optimized for drawing, but don't have native reference
+        #  so why not just check scale on every draw? If this proves to be a bottleneck - need to find a better solution
+        imgui_io.display_fb_scale = (self.screen().devicePixelRatio(),) * 2
+
         # start new frame context
         imgui.new_frame()
 
