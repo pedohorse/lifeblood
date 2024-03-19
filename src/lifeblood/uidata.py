@@ -122,7 +122,7 @@ class ParameterHierarchyLeaf(ParameterHierarchyItem):
 def evaluate_expression(expression, context: Optional[ProcessingContext]):
     try:
         return eval(expression,
-                    {'os': os, 'pathlib': pathlib, 'Path': pathlib.Path, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
+                    {'os': os, 're': re, 'pathlib': pathlib, 'Path': pathlib.Path, **{k: getattr(math, k) for k in dir(math) if not k.startswith('_')}},
                     context.locals() if context is not None else {})
     except Exception as e:
         raise ParameterExpressionError(e) from None
@@ -133,6 +133,8 @@ class Separator(ParameterHierarchyLeaf):
 
 
 class Parameter(ParameterHierarchyLeaf):
+    __re_expand_pattern = None
+    __re_escape_backticks_pattern = None
 
     class DontChange:
         pass
@@ -153,8 +155,10 @@ class Parameter(ParameterHierarchyLeaf):
         self.__expression = None
         self.__can_have_expressions = can_have_expression
 
-        self.__re_expand_pattern = re.compile(r'((?<!\\)`.*?(?<!\\)`)')  # TODO: add possibility to escape `
-        self.__re_escape_backticks_pattern = re.compile(r'\\`')
+        if Parameter.__re_expand_pattern is None:
+            Parameter.__re_expand_pattern = re.compile(r'((?<!\\)`.*?(?<!\\)`)')  # TODO: this does NOT cover escaped slash in front of ` (or escaped escaped slash and so on)
+        if Parameter.__re_escape_backticks_pattern is None:
+            Parameter.__re_escape_backticks_pattern = re.compile(r'\\`')
 
         self.__hard_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
         self.__display_borders: Tuple[Optional[Union[int, float]], Optional[Union[int, float]]] = (None, None)
@@ -235,7 +239,7 @@ class Parameter(ParameterHierarchyLeaf):
         # for string parameters we expand expressions in ``, kinda like bash
         parts = self.__re_expand_pattern.split(self.__value)
         for i, part in enumerate(parts):
-            if part.startswith('`'):  # expression
+            if part.startswith('`') and part.endswith('`'):  # expression
                 parts[i] = str(evaluate_expression(self.__re_escape_backticks_pattern.sub('`', part[1:-1]), context))
             else:
                 parts[i] = self.__re_escape_backticks_pattern.sub('`', part)
@@ -403,6 +407,31 @@ class Parameter(ParameterHierarchyLeaf):
 
     def remove_expression(self):
         self.set_expression(None)
+
+    @classmethod
+    def python_from_expandable_string(cls, expandable_string, context: Optional[ProcessingContext] = None) -> str:
+        """
+        given string value that may contain backtick expressions return python equivalent
+        """
+        expression_parts = []
+        parts = cls.__re_expand_pattern.split(expandable_string)
+        for i, part in enumerate(parts):
+            if part.startswith('`') and part.endswith('`'):  # expression
+                maybe_expr = f'({cls.__re_escape_backticks_pattern.sub("`", part[1:-1])})'
+                try:
+                    val = evaluate_expression(maybe_expr, context)
+                    if not isinstance(val, str):
+                        maybe_expr = f'str{maybe_expr}'  # note, maybe_expr is already enclosed in parentheses
+                except ParameterExpressionError:
+                    maybe_expr = '""'
+                expression_parts.append(maybe_expr)
+            else:
+                val = cls.__re_escape_backticks_pattern.sub('`', part)
+                if not val:
+                    continue
+                expression_parts.append(repr(val))
+
+        return ' + '.join(expression_parts)
 
     def _referencing_param_value_changed(self, other_parameter):
         """
