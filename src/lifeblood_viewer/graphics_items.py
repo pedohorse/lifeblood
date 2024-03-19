@@ -728,7 +728,8 @@ class Node(NetworkItemWithUI):
                     if item.can_have_expressions() and not item.has_expression():
                         if imgui.selectable(f'enable expression##{popupid}')[0]:
                             expr_changed = True
-                            new_item_expression = repr(item.value())
+                            # try to turn backtick expressions into normal one
+                            new_item_expression = item.python_from_expandable_string(item.unexpanded_value())
                     if item.has_expression():
                         if imgui.selectable(f'delete expression##{popupid}')[0]:
                             try:
