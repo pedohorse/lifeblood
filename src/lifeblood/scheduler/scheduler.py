@@ -1059,7 +1059,7 @@ class Scheduler(NodeGraphHolderBase):
                 if new_state is None:
                     self.__logger.warning(f'changing node of a task in state {state.name} is not allowed')
                     await con.rollback()
-                    return
+                    raise ValueError(f'changing node of a task in state {state.name} is not allowed')
 
                 await con.execute('UPDATE tasks SET "node_id" = ?, "state" = ? WHERE "id" = ?', (node_id, new_state.value, task_id))
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, node_id=node_id))  # ui event
@@ -1068,6 +1068,7 @@ class Scheduler(NodeGraphHolderBase):
                 await con.commit()
         except aiosqlite.IntegrityError:
             self.__logger.error(f'could not set task {task_id} to node {node_id} because of database integrity check')
+            raise DataIntegrityError() from None
         else:
             self.wake()
             self.poke_task_processor()
@@ -1449,6 +1450,7 @@ class Scheduler(NodeGraphHolderBase):
                 self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
             self.__logger.error(f'could not remove node connection {node_connection_id} because of database integrity check')
+            raise DataIntegrityError() from None
 
     #
     # add node
@@ -1471,7 +1473,7 @@ class Scheduler(NodeGraphHolderBase):
             async with self.node_object_by_id_for_writing(node_id) as node:
                 await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings)
 
-    async def remove_node(self, node_id: int) -> bool:
+    async def remove_node(self, node_id: int):
         try:
             async with self.data_access.data_connection() as con:
                 con.row_factory = aiosqlite.Row
@@ -1481,8 +1483,7 @@ class Scheduler(NodeGraphHolderBase):
                 self.ui_state_access.bump_graph_update_id()
         except aiosqlite.IntegrityError as e:
             self.__logger.error(f'could not remove node {node_id} because of database integrity check')
-            return False
-        return True
+            raise DataIntegrityError('There are invocations (maybe achieved ones) referencing this node') from None
 
     #
     # query connections
