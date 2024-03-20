@@ -422,8 +422,10 @@ class Parameter(ParameterHierarchyLeaf):
                     val = evaluate_expression(maybe_expr, context)
                     if not isinstance(val, str):
                         maybe_expr = f'str{maybe_expr}'  # note, maybe_expr is already enclosed in parentheses
-                except ParameterExpressionError:
-                    maybe_expr = '""'
+                except ParameterExpressionError as e:
+                    # we just catch syntax errors, other runtime errors are allowed as real context is set per task
+                    if isinstance(e.inner_expection(), SyntaxError):
+                        maybe_expr = '""'
                 expression_parts.append(maybe_expr)
             else:
                 val = cls.__re_escape_backticks_pattern.sub('`', part)

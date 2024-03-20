@@ -397,9 +397,10 @@ class UniqueUiParametersCheck(TestCase):
         for expandable_string, expected_expr in (
                 ('`1+3', "'`1+3'"),
                 ('`-`55*3` ', "\"\" + '55*3` '"),
-                ('`1 if flaso else 33`ass', "\"\" + 'ass'"),
+                ('test `a + b` tset', "'test ' + (a + b) + ' tset'"),  # non syntax errors are allowed
+                ('`1 if flaso else 33``1.2.3.`ass', "(1 if flaso else 33) + \"\" + 'ass'"),
                 (r'a"e`""blab"+"wab"`""" \" "\'', "'a\"e' + \"\" + '\"\"\" \\\\\" \"\\\\\\''"),
-                ('q`1+-=2` fe `lofa`!', "'q' + \"\" + ' fe ' + \"\" + '!'")):
+                ('q`1+-=2` fe `1lofa`!', "'q' + \"\" + ' fe ' + \"\" + '!'")):
             node = ListParamTypesNode('lename')
             param = node.param('string_param')
             expr = param.python_from_expandable_string(expandable_string)
