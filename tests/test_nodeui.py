@@ -360,6 +360,52 @@ class UniqueUiParametersCheck(TestCase):
         node.param('string_param').set_value(r'cat `".".join(("dog", "\\" +"\`", "bark"))` and sleeps')
         self.assertEqual(r'cat dog.\`.bark and sleeps', node.param('string_param').value())
 
+    def test_expand_to_python_convert_trivial(self):
+        node = ListParamTypesNode('lename')
+        val = 'sometext_`".".join(("wild","hog"))`)"('
+        expected_expr = '\'sometext_\' + (".".join(("wild","hog"))) + \')"(\''
+
+        node.param('string_param').set_value(val)
+        expand_val = node.param('string_param').value()
+        actual_expr = node.param('string_param').python_from_expandable_string(val)
+        node.param('string_param').set_expression(actual_expr)
+        expr_val = node.param('string_param').value()
+
+        self.assertEqual(expand_val, expr_val)
+        self.assertEqual(expected_expr, actual_expr)
+
+    def test_expand_to_python_convert(self):
+        for expandable_string in (
+                'qwerty',
+                '`1+3`',
+                r'\`-`55*3` ',
+                '`1 if False else 33`ass',
+                r'a"e`"bla\`b"+"wab"`""" \" "\'',
+                '`"vi" + "va"` la `re.sub("qwe", "vol", "qweution")`!!'):
+            node = ListParamTypesNode('lename')
+            param = node.param('string_param')
+            param.set_value(expandable_string)
+            expand_val = param.value()
+            expr = param.python_from_expandable_string(expandable_string)
+            param.set_value('')  # just in case
+            param.set_expression(expr)
+            self.assertTrue(param.has_expression())
+            expr_val = param.value()
+            self.assertEqual(expand_val, expr_val)
+
+    def test_expand_to_python_convert_bad(self):
+        for expandable_string, expected_expr in (
+                ('`1+3', "'`1+3'"),
+                ('`-`55*3` ', "\"\" + '55*3` '"),
+                ('test `a + b` tset', "'test ' + (a + b) + ' tset'"),  # non syntax errors are allowed
+                ('`1 if flaso else 33``1.2.3.`ass', "(1 if flaso else 33) + \"\" + 'ass'"),
+                (r'a"e`""blab"+"wab"`""" \" "\'', "'a\"e' + \"\" + '\"\"\" \\\\\" \"\\\\\\''"),
+                ('q`1+-=2` fe `1lofa`!', "'q' + \"\" + ' fe ' + \"\" + '!'")):
+            node = ListParamTypesNode('lename')
+            param = node.param('string_param')
+            expr = param.python_from_expandable_string(expandable_string)
+            self.assertEqual(expected_expr, expr)
+
     def test_limits(self):
         node = ParametersWithLimitsNode('iamnode')
         self.assertEqual(123, node.param('int_param').value())
