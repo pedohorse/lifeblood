@@ -415,6 +415,13 @@ class Worker:
                     await stderr.flush()
 
                 await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task initialized\n').encode('UTF-8'))
+
+                progress_reporting_task = None
+                minimum_progress_reporting_interval = await get_config('worker').get_option('minimum_progress_reporting_interval', 1.0)
+                last_progress_reported_timestamp = time.monotonic() - minimum_progress_reporting_interval
+                last_progress_reported = None
+                last_progress_attempted_to_report = None
+
                 tasks_to_wait = {}
                 try:
                     rout_task = asyncio.create_task(self.__running_process.stdout.readline())
@@ -425,27 +432,48 @@ class Worker:
                     while len(tasks_to_wait) != 0:
                         done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
                         if rout_task in done:
-                            str = rout_task.result()
-                            progress = self.__running_task.match_stdout_progress(str)
+                            buff_line = rout_task.result()
+                            progress = self.__running_task.match_stdout_progress(buff_line)
                             if progress is not None:
                                 self.__running_task_progress = progress
-                            if str != b'':  # this can only happen at eof
-                                await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + str)
+                            if buff_line != b'':  # this can only happen at eof
+                                await stdout.write(datetime.datetime.now().strftime('[OUT][%H:%M:%S] ').encode('UTF-8') + buff_line)
                                 rout_task = asyncio.create_task(self.__running_process.stdout.readline())
                                 tasks_to_wait.add(rout_task)
                         if rerr_task in done:
-                            str = rerr_task.result()
-                            progress = self.__running_task.match_stderr_progress(str)
+                            buff_line = rerr_task.result()
+                            progress = self.__running_task.match_stderr_progress(buff_line)
                             if progress is not None:
                                 self.__running_task_progress = progress
-                            if str != b'':  # this can only happen at eof
-                                message = datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + str
+                            if buff_line != b'':  # this can only happen at eof
+                                message = datetime.datetime.now().strftime('[ERR][%H:%M:%S] ').encode('UTF-8') + buff_line
                                 await asyncio.gather(
                                     stderr.write(message),
                                     stdout.write(message)
                                 )
                                 rerr_task = asyncio.create_task(self.__running_process.stderr.readline())
                                 tasks_to_wait.add(rerr_task)
+
+                        # check if previous progress reporting task finished
+                        if progress_reporting_task is not None and progress_reporting_task.done():
+                            try:
+                                await progress_reporting_task
+                            except MessageTransferError as e:
+                                self.__logger.warning('failed report invocation progress cuz of: %s', e)
+                            except Exception as e:
+                                self.__logger.warning('failed report invocation progress, unexpected error: %s', e)
+                            else:
+                                last_progress_reported = last_progress_attempted_to_report
+                            progress_reporting_task = None
+                            last_progress_reported_timestamp = time.monotonic()
+
+                        # report progress if can
+                        if last_progress_reported != self.__running_task_progress \
+                                and progress_reporting_task is None \
+                                and time.monotonic() - last_progress_reported_timestamp > minimum_progress_reporting_interval:
+                            progress_reporting_task = asyncio.create_task(self.__helper_report_progress(self.running_invocation().invocation_id(), self.__running_task_progress))
+                            last_progress_attempted_to_report = self.__running_task_progress
+
                         if flush_task in done and not done_task.done():
                             flush_task = asyncio.create_task(_flush())
                             tasks_to_wait.add(flush_task)
@@ -456,6 +484,16 @@ class Worker:
                         task.cancel()
                     raise
                 finally:
+                    # safer to wait for existing progress reporting task than cancel it
+                    #  as cancelling may disrupt network protocol and cause timeout waiting on scheduler side
+                    if progress_reporting_task is not None:
+                        try:
+                            await progress_reporting_task
+                        except MessageTransferError as e:
+                            self.__logger.warning('failed report invocation progress cuz of: %s', e)
+                        except Exception as e:
+                            self.__logger.warning('failed report invocation progress, unexpected error: %s', e)
+                        progress_reporting_task = None
                     # report to the pool
                     if self.__worker_id is not None:
                         try:
@@ -468,6 +506,10 @@ class Worker:
 
         await self.__running_process.wait()
         await self.task_finished()
+
+    async def __helper_report_progress(self, invocation_id: int, progress: float):
+        with SchedulerWorkerControlClient.get_scheduler_control_client(self.__where_to_report, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
+            await client.report_invocation_progress(invocation_id, progress)
 
     def is_task_running(self) -> bool:
         return self.__running_task is not None
