@@ -83,3 +83,17 @@ class InvocationCancelled(RuntimeError):
     and need to be cancelled/stopped
     """
     pass
+
+
+class DataIntegrityError(RuntimeError):
+    """
+    general form of smth like sql integrity error
+    """
+    pass
+
+
+class UiClientOperationFailed(RuntimeError):
+    """
+    indicates that operation requested from ui client failed
+    """
+    pass

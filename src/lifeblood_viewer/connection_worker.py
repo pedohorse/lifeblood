@@ -14,6 +14,7 @@ from lifeblood import logging
 from lifeblood.enums import NodeParameterType, TaskState, TaskGroupArchivedState
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
+from lifeblood.exceptions import UiClientOperationFailed
 from lifeblood.uidata import Parameter
 from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
@@ -59,11 +60,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_custom_settings_saved = Signal(str, str, object)
     node_default_settings_set = Signal(str, object, object)
     node_created = Signal(int, str, str, QPointF, object)
-    nodes_removed = Signal(list, object)
+    nodes_removed = Signal(list, list, object)
     node_renamed = Signal(int, str, object)
     nodes_copied = Signal(dict, QPointF)
-    node_connections_removed = Signal(list, object)
+    node_connections_removed = Signal(list, list, object)
     node_connections_added = Signal(list, object)
+    node_task_set = Signal(int, int, object)  # generic error report, when longop data is not provided
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -739,16 +741,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         assert self.__client is not None
 
         deleted = []
-        try:
-            for node_id in node_ids:
-                if self.__client.remove_node(node_id):
-                    deleted.append(node_id)
-        except ConnectionError as e:
-            logger.error(f'failed {e}')
-        except Exception:
-            logger.exception('problems in network operations')
+        failed = []
+        for node_id in node_ids:
+            try:
+                self.__client.remove_node(node_id)
+                deleted.append(node_id)
+            except UiClientOperationFailed as e:
+                logger.error(f'scheduler failed to perform node removal for {node_id}')
+                failed.append((node_id, str(e)))
+            except ConnectionError as e:
+                logger.error(f'failed {e}')
+                failed.append((node_id, str(e)))
+            except Exception as e:
+                logger.exception('problems in network operations')
+                failed.append((node_id, str(e)))
 
-        self.nodes_removed.emit(deleted, data)  # we need to emit either way to preserve the flow
+        self.nodes_removed.emit(deleted, failed, data)  # we need to emit either way to preserve the flow
 
     @Slot()
     def wipe_node(self, node_id: int):
@@ -828,14 +836,21 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             return
         assert self.__client is not None
 
-        try:
-            for connection_id in connection_ids:
+        deleted = []
+        failed = []
+        for connection_id in connection_ids:
+            try:
                 self.__client.remove_connection_by_id(connection_id)  # TODO: make func that takes a list, batching is better
-        except ConnectionError as e:
-            logger.error(f'failed {e}')
-        except Exception:
-            logger.exception('problems in network operations')
-        self.node_connections_removed.emit(connection_ids, data)
+                deleted.append(connection_id)
+            except UiClientOperationFailed as e:
+                failed.append((connection_id, str(e)))
+            except ConnectionError as e:
+                logger.error(f'failed {e}')
+                failed.append((connection_id, str(e)))
+            except Exception as e:
+                logger.exception('problems in network operations')
+                failed.append((connection_id, str(e)))
+        self.node_connections_removed.emit(deleted, failed, data)
 
     # task control things
     @Slot()
@@ -879,10 +894,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
         try:
             self.__client.set_node_for_task(task_id, node_id)
+        except UiClientOperationFailed as e:
+            logger.error(f'scheduler could not complete the operation')
+            self.node_task_set.emit(-1, -1, str(e))
         except ConnectionError as e:
             logger.error(f'failed {e}')
-        except Exception:
+            self.node_task_set.emit(-1, -1, str(e))
+        except Exception as e:
             logger.exception('problems in network operations')
+            self.node_task_set.emit(-1, -1, str(e))
+        self.node_task_set.emit(task_id, node_id, None)
 
     @Slot()
     def set_task_state(self, task_ids: List[int], state: TaskState):
