@@ -1100,7 +1100,7 @@ class Scheduler(NodeGraphHolderBase):
                         continue
                     cur_state = TaskState(cur_state[0])
                 if cur_state in (TaskState.IN_PROGRESS, TaskState.GENERATING, TaskState.POST_GENERATING):
-                    self.__logger.warning(f'forcing task out of state {cur_state} is not currently implemented')
+                    self.__logger.warning(f'forcing task out of state {cur_state} is not allowed')
                     await con.rollback()
                     continue
 
