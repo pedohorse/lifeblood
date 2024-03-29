@@ -68,7 +68,7 @@ class CreateNodeOp(AsyncSceneOperation):
         longop.set_op_status(None, 'undo create node')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         self.__scene.request_remove_node(node_id, LongOperationData(longop))
-        yield
+        yield  # TODO: shouldn't we check for errors?
         self.__node_sid = None
 
     def __str__(self):
@@ -119,22 +119,25 @@ class RemoveNodesOp(AsyncSceneOperation):
             raise OperationError('some nodes disappeared before operation was done')
         self.__restoration_snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
         self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
-        removed_ids, = yield
+        removed_ids, failed_ids_with_reasons = yield
         # now filter snippet to remove nodes that scheduler failed to remove
-        not_removed = set(node_ids) - set(removed_ids)
-        not_removed_sids = set(self.__scene.get_node(nid).get_session_id() for nid in not_removed)
+        #not_removed = set(node_ids) - set(removed_ids)
+        not_removed_sids = set(self.__scene.get_node(nid).get_session_id() for nid, _ in failed_ids_with_reasons)
+        reasons = '\n'.join(f'- {nid}: {reason}' for nid, reason in failed_ids_with_reasons)
         self.__node_sids = tuple(sid for sid in self.__node_sids if sid not in not_removed_sids)
         op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
-        if len(not_removed) > 0:
+        if len(failed_ids_with_reasons) > 0:
             self.__restoration_snippet.remove_node_temp_ids_from_snippet(not_removed_sids)
             op_result.status = OperationCompletionStatus.PartialSuccess
-            op_result.details = 'scheduler has not deleted some nodes'
+            op_result.details = f'scheduler has not deleted some nodes:\n{reasons}'
 
         # if nothing was deleted:
         if len(self.__restoration_snippet.nodes_data) == 0:
             self.__is_a_noop = True
             op_result.status = OperationCompletionStatus.NotPerformed
             op_result.details = 'scheduler has not deleted any nodes'
+            if reasons:
+                op_result.details += f':\n{reasons}'
 
         self._set_result(op_result)
 
@@ -249,7 +252,7 @@ class AddConnectionOp(AsyncSceneOperation):
             logger.warning('could not perform undo: added connection not found')
             return
         self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
-        yield
+        yield  # TODO: check for errors
 
     def __str__(self):
         return f'Wire Add {self.__out_sid}:{self.__out_name}->{self.__in_sid}:{self.__in_name}'
@@ -278,7 +281,13 @@ class RemoveConnectionOp(AsyncSceneOperation):
             logger.warning(f'could not perform op: added connection not found for {out_id}, {self.__out_name}, {in_id}, {self.__in_name}')
             return
         self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
-        yield
+        _, failed_ids_with_reasons = yield
+        reasons = '\n'.join(f'- {reason}' for _, reason in failed_ids_with_reasons)
+        op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
+        if len(failed_ids_with_reasons) > 0:
+            op_result.status = OperationCompletionStatus.NotPerformed
+            op_result.details = reasons
+        self._set_result(op_result)
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo remove connection')

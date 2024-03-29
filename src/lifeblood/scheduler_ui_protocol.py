@@ -8,7 +8,7 @@ from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, Param
 from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData, InvocationLogData, IncompleteInvocationLogData
 from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
-from .exceptions import NotSubscribedError
+from .exceptions import NotSubscribedError, DataIntegrityError, UiClientOperationFailed
 from .invocationjob import InvocationJob
 from .node_type_metadata import NodeTypeMetadata
 from .taskspawn import NewTask
@@ -203,8 +203,13 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_remove_node():  # elif command == b'removenode':
             node_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            deleted = await self.__scheduler.remove_node(node_id)
-            writer.write(b'\1' if deleted else b'\0')
+            try:
+                await self.__scheduler.remove_node(node_id)
+            except DataIntegrityError as e:
+                writer.write(b'\0')
+                await write_string(f'Failed to remove node as it violates data constraints: {str(e)}')
+            else:
+                writer.write(b'\1')
 
         async def comm_add_node():  # elif command == b'addnode':
             node_type = await read_string()
@@ -495,8 +500,13 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_remove_connection():  # elif command == b'removeconnection':
             connection_id = struct.unpack('>Q', await reader.readexactly(8))[0]
-            await self.__scheduler.remove_node_connection(connection_id)
-            writer.write(b'\1')
+            try:
+                await self.__scheduler.remove_node_connection(connection_id)
+            except DataIntegrityError as e:
+                writer.write(b'\0')
+                await write_string(f'Failed to remove connection as it violates data constraints: {str(e)}')
+            else:
+                writer.write(b'\1')
 
         # task mod
         async def comm_pause_tasks():  # elif command == b'tpauselst':  # pause tasks
@@ -531,8 +541,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
 
         async def comm_task_set_node():  # elif command == b'tsetnode':  # set task node
             task_id, node_id = struct.unpack('>QQ', await reader.readexactly(16))
-            await self.__scheduler.force_set_node_task(task_id, node_id)
-            writer.write(b'\1')
+            try:
+                await self.__scheduler.force_set_node_task(task_id, node_id)
+            except ValueError as e:
+                writer.write(b'\0')
+                await write_string(str(e))
+            except DataIntegrityError as e:
+                writer.write(b'\0')
+                await write_string(f'Failed to set node as it violates data constraints: {str(e)}')
+            else:
+                writer.write(b'\1')
 
         async def comm_task_change_state():  # elif command == b'tcstate':  # change task state
             task_ids = [-1]
@@ -933,12 +951,13 @@ class UIProtocolSocketClient:
         snippet: NodeSnippetData = NodeSnippetData.deserialize(r.readexactly(btlen))
         return snippet
 
-    def remove_node(self, node_id: int) -> bool:
+    def remove_node(self, node_id: int):
         r, w = self.__connection.get_rw_pair()
         w.write_string('removenode')
         w.write(struct.pack('>Q', node_id))
         w.flush()
-        return r.readexactly(1) == b'\1'
+        if r.readexactly(1) == b'\0':
+            raise UiClientOperationFailed(r.read_string())
 
     def add_node(self, node_type: str, node_name: str) -> int:
         r, w = self.__connection.get_rw_pair()
@@ -1157,7 +1176,8 @@ class UIProtocolSocketClient:
         w.write_string('removeconnection')
         w.write(struct.pack('>Q', connection_id))
         w.flush()
-        assert r.readexactly(1) == b'\1'
+        if r.readexactly(1) == b'\0':
+            raise UiClientOperationFailed(r.read_string())
 
     def pause_tasks(self, task_ids: Iterable[int], paused: bool):
         r, w = self.__connection.get_rw_pair()
@@ -1207,7 +1227,8 @@ class UIProtocolSocketClient:
         w.write_string('tsetnode')
         w.write(struct.pack('>QQ', task_id, node_id))
         w.flush()
-        assert r.readexactly(1) == b'\1'
+        if r.readexactly(1) == b'\0':
+            raise UiClientOperationFailed(r.read_string())
 
     def change_tasks_state(self, task_ids: Iterable[int], state: TaskState):
         r, w = self.__connection.get_rw_pair()

@@ -89,6 +89,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     nodepresets_updated = Signal(dict)
     nodepreset_received = Signal(str, str, NodeSnippetData)
     task_invocation_job_fetched = Signal(int, InvocationJob)
+    unhandled_error_happened = Signal(str)
 
     #
     operation_started = Signal(int)  # operation id
@@ -161,6 +162,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self.__ui_connection_worker.nodes_copied.connect(self._nodes_duplicated)
         self.__ui_connection_worker.node_connections_removed.connect(self._node_connections_removed)
         self.__ui_connection_worker.node_connections_added.connect(self._node_connections_added)
+        self.__ui_connection_worker.node_task_set.connect(self._node_task_set)
 
         self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_invocation_metadata)
@@ -1078,13 +1080,13 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             data.data = (node_id, node_type, node_name)
             self.process_operation(data)
 
-    def _nodes_removed(self, node_ids: List[int], data: Optional["LongOperationData"] = None):
+    def _nodes_removed(self, node_ids: List[int], failed_node_ids: List[Tuple[int, str]], data: Optional["LongOperationData"] = None):
         for node_id in node_ids:
             node = self.get_node(node_id)
             if node is not None:
                 self.removeItem(node)
         if data is not None:
-            data.data = (node_ids,)
+            data.data = (node_ids, failed_node_ids)
             self.process_operation(data)
 
     def _node_renamed(self, node_id: int, new_name: str, data: Optional["LongOperationData"] = None):
@@ -1106,13 +1108,13 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             self.set_node_position(new_id, old_pos + shift)
 
     @Slot(list, object)
-    def _node_connections_removed(self, con_ids: List[int], data: Optional["LongOperationData"] = None):
+    def _node_connections_removed(self, con_ids: List[int], failed_con_ids: List[Tuple[int, str]], data: Optional["LongOperationData"] = None):
         for con_id in con_ids:
             con = self.get_node_connection(con_id)
             if con is not None:
                 self.removeItem(con)
         if data is not None:
-            data.data = (con_ids,)
+            data.data = (con_ids, failed_con_ids)
             self.process_operation(data)
 
     @Slot(list, object)
@@ -1127,6 +1129,12 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         if data is not None:
             data.data = ([x[0] for x in cons],)
             self.process_operation(data)
+
+    @Slot(int, int, str)
+    def _node_task_set(self, task_id: int, node_id: int, error: Optional[str]):
+        # no need to do anything - task update will be polled by connection worker
+        if error is not None:
+            self.unhandled_error_happened.emit(error)
 
     @Slot(object)
     def _nodetypes_fetched(self, nodetypes):

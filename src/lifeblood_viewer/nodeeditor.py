@@ -224,6 +224,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__scene.nodepresets_updated.connect(self._nodepresets_updated)
         self.__scene.task_invocation_job_fetched.connect(self._popup_show_invocation_info)
         self.__scene.operation_progress_updated.connect(self._scene_operation_progress_updated)
+        self.__scene.unhandled_error_happened.connect(self._scene_unhandled_error_report)
 
         self.__scene.request_node_types_update()
 
@@ -322,9 +323,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
         """
         return tuple(self.__overlays)
 
-    def show_message(self, message: str, duration: float):
-        self.__overlay_message.show_label(message[:100], duration)
-        self.__overlay_message.move(self.width()//2 - self.__overlay_message.width()//2, self.height()*5//6)
+    def show_message(self, message: str, duration: Optional[float] = None):
+        message = message[:1000]
+        if duration is None:
+            duration = min(10.0, max(2.0, len(message)*0.04))
+        self.__overlay_message.show_label(message, duration)
+        label_size = self.__overlay_message.size()
+        self.__overlay_message.move(self.width()//2 - label_size.width()//2, max(self.height()//2, self.height()*29//30 - label_size.height()))
         self.__overlay_message.raise_()
 
     def rescan_presets(self):
@@ -483,9 +488,9 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def delete_selected(self):
         def _on_finished(_, result: OperationCompletionDetails):
             if result.status == OperationCompletionStatus.PartialSuccess:
-                self.show_message('::warning::some nodes were not deleted', 1)
+                self.show_message(f'::warning::{result.details}')
             elif result.status == OperationCompletionStatus.NotPerformed:
-                self.show_message('::error::no nodes were deleted', 2)
+                self.show_message(f'::error::{result.details}')
         self.__scene.delete_selected_nodes(callback=_on_finished)
 
     @Slot(str, str, QPointF)
@@ -817,6 +822,10 @@ class NodeEditor(QGraphicsView, Shortcutable):
     def _scene_operation_progress_updated(self, op_id: int, op_name: str, progress_normalized: float):
         if progress_normalized >= 0:
             self.show_message(f'{op_name}: {round(100*progress_normalized):3g}%', 3)
+
+    @Slot(str)
+    def _scene_unhandled_error_report(self, error: str):
+        self.show_message(f'::error::{error}')
 
     @Slot()
     def __unblock_imgui_input(self):
