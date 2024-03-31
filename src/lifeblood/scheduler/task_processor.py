@@ -1,3 +1,4 @@
+import functools
 import sys
 import traceback
 import json
@@ -59,6 +60,12 @@ class TaskProcessor(SchedulerComponentBase):
     def _my_sleep(self):
         self.__logger.info('entering DORMANT mode')
         self.__processing_interval_mult = self.__dormant_mode_processing_interval_multiplier
+
+    async def _serialize_attributes(self, attributes: dict) -> str:
+        return await asyncio.get_event_loop().run_in_executor(None, functools.partial(json.dumps, default=lambda x: repr(x)), attributes)
+
+    async def _deserialize_attributes(self, attributes_serialized: str) -> dict:
+        return await asyncio.get_event_loop().run_in_executor(None, json.loads, attributes_serialized)
 
     @atimeit()
     async def _awaiter(self, processor_to_run, task_row, abort_state: TaskState, skip_state: TaskState):  # TODO: process task generation errors
@@ -198,21 +205,25 @@ class TaskProcessor(SchedulerComponentBase):
                     # and update its attributes if provided
                     if len(process_result.split_attributes_to_set) > 0:
                         async with con.execute('SELECT attributes FROM tasks WHERE "id" = ?', (task_row['split_origin_task_id'],)) as attcur:
-                            attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, (await attcur.fetchone())['attributes'])
+                            attributes = await self._deserialize_attributes((await attcur.fetchone())['attributes'])
                             attributes.update(process_result.split_attributes_to_set)
-                            result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                            result_serialized = await self._serialize_attributes(attributes)
                             await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                               (result_serialized, task_row['split_origin_task_id']))
 
             _bench_point_6 = time.perf_counter()
             _bench_point_7 = _bench_point_6
             if process_result.attributes_to_set:  # not None or {}
-                attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_row['attributes'] or '{}')
+                attributes = await self._deserialize_attributes(task_row['attributes'] or '{}')
                 attributes.update(process_result.attributes_to_set)
                 for k, v in process_result.attributes_to_set.items():  # TODO: hmmm, None is a valid value...
                     if v is None:
                         del attributes[k]
-                result_serialized = await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes)
+                try:
+                    result_serialized = await self._serialize_attributes(attributes)
+                except Exception as e:
+                    self.__logger.exception('failed to serialize attributes, setting empty attributes')
+                    result_serialized = {}
                 _bench_point_7 = time.perf_counter()
                 await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?',
                                   (result_serialized, task_id))
@@ -253,9 +264,9 @@ class TaskProcessor(SchedulerComponentBase):
                     async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                         split_task_dict = await cur.fetchone()
                     assert split_task_dict is not None
-                    split_task_attrs = await asyncio.get_event_loop().run_in_executor(None, json.loads, split_task_dict['attributes'])
+                    split_task_attrs = await self._deserialize_attributes(split_task_dict['attributes'])
                     split_task_attrs.update(attr_dict)
-                    await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (json.dumps(split_task_attrs), split_task_id))  # TODO: run dumps in executor
+                    await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (await self._serialize_attributes(split_task_attrs), split_task_id))  # TODO: run dumps in executor
 
             _bench_point_11 = time.perf_counter()
             con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [ui_task_delta] if ui_task_delta_split is None else [ui_task_delta, ui_task_delta_split])  # ui event
@@ -300,7 +311,7 @@ class TaskProcessor(SchedulerComponentBase):
             # get task attributes before starting a transaction
             async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
                 task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
-            task_attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, task_attributes_raw)
+            task_attributes = await self._deserialize_attributes(task_attributes_raw)
             assert not submit_transaction.in_transaction, 'logic failed, something is wrong with submission logic'
             #
 
