@@ -1,6 +1,7 @@
 import json
 
 import itertools
+from enum import Enum
 from math import sqrt
 from types import MappingProxyType
 from datetime import timedelta
@@ -106,6 +107,9 @@ class TaskAnimation(QAbstractAnimation):
 
 
 class Node(NetworkItemWithUI):
+    class TaskSortOrder(Enum):
+        ID = 0
+
     base_height = 100
     base_width = 150
     # cache node type-2-inputs/outputs names, not to ask a million times for every node
@@ -139,6 +143,7 @@ class Node(NetworkItemWithUI):
         self.__line_width = 1
         self.__name = name
         self.__tasks: List["Task"] = []
+        self.__tasks_sorted_cached: Optional[Dict[Node.TaskSortOrder, List["Task"]]] = None
         self.__node_type = type
 
         self.__ui_interactor = None
@@ -524,6 +529,9 @@ class Node(NetworkItemWithUI):
 
         insert_at = self._find_insert_index_for_task(task, prefer_back=True)
 
+        # invalidate sorted cache
+        self.__tasks_sorted_cached = None
+
         self.__tasks.append(None)  # temporary placeholder, it'll be eliminated either in the loop, or after if task is last
         for i in reversed(range(insert_at + 1, len(self.__tasks))):
             self.__tasks[i] = self.__tasks[i-1]  # TODO: animated param should affect below!
@@ -542,6 +550,9 @@ class Node(NetworkItemWithUI):
         for task in tasks_to_remove:
             task._Task__node = None
             #task.set_node(None)  # no, currently causes bad recursion
+
+        # invalidate sorted cache
+        self.__tasks_sorted_cached = None
 
         if self.__tasks is tasks_to_remove:  # special case
             self.__tasks = []
@@ -563,6 +574,10 @@ class Node(NetworkItemWithUI):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
         task_pid = self.__tasks.index(task_to_remove)
         #task_to_remove.set_node(None)  # no, currently causes bad recursion
+
+        # invalidate sorted cache
+        self.__tasks_sorted_cached = None
+
         task_to_remove._Task__node = None
         for i in range(task_pid, len(self.__tasks) - 1):
             self.__tasks[i] = self.__tasks[i + 1]
@@ -571,8 +586,20 @@ class Node(NetworkItemWithUI):
         assert task_to_remove not in self.__tasks
         self.update()  # cuz node displays task number - we should redraw
 
-    def tasks_iter(self):
-        return (x for x in self.__tasks)
+    def _sorted_tasks(self, order: TaskSortOrder) -> List["Task"]:
+        if self.__tasks_sorted_cached is None:
+            self.__tasks_sorted_cached = {}
+        if order not in self.__tasks_sorted_cached:
+            if order == Node.TaskSortOrder.ID:
+                self.__tasks_sorted_cached[order] = sorted(self.__tasks, key=lambda x: x.get_id())
+            else:
+                raise NotImplementedError(f'sort order {order} is not implemented')
+        return self.__tasks_sorted_cached[order]
+
+    def tasks_iter(self, *, order: Optional[TaskSortOrder] = None):
+        if order is None:
+            return (x for x in self.__tasks)
+        return self._sorted_tasks(order)
 
     def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
         #assert task in self.__tasks
