@@ -30,9 +30,13 @@ class IsolatedAsyncioTestCaseWithDb(IsolatedAsyncioTestCase):
 class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
     __test__ = False
 
+    @classmethod
+    def this_test_dir(cls) -> Path:
+        return Path(inspect.getmodule(cls).__file__).parent
+
     async def asyncSetUp(self):
         db_name = self.db_file
-        shutil.copy2(Path(inspect.getmodule(self.__class__).__file__).parent / self._initial_db_file(), db_name)
+        shutil.copy2(self.this_test_dir() / self._initial_db_file(), db_name)
 
         test_server_port1 = 18273
         test_server_port2 = 18283
