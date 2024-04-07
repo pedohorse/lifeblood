@@ -28,7 +28,7 @@ from lifeblood.environment_resolver import EnvironmentResolverArguments
 import PySide2.QtCore
 import PySide2.QtGui
 from PySide2.QtWidgets import *
-from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPointF, QEvent, QSize
+from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
 from PySide2.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard
 
 from .dialogs import MessageWithSelectableText
@@ -563,7 +563,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     #
     #
-    def show_task_menu(self, task):
+    def show_task_menu(self, task, *, pos: Optional[QPoint] = None):
         menu = QMenu(self)
         menu.addAction(f'task {task.get_id()}').setEnabled(False)
         menu.addSeparator()
@@ -617,7 +617,8 @@ class NodeEditor(QGraphicsView, Shortcutable):
                     continue
                 state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
 
-        pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
+        if pos is None:
+            pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
