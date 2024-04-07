@@ -563,7 +563,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     #
     #
-    def show_task_menu(self, task, pos: Optional[QPoint] = None):
+    def show_task_menu(self, task, *, pos: Optional[QPoint] = None):
         menu = QMenu(self)
         menu.addAction(f'task {task.get_id()}').setEnabled(False)
         menu.addSeparator()
