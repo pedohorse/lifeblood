@@ -421,30 +421,64 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.show_message('Nodes copied to clipboard', 2)
 
     @Slot()
-    def preset_from_selected_nodes(self, preset_label: Optional[str] = None, file_path: Optional[str] = None):
+    def preset_from_selected_nodes_default_location(self, preset_label: Optional[str] = None):
+        """
+        saves viewer preset to default location
+        """
+
+        nodes = [x for x in self.__scene.selectedItems() if isinstance(x, Node)]
+        if len(nodes) == 0:
+            QMessageBox.warning(self, 'nothing selected', 'no nodes are selected for the preset')
+            return
+
+        if preset_label is None:
+            preset_label, good = QInputDialog.getText(self, 'pick a label for this preset', 'label:', QLineEdit.Normal)
+            if not good:
+                return
+
+        # do not allow confusing leading/trailing spaces
+        preset_label = preset_label.strip()
+
+        if not preset_label:
+            QMessageBox.warning(self, 'no', 'label cannot be empty')
+            return
+
+        if (preset_label in self.__viewer_presets
+                and QMessageBox.No == QMessageBox.warning(self, 'preset already exists', f'preset with name "{preset_label}" already exists, override?', QMessageBox.Yes | QMessageBox.No)):
+            return
+
+        viewer_preset_path = paths.config_path('presets', 'viewer') / f'{preset_label}.lbp'
+        try:
+            self.preset_from_nodes(preset_label, str(viewer_preset_path), nodes)
+        except ValueError as e:
+            QMessageBox.warning(self, 'failed to save viewer preset', str(e))
+        except Exception as e:
+            logger.exception('unexpected error while saving preset')
+            QMessageBox.warning(self, 'unexpected error occurred', f'unexpected error while saving preset: {e}')
+
+    def preset_from_nodes(self, preset_label: str, file_path: str, nodes: List[Node]):
         """
         saves selected nodes as a preset
         if path where preset is saved is one of preset scan paths - the preset will be loaded
 
         :param file_path: where to save. if None - file dialog will be displayed
         :param preset_label: label for the preset. if None - dialog will be displayed
+        :param nodes: nodes to save into the preset.
 
         :return:
         """
-        if preset_label is None:
-            preset_label, good = QInputDialog.getText(self, 'pick a label for this preset', 'label:', QLineEdit.Normal)
-            if not good:
-                return
+        preset_label = preset_label.strip()
 
-        snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)], preset_label)
-
-        user_presets_path = paths.config_path('presets', 'viewer')
-        if file_path is None:
-            if not user_presets_path.exists():
-                user_presets_path.mkdir(parents=True, exist_ok=True)
-            file_path, _ = QFileDialog.getSaveFileName(self, 'save preset', str(user_presets_path), 'node presets (*.lbp)')
         if not file_path:
-            return
+            raise ValueError('file path cannot be empty')
+        if not preset_label:
+            raise ValueError('preset label cannot be empty')
+
+        if len(nodes) == 0:
+            raise ValueError('no nodes provided')
+
+        snippet = UiNodeSnippetData.from_viewer_nodes(nodes, preset_label)
+
         with open(file_path, 'wb') as f:
             f.write(snippet.serialize(ascii=True))
         if Path(file_path).parent in self.__preset_scan_paths:
@@ -688,7 +722,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         menu.addAction('copy selected').triggered.connect(self.copy_selected_nodes)
         menu.addAction('paste').triggered.connect(lambda c=False, p=self.mapToScene(self.mapFromGlobal(pos)): self.paste_copied_nodes(p))
         menu.addSeparator()
-        menu.addAction('save preset').triggered.connect(self.preset_from_selected_nodes)
+        menu.addAction('save preset').triggered.connect(lambda _: self.preset_from_selected_nodes_default_location())
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(pos)
 
