@@ -70,6 +70,9 @@ class EnvironmentResolverArguments:
         if resolver_name is None and len(arguments) > 0:
             raise ValueError('if name is None - no arguments are allowed')
         self.__resolver_name = resolver_name
+        if arguments is not None:
+            # validate args
+            json.dumps(arguments)
         self.__args = arguments
 
     def name(self):
@@ -82,6 +85,8 @@ class EnvironmentResolverArguments:
         return MappingProxyType(self.__args)
 
     def add_argument(self, name: str, value):
+        # validate value
+        json.dumps(value)
         self.__args[name] = value
 
     def remove_argument(self, name: str):
