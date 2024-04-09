@@ -2,6 +2,7 @@ import json
 from types import MappingProxyType
 import re
 
+from .attribute_serialization import deserialize_attributes_core
 from .config import get_config
 from .environment_resolver import EnvironmentResolverArguments
 
@@ -59,7 +60,7 @@ class ProcessingContext:
 
     def __init__(self, node: "BaseNode", task_dict: dict):
         task_dict = dict(task_dict)
-        self.__task_attributes = json.loads(task_dict.get('attributes', '{}'))
+        self.__task_attributes = deserialize_attributes_core(task_dict.get('attributes', '{}'))
         self.__task_dict = task_dict
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
         self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
