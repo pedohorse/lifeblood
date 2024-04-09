@@ -1,5 +1,6 @@
 from dataclasses import dataclass, is_dataclass
 import json
+from .common_serialization import AttribSerializer, AttribDeserializer
 from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToApplyNodeState, FailedToApplyParameters
 from .basenode import BaseNode, NodeParameterType
 from .uidata import ParameterFullValue
@@ -31,27 +32,10 @@ class NodeSerializerV2(NodeSerializerBase):
     the final string though is json-compliant
     """
 
-    class Serializer(json.JSONEncoder):
-        def __reform(self, obj):
-            if type(obj) is set:
-                return {
-                    '__special_object_type__': 'set',
-                    'items': self.__reform(list(obj))
-                }
-            elif type(obj) is tuple:
-                return {
-                    '__special_object_type__': 'tuple',
-                    'items': self.__reform(list(obj))
-                }
-            elif type(obj) is dict:  # int keys case
-                if any(isinstance(x, (int, float, tuple)) for x in obj.keys()):
-                    return {
-                        '__special_object_type__': 'kvp',
-                        'items': self.__reform([[k, v] for k, v in obj.items()])
-                    }
-                return {k: self.__reform(v) for k, v in obj.items()}
-            elif is_dataclass(obj):
-                dcs = self.__reform(obj.__dict__)  # dataclasses.asdict is recursive, kills inner dataclasses
+    class Serializer(AttribSerializer):
+        def _reform(self, obj):
+            if is_dataclass(obj):
+                dcs = self._reform(obj.__dict__)  # dataclasses.asdict is recursive, kills inner dataclasses
                 dcs['__dataclass__'] = obj.__class__.__name__
                 dcs['__special_object_type__'] = 'dataclass'
                 return dcs
@@ -59,38 +43,19 @@ class NodeSerializerV2(NodeSerializerBase):
                 return {'value': obj.value,
                         '__special_object_type__': 'NodeParameterType'
                         }
-            elif isinstance(obj, list):
-                return [self.__reform(x) for x in obj]
-            elif isinstance(obj, (int, float, str, bool)) or obj is None:
-                return obj
-            raise NotImplementedError(f'serialization not implemented for type "{type(obj)}"')
+            return super()._reform(obj)
 
-        def encode(self, o):
-            return super().encode(self.__reform(o))
-
-        def default(self, obj):
-            return super(NodeSerializerV2.Serializer, self).default(obj)
-
-    class Deserializer(json.JSONDecoder):
-        def dedata(self, obj):
+    class Deserializer(AttribDeserializer):
+        def _dedata(self, obj):
             special_type = obj.get('__special_object_type__')
-            if special_type == 'set':
-                return set(obj.get('items'))
-            elif special_type == 'tuple':
-                return tuple(obj.get('items'))
-            elif special_type == 'kvp':
-                return {k: v for k, v in obj.get('items')}
-            elif special_type == 'dataclass':
+            if special_type == 'dataclass':
                 data = globals()[obj['__dataclass__']](**{k: v for k, v in obj.items() if k not in ('__dataclass__', '__special_object_type__')})
                 if obj['__dataclass__'] == 'NodeData':
                     data.pos = tuple(data.pos)
                 return data
             elif special_type == 'NodeParameterType':
                 return NodeParameterType(obj['value'])
-            return obj
-
-        def __init__(self):
-            super(NodeSerializerV2.Deserializer, self).__init__(object_hook=self.dedata)
+            return super()._dedata(obj)
 
     def serialize(self, node: BaseNode) -> Tuple[bytes, Optional[bytes]]:
         param_values = {}

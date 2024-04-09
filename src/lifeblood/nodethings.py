@@ -1,7 +1,4 @@
-import asyncio
-import functools
-import json
-
+from .attribute_serialization import serialize_attributes_core
 from .invocationjob import InvocationJob
 from .taskspawn import TaskSpawn
 from .environment_resolver import EnvironmentResolverArguments
@@ -12,22 +9,6 @@ from typing import List, Dict, Any, Optional
 
 class ProcessingError(RuntimeError):
     pass
-
-
-async def serialize_attributes(attributes: dict) -> str:
-    return await asyncio.get_event_loop().run_in_executor(None, serialize_attributes_core, attributes)
-
-
-async def deserialize_attributes(attributes_serialized: str) -> dict:
-    return await asyncio.get_event_loop().run_in_executor(None, deserialize_attributes_core, attributes_serialized)
-
-
-def serialize_attributes_core(attributes: dict) -> str:
-    return json.dumps(attributes, default=lambda x: repr(x))
-
-
-def deserialize_attributes_core(attributes_serialized: str) -> dict:
-    return json.loads(attributes_serialized)
 
 
 class ProcessingResult:
@@ -89,7 +70,7 @@ class ProcessingResult:
     def set_split_task_attrib(self, split: int, attr_name: str, attr_value):
         # validate attrs
         try:
-            serialize_attributes({attr_name: attr_value})
+            serialize_attributes_core({attr_name: attr_value})
         except:
             raise ValueError('attr_value must be json-serializable')
         self._split_attribs[split][attr_name] = attr_value
@@ -98,7 +79,7 @@ class ProcessingResult:
         # validate attrs
         try:
             assert isinstance(attribs, dict)
-            serialize_attributes(attribs)
+            serialize_attributes_core(attribs)
         except:
             raise ValueError('attribs must be json-serializable dict')
         self._split_attribs[split] = attribs
