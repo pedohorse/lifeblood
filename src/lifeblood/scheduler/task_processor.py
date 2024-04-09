@@ -15,7 +15,8 @@ from ..misc import atimeit
 from ..worker_messsage_processor import WorkerControlClient
 from ..invocationjob import InvocationJob
 from ..environment_resolver import EnvironmentResolverArguments
-from ..nodethings import ProcessingResult, serialize_attributes, deserialize_attributes
+from ..nodethings import ProcessingResult
+from ..attribute_serialization import serialize_attributes, deserialize_attributes
 from ..exceptions import *
 from .. import aiosqlite_overlay
 from ..config import get_config
