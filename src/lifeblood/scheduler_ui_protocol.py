@@ -4,6 +4,7 @@ import json
 import asyncio
 from asyncio.exceptions import IncompleteReadError
 from . import logging
+from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
 from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData, InvocationLogData, IncompleteInvocationLogData
 from .ui_events import TaskEvent
@@ -22,12 +23,12 @@ if TYPE_CHECKING:
     from .scheduler import Scheduler
 
 
-def _serialize_json_dict(d: dict) -> bytes:
-    return json.dumps(d).encode('UTF-8')
+def _serialize_attrib_dict(d: dict) -> bytes:
+    return serialize_attributes_core(d).encode('UTF-8')
 
 
-def _deserialize_json_dict(data: bytes) -> dict:
-    return json.loads(data.decode('UTF-8'))
+def _deserialize_attrib_dict(data: bytes) -> dict:
+    return deserialize_attributes_core(data.decode('UTF-8'))
 
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
@@ -146,7 +147,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             attribs, env_attribs = await self.__scheduler.get_task_attributes(task_id)
 
-            data_attirbs: bytes = await asyncio.get_event_loop().run_in_executor(None, _serialize_json_dict, attribs)
+            data_attirbs: bytes = await asyncio.get_event_loop().run_in_executor(None, _serialize_attrib_dict, attribs)
             data_env: bytes = b''
             if env_attribs is not None:
                 data_env: bytes = await EnvironmentResolverArguments.serialize_async(env_attribs)
@@ -899,7 +900,7 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>Q', task_id))
         w.flush()
         rcvsize = struct.unpack('>Q', r.readexactly(8))[0]
-        attribs = _deserialize_json_dict(r.readexactly(rcvsize))
+        attribs = _deserialize_attrib_dict(r.readexactly(rcvsize))
         rcvsize = struct.unpack('>Q', r.readexactly(8))[0]
         env_attrs = None
         if rcvsize > 0:
