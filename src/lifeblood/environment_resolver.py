@@ -14,7 +14,6 @@ for all workers, not several different wrappers
 import asyncio
 import os
 import sys
-import json
 import inspect
 import pathlib
 import re
@@ -24,6 +23,7 @@ from semantic_version import Version, SimpleSpec
 from types import MappingProxyType
 from . import invocationjob, paths, logging
 from .config import get_config
+from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from .toml_coders import TomlFlatConfigEncoder
 from .process_utils import create_process, oh_no_its_windows
 from .exceptions import ProcessInitializationError
@@ -72,7 +72,7 @@ class EnvironmentResolverArguments:
         self.__resolver_name = resolver_name
         if arguments is not None:
             # validate args
-            json.dumps(arguments)
+            serialize_attributes_core(arguments)
         self.__args = arguments
 
     def name(self):
@@ -86,7 +86,7 @@ class EnvironmentResolverArguments:
 
     def add_argument(self, name: str, value):
         # validate value
-        json.dumps(value)
+        serialize_attributes_core(value)
         self.__args[name] = value
 
     def remove_argument(self, name: str):
@@ -99,7 +99,7 @@ class EnvironmentResolverArguments:
         return await get_resolver(self.name()).get_environment(self.arguments())
 
     def serialize(self) -> bytes:
-        return json.dumps({
+        return serialize_attributes_core({
             '_EnvironmentResolverArguments__resolver_name': self.__resolver_name,
             '_EnvironmentResolverArguments__args': self.__args,
         }).encode('utf-8')
@@ -110,7 +110,7 @@ class EnvironmentResolverArguments:
     @classmethod
     def deserialize(cls, data: bytes):
         wrp = EnvironmentResolverArguments(None)
-        data_dict = json.loads(data.decode('utf-8'))
+        data_dict = deserialize_attributes_core(data.decode('utf-8'))
         wrp.__resolver_name = data_dict['_EnvironmentResolverArguments__resolver_name']
         wrp.__args = data_dict['_EnvironmentResolverArguments__args']
         return wrp
