@@ -1,7 +1,5 @@
-import re
-import json
 import shlex
-from PySide2.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QSpinBox, QPushButton
+from PySide2.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QSpinBox, QPushButton
 from PySide2.QtCore import Slot, QSize
 
 from typing import TYPE_CHECKING, Optional, Tuple, List, Set
@@ -58,7 +56,7 @@ class AttributeEditorWidget(QWidget):
             for i, (name, val) in enumerate(init_attributes.items()):
                 attr_layout = self.__attrs_layout.itemAt(i).layout()
                 attr_layout.itemAt(0).widget().setText(name)
-                attr_layout.itemAt(1).widget().setText(val if isinstance(val, str) else json.dumps(val))
+                attr_layout.itemAt(1).widget().setText(repr(val))
                 attr_layout.itemAt(0).widget().set_current_text_as_default()
                 attr_layout.itemAt(1).widget().set_current_text_as_default()
                 self.__initial_attrib_names.add(name)
@@ -76,9 +74,9 @@ class AttributeEditorWidget(QWidget):
             for _ in range(old_attr_count, val):
                 attr_layout = QHBoxLayout()
                 name = LineEditWithDefaults()
-                name.setPlaceholderText('attribute name')
+                name.setPlaceholderText('attribute name (empty will be deleted)')
                 val = LineEditWithDefaults()
-                val.setPlaceholderText('json-style value')
+                val.setPlaceholderText('py expression value')
                 attr_layout.addWidget(name, 1)
                 attr_layout.addWidget(val, 3)
                 self.__attrs_layout.addLayout(attr_layout)
@@ -92,10 +90,7 @@ class AttributeEditorWidget(QWidget):
                 continue
             val = attr_layout.itemAt(1).widget().text()
 
-            try:
-                val = json.loads(val)
-            except json.JSONDecodeError:
-                val = json.loads(f'"{val}"')
+            val = eval(val)  # TODO: no context?
 
             attrs[name] = val
 
@@ -120,10 +115,7 @@ class AttributeEditorWidget(QWidget):
             if attr_layout.itemAt(0).widget().is_at_default() and attr_layout.itemAt(1).widget().is_at_default():
                 continue
 
-            try:
-                val = json.loads(val)
-            except json.JSONDecodeError:
-                val = json.loads(f'"{val}"')
+            val = eval(val)  # TODO: no context?
 
             attrs[name] = val
 
@@ -166,7 +158,7 @@ class CreateTaskDialog(QDialog):
         self.__main_layout.addLayout(accept_layout)
 
         # connec
-        self.__ok_btn.clicked.connect(self.accept)
+        self.__ok_btn.clicked.connect(self.validate_and_accept)
         self.__cancel_btn.clicked.connect(self.reject)
 
         # init
@@ -185,6 +177,21 @@ class CreateTaskDialog(QDialog):
 
     def sizeHint(self) -> QSize:
         return QSize(384, 128)
+
+    @Slot()
+    def validate_and_accept(self):
+        try:
+            task_attribs = self.get_task_attributes()
+            env_attribs = self.get_task_environment_resolver_and_arguments()
+        except Exception as e:
+            if isinstance(e, SyntaxError):
+                QMessageBox.warning(self, 'attribute value syntax error', f'attribute value has to be a valid python expression: {e}')
+            elif isinstance(e, NameError):
+                QMessageBox.warning(self, 'attribute value name error', f'attribute value has to be a valid python expression: {e}')
+            else:
+                QMessageBox.warning(self, 'attribute value error', f'attribute value has to be a valid python expression: {e}')
+            return
+        self.accept()
 
     def get_task_name(self):
         name = self.__name_edit.text().strip()
