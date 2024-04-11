@@ -267,7 +267,8 @@ class PluginNodeDataProvider(NodeDataProvider):
             if (settings_name := self.__default_settings_config.get(node_type)) and settings_name is not None:
                 if node_type not in self.__nodes_settings or settings_name not in self.__nodes_settings[node_type]:
                     self.logger.warning(f'node type "{node_type}" has default setting "{settings_name}", but the setting itself is missing')
-                node.apply_settings(self.__nodes_settings[node_type][settings_name])
+                else:
+                    node.apply_settings(self.__nodes_settings[node_type][settings_name])
             return node
 
         return constructor
