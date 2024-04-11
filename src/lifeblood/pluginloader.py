@@ -262,7 +262,15 @@ class PluginNodeDataProvider(NodeDataProvider):
         return self.__plugins[type_name].node_class()
 
     def node_factory(self, node_type: str) -> Callable[[str], BaseNode]:
-        return self.node_class(node_type)
+        def constructor(node_name) -> BaseNode:
+            node = self.node_class(node_type)(node_name)
+            if (settings_name := self.__default_settings_config.get(node_type)) and settings_name is not None:
+                if node_type not in self.__nodes_settings or settings_name not in self.__nodes_settings[node_type]:
+                    self.logger.warning(f'node type "{node_type}" has default setting "{settings_name}", but the setting itself is missing')
+                node.apply_settings(self.__nodes_settings[node_type][settings_name])
+            return node
+
+        return constructor
 
     def has_node_factory(self, node_type: str) -> bool:
         return node_type in self.node_type_names()
@@ -312,7 +320,9 @@ class PluginNodeDataProvider(NodeDataProvider):
             self.__default_settings_config.pop(node_type_name)
         else:
             self.__default_settings_config[node_type_name] = settings_name
-        with open(paths.config_path('defaults.toml', 'scheduler.nodes'), 'w') as f:
+        config_path = paths.config_path('defaults.toml', 'scheduler.nodes')
+        config_path.parent.mkdir(parents=True, exist_ok=True)  # ensure it exists
+        with open(config_path, 'w') as f:
             toml.dump(self.__default_settings_config, f)
 
     # def apply_settings(self, node: BaseNode, settings_name: str) -> None:
