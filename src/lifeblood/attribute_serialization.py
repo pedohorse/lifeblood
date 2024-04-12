@@ -13,7 +13,7 @@ async def deserialize_attributes(attributes_serialized: str) -> dict:
 
 
 def serialize_attributes_core(attributes: dict) -> str:
-    return json.dumps(attributes, cls=AttribSerializer)  # TODO: allow SOME custom object serialization
+    return json.dumps(attributes, cls=AttribSerializer)
 
 
 def deserialize_attributes_core(attributes_serialized: str) -> dict:
