@@ -4,6 +4,7 @@ from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult, InvocationJob
 from lifeblood.invocationjob import InvocationRequirements
 from lifeblood.enums import NodeParameterType, WorkerType
+from lifeblood.attribute_serialization import serialize_attributes_core
 
 
 from typing import Iterable
@@ -51,7 +52,7 @@ class HoudiniDistributedTracker(BaseNode):
         addressee_name = str(uuid.uuid4())
         invoc = InvocationJob(['python', ':/work_to_do.py', context.param_value('port'), context.param_value('wport'), addressee_name, ':/task_base_attrs.json'])
         invoc.set_extra_file('work_to_do.py', code)
-        invoc.set_extra_file('task_base_attrs.json', json.dumps(dict(context.task_attributes())))
+        invoc.set_extra_file('task_base_attrs.json', serialize_attributes_core(dict(context.task_attributes())))
 
         if context.param_value('use helper'):
             invoc.set_requirements(InvocationRequirements(worker_type=WorkerType.SCHEDULER_HELPER))

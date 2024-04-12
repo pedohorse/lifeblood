@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class ProcessingContext:
     class TaskWrapper:
         def __init__(self, task_dict: dict):
-            self.__attributes = json.loads(task_dict.get('attributes', '{}'))
+            self.__attributes = deserialize_attributes_core(task_dict.get('attributes', '{}'))
             self.__stuff = task_dict
 
         def __getitem__(self, item):
