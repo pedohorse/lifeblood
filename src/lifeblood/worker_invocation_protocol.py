@@ -1,22 +1,14 @@
 import asyncio
-import time
 
-import aiofiles
 import struct
-import json
-from .enums import TaskScheduleStatus, TaskExecutionStatus, TaskExecutionStatus, WorkerPingReply, SpawnStatus
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, AlreadyRunning, CouldNotNegotiateProtocolVersion, InvocationCancelled
+from .attribute_serialization import deserialize_attributes
+from .exceptions import CouldNotNegotiateProtocolVersion, InvocationCancelled
 from .scheduler_message_processor import SchedulerExtraControlClient, SchedulerInvocationMessageClient
-from .net_messages.exceptions import MessageReceivingError
-from .environment_resolver import ResolutionImpossibleError
 from .taskspawn import TaskSpawn
 from . import logging
-from . import invocationjob
-from . import nethelpers
 
-import os
 
-from typing import Dict, Optional, Set, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, Set, Sequence, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .worker import Worker
 
@@ -81,8 +73,7 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
 
     async def comm_update_attributes(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         task_id, update_data_size, strcount = struct.unpack('>QQQ', await reader.readexactly(24))
-        attribs_to_update = await asyncio.get_event_loop().run_in_executor(None, json.loads,
-                                                                           (await reader.readexactly(update_data_size)).decode('UTF-8'))
+        attribs_to_update = await deserialize_attributes((await reader.readexactly(update_data_size)).decode('UTF-8'))
         attribs_to_delete = set()
         for _ in range(strcount):
             attribs_to_delete.add(await read_string(reader))
