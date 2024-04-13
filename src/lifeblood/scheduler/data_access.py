@@ -3,7 +3,6 @@ import aiosqlite
 import sqlite3
 import random
 import struct
-import json
 from dataclasses import dataclass
 from ..attribute_serialization import serialize_attributes
 from ..db_misc import sql_init_script

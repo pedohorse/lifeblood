@@ -1,4 +1,3 @@
-import json
 from types import MappingProxyType
 import re
 

@@ -1,6 +1,5 @@
 import dataclasses
 from dataclasses import dataclass
-import json
 from lifeblood.attribute_serialization import deserialize_attributes_core
 from lifeblood.basenode import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult

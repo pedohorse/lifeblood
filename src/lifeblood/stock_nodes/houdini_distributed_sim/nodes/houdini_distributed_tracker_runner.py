@@ -1,4 +1,3 @@
-import json
 import uuid
 from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult, InvocationJob

@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-import time
-import json
 from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.taskspawn import TaskSpawn
@@ -134,7 +132,7 @@ class SplitAwaiterNode(BaseNode):
             if self.__cache[split_id].first_to_arrive is None and len(self.__cache[split_id].arrived) == 0:
                 self.__cache[split_id].first_to_arrive = task_id
             if context.task_field('split_element') not in self.__cache[split_id].arrived:
-                self.__cache[split_id].arrived[context.task_field('split_element')] = json.loads(context.task_field('attributes'))
+                self.__cache[split_id].arrived[context.task_field('split_element')] = dict(context.task_attributes())
                 self.__cache[split_id].arrived[context.task_field('split_element')]['_builtin_id'] = task_id
 
         # we will not wait in loop or we risk deadlocking threadpool
