@@ -7,9 +7,9 @@ import json
 from .common_serialization import AttribSerializer, AttribDeserializer
 
 
-def serialize_attributes_core(attributes: dict) -> str:
-    return json.dumps(attributes, cls=AttribSerializer)  # TODO: allow SOME custom object serialization
+def serialize_attributes_core(attributes):  # type: (dict) -> str
+    return json.dumps(attributes, cls=AttribSerializer)
 
 
-def deserialize_attributes_core(attributes_serialized: str) -> dict:
+def deserialize_attributes_core(attributes_serialized):  # type: (str) -> dict
     return json.loads(attributes_serialized, cls=AttribDeserializer)
