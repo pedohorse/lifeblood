@@ -36,7 +36,7 @@ class TelegramNotifier(BaseNode):
         super().__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.color_scheme().set_main_color(0.051, 0.741, 0.545)
+            ui.color_scheme().set_main_color(0.165, 0.671, 0.933)
             with ui.collapsable_group_block('bot parameters', 'Bot Parameters'):
                 ui.add_parameter('bot_id', 'Bot Secret ID', NodeParameterType.STRING, '`config["bot_id"]`')
             ui.add_parameter('chat_id', 'Chat ID', NodeParameterType.STRING, '`config["chat_id"]`')
