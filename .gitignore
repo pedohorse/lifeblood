@@ -8,6 +8,7 @@ venv_docs
 !/tests/data/**.db
 **.pyc
 **/__pycache__
+stock_tools/telegram_client/urllib3
 imgui.ini
 build
 dist
