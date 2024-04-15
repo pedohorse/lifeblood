@@ -221,10 +221,6 @@ class BaseNode:
                     self.logger().warning(f'applying settings: skipping parameter "{param_name}": bad value type: {str(e)}')
                     continue
 
-    # # some helpers
-    # def _get_task_attributes(self, task_row):
-    #     return json.loads(task_row.get('attributes', '{}'))
-
     #
     # Plugin info
     #

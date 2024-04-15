@@ -17,6 +17,66 @@ try:
 except ImportError:
     pass
 
+# duplicated from lifeblood_clinet
+
+
+class AttribSerializer(json.JSONEncoder):
+    def _reform(self, obj):
+        if type(obj) is set:
+            return {
+                '__special_object_type__': 'set',
+                'items': self._reform(list(obj))
+            }
+        elif type(obj) is tuple:
+            return {
+                '__special_object_type__': 'tuple',
+                'items': self._reform(list(obj))
+            }
+        elif type(obj) is dict:  # int keys case
+            if any(isinstance(x, (int, float, tuple)) for x in obj.keys()):
+                return {
+                    '__special_object_type__': 'kvp',
+                    'items': self._reform([[k, v] for k, v in obj.items()])
+                }
+            return {k: self._reform(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._reform(x) for x in obj]
+        elif isinstance(obj, (int, float, str, bool)) or obj is None:
+            return obj
+        raise NotImplementedError(f'serialization not implemented for type "{type(obj)}"')
+
+    def encode(self, o):
+        return super(AttribSerializer, self).encode(self._reform(o))
+
+    def default(self, obj):
+        return super(AttribSerializer, self).default(obj)
+
+
+class AttribDeserializer(json.JSONDecoder):
+    def _dedata(self, obj):
+        special_type = obj.get('__special_object_type__')
+        if special_type == 'set':
+            return set(obj.get('items'))
+        elif special_type == 'tuple':
+            return tuple(obj.get('items'))
+        elif special_type == 'kvp':
+            return {k: v for k, v in obj.get('items')}
+        return obj
+
+    def __init__(self):
+        super(AttribDeserializer, self).__init__(object_hook=self._dedata)
+
+
+def serialize_attributes_core(attributes):  # type: (dict) -> str
+    return json.dumps(attributes, cls=AttribSerializer)
+
+
+def deserialize_attributes_core(attributes_serialized):  # type: (str) -> dict
+    return json.loads(attributes_serialized, cls=AttribDeserializer)
+
+
+#
+
 
 class MessageSendError(RuntimeError):
     pass
@@ -220,7 +280,7 @@ def set_attributes(attribs, blocking=False):  # type: (dict, bool) -> None
         sock = _connect_to_worker(timeout=30)
 
         send_string(sock, 'tupdateattribs')
-        updata = json.dumps(attribs).encode('UTF-8')
+        updata = serialize_attributes_core(attribs).encode('UTF-8')  # need to use attrib serialization
         sock.sendall(struct.pack('>QQQ', task_id, len(updata), 0))
         sock.sendall(updata)
         sock.recv(1)  # recv confirmation

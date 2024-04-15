@@ -1,5 +1,4 @@
-import json
-
+from .attribute_serialization import serialize_attributes_core
 from .invocationjob import InvocationJob
 from .taskspawn import TaskSpawn
 from .environment_resolver import EnvironmentResolverArguments
@@ -39,9 +38,13 @@ class ProcessingResult:
         """
         self.do_split_remove = True
         if attributes_to_set is not None:
+            # validate attributes_to_set
+            serialize_attributes_core(attributes_to_set)  # will raise in case of errors
             self.split_attributes_to_set.update(attributes_to_set)
 
     def set_attribute(self, key: str, value):
+        # validate value first
+        serialize_attributes_core({key: value})  # will raise in case of errors
         self.attributes_to_set[key] = value
 
     def remove_attribute(self, key: str):
@@ -65,16 +68,18 @@ class ProcessingResult:
         self._split_attribs = [{} for _ in range(into)]
 
     def set_split_task_attrib(self, split: int, attr_name: str, attr_value):
+        # validate attrs
         try:
-            json.dumps(attr_value)
+            serialize_attributes_core({attr_name: attr_value})
         except:
-            raise ValueError('attribs must be json-serializable dict')
+            raise ValueError('attr_value must be json-serializable')
         self._split_attribs[split][attr_name] = attr_value
 
     def set_split_task_attribs(self, split: int, attribs: dict):
+        # validate attrs
         try:
             assert isinstance(attribs, dict)
-            json.dumps(attribs)
+            serialize_attributes_core(attribs)
         except:
             raise ValueError('attribs must be json-serializable dict')
         self._split_attribs[split] = attribs

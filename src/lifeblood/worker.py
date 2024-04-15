@@ -365,6 +365,7 @@ class Worker:
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
+            # we do NOT set all attribs to env - just a frame list can easily hit proc env size limit
             for aname, aval in task.attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue
@@ -372,7 +373,6 @@ class Worker:
                 if isinstance(aval, (str, int, float)):
                     env[f'LBATTR_{aname}'] = str(aval)
 
-            # env['LBATTRS_JSON'] = json.dumps(dict(task.attributes()))
             if self.__extra_files_base_dir is not None:
                 env['LB_EF_ROOT'] = self.__extra_files_base_dir
             try:

@@ -170,3 +170,45 @@ class TestMainVsClientCompatibility(unittest.TestCase):
         self.assertEqual(client_envarg.name(), envarg.name())
         self.assertEqual(client_envarg.arguments(), envarg.arguments())
         self.assertEqual(client_envarg.serialize(), envarg.serialize())
+
+    def test_serde2(self):
+        """
+        supported non-json cases
+        """
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments(
+            'foobar',
+            {
+                'key': (1, 4.3, (6, 5)),
+                42: [11, 22, {2, 5, 7}],
+                1: False,
+                -999: (None, True, 5),
+                'kek': {'q': 'we', 'a': 'sd'},
+            }
+        )
+        data = client_envarg.serialize()
+        envarg = environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())
+
+    def test_serde2inv(self):
+        """
+        supported non-json cases
+        """
+        envarg = environment_resolver.EnvironmentResolverArguments(
+            'foobar',
+            {
+                'key': (1, 4.3, (6, 5)),
+                42: [11, 22, {2, 5, 7}],
+                1: False,
+                -999: (None, True, 5),
+                'kek': {'q': 'we', 'a': 'sd'},
+            }
+        )
+        data = envarg.serialize()
+        client_envarg = client_environment_resolver.EnvironmentResolverArguments.deserialize(data)
+
+        self.assertEqual(client_envarg.name(), envarg.name())
+        self.assertEqual(client_envarg.arguments(), envarg.arguments())
+        self.assertEqual(client_envarg.serialize(), envarg.serialize())

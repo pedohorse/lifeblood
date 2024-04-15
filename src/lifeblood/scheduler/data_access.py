@@ -3,8 +3,8 @@ import aiosqlite
 import sqlite3
 import random
 import struct
-import json
 from dataclasses import dataclass
+from ..attribute_serialization import serialize_attributes
 from ..db_misc import sql_init_script
 from ..expiring_collections import ExpiringValuesSetMap
 from ..config import get_config
@@ -114,7 +114,7 @@ class DataAccess:
             return ret
 
         async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
-                               (newtask.name, json.dumps(newtask.attributes), newtask.parent_id,  # TODO: run dumps in executor
+                               (newtask.name, await serialize_attributes(newtask.attributes), newtask.parent_id,
                                 newtask.state.value,
                                 newtask.node_id, newtask.node_output_name,
                                 newtask.environment_resolver_arguments.serialize() if newtask.environment_resolver_arguments is not None else None)) as newcur:

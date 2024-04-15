@@ -2,8 +2,7 @@
 # And therefore this file should be kept up to date with the original
 #
 # note as well: this is still kept py2-3 compatible
-
-import json
+from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 
 
 class EnvironmentResolverArguments:
@@ -30,7 +29,7 @@ class EnvironmentResolverArguments:
         return self.__args
 
     def serialize(self):  # type: () -> bytes
-        return json.dumps({
+        return serialize_attributes_core({
             '_EnvironmentResolverArguments__resolver_name': self.__resolver_name,
             '_EnvironmentResolverArguments__args': self.__args,
         }).encode('utf-8')
@@ -38,7 +37,7 @@ class EnvironmentResolverArguments:
     @classmethod
     def deserialize(cls, data):  # type: (bytes) -> EnvironmentResolverArguments
         wrp = EnvironmentResolverArguments(None)
-        data_dict = json.loads(data.decode('utf-8'))
+        data_dict = deserialize_attributes_core(data.decode('utf-8'))
         wrp.__resolver_name = data_dict['_EnvironmentResolverArguments__resolver_name']
         wrp.__args = data_dict['_EnvironmentResolverArguments__args']
         return wrp

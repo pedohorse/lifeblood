@@ -1,6 +1,6 @@
 import dataclasses
 from dataclasses import dataclass
-import json
+from lifeblood.attribute_serialization import deserialize_attributes_core
 from lifeblood.basenode import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.taskspawn import TaskSpawn
@@ -177,7 +177,7 @@ class ParentChildrenWaiterNode(BaseNode):
                     self.__cache_children[parent_id] = ParentChildrenWaiterNode.Entry()
                 if task_id not in self.__cache_children[parent_id].children:
                     self.__cache_children[parent_id].children.add(task_id)
-                    self.__cache_children[parent_id].all_children_dicts[task_id] = json.loads(context.task_field('attributes'))
+                    self.__cache_children[parent_id].all_children_dicts[task_id] = dict(context.task_attributes())
                     self.__cache_children[parent_id].all_children_dicts[task_id]['_builtin_id'] = task_id
                     # promote children attribs up
                     if recursive and children_count > 0:

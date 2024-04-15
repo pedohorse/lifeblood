@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from .. import logging
 from .. import paths
 from ..nodegraph_holder_base import NodeGraphHolderBase
+from ..attribute_serialization import serialize_attributes, deserialize_attributes
 #from ..worker_task_protocol import WorkerTaskClient
 from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
@@ -334,7 +335,7 @@ class Scheduler(NodeGraphHolderBase):
             env_res_args = None
             if res['environment_resolver_data'] is not None:
                 env_res_args = await EnvironmentResolverArguments.deserialize_async(res['environment_resolver_data'])
-            return await asyncio.get_event_loop().run_in_executor(None, json.loads, res['attributes']), env_res_args
+            return await deserialize_attributes(res['attributes']), env_res_args
 
     async def get_task_fields(self, task_id: int) -> Dict[str, Any]:
         """
@@ -1268,12 +1269,12 @@ class Scheduler(NodeGraphHolderBase):
                 self.__logger.warning(f'update task attributes for {task_id} failed. task id not found.')
                 await con.commit()
                 return
-            attributes = await asyncio.get_event_loop().run_in_executor(None, json.loads, row['attributes'])
+            attributes = await deserialize_attributes(row['attributes'])
             attributes.update(attributes_to_update)
             for name in attributes_to_delete:
                 if name in attributes:
                     del attributes[name]
-            await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?', (await asyncio.get_event_loop().run_in_executor(None, json.dumps, attributes),
+            await con.execute('UPDATE tasks SET "attributes" = ? WHERE "id" = ?', (await serialize_attributes(attributes),
                                                                                    task_id))
             await con.commit()
 
@@ -1544,7 +1545,7 @@ class Scheduler(NodeGraphHolderBase):
                     continue
 
                 async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                       (newtask.name(), json.dumps(newtask._attributes()), parent_task_id,  # TODO: run dumps in executor
+                                       (newtask.name(), await serialize_attributes(newtask._attributes()), parent_task_id,  # TODO: run dumps in executor
                                         TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
                                         node_id, newtask.node_output_name(),
                                         newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:

@@ -4,9 +4,9 @@ from pathlib import Path
 import re
 import asyncio
 import lifeblood_connection
-import json
 import shutil
 import tempfile
+
 
 class ControlSignalProcessor:
     def __init__(self, my_addressee: str):
@@ -88,7 +88,7 @@ async def main(port: int, webport: int, my_addressee: str, attr_file_path: str):
     print('simtracker started')
 
     with open(attr_file_path, 'r') as f:
-        attrs = json.load(f)
+        attrs = lifeblood_connection.deserialize_attributes_core(f.read())
     attrs['simtracker_host'] = ip
     attrs['simtracker_port'] = port
     attrs['tracker_control_iid'] = lifeblood_connection.get_my_invocation_id()

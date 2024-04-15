@@ -6,8 +6,8 @@ import shutil
 import tempfile
 from pathlib import Path
 import sqlite3
-import json
 from unittest import mock, IsolatedAsyncioTestCase
+from lifeblood.attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from lifeblood.enums import TaskState
 from lifeblood.db_misc import sql_init_script
 from lifeblood.basenode import BaseNode, ProcessingResult
@@ -71,7 +71,7 @@ class PseudoTask:
             'node_input_name': self.__input_name,
             'state': self.__state.value,
             'parent_id': parent_id,
-            'attributes':  json.dumps(attrs),
+            'attributes':  serialize_attributes_core(attrs),
             **(extra_fields or {})
         }
 
@@ -98,15 +98,15 @@ class PseudoTask:
         }}
 
     def attributes(self) -> dict:
-        return json.loads(self.__task_dict['attributes'])
+        return deserialize_attributes_core(self.__task_dict['attributes'])
 
     def update_attribs(self, attribs_to_set: dict, attribs_to_delete: Optional[Set[str]] = None):
-        attrs: dict = json.loads(self.__task_dict['attributes'])
+        attrs: dict = deserialize_attributes_core(self.__task_dict['attributes'])
         attrs.update(attribs_to_set)
         if attribs_to_delete:
             for attr in attribs_to_delete:
                 attrs.pop(attr)
-        self.__task_dict['attributes'] = json.dumps(attrs)
+        self.__task_dict['attributes'] = serialize_attributes_core(attrs)
 
     def set_state(self, state: TaskState):
         self.__state = state
@@ -327,7 +327,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                             'outimage': out_exr_path,
                             'frames': [1, 2, 3]
                         }
-                        res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(start_attrs)}))
+                        res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(start_attrs)}))
 
                         ij = res.invocation_job
                         self.assertTrue(ij is not None)
@@ -354,7 +354,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         await asyncio.wait([done_waiter], timeout=30)
 
                         # now postprocess task
-                        res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
+                        res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
                             **start_attrs,
                             **updated_attrs
                         })}))
@@ -427,7 +427,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     for param, val in params.items():
                         node.set_param_value(param, val)
 
-                res = node.process_task(ProcessingContext(node, {'attributes': json.dumps(task_attrs)}))
+                res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(task_attrs)}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
@@ -459,7 +459,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 await asyncio.wait([done_waiter], timeout=30)
 
                 # now postprocess task
-                res = node.postprocess_task(ProcessingContext(node, {'attributes': json.dumps({
+                res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
                     **task_attrs,
                     **updated_attrs
                 })}))
