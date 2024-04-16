@@ -472,7 +472,8 @@ class InvocationJob:
         self.__envres_args = args
 
     def __repr__(self):
-        return f'InvocationJob: {self.__invocation_id}, {repr(self.__args)} {repr(self.__env)}'
+        # TODO: be careful with displaying process env until we design a way to deal with secrets
+        return f'<InvocationJob: {self.__invocation_id}, {repr(self.__args)}>'
 
     @classmethod
     def deserialize(cls, data: bytes) -> "InvocationJob":
