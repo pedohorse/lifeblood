@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
-    <title>Karma &#8212; Lifeblood 1.0.0 documentation</title>
+    <title>Telegram Notifier &#8212; Lifeblood 1.0.0 documentation</title>
   
   
   
@@ -43,11 +43,10 @@
     <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../../../_static/doctools.js"></script>
     <script src="../../../_static/sphinx_highlight.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'nodes/stock/houdini/karma';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'nodes/stock/telegram_client/telegram_notifier';</script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
-    <link rel="next" title="Mantra" href="mantra.html" />
-    <link rel="prev" title="Wedge Attributes" href="../../core/wedge.html" />
+    <link rel="prev" title="Matrix Notifier" href="../matrixnotifier.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -396,10 +395,10 @@ document.write(`
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Stock Nodes:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Karma</a></li>
-<li class="toctree-l1"><a class="reference internal" href="mantra.html">Mantra</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../houdini/karma.html">Karma</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../houdini/mantra.html">Mantra</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../matrixnotifier.html">Matrix Notifier</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../telegram_client/telegram_notifier.html">Telegram Notifier</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Telegram Notifier</a></li>
 </ul>
 </div>
 </nav></div>
@@ -440,7 +439,7 @@ document.write(`
     
     <li class="breadcrumb-item"><a href="../../../nodes.html" class="nav-link">Nodes</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page">Karma</li>
+    <li class="breadcrumb-item active" aria-current="page">Telegram Notifier</li>
   </ul>
 </nav>
 </div>
@@ -457,29 +456,95 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="karma">
-<span id="nodes-stock-houdini-karma"></span><h1>Karma<a class="headerlink" href="#karma" title="Permalink to this heading">#</a></h1>
-<p>Renders given USD file with karma renderer (part of houdini)</p>
+  <section id="telegram-notifier">
+<span id="nodes-stock-telegram-client-telegram-notifier"></span><h1>Telegram Notifier<a class="headerlink" href="#telegram-notifier" title="Permalink to this heading">#</a></h1>
+<p>Telegram notifier node allows you to send text and files to a given chat through a given bot.</p>
+<p>Bot must be created beforehand and added to all chats where it needs
+to send messages to.</p>
+<p>it is recommended to set up bot_id and chat_id once in then config,
+not to expose them in node parameters.</p>
+<p>To do that - keep the default expressions in node’s parameters, and
+set values of <code class="docutils literal notranslate"><span class="pre">bot_id</span></code> and room in your <code class="docutils literal notranslate"><span class="pre">&lt;home&gt;/lifeblood/nodes/config.toml</span></code></p>
+<p><code class="docutils literal notranslate"><span class="pre">chat_id</span></code> is not that secret, but it may also be kept in config for the ease of future changes</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">telegram_notifier</span><span class="o">.</span><span class="n">bot_id</span> <span class="o">=</span> <span class="s1">&#39;&lt;secret_bot_id here&gt;&#39;</span>
+<span class="n">telegram_notifier</span><span class="o">.</span><span class="n">chat_id</span> <span class="o">=</span> <span class="s1">&#39;&lt;chat id here&gt;&#39;</span>
+</pre></div>
+</div>
 <section id="parameters">
 <h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
-<dl class="field-list simple">
-<dt class="field-odd">Usd file path<span class="colon">:</span></dt>
-<dd class="field-odd"><p>path to the usd file to be rendered</p>
+<dl class="field-list">
+<dt class="field-odd">Bot Secret ID<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bot’s secret, the one telegram’s <a class="reference external" href="https://t.me/BotFather">&#64;BotFather</a> gives you.</p>
+<p>Read the <a class="reference external" href="https://core.telegram.org/bots/tutorial#obtain-your-bot-token">official tutorial</a> on
+how to create your personal notification bot. (Don’t be afraid to give your bot complicated and even unreadable name,
+it’s just for your team to use after all.)</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Remember, keep your bot_id is a secret, it allows anyone to control the bot.</p>
+</div>
 </dd>
-<dt class="field-even">Output image file path<span class="colon">:</span></dt>
-<dd class="field-even"><p>path where to save beauty pass</p>
+<dt class="field-even">Chat ID<span class="colon">:</span></dt>
+<dd class="field-even"><p>Chat ID where to send messages.</p>
+<p>You can create a new group for you and the bot (and your team members maybe), add your bot there too.</p>
+<p>To read messages in groups, the bot needs admin rights, but to write messages it does not. But to write messages in <strong>channels</strong> bot
+needs admin privileges in that telegram channel.</p>
+<p>To find out the proper <code class="docutils literal notranslate"><span class="pre">chat</span> <span class="pre">id</span></code>:</p>
+<ul>
+<li><p>Add bot to the group or channel</p>
+<ul class="simple">
+<li><p>If it is channel - give bot admin rights</p></li>
+<li><p>If it is a group - write some random command to the bot, like <code class="docutils literal notranslate"><span class="pre">/test</span> <span class="pre">&#64;my_bot_name_here</span></code>
+(where <code class="docutils literal notranslate"><span class="pre">my_bot_name_here</span></code> should be your actual bot’s name)</p></li>
+</ul>
+</li>
+<li><p>Now in your browser open a <strong>new private tab</strong> and go to <code class="docutils literal notranslate"><span class="pre">https://api.telegram.org/&lt;bot_id&gt;/getUpdates</span></code>, where <code class="docutils literal notranslate"><span class="pre">&lt;bot_id&gt;</span></code>
+is that secret thing you got when creating the bot.
+It will look something like this: <code class="docutils literal notranslate"><span class="pre">4839574812:AAFD39kkdpWt3ywyRZergyOLMaJhac60qc</span></code></p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>it’s recommented to use a <strong>private</strong> tab to prevent that url with bot_id in it from being saved into browser history</p>
+</div>
+</li>
+<li><p>There you will see a json dump of a reply, look for something that looks like <code class="docutils literal notranslate"><span class="pre">&quot;chat&quot;:</span> <span class="pre">{&quot;id&quot;:</span> <span class="pre">-123123123123</span> <span class="pre">....</span></code></p></li>
+<li><p>That number after <code class="docutils literal notranslate"><span class="pre">&quot;id&quot;</span></code> is the chat id (yes, it can be a negative number, so do not forget to preserve the minus sign)</p></li>
+<li><p>If you see more than one chat id in that json dump - means that you have sent more than one message to your bot, so it’s up to you to figure out
+what chat id is what. (it should not be hard to do if you look through that whole json data)</p></li>
+</ul>
 </dd>
-<dt class="field-odd">Skip if result already exists<span class="colon">:</span></dt>
-<dd class="field-odd"><p>if set - if <code class="docutils literal notranslate"><span class="pre">output</span> <span class="pre">image</span> <span class="pre">file</span> <span class="pre">path</span></code> file already exists - render will be skipped</p>
+<dt class="field-odd">Fail on error<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If message is not sent due to network, authentication or really any other error - set the task into error state.
+If this is disabled - task will be considered done regardless of the
+success or failure of the message sending.</p>
 </dd>
-</dl>
-</section>
-<section id="attributes-set">
-<h2>Attributes Set<a class="headerlink" href="#attributes-set" title="Permalink to this heading">#</a></h2>
-<p>When render is done, the following attributes are set:</p>
-<dl class="field-list simple">
-<dt class="field-odd">file<span class="colon">:</span></dt>
-<dd class="field-odd"><p>set to path of the rendered beauty pass image</p>
+<dt class="field-even">Formatting<span class="colon">:</span></dt>
+<dd class="field-even"><p>How to parse the message.</p>
+<p>Read about supported modes in <a class="reference external" href="https://core.telegram.org/bots/api#formatting-options">telegram API docs</a></p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>If message formatting syntax is wrong (not closed html tag, something not escaped, backticks opened and not closed)
+telegram server will return ERROR, it’s not like in telegram client that just ignores those errors.</p>
+<p>So it is your responsibility to ensure correct syntax if formatting is set to anything but <code class="docutils literal notranslate"><span class="pre">Plain</span></code></p>
+</div>
+</dd>
+<dt class="field-odd">Message<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Message to send. Message’s formatting must be correct.</p>
+</dd>
+<dt class="field-even">Attach a file<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optionally, a file may be attached to the message. it can be image, video
+or any other file.</p>
+</dd>
+<dt class="field-odd">Use worker<span class="colon">:</span></dt>
+<dd class="field-odd"><p>By default notification is sent by scheduler’s child process,
+but you may want to use workers instead, for example if there is a LOT of
+simultaneous uploads of many files, that may clog scheduler’s processing pool.</p>
+<p>With this checkbox set, notification will be scheduled to be sent from workers.
+However it’s up to you to ensure you don’t hit any rate limits with telegram servers.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>BEWARE:</strong> when executing on workers - <code class="docutils literal notranslate"><span class="pre">bot_id</span></code> <strong>WILL BE SAVED TO SCHEDULER’S DATABASE</strong>
+as part of Invocation Job description. So anyone with direct access to the database will be
+able to find your <code class="docutils literal notranslate"><span class="pre">bot_id</span></code> in it</p>
+</div>
 </dd>
 </dl>
 </section>
@@ -496,22 +561,13 @@ document.write(`
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../../core/wedge.html"
+       href="../matrixnotifier.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Wedge Attributes</p>
+        <p class="prev-next-title">Matrix Notifier</p>
       </div>
-    </a>
-    <a class="right-next"
-       href="mantra.html"
-       title="next page">
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Mantra</p>
-      </div>
-      <i class="fa-solid fa-angle-right"></i>
     </a>
 </div>
                 </footer>
@@ -532,14 +588,13 @@ document.write(`
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parameters">Parameters</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#attributes-set">Attributes Set</a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../../../_sources/nodes/stock/houdini/karma.rst.txt">
+    <a href="../../../_sources/nodes/stock/telegram_client/telegram_notifier.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
