@@ -31,3 +31,4 @@ Nodes
     nodes/stock/houdini/karma
     nodes/stock/houdini/mantra
     nodes/stock/matrixnotifier
+    nodes/stock/telegram_notifier
