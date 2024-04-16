@@ -32,6 +32,9 @@ Parameters
     Read the `official tutorial <https://core.telegram.org/bots/tutorial#obtain-your-bot-token>`_ on
     how to create your personal notification bot. (Don't be afraid to give your bot complicated and even unreadable name,
     it's just for your team to use after all.)
+
+    .. note::
+        Remember, keep your bot_id is a secret, it allows anyone to control the bot.
 :Chat ID:
     Chat ID where to send messages.
 
@@ -48,8 +51,12 @@ Parameters
       * If it is a group - write some random command to the bot, like ``/test @my_bot_name_here``
         (where ``my_bot_name_here`` should be your actual bot's name)
 
-    * Now in your browser go to ``https://api.telegram.org/<bot_id>/getUpdates``, where ``<bot_id>`` is that secret thing you got when creating the bot.
+    * Now in your browser open a **new private tab** and go to ``https://api.telegram.org/<bot_id>/getUpdates``, where ``<bot_id>``
+      is that secret thing you got when creating the bot.
       It will look something like this: ``4839574812:AAFD39kkdpWt3ywyRZergyOLMaJhac60qc``
+
+      .. note::
+        it's recommented to use a **private** tab to prevent that url with bot_id in it from being saved into browser history
     * There you will see a json dump of a reply, look for something that looks like ``"chat": {"id": -123123123123 ....``
     * That number after ``"id"`` is the chat id (yes, it can be a negative number, so do not forget to preserve the minus sign)
     * If you see more than one chat id in that json dump - means that you have sent more than one message to your bot, so it's up to you to figure out
@@ -83,4 +90,5 @@ Parameters
 
     .. warning::
         **BEWARE:** when executing on workers - ``bot_id`` **WILL BE SAVED TO SCHEDULER'S DATABASE**
-        as part of Invocation Job description
+        as part of Invocation Job description. So anyone with direct access to the database will be
+        able to find your ``bot_id`` in it
