@@ -10,6 +10,7 @@ def main():
     parser.add_argument('--message', default='')
     parser.add_argument('--message-stdin', action='store_true')
     parser.add_argument('--attach', default=None)
+    parser.add_argument('--parse_mode', default='')
     parser.add_argument('--status', action='store_true')
     parser.add_argument('chat_id')
 
@@ -32,9 +33,9 @@ def main():
 
     chat_id = args.chat_id
     if args.attach:
-        client.send_media(chat_id, media_path=args.attach, caption=message)
+        client.send_media(chat_id, media_path=args.attach, caption=message, parse_mode=args.parse_mode)
     elif message:
-        client.send_text(chat_id, message=message)
+        client.send_text(chat_id, message=message, parse_mode=args.parse_mode)
 
 
 if __name__ == '__main__':

@@ -75,13 +75,22 @@ class TelegramNotifier(BaseNodeWithTaskRequirements):
             with ui.collapsable_group_block('bot parameters', 'Bot Parameters'):
                 ui.add_parameter('bot_id', 'Bot Secret ID', NodeParameterType.STRING, '`config["bot_id"]`')
             ui.add_parameter('chat_id', 'Chat ID', NodeParameterType.STRING, '`config["chat_id"]`')
-            ui.add_parameter('fail on error', 'fail task on notification sending error', NodeParameterType.BOOL, True)
+            ui.add_parameter('fail on error', 'Fail on error', NodeParameterType.BOOL, True)
+            ui.add_separator()
+            ui.add_parameter('message formatting', 'Formatting', NodeParameterType.STRING, '').add_menu(
+                (
+                    ('Plain', ''),
+                    ('Markdown', 'Markdown'),
+                    ('Markdown V2', 'MarkdownV2'),
+                    ('HTML', 'HTML'),
+                )
+            )
             ui.add_parameter('message', 'message', NodeParameterType.STRING, '').set_text_multiline()
             with ui.parameters_on_same_line_block():
                 ui.add_parameter('do attach', 'attach a file', NodeParameterType.BOOL, False)
                 ui.add_parameter('attachment', None, NodeParameterType.STRING, '')
             ui.add_separator()
-            ui.add_parameter('on worker', 'use worker to send notification', NodeParameterType.BOOL, False)
+            ui.add_parameter('on worker', 'Use worker to send notification', NodeParameterType.BOOL, False)
 
         self.param('worker cpu cost').set_value(0.0)
         self.param('worker mem cost').set_value(0.1)
@@ -117,6 +126,12 @@ class TelegramNotifier(BaseNodeWithTaskRequirements):
             args += [
                 '--attach',
                 context.param_value('attachment')
+            ]
+
+        if parse_mode := context.param_value('message formatting'):
+            args += [
+                '--parse_mode',
+                parse_mode
             ]
 
         args += [context.param_value('chat_id')]
