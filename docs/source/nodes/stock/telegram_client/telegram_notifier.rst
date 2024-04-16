@@ -1,4 +1,4 @@
-.. _nodes/stock/telegram_notifier:
+.. _nodes/stock/telegram_client/telegram_notifier:
 
 =================
 Telegram Notifier
