@@ -1,0 +1,33 @@
+diff --git b/stock_tools/matrix_client/matrix_client/api.py a/stock_tools/matrix_client/matrix_client/api.py
+index aae52f9..d19f784 100644
+--- b/stock_tools/matrix_client/matrix_client/api.py
++++ a/stock_tools/matrix_client/matrix_client/api.py
+@@ -17,6 +17,7 @@
+ import json
+ import warnings
+ from requests import Session, RequestException
++from requests.exceptions import Timeout
+ from time import time, sleep
+ from .__init__ import __version__
+ from .errors import MatrixError, MatrixRequestError, MatrixHttpLibError
+@@ -718,15 +719,18 @@ class MatrixHttpApi(object):
+         if headers["Content-Type"] == "application/json" and content is not None:
+             content = json.dumps(content)
+ 
+-        while True:
++        for attempts in range(15):
+             try:
+                 response = self.session.request(
+                     method, endpoint,
+                     params=query_params,
+                     data=content,
+                     headers=headers,
+-                    verify=self.validate_cert
++                    verify=self.validate_cert,
++                    timeout=10
+                 )
++            except Timeout:
++                continue
+             except RequestException as e:
+                 raise MatrixHttpLibError(e, method, endpoint)
+ 

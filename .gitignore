@@ -9,6 +9,7 @@ venv_docs
 **.pyc
 **/__pycache__
 stock_tools/telegram_client/urllib3
+stock_tools/matrix_client/*/
 imgui.ini
 build
 dist
