@@ -6,7 +6,8 @@ from typing import Optional
 org = 'xxx'
 basename = 'lifeblood'
 
-env_var_name = 'LIFEBLOOD_CONFIG_LOCATION'
+config_env_var_name = 'LIFEBLOOD_CONFIG_LOCATION'
+log_env_var_name = 'LIFEBLOOD_LOG_LOCATION'
 
 
 def config_path(config_name: str, subname: Optional[str] = None) -> Path:
@@ -14,8 +15,8 @@ def config_path(config_name: str, subname: Optional[str] = None) -> Path:
 
 
 def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> Path:
-    if env_var_name in os.environ:
-        return Path(os.environ[env_var_name])/subname/config_name
+    if config_env_var_name in os.environ:
+        return Path(os.environ[config_env_var_name])/subname/config_name
     base = Path('~')
     if subname is None:
         subname = 'common'
@@ -29,12 +30,6 @@ def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> P
         return base/'Library'/'Preferences'/basename/subname/config_name
     else:
         raise NotImplementedError(f'da heck is {sys.platform} anyway??')
-    # if sys.platform.startswith('linux'):
-    #     return base/'.local'/'share'/org/subname/config_name
-    # if sys.platform.startswith('win'):
-    #     return base/'AppData'/'Roaming'/org/subname/config_name
-    # elif sys.platform.startswith('darwin'):
-    #     return base/'Library'/'Application Support'/org/subname/config_name
 
 
 def log_path(log_name: Optional[str], subname: Optional[str] = None, ensure_path_exists=True) -> Optional[Path]:
@@ -53,20 +48,16 @@ def log_path(log_name: Optional[str], subname: Optional[str] = None, ensure_path
 
 
 def log_unexpanded_path(log_name: Optional[str], subname: Optional[str] = None) -> Path:
-    if sys.platform.startswith('linux'):
-        log_path = Path(os.environ.get("XDG_DATA_HOME", "~/.local/share"))
-    elif sys.platform.startswith("win"):
-        log_path = Path(os.environ["LOCALAPPDATA"])
-    elif sys.platform.startswith("darwin"):
-        log_path = Path("~/Library/Application Support")
+    if log_env_var_name in os.environ:
+        log_base_path = Path(os.environ[log_env_var_name])
     else:
-        raise NotImplementedError(f'da heck is {sys.platform} anyway??')
-    log_path /= basename
+        log_base_path = config_unexpanded_path('', 'logs')
+        log_base_path /= basename
     if subname:
-        log_path /= subname
+        log_base_path /= subname
     if log_name:
-        log_path /= log_name
-    return log_path
+        log_base_path /= log_name
+    return log_base_path
 
 
 def default_main_database_location() -> Path:
