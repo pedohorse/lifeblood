@@ -52,7 +52,6 @@ def log_unexpanded_path(log_name: Optional[str], subname: Optional[str] = None) 
         log_base_path = Path(os.environ[log_env_var_name])
     else:
         log_base_path = config_unexpanded_path('', 'logs')
-        log_base_path /= basename
     if subname:
         log_base_path /= subname
     if log_name:
