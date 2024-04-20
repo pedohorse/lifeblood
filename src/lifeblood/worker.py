@@ -59,7 +59,7 @@ class Worker:
         config = get_config('worker')
         self.__logger = logging.get_logger('worker')
         self.log_root_path: str = ''
-        for self.log_root_path in (os.path.expandvars(config.get_option_noasync('worker.logpath', log_path('invocations', 'worker'))),
+        for self.log_root_path in (os.path.expandvars(config.get_option_noasync('worker.logpath', log_path('invocations', 'worker', ensure_path_exists=False))),
                                    os.path.join(tempfile.gettempdir(), 'lifeblood', 'worker_logs')):
             logs_ok = True
             try:
