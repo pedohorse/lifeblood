@@ -401,6 +401,10 @@ class Worker:
             else:
                 self.__where_to_report = report_to
 
+    # TODO: we must keep track of _awaiter, that it's not dead.
+    #  Either make a global watchdog task
+    #  Or wrap the whole _awaiter in try and catch errors within itself
+
     # callback awaiter
     async def _awaiter(self):
         stdout_path = self.get_log_filepath('output', self.__running_task.invocation_id())
