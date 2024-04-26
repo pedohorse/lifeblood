@@ -4,6 +4,7 @@ import asyncio
 class ComponentBase:
     def __init__(self):
         super().__init__()
+        self.__start_event = asyncio.Event()
         self.__stop_event = asyncio.Event()
         self.__main_task = None
         self.__main_task_is_ready = asyncio.Event()
@@ -28,7 +29,8 @@ class ComponentBase:
         if self.__main_task in done:  # means it raised an error
             for other in others:
                 other.cancel()
-            await self.__main_task
+            await self.__main_task  # exception re-raised here
+        self.__start_event.set()
 
     def stop(self):
         if self.__main_task is None:
@@ -36,7 +38,7 @@ class ComponentBase:
         self.__stop_event.set()
 
     async def wait_till_stops(self):
-        await self.__stop_event.wait()
+        await self.__start_event.wait()
         return await self.__main_task
 
     def _main_task(self):
