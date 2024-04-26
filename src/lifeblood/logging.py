@@ -14,6 +14,12 @@ class UnimportantOnlyFilter(logging.Filter):
 
 __logger_cache = {}
 __default_loglevel = 'INFO'
+if level := os.environ.get('LIFEBLOOD_DEFAULT_LOG_LEVEL'):
+    level = level.upper()
+    if level in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'FATAL', 'CRITICAL'):
+        __default_loglevel = level
+    else:
+        print(f'cannot set default log level to "{level}": unknown log level name')
 
 
 def set_default_loglevel(loglevel: str):
