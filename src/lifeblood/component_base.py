@@ -1,6 +1,16 @@
 import asyncio
 
 
+class _aio_Event_placeholder:
+    def __init__(self, event_set: bool):
+        self.event_set = event_set
+
+
+class _aio_Lock_placeholder:
+    def __init__(self, locked: bool):
+        self.locked = locked
+
+
 class ComponentBase:
     def __init__(self):
         super().__init__()
@@ -8,6 +18,64 @@ class ComponentBase:
         self.__stop_event = asyncio.Event()
         self.__main_task = None
         self.__main_task_is_ready = asyncio.Event()
+
+    def __getstate__(self):
+        """
+        this cheat is required for pythons <3.10
+        where some aio objects are NOT pickleable.
+        And we want to be pickleable for multiprocessing
+
+        This is rough, and does not cover all cases
+
+        This is TO BE DEPRECATED when python 3.8 3.9 are deprecated
+        """
+        state = self.__dict__.copy()
+        stash = {}
+        for k, v in state.items():
+            if not isinstance(v, (asyncio.Event, asyncio.Lock)):
+                continue
+            obj_id = id(v)
+            if obj_id in stash:
+                state[k] = stash[obj_id]
+            else:
+                if isinstance(v, asyncio.Event):
+                    placeholder = _aio_Event_placeholder(v.is_set())
+                elif isinstance(v, asyncio.Lock):
+                    placeholder = _aio_Lock_placeholder(v.locked())
+                else:
+                    raise RuntimeError('unreachable')
+                state[k] = placeholder
+                stash[obj_id] = placeholder
+
+        return state
+
+    def __setstate__(self, state):
+        """
+        read __getstate__
+        """
+        state = state.copy()
+        stash = {}
+        for k, v in state.items():
+            if not isinstance(v, (_aio_Event_placeholder, _aio_Lock_placeholder)):
+                continue
+            obj_id = id(v)
+            if obj_id in stash:
+                state[k] = stash[obj_id]
+            else:
+                if isinstance(v, _aio_Event_placeholder):
+                    placeholder = asyncio.Event()
+                    if v.event_set:
+                        placeholder.set()
+                elif isinstance(v, _aio_Lock_placeholder):
+                    placeholder = asyncio.Lock()
+                    if v.locked:
+                        placeholder._locked = True
+                else:
+                    raise RuntimeError('unreachable')
+                state[k] = placeholder
+                stash[obj_id] = placeholder
+
+        self.__dict__.update(state)
 
     @property
     def _stop_event(self):
