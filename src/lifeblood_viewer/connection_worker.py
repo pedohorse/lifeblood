@@ -261,21 +261,25 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
 
             if sche_addr is None:
                 logger.info('waiting for scheduler broadcast...')
-                tasks = asyncio.run(asyncio.wait((
-                    await_broadcast('lifeblood_scheduler'),
-                    _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
+                while True:
+                    tasks = asyncio.run(asyncio.wait((
+                        await_broadcast('lifeblood_scheduler'),
+                        _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
 
-                logger.debug(tasks)
-                message = list(tasks[0])[0].result()
+                    logger.debug(tasks)
+                    message = list(tasks[0])[0].result()
 
-                logger.debug(message)
-                if message is None:
-                    return False
-                logger.debug('received broadcast: %s', message)
-                schedata = json.loads(message)
-
-                sche_addr, sche_port = address_to_ip_port(schedata['ui'])  #schedata['ui'].split(':')
-                #sche_port = int(sche_port)
+                    logger.debug(message)
+                    if message is None:
+                        return False
+                    logger.debug('received broadcast: %s', message)
+                    schedata = json.loads(message)
+                    if 'ui' not in schedata:
+                        logger.debug('broadcast does not have "ui" key, ignoring')
+                        continue
+                    sche_addr, sche_port = address_to_ip_port(schedata['ui'])  #schedata['ui'].split(':')
+                    #sche_port = int(sche_port)
+                    break
         else:
             sche_addr = config.get_option_noasync('viewer.scheduler_ip', get_default_addr())
             sche_port = config.get_option_noasync('viewer.scheduler_port', ui_port())
