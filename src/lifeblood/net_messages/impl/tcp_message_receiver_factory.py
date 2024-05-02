@@ -15,6 +15,8 @@ class TcpMessageReceiverFactory(MessageReceiverFactory):
         if address.count(':') != 1:
             raise AddressTypeNotSupportedError(f'address "{address}" is not of "<host>:<port>" format')
         host, sport = address.split(':')
+        if host == '0.0.0.0':
+            raise ValueError('catch-all listening address 0.0.0.0 is not supported for now')
         receiver = TcpMessageReceiver((host, int(sport)), message_callback, socket_backlog=self.__backlog)
         await receiver.start()
         return receiver

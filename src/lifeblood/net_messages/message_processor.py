@@ -8,11 +8,12 @@ from .client import MessageClient, MessageClientFactory, RawMessageClientFactory
 from .message_handler import MessageHandlerBase
 from .logging import get_logger
 from .address import AddressChain, DirectAddress
+from .address_routing import AddressRouter
 from .enums import MessageType
 from .exceptions import StreamOpeningError
 from ..component_base import ComponentBase
 
-from typing import List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
 
 class ProcessedSessionsMap:
@@ -43,7 +44,8 @@ class ProcessedSessionsMap:
 
 
 class MessageProcessorBase(ComponentBase):
-    def __init__(self, listening_address: DirectAddress, *,
+    def __init__(self, listening_address_or_addresses: Union[DirectAddress, Iterable[DirectAddress]], *,
+                 address_router: AddressRouter,
                  message_receiver_factory: MessageReceiverFactory,
                  message_stream_factory: MessageStreamFactory,
                  message_client_factory: MessageClientFactory = None,
@@ -51,7 +53,11 @@ class MessageProcessorBase(ComponentBase):
                  message_handlers: Sequence[MessageHandlerBase] = ()):
         super().__init__()
         self.__message_queue = MessageQueue()
-        self.__address = listening_address
+        if isinstance(listening_address_or_addresses, DirectAddress):
+            self.__addresses = (listening_address_or_addresses,)
+        else:
+            self.__addresses = tuple(listening_address_or_addresses)
+        self.__address_router = address_router
         self.__sessions_being_processed = ProcessedSessionsMap()
         self.__processing_tasks = set()
         self.__forwarded_messages_count = 0
@@ -119,8 +125,15 @@ class MessageProcessorBase(ComponentBase):
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.finalize()
 
-    def listening_address(self) -> DirectAddress:
-        return self.__address
+    def listening_address(self, for_this: AddressChain) -> DirectAddress:
+        """
+        message processor may listen to several nic addresses,
+        this function will return address processor listens to that system can route to given for_this address
+        """
+        return self.__address_router.select_source_for(self.__addresses, for_this)
+
+    def listening_addresses(self) -> Tuple[DirectAddress]:
+        return self.__addresses
 
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
@@ -132,7 +145,8 @@ class MessageProcessorBase(ComponentBase):
     def message_client(self, destination: AddressChain, *, force_session: Optional[uuid.UUID] = None, send_retry_attempts: Optional[int] = None) -> _ClientContext:
         if send_retry_attempts is None:
             send_retry_attempts = self.__default_client_retry_attempts
-        return MessageProcessorBase._ClientContext(self.__address,
+        source_address = self.__address_router.select_source_for(self.__addresses, destination)
+        return MessageProcessorBase._ClientContext(source_address,
                                                    destination,
                                                    self.__message_queue,
                                                    self.__sessions_being_processed,
@@ -141,39 +155,27 @@ class MessageProcessorBase(ComponentBase):
                                                    force_session,
                                                    send_retry_attempts=send_retry_attempts)
 
-    # @asynccontextmanager
-    # async def message_client(self, destination: str, force_session: Optional[uuid.UUID] = None) -> AsyncIterator[MessageClient]:
-    #     """
-    #     use this line
-    #     async with processor.message_client(to_smth) as clinet:
-    #         await client.send_message(data)
-    #         process_reply(await client.recieve_message())
-    #
-    #     """
-    #     if force_session is None:
-    #         while (session := uuid.uuid4()) in self.__sessions_being_processed:
-    #             pass
-    #     else:
-    #         if force_session in self.__sessions_being_processed:
-    #             raise ValueError(f'forced session cannot be already in processing! {force_session}')
-    #         session = force_session
-    #
-    #     client = MessageClient(self.__message_queue, session, source=self.__address, destination=destination)
-    #     self.__sessions_being_processed[session] = client
-    #     try:
-    #         yield client
-    #     finally:
-    #         self.__sessions_being_processed.pop(session)
-    #
-
     def _main_task(self):
         return self.__serve()
 
     async def __serve(self):
         self._logger.info('starting serving messages')
-        server = await self.__message_receiver_factory.create_receiver(self.__address, self.new_message_received)
-        self._logger.debug('server started')
-        self._main_task_is_ready_now()
+        servers = []
+        exception_to_reraise = None
+        try:
+            for address in self.__addresses:
+                servers.append(await self.__message_receiver_factory.create_receiver(address, self.new_message_received))
+        except Exception as e:
+            # must stop the ones that were started
+            self._logger.debug('some listeners failed to start, failing...')
+            if len(servers) == 0:  # if we have not yet started anything
+                raise
+            self._logger.debug('some listeners were already started, so first stopping them, then failing...')
+            exception_to_reraise = e
+            self._stop_event.set()
+        else:
+            self._logger.debug('server started')
+            self._main_task_is_ready_now()
 
         await self._stop_event.wait()
 
@@ -182,11 +184,18 @@ class MessageProcessorBase(ComponentBase):
         await self.__sessions_being_processed.empty_event().wait()
         self._logger.debug('all sessions finished, stopping server')
         await self._pre_receiver_stop()
-        server.stop()
+        for server in servers:
+            server.stop()
         await self._post_receiver_stop()
-        await server.wait_till_stopped()
+        await asyncio.gather(*(
+            server.wait_till_stopped()
+            for server in servers
+        ))
         await self._post_receiver_stop_waited()
         self._logger.info('message server stopped')
+        if exception_to_reraise:
+            self._logger.debug('re-raising exception that happened during listener creation')
+            raise exception_to_reraise
 
     async def _pre_receiver_stop(self):
         return
@@ -215,23 +224,36 @@ class MessageProcessorBase(ComponentBase):
          each group should have single tcp connection, otherwise no guarantee about ordering
         """
         destination = message.message_destination().split_address()
-        if destination[0] != self.__address:
+        if destination[0] not in self.__addresses:
             self._logger.error('received message not meant for me, dropping')
             return True
 
-        if len(destination) > 1:  # redirect it further
-            dcurrent, dnext = destination[0], destination[1:]
-            assert dcurrent == self.__address
+        si = 0
+        for si, addr in enumerate(destination):
+            if addr not in self.__addresses:
+                break
+        else:
+            si += 1
+
+        current_part = destination[:si]
+        assert len(current_part) > 0  # destination check above catches this error, so assert must never fail
+        next_part = destination[si:]
+        if len(next_part) > 0:  # redirect it further
+            current_part = current_part[:1]  # throw out any other our addresses, including dups
+            return_input_address = self.__address_router.select_source_for(self.__addresses, next_part[0])
+            if current_part[-1] != return_input_address:  # for now, we enforce addresses to be explicit
+                current_part = (*current_part, return_input_address)
+
             try:
-                stream = await self.__message_stream_factory.open_sending_stream(dnext[0], self.__address)
+                stream = await self.__message_stream_factory.open_sending_stream(next_part[0], return_input_address)
             except StreamOpeningError:
                 raise
             except Exception as e:
                 raise StreamOpeningError(wrapped_exception=e) from None
 
             try:
-                message.set_message_destination(AddressChain.join_address(dnext))
-                message.set_message_source(AddressChain.join_address((dcurrent, *(message.message_source().split_address()))))
+                message.set_message_destination(AddressChain.join_address(next_part))
+                message.set_message_source(AddressChain.join_address((*reversed(current_part), *(message.message_source().split_address()))))
                 await stream.send_raw_message(message)
                 self.__forwarded_messages_count += 1
             finally:
@@ -260,6 +282,13 @@ class MessageProcessorBase(ComponentBase):
         task = asyncio.create_task(self.__process_message_wrapper(message, client, context))
         self.__processing_tasks.add(task)
         return True
+
+    def get_address_for(self, target_address: AddressChain):
+        """
+        select one of the addresses this processor is listening to
+        that is able to directly connect to the first direct address in given target_address address chain
+        """
+        return self.__address_router.select_source_for(self.__addresses, target_address)
 
     async def __process_message_wrapper(self, message: Message, client: MessageClient, context: _ClientContext):
         try:

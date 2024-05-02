@@ -3,15 +3,15 @@ from ..message_processor import MessageProcessorBase
 from ..message_handler import MessageHandlerBase
 from ..messages import Message
 from ..client import MessageClient, MessageClientFactory
-from ..address import DirectAddress
+from ..address import DirectAddress, AddressChain
 from .tcp_message_receiver_factory import TcpMessageReceiverFactory
 from .tcp_message_stream_factory import TcpMessageStreamFactory, TcpMessageStreamPooledFactory
-
-from typing import Optional, Sequence, Tuple
+from .ip_routing import IPRouter
+from typing import Iterable, Optional, Sequence, Tuple, Union
 
 
 class TcpMessageProcessor(MessageProcessorBase):
-    def __init__(self, listening_address: Tuple[str, int], *,
+    def __init__(self, listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]], DirectAddress, Iterable[DirectAddress]], *,
                  backlog=4096,
                  connection_pool_cache_time=300,
                  stream_timeout: float = 90,
@@ -24,7 +24,20 @@ class TcpMessageProcessor(MessageProcessorBase):
         else:
             stream_factory = TcpMessageStreamPooledFactory(connection_pool_cache_time, timeout=stream_timeout)
             self.__pooled_factory = stream_factory
-        super().__init__(DirectAddress(':'.join(str(x) for x in listening_address)),
+
+        addresses = []
+        if isinstance(listening_address_or_addresses, (tuple, list)) and isinstance(listening_address_or_addresses[0], str) and not isinstance(listening_address_or_addresses[0], AddressChain):
+            addresses.append(DirectAddress(':'.join(str(x) for x in listening_address_or_addresses)))
+        elif isinstance(listening_address_or_addresses, AddressChain):
+            addresses.append(listening_address_or_addresses)
+        else:  # assume it's an iterable of stuff
+            addresses.extend((
+                (addr if isinstance(addr, AddressChain) else DirectAddress(':'.join(str(x) for x in addr)))
+                for addr in listening_address_or_addresses
+            ))
+
+        super().__init__(addresses,
+                         address_router=IPRouter(),
                          message_receiver_factory=TcpMessageReceiverFactory(backlog=backlog or 4096),
                          message_stream_factory=stream_factory,
                          default_client_retry_attempts=default_client_retry_attempts,
