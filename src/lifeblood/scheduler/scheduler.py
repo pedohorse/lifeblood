@@ -15,7 +15,6 @@ from .. import logging
 from .. import paths
 from ..nodegraph_holder_base import NodeGraphHolderBase
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
-#from ..worker_task_protocol import WorkerTaskClient
 from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from ..scheduler_ui_protocol import SchedulerUiProtocol
@@ -23,7 +22,7 @@ from ..invocationjob import InvocationJob
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import WorkerPool
-from ..nethelpers import address_to_ip_port, get_default_addr, get_default_broadcast_addr
+from ..nethelpers import get_broadcast_addr_for, all_interfaces
 from ..net_classes import WorkerResources
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
@@ -34,7 +33,6 @@ from ..basenode_serialization import NodeSerializerBase, IncompatibleDeserializa
 from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, \
     SchedulerMode, TaskGroupArchivedState
 from ..config import get_config
-from ..misc import atimeit, alocking
 from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port, scheduler_message_port as default_scheduler_message_port
 from .. import aiosqlite_overlay
 from ..ui_protocol_data import TaskData, TaskDelta, IncompleteInvocationLogData, InvocationLogData
@@ -89,8 +87,6 @@ class Scheduler(NodeGraphHolderBase):
         self.__all_components = None
         self.__started_event = asyncio.Event()
 
-        loop = asyncio.get_event_loop()
-
         if db_file_path is None:
             db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
         if not db_file_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
@@ -119,45 +115,55 @@ class Scheduler(NodeGraphHolderBase):
         self.task_processor: TaskProcessor = TaskProcessor(self)
         self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
-        server_ip = None
-        if server_addr is None:
-            server_ip = config.get_option_noasync('core.server_ip', get_default_addr())
-            server_port = config.get_option_noasync('core.server_port', default_scheduler_port())
+        self.__message_processor_addresses = []
+        self.__ui_address = None
+        self.__legacy_command_server_address = None
+
+        if server_addr is not None:
+            server_ip, legacy_server_port, message_server_port = server_addr
+        else:
+            legacy_server_port = config.get_option_noasync(
+                'core.legacy_server_port',
+                config.get_option_noasync(
+                    'core.server_port',
+                    default_scheduler_port()
+                )
+            )
             message_server_port = config.get_option_noasync('core.server_message_port', default_scheduler_message_port())
+            server_ip = config.get_option_noasync('core.server_ip', '0.0.0.0')  # use all ifaces by default
+            
+        if server_ip == '0.0.0.0':  # message_processor address must be addressable, no catchall
+            for iface_ip in all_interfaces():
+                self.__message_processor_addresses.append(DirectAddress.from_host_port(iface_ip, message_server_port))
         else:
-            server_ip, server_port, message_server_port = server_addr
+            self.__message_processor_addresses.append(DirectAddress.from_host_port(server_ip, message_server_port))
+        self.__legacy_command_server_address = (server_ip, legacy_server_port)
+            
         if server_ui_addr is None:
-            ui_ip = config.get_option_noasync('core.ui_ip', server_ip or get_default_addr())
-            ui_port = config.get_option_noasync('core.ui_port', default_ui_port())
+            self.__ui_address = (
+                config.get_option_noasync('core.ui_ip', server_ip or '0.0.0.0'),
+                config.get_option_noasync('core.ui_port', default_ui_port())
+            )
         else:
-            ui_ip, ui_port = server_ui_addr
+            self.__ui_address = server_ui_addr
+
         self.__stop_event = asyncio.Event()
         self.__server_closing_task = None
         self.__cleanup_tasks = None
 
-        self.__server = None
-        self.__server_coro_args = {'protocol_factory': self._scheduler_protocol_factory, 'host': server_ip, 'port': server_port, 'backlog': 16}
-        self.__server_address = ':'.join((server_ip, str(server_port)))
+        self.__legacy_command_server = None
         self.__message_processor: Optional[SchedulerMessageProcessor] = None
-        self.__message_address: Tuple[str, int] = (server_ip, message_server_port)
         self.__ui_server = None
-        self.__ui_server_coro_args = {'protocol_factory': self._ui_protocol_factory, 'host': ui_ip, 'port': ui_port, 'backlog': 16}
-        self.__ui_address = ':'.join((ui_ip, str(ui_port)))
+        self.__ui_server_coro_args = {'protocol_factory': self._ui_protocol_factory, 'host': self.__ui_address[0], 'port': self.__ui_address[1], 'backlog': 16}
+        self.__legacy_server_coro_args = {'protocol_factory': self._scheduler_protocol_factory, 'host': server_ip, 'port': legacy_server_port, 'backlog': 16}
+
         if do_broadcasting is None:
             do_broadcasting = config.get_option_noasync('core.broadcast', True)
-        if do_broadcasting:
-            if broadcast_interval is None or broadcast_interval <= 0:
-                broadcast_interval = config.get_option_noasync('core.broadcast_interval', 10)
-            broadcast_info = json.dumps({
-                'message_address': str(DirectAddress.from_host_port(*self.__message_address)),
-                'worker': self.__server_address,
-                'ui': self.__ui_address
-            })
-            self.__broadcasting_server = None
-            self.__broadcasting_server_coro = create_broadcaster('lifeblood_scheduler', broadcast_info, ip=get_default_broadcast_addr(), broadcast_interval=broadcast_interval)
-        else:
-            self.__broadcasting_server = None
-            self.__broadcasting_server_coro = None
+        if broadcast_interval is None or broadcast_interval <= 0:
+            broadcast_interval = config.get_option_noasync('core.broadcast_interval', 10)
+        self.__do_broadcasting = do_broadcasting
+        self.__broadcasting_interval = broadcast_interval
+        self.__broadcasting_servers = []
 
         self.__worker_pool = None
         self.__worker_pool_helpers_minimal_idle_to_ensure = helpers_minimal_idle_to_ensure
@@ -423,14 +429,16 @@ class Scheduler(NodeGraphHolderBase):
 
     def stop(self):
         async def _server_closer():
+            # for server in self.__broadcasting_servers:
+            #     server.wait_closed()
             # ensure all components stop first
             await self.__pinger.wait_till_stops()
             await self.task_processor.wait_till_stops()
             await self.__worker_pool.wait_till_stops()
             await self.__ui_server.wait_closed()
-            if self.__server is not None:
-                self.__server.close()
-                await self.__server.wait_closed()
+            if self.__legacy_command_server is not None:
+                self.__legacy_command_server.close()
+                await self.__legacy_command_server.wait_closed()
             self.__logger.debug('stopping message processor...')
             self.__message_processor.stop()
             await self.__message_processor.wait_till_stops()
@@ -450,6 +458,8 @@ class Scheduler(NodeGraphHolderBase):
             self.__logger.error('cannot stop what is not started!')
             return
         self.__logger.info('STOPPING SCHEDULER')
+        # for server in self.__broadcasting_servers:
+        #     server.close()
         self.__stop_event.set()  # this will stop things including task_processor
         self.__pinger.stop()
         self.task_processor.stop()
@@ -493,18 +503,46 @@ class Scheduler(NodeGraphHolderBase):
 
         # start
         loop = asyncio.get_event_loop()
-        self.__server = await loop.create_server(**self.__server_coro_args)
+        self.__legacy_command_server = await loop.create_server(**self.__legacy_server_coro_args)
         self.__ui_server = await loop.create_server(**self.__ui_server_coro_args)
         # start message processor
-        self.__message_processor = SchedulerMessageProcessor(self, self.__message_address)
+
+        self.__message_processor = SchedulerMessageProcessor(self, self.__message_processor_addresses)
         await self.__message_processor.start()
+        worker_pool_message_proxy_address = (self.__message_processor_addresses[0].split(':', 1)[0], None)  # use same ip as scheduler's message processor, but default port
         self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER,
                                         minimal_idle_to_ensure=self.__worker_pool_helpers_minimal_idle_to_ensure,
-                                        scheduler_address=self.server_message_address())
+                                        scheduler_address=self.server_message_address(DirectAddress(worker_pool_message_proxy_address[0])),
+                                        message_proxy_address=worker_pool_message_proxy_address,
+                                        )
         await self.__worker_pool.start()
         #
-        if self.__broadcasting_server_coro is not None:
-            self.__broadcasting_server = await self.__broadcasting_server_coro
+        # broadcasting
+        if self.__do_broadcasting:
+            # need to start a broadcaster for each interface from union of message and ui addresses
+            for iface_addr in all_interfaces():
+                broadcast_address = get_broadcast_addr_for(iface_addr, try_fallbacks=False)
+                if broadcast_address is None:  # broadcast not supported
+                    continue
+                broadcast_data = {}
+                if direct_address := {x.split(':', 1)[0]: x for x in self.__message_processor_addresses}.get(iface_addr):
+                    broadcast_data['message_address'] = str(direct_address)
+                if iface_addr == self.__ui_address[0] or self.__ui_address[0] == '0.0.0.0':
+                    broadcast_data['ui'] = ':'.join(str(x) for x in self.__ui_address)
+                if iface_addr == self.__legacy_command_server_address[0] or self.__legacy_command_server_address[0] == '0.0.0.0':
+                    broadcast_data['worker'] = ':'.join(str(x) for x in self.__legacy_command_server_address)
+                self.__broadcasting_servers.append(
+                    (
+                        broadcast_address,
+                        await create_broadcaster(
+                            'lifeblood_scheduler',
+                            json.dumps(broadcast_data),
+                            ip=broadcast_address,
+                            broadcast_interval=self.__broadcasting_interval
+                        )
+                    )
+                )
+
         await self.task_processor.start()
         await self.__pinger.start()
         await self.ui_state_access.start()
@@ -513,11 +551,27 @@ class Scheduler(NodeGraphHolderBase):
               asyncio.gather(self.task_processor.wait_till_stops(),
                              self.__pinger.wait_till_stops(),
                              self.ui_state_access.wait_till_stops(),
-                             self.__server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
+                             self.__legacy_command_server.wait_closed(),  # TODO: shit being waited here below is very unnecessary
                              self.__ui_server.wait_closed(),
                              self.__worker_pool.wait_till_stops())
 
         self.__started_event.set()
+        # print information
+        self.__logger.info('scheduler started')
+        self.__logger.info(
+            'scheduler listening on:\n'
+            '  message processors:\n'
+            + '\n'.join((f'    {addr}' for addr in self.__message_processor_addresses)) +
+            '\n'
+            '  ui servers:\n'
+            f'    {":".join(str(x) for x in self.__ui_address)}\n'
+            '  legacy command servers:\n'
+            f'    {":".join(str(x) for x in self.__legacy_command_server_address)}'
+        )
+        self.__logger.info(
+            'broadcasting enabled for:\n'
+            + '\n'.join((f'    {info[0]}' for info in self.__broadcasting_servers))
+        )
 
     async def wait_till_starts(self):
         return await self.__started_event.wait()
@@ -702,7 +756,7 @@ class Scheduler(NodeGraphHolderBase):
             self.__logger.error(f'out of attempts trying to report cancel invocation {task.invocation_id()}, probably something is not right with the state of the database')
 
     async def __task_cancel_reported_inner(self, task: InvocationJob, stdout: str, stderr: str):
-        async with self.__invocation_reporting_lock,\
+        async with self.__invocation_reporting_lock, \
                    self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
             self.__logger.debug('task cancelled reported %s', repr(task))
@@ -1726,10 +1780,19 @@ class Scheduler(NodeGraphHolderBase):
 
         return entry
 
-    def server_address(self) -> str:
-        return self.__server_address
+    def server_address(self) -> Tuple[str, int]:
+        if self.__legacy_command_server_address is None:
+            raise RuntimeError('cannot get listening address of a non started server')
+        return self.__legacy_command_server_address
 
-    def server_message_address(self) -> AddressChain:
+    def server_message_address(self, to: AddressChain) -> AddressChain:
         if self.__message_processor is None:
             raise RuntimeError('cannot get listening address of a non started server')
-        return self.message_processor().listening_address()
+
+        return self.message_processor().listening_address(to)
+
+    def server_message_addresses(self) -> Tuple[AddressChain]:
+        if self.__message_processor is None:
+            raise RuntimeError('cannot get listening address of a non started server')
+
+        return self.message_processor().listening_addresses()
