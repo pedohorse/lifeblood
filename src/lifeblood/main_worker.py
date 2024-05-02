@@ -95,6 +95,9 @@ async def main_async(worker_type=WorkerType.STANDARD,
             message = await broadcast_task
             scheduler_info = json.loads(message)
             logger.debug('received', scheduler_info)
+            if 'message_address' not in scheduler_info:
+                logger.debug('broadcast does not have "message_address" key, ignoring')
+                continue
             addr = AddressChain(scheduler_info['message_address'])
             try:
                 worker = Worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)

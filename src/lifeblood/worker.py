@@ -107,7 +107,8 @@ class Worker:
         self.__scheduler_pinger = None
         self.__components_stop_event = asyncio.Event()
         self.__extra_files_base_dir = None
-        self.__my_addr: Optional[AddressChain] = None
+        self.__my_addr_for_scheduler: Optional[AddressChain] = None
+        self.__message_address: Optional[DirectAddress] = None
         self.__worker_id = worker_id
         self.__pool_address: Optional[AddressChain] = pool_address
         if self.__worker_id is None and self.__pool_address is not None \
@@ -203,16 +204,15 @@ class Worker:
             else:
                 raise RuntimeError('could not find an opened port!')
 
-            if self.__pool_address:
-                self.__my_addr = AddressChain.join_address((self.__pool_address, DirectAddress.from_host_port(my_ip, my_port)))
-            else:
-                self.__my_addr = AddressChain.from_host_port(my_ip, my_port)
+            self.__message_address = DirectAddress.from_host_port(my_ip, my_port)
 
             # now report our address to the scheduler
             metadata = WorkerMetadata(get_hostname())
             try:
                 with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                    self.__scheduler_db_uid = await client.say_hello(self.__my_addr, self.__worker_type, self.__my_resources, metadata)
+                    # re-normalize addresses
+                    self.__scheduler_addr, self.__my_addr_for_scheduler = await client.get_normalized_addresses()
+                    self.__scheduler_db_uid = await client.say_hello(self.__my_addr_for_scheduler, self.__worker_type, self.__my_resources, metadata)
             except MessageTransferError as e:
                 self.__logger.error('error connecting to scheduler during start')
                 abort_start = True
@@ -247,7 +247,7 @@ class Worker:
             try:
                 self.__logger.debug('saying bye to scheduler')
                 with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                    await client.say_bye(self.__my_addr)
+                    await client.say_bye(self.__my_addr_for_scheduler)
             except MessageTransferError:  # if scheduler or route is down
                 self.__logger.info('couldn\'t say bye to scheduler as it seem to be down')
             except Exception:
@@ -747,8 +747,8 @@ class Worker:
                 metadata = WorkerMetadata(get_hostname())
                 try:
                     with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                        assert self.__my_addr is not None
-                        addr = self.__my_addr
+                        assert self.__my_addr_for_scheduler is not None
+                        addr = self.__my_addr_for_scheduler
                         self.__logger.debug('saying bye')
                         await client.say_bye(addr)
                         self.__logger.debug('cancelling task')
@@ -779,7 +779,7 @@ class Worker:
                 try:
                     self.__logger.debug('pinging scheduler')
                     with SchedulerWorkerControlClient.get_scheduler_control_client(self.__scheduler_addr, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                        result = await client.ping(self.__my_addr)
+                        result = await client.ping(self.__my_addr_for_scheduler)
                     self.__logger.debug(f'scheduler pinged: sees me as {result}')
                 except MessageTransferError as mte:
                     self.__logger.error('ping message delivery failed')
@@ -834,3 +834,9 @@ class Worker:
                 # and since error is most probably due to network - it will either resolve itself, or there is no point reintroducing if connection cannot be established anyway
             elif result is not None:
                 self.__ping_missed = 0
+
+    def worker_message_address(self) -> DirectAddress:
+        if self.__message_address is None:
+            raise RuntimeError('cannot get listening address of a non started worker')
+
+        return self.__message_address

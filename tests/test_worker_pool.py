@@ -147,7 +147,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
         swp.set_minimum_idle_workers(step2_idle)
         time_mark = time.perf_counter()
         now = time_mark
-        while now - time_mark < 2:
+        while now - time_mark < 10:
             # if worker count drops below min - means we have some flawed logic in worker pool
             self.assertLessEqual(mini, len(swp.list_workers()))
             await asyncio.sleep(0.000001)

@@ -224,7 +224,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
             workers = []
             for i in range(worker_count):
-                worker = Worker(sched.server_message_address(),
+                worker = Worker(sched.server_message_addresses()[0],
                                 scheduler_ping_interval=9001)
                 await worker.start()
                 workers.append(worker)
@@ -348,7 +348,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
                         await workers[0].run_task(
                             ij,
-                            scheduler.server_message_address()
+                            scheduler.server_message_addresses()[0]
                         )
 
                         await asyncio.wait([done_waiter], timeout=30)
@@ -453,7 +453,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
                 await workers[0].run_task(
                     ij,
-                    scheduler.server_message_address()
+                    scheduler.server_message_addresses()[0]
                 )
 
                 await asyncio.wait([done_waiter], timeout=30)
