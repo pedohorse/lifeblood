@@ -1,14 +1,9 @@
-import os
-import asyncio
 import aiofiles
 from contextlib import contextmanager
-from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable
-from .environment_resolver import ResolutionImpossibleError
 from . import logging
 from . import invocationjob
-from .exceptions import AlreadyRunning
 from .taskspawn import TaskSpawn
-from .enums import WorkerPingReply, TaskScheduleStatus, WorkerState, WorkerType, SpawnStatus, InvocationState, InvocationMessageResult
+from .enums import WorkerState, WorkerType, SpawnStatus, InvocationState, InvocationMessageResult
 from .worker_messsage_processor import WorkerControlClient
 from .net_classes import WorkerResources
 from .worker_metadata import WorkerMetadata
@@ -20,7 +15,7 @@ from .net_messages.exceptions import MessageTransferTimeoutError, MessageReceive
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
-from typing import Awaitable, Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple, TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from .scheduler import Scheduler
 
@@ -33,6 +28,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
     def command_mapping(self) -> Dict[str, Callable[[dict, CommandJsonMessageClient, Message], Awaitable[None]]]:
         return {
             'pulse': self._command_pulse,
+            'what_is_my_address': self._command_what_is_my_address,
             '_pulse3way_': self._command_pulse3way,  # TODO: remove this when handlers are implemented
             # worker-specific
             'worker.ping': self._command_ping,
@@ -71,6 +67,18 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             ok: ok is ok
         """
         await client.send_message_as_json({'ok': True})
+
+    async def _command_what_is_my_address(self, args: dict, client: CommandJsonMessageClient, original_message: Message):  # 'what_is_my_address'
+        """
+        expects keys:
+        returns keys:
+            ok: ok is ok
+            my_address: address chain of the client who called this command
+        """
+        await client.send_message_as_json({
+            'ok': True,
+            'my_address': str(original_message.message_source()),
+        })
 
     async def _command_done(self, args: dict, client: CommandJsonMessageClient, original_message: Message):  # 'done'
         """
@@ -279,8 +287,8 @@ class SchedulerExtraCommandHandler(CommandMessageHandlerBase):
 
 
 class SchedulerMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, scheduler: "Scheduler", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
-        super().__init__(listening_address,
+    def __init__(self, scheduler: "Scheduler", listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]]], *, backlog=4096, connection_pool_cache_time=300):
+        super().__init__(listening_address_or_addresses,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
                          message_handlers=(SchedulerCommandHandler(scheduler),
@@ -307,6 +315,27 @@ class SchedulerBaseClient:
         await self.__client.send_command('pulse', {})
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
+
+    async def get_normalized_addresses(self) -> Tuple[AddressChain, AddressChain]:
+        """
+        TODO: this should be available to ALL clients/processors
+        normalized address chain is the one that has all the intermediate addresses
+        so that reversed address can be used as is to send messages back
+        example of non-normalized address would be
+            192.168.0.11:1234|10.0.0.22:2345
+        this assumes that target at 192.168.0.11:1234 can send messages to different subnets
+        while such address is correct, it cannot be used reversed as return address without additional actions
+        a normalized version of this address is something like
+            192.168.0.11:1234|10.0.0.11:1234|10.0.0.22:2345
+
+        :returns: tuple of normalized addresses of destination message processor, and a reversed address of this client's processor as seen by destination processor
+        """
+
+        await self.__client.send_command('what_is_my_address', {})
+        reply = await self.__client.receive_message()
+        reply_body = await reply.message_body_as_json()
+        assert reply_body.get('ok', False), 'something is not ok'
+        return reply.message_source(), reply_body['my_address']
 
 
 class SchedulerWorkerControlClient(SchedulerBaseClient):
