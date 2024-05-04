@@ -528,9 +528,9 @@ class Scheduler(NodeGraphHolderBase):
                 if direct_address := {x.split(':', 1)[0]: x for x in self.__message_processor_addresses}.get(iface_addr):
                     broadcast_data['message_address'] = str(direct_address)
                 if iface_addr == self.__ui_address[0] or self.__ui_address[0] == '0.0.0.0':
-                    broadcast_data['ui'] = ':'.join(str(x) for x in self.__ui_address)
+                    broadcast_data['ui'] = ':'.join(str(x) for x in (iface_addr, self.__ui_address[1]))
                 if iface_addr == self.__legacy_command_server_address[0] or self.__legacy_command_server_address[0] == '0.0.0.0':
-                    broadcast_data['worker'] = ':'.join(str(x) for x in self.__legacy_command_server_address)
+                    broadcast_data['worker'] = ':'.join(str(x) for x in (iface_addr, self.__legacy_command_server_address[1]))
                 self.__broadcasting_servers.append(
                     (
                         broadcast_address,
