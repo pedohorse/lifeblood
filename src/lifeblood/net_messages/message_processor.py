@@ -224,6 +224,7 @@ class MessageProcessorBase(ComponentBase):
          each group should have single tcp connection, otherwise no guarantee about ordering
         """
         destination = message.message_destination().split_address()
+        assert isinstance(destination, tuple)
         if destination[0] not in self.__addresses:
             self._logger.error('received message not meant for me, dropping')
             return True
@@ -239,10 +240,15 @@ class MessageProcessorBase(ComponentBase):
         assert len(current_part) > 0  # destination check above catches this error, so assert must never fail
         next_part = destination[si:]
         if len(next_part) > 0:  # redirect it further
-            current_part = current_part[:1]  # throw out any other our addresses, including dups
             return_input_address = self.__address_router.select_source_for(self.__addresses, next_part[0])
-            if current_part[-1] != return_input_address:  # for now, we enforce addresses to be explicit
-                current_part = (*current_part, return_input_address)
+            if len(current_part) == 2 and current_part[0] != current_part[1] and current_part[1] == return_input_address \
+                    or len(current_part) == 1 and current_part[0] == return_input_address:
+                pass  # easier and more explicit to state cases of correctly normalized addresses than invert the expression above
+            else:
+                self._logger.debug('incoming redirected message address is not normalized, re-normalizing')
+                current_part = current_part[:1]  # throw out any other our addresses, including dups
+                if current_part[-1] != return_input_address:  # for now, we enforce addresses to be normalized
+                    current_part = (*current_part, return_input_address)
 
             try:
                 stream = await self.__message_stream_factory.open_sending_stream(next_part[0], return_input_address)
@@ -263,6 +269,10 @@ class MessageProcessorBase(ComponentBase):
                 except:
                     self._logger.exception('failed to close forwarding stream, suppressing')
             return True
+
+        if len(current_part) > 1:
+            self._logger.debug('incoming message address is not normalized, re-normalizing')
+            message.set_message_destination(current_part[0])
 
         if message.message_type() == MessageType.SYSTEM_PING:
             return True
