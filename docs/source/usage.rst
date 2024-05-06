@@ -22,6 +22,36 @@ All components of Lifeblood are configured by a number of configs files, some of
 
 To configure your firewalls to allow lifeblood communications - see :ref:`network_config`
 
+.. _env-vars:
+
+Environment Variables
+---------------------
+
+Most of Lifeblood is configurable through config files and command line arguments,
+however some runtime adjustments can be done through Environment variables
+
+:LIFEBLOOD_CONFIG_LOCATION:
+    Base location for all Lifeblood configuration files.
+
+    Default value: see :ref:`config-dir`
+
+:LIFEBLOOD_DEFAULT_LOG_LEVEL:
+    sets default log level used by all loggers in Lifeblood components.
+
+    Log level values can be: ``CRITICAL``, ``FATAL``, ``ERROR``, ``WARNING``, ``INFO``, ``DEBUG``
+
+    Default (when the variable is not set, or is set to an incorrect log level) default Log level is ``INFO``
+
+:LIFEBLOOD_LOG_LOCATION:
+    Base location for all Lifeblood logs.
+
+    Defaults to a `logs` subdirectory within config location
+
+:LIFEBLOOD_PLUGIN_PATH:
+    A list of paths separated by OS-dependent path separator (``:`` on linux/mac, ``;`` on windows).
+
+    Each path is scanned for Lifeblood plugins.
+
 .. _config-dir:
 
 Config location
