@@ -311,7 +311,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
             self.skipTest('need multiple network interfaces for this test')
 
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
-            address = AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0]])
+            address = AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0], proc2.listening_addresses()[0]])
             expected_normalized_address = AddressChain.join_address([addr for prox in proxies for addr in prox.listening_addresses()] + [proc2.listening_addresses()[0]])
             logger.info(f'sending message to address: "{address}"')
             with proc1.message_client(address) as client:  # type: MessageClient
