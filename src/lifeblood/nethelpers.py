@@ -117,7 +117,7 @@ def get_broadcast_addr_for(addr: str, *, try_fallbacks=False) -> Optional[str]:
     return '<broadcast>'
 
 
-def all_interfaces() -> List[str]:
+def all_interfaces(active_only: bool = True) -> List[str]:
     """
     by convention, localhost is the first in returned list
     """
@@ -129,7 +129,7 @@ def all_interfaces() -> List[str]:
         if iface not in net_stats:  # probably impossible, just for sanity
             continue
         stats = net_stats[iface]
-        if not stats.isup:  # skip disabled interfaces
+        if active_only and not stats.isup:  # skip disabled interfaces
             continue
         for ifdata in ifdatalist:
             if ifdata.family != socket.AF_INET:
