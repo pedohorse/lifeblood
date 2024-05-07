@@ -474,14 +474,14 @@ You provide it with requirements that is pairs of “package name” and “pack
 entry from standard environment resolver config</p>
 <p>The configuration file for standard environment resolver is located at <a class="reference internal" href="../../usage.html#config-dir"><span class="std std-ref">Config location</span></a> <code class="docutils literal notranslate"><span class="pre">/standard_environment_resolver/config.toml</span></code></p>
 <p>You can add any package to there in the following form:</p>
-<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[packages.&quot;package_name&quot;.&quot;1.2.3&quot;]</span>
-<span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;this is a cool package package_name&quot;</span>
-<span class="n">env</span><span class="p">.</span><span class="n">PATH</span><span class="p">.</span><span class="n">append</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/path/to/some/bin&quot;</span>
-<span class="n">env</span><span class="p">.</span><span class="n">SOMETHING</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;a value for env variable SOMETHING&quot;</span>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[packages.</span><span class="s2">&quot;package_name&quot;</span><span class="k">.</span><span class="s2">&quot;1.2.3&quot;</span><span class="k">]</span>
+<span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;this is a cool package package_name&quot;</span>
+<span class="n">env</span><span class="p">.</span><span class="n">PATH</span><span class="p">.</span><span class="n">append</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/path/to/some/bin&quot;</span>
+<span class="n">env</span><span class="p">.</span><span class="n">SOMETHING</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;a value for env variable SOMETHING&quot;</span>
 <span class="n">env</span><span class="p">.</span><span class="n">HOUDINI_PATH</span><span class="p">.</span><span class="n">prepend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-<span class="w">  </span><span class="s">&quot;/path/related/things/can/also/take/a/list&quot;</span>
-<span class="w">  </span><span class="s">&quot;/of/strings&quot;</span>
-<span class="w">  </span><span class="s">&quot;/whatever/you/want/to/prepend&quot;</span>
+<span class="w">  </span><span class="s2">&quot;/path/related/things/can/also/take/a/list&quot;</span>
+<span class="w">  </span><span class="s2">&quot;/of/strings&quot;</span>
+<span class="w">  </span><span class="s2">&quot;/whatever/you/want/to/prepend&quot;</span>
 <span class="p">]</span>
 </pre></div>
 </div>
@@ -500,9 +500,9 @@ as a correct value would either have <code class="docutils literal notranslate">
 So here - it’s just a demonstration, not a real configuration example</p>
 </div>
 <p>A real example of houdini configuration would look something like this:</p>
-<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[packages.&quot;houdini.py3_10&quot;.&quot;20.0.506&quot;]</span>
-<span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;SideFX Houdini 20.0.506&quot;</span>
-<span class="n">env</span><span class="p">.</span><span class="n">PATH</span><span class="p">.</span><span class="n">prepend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/opt/hfs20.0.506/bin&quot;</span>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[packages.</span><span class="s2">&quot;houdini.py3_10&quot;</span><span class="k">.</span><span class="s2">&quot;20.0.506&quot;</span><span class="k">]</span>
+<span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;SideFX Houdini 20.0.506&quot;</span>
+<span class="n">env</span><span class="p">.</span><span class="n">PATH</span><span class="p">.</span><span class="n">prepend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/opt/hfs20.0.506/bin&quot;</span>
 </pre></div>
 </div>
 <p>For example, Houdini’s Lifeblood submitter by default creates a requirement for a
