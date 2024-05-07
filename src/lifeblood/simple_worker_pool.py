@@ -8,18 +8,15 @@ import itertools
 from types import MappingProxyType
 import json
 from .config import get_config
-from .nethelpers import get_default_addr
 from .broadcasting import await_broadcast
-from .defaults import scheduler_port as default_scheduler_port, message_proxy_port
+from .defaults import message_proxy_port
 from .pulse_checker import PulseChecker
 from .process_utils import create_worker_process, send_stop_signal_to_worker
 
 from .logging import get_logger
-# from .worker_pool_protocol import WorkerPoolProtocol
 from .worker_pool_message_processor import WorkerPoolMessageProcessor
-from .nethelpers import get_localhost
+from .nethelpers import get_addr_to, get_localhost
 from .enums import WorkerState, WorkerType, ProcessPriorityAdjustment
-from .defaults import worker_pool_port as default_worker_pool_port
 
 from .net_messages.address import AddressChain, DirectAddress
 
@@ -29,7 +26,7 @@ from typing import Tuple, Dict, List, Optional
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
                              minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
                              idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
-                             priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: Optional[AddressChain] = None):
+                             priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: AddressChain):
     swp = WorkerPool(worker_type,
                      minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
                      idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, housekeeping_interval=housekeeping_interval, priority=priority, scheduler_address=scheduler_address)
@@ -54,19 +51,20 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                  minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
                  idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
                  priority=ProcessPriorityAdjustment.NO_CHANGE,
-                 scheduler_address: Optional[AddressChain] = None):
+                 scheduler_address: AddressChain,
+                 message_proxy_address: Optional[Tuple[Optional[str], Optional[int]]] = None,
+                 ):
         """
         manages a pool of workers.
         :param worker_type: workers are created of given type
         :param minimal_total_to_ensure:  at minimum this amount of workers will be always upheld
         :param minimal_idle_to_ensure:  at minimum this amount of IDLE or OFF(as we assume they are OFF only while they are booting up) workers will be always upheld
-        :param scheduler_address:  force created workers to use this scheduler address. otherwise workers will use their configuration
+        :param scheduler_address: force created workers to use this scheduler address
         """
         # local helper workers' pool
         self.__worker_pool: Dict[asyncio.Future, ProcData] = {}
         self.__workers_to_merge: List[ProcData] = []
         self.__pool_task = None
-        # self.__worker_server: Optional[asyncio.AbstractServer] = None
         self.__message_proxy: Optional[WorkerPoolMessageProcessor] = None
         self.__stop_event = asyncio.Event()
         self.__server_closer_waiter = None
@@ -88,9 +86,9 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
 
         self.__id_to_procdata: Dict[int, ProcData] = {}
         self.__next_wid = 0
-        # self.__my_addr = get_localhost()
-        # self.__my_port = default_worker_pool_port()
-        self.__message_proxy_address = None
+
+        # this __message_proxy_address is not correct until start() is called
+        self.__message_proxy_address = message_proxy_address
 
         self.__poke_event.set()
         self.__stopped = False
@@ -99,9 +97,25 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         if self.__pool_task is not None and not self.__pool_task.done():
             return
 
-        proxy_addr, proxy_port = get_default_addr(), message_proxy_port()
+        # actual __message_proxy_address will be set after open port is found
+        default_address = get_addr_to(self.__scheduler_address.split_address()[0])
+        if self.__message_proxy_address is None:
+            proxy_addr, proxy_port = default_address, message_proxy_port()
+        else:
+            proxy_addr, proxy_port = self.__message_proxy_address
+            if proxy_addr is None:
+                proxy_addr = default_address
+            if proxy_port is None:
+                proxy_port = message_proxy_port()
+
+        localhost = get_localhost()
+        if proxy_addr != localhost:
+            # NOTE: ordering MATTERS, we always use localhost last, supplementary. worker creation below relies on this order
+            proxy_addresses = (proxy_addr, localhost)
+        else:
+            proxy_addresses = (proxy_addr,)
         for i in range(1024):  # somewhat big, but not too big
-            self.__message_proxy = WorkerPoolMessageProcessor(self, (proxy_addr, proxy_port))  # TODO: config for other arguments
+            self.__message_proxy = WorkerPoolMessageProcessor(self, [(addr, proxy_port) for addr in proxy_addresses])  # TODO: config for other arguments
             try:
                 await self.__message_proxy.start()
                 break
@@ -119,7 +133,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__pulse_checker = PulseChecker(self.__scheduler_address, self.__message_proxy, interval=10, maximum_misses=10)
         self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
         await self.__pulse_checker.start()
-        self.__logger.debug(f'worker pool message protocol listening on {self.__message_proxy_address}')
+        self.__logger.debug(f'worker pool message protocol listening on {self.__message_proxy.listening_addresses()}')
 
     def stop(self):
         async def _server_closer():
@@ -166,6 +180,10 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         if len(self.__id_to_procdata) + len(self.__workers_to_merge) >= self.__maximum_total:
             self.__logger.warning(f'maximum worker limit reached ({self.__maximum_total})')
             return
+
+        # NOTE: last address is localhost, if localhost is listened to
+        # NOTE: worker will re-normalize address (as long as it's reachable), so we don't need to do that
+        pool_address = self.__message_proxy.listening_addresses()[-1]
         args = [sys.executable, '-m', 'lifeblood.launch',
                 '--loglevel', 'DEBUG',
                 'worker',
@@ -173,13 +191,12 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                 '--priority', self.__worker_priority.name,
                 '--no-loop',
                 '--id', str(self.__next_wid),
-                '--pool-address', str(self.__message_proxy_address)]
-        if self.__scheduler_address is not None:
-            args += ['--scheduler-address',
-                     AddressChain.join_address((
-                         self.__message_proxy.listening_address(),
-                         self.__scheduler_address
-                     ))]
+                '--pool-address', str(pool_address),
+                '--scheduler-address',
+                AddressChain.join_address((
+                    pool_address,
+                    self.__scheduler_address
+                 ))]
 
         self.__workers_to_merge.append(ProcData(await create_worker_process(args), self.__next_wid))
         self.__logger.debug(f'adding new worker (id: {self.__next_wid}) to the pool, total: {len(self.__workers_to_merge) + len(self.__worker_pool)}')
@@ -268,14 +285,17 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                 total_guys = self.total_active_worker_count()
                 if idle_guys > self.__ensure_minimum_idle and total_guys > self.__ensure_minimum_total:
                     max_to_kill = min(idle_guys - self.__ensure_minimum_idle, total_guys - self.__ensure_minimum_total)
+                    self.__logger.debug(f'cleaning up. max {max_to_kill} workers to kill')
                     # if we above minimum - we can kill some idle ones
                     now = time.time()
                     for procdata in self.__worker_pool.values():
                         if max_to_kill <= 0:
                             break
                         if procdata.state != WorkerState.IDLE or now - procdata.state_entering_time < self.__idle_timeout or procdata.sent_term_signal:
+                            self.__logger.debug(f'not killing (id: {procdata.id}): not idle enough')
                             continue
                         try:
+                            self.__logger.debug(f'enforcing limits: terminating worker (id: {procdata.id})')
                             send_stop_signal_to_worker(procdata.process)
                             procdata.sent_term_signal = True
                         except ProcessLookupError:
@@ -350,6 +370,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             self.__logger.warning(f'reported state {state} for worker {worker_id} that DOESN\'T BELONG TO US')
             return
 
+        self.__logger.debug(f'worker (id: {worker_id}) reported state={state}')
         if self.__id_to_procdata[worker_id].state != state:
             self.__id_to_procdata[worker_id].state = state
             self.__id_to_procdata[worker_id].state_entering_time = time.time()
@@ -435,6 +456,9 @@ async def async_main(argv):
             message = await broadcast_task
             scheduler_info = json.loads(message)
             logger.debug('received', scheduler_info)
+            if 'message_address' not in scheduler_info:
+                logger.debug('broadcast does not have "message_address" key, ignoring')
+                continue
             addr = AddressChain(scheduler_info['message_address'])
         else:
             if stop_event.is_set():

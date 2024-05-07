@@ -5,7 +5,7 @@ import time
 
 from .logging import get_logger
 
-from typing import Any, AnyStr, Tuple
+from typing import Any, AnyStr, List, Optional
 
 
 class BaseFeeder:
@@ -92,8 +92,11 @@ def get_hostname() -> str:
     return socket.gethostname()
 
 
-def get_default_broadcast_addr():
-    addr = get_default_addr()
+def get_default_broadcast_addr() -> str:
+    return get_broadcast_addr_for(addr=get_default_addr(), try_fallbacks=True)
+
+
+def get_broadcast_addr_for(addr: str, *, try_fallbacks=False) -> Optional[str]:
     net_addrs = psutil.net_if_addrs()
     potential_mask = None
     for iface, ifdatalist in net_addrs.items():
@@ -105,11 +108,42 @@ def get_default_broadcast_addr():
                     return ifdata.broadcast
                 potential_mask = ifdata.netmask
     # ok, no proper broadcast - we can still try inverted mask
+    if not try_fallbacks:
+        return None
     if potential_mask:
         return '.'.join(str(x) for x in (~int(x) & 255 | int(y) for x, y in zip(potential_mask.split('.'), addr.split('.'))))
     # if all fails
     get_logger('NETWORK').warning('could not detect a proper broadcast address, trying general 255.255.255.255')
     return '<broadcast>'
+
+
+def all_interfaces(active_only: bool = True) -> List[str]:
+    """
+    by convention, localhost is the first in returned list
+    """
+    addrs = []
+    net_addrs = psutil.net_if_addrs()
+    net_stats = psutil.net_if_stats()
+    loopback_address = None  # store it separately to insert later into the list
+    for iface, ifdatalist in net_addrs.items():
+        if iface not in net_stats:  # probably impossible, just for sanity
+            continue
+        stats = net_stats[iface]
+        if active_only and not stats.isup:  # skip disabled interfaces
+            continue
+        for ifdata in ifdatalist:
+            if ifdata.family != socket.AF_INET:
+                continue
+            # special case for loopback that we add in later
+            if 'loopback' in stats.flags.split(','):
+                if loopback_address is None or loopback_address != '127.0.0.1':  # if SEVERAL loopbacks found - we prefer 127.0.0.1 if that exists
+                    loopback_address = ifdata.address
+                    continue  # do NOT add it to addrs list yet
+            addrs.append(ifdata.address)
+    # now insert found loopback in the front
+    if loopback_address is not None:
+        addrs.insert(0, loopback_address)
+    return addrs
 
 
 def get_addr_to(ip):

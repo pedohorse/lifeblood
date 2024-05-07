@@ -2,9 +2,11 @@ import asyncio
 
 import struct
 from .attribute_serialization import deserialize_attributes
+from .enums import InvocationMessageResult
 from .exceptions import CouldNotNegotiateProtocolVersion, InvocationCancelled
 from .scheduler_message_processor import SchedulerExtraControlClient, SchedulerInvocationMessageClient
 from .taskspawn import TaskSpawn
+from .net_messages.address_routing import RoutingImpossible
 from . import logging
 
 
@@ -87,9 +89,12 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
         to_inv_id, from_inv_id, data_size, addressee_timeout = struct.unpack('>QQQf', await reader.readexactly(28))
         to_addressee = await read_string(reader)
         data = await reader.readexactly(data_size)
-        with SchedulerInvocationMessageClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
-                                                                           self.__worker.message_processor()) as client:  # type: SchedulerInvocationMessageClient
-            send_status = await client.send_invocation_message(to_inv_id, to_addressee, from_inv_id, data, addressee_timeout=addressee_timeout)
+        try:
+            with SchedulerInvocationMessageClient.get_scheduler_control_client(self.__worker.scheduler_message_address(),
+                                                                               self.__worker.message_processor()) as client:  # type: SchedulerInvocationMessageClient
+                send_status = await client.send_invocation_message(to_inv_id, to_addressee, from_inv_id, data, addressee_timeout=addressee_timeout)
+        except RoutingImpossible:
+            send_status = InvocationMessageResult.ERROR_TRANSFER_ERROR
         await write_string(writer, send_status.value)
 
     async def comm_receive_invocation_message(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

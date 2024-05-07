@@ -53,7 +53,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
-        worker = Worker(sched.server_message_address())
+        worker = Worker(sched.server_message_addresses()[0])
         await worker.start()
 
         await asyncio.gather(sched.wait_till_starts(),
@@ -78,7 +78,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 ij._set_task_id(2345)
                 await workers[0].run_task(
                     ij,
-                    scheduler.server_message_address()
+                    scheduler.server_message_addresses()[0]
                 )
 
                 await asyncio.wait([done_waiter], timeout=10)
@@ -104,7 +104,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 ij._set_task_id(2345)
                 await workers[0].run_task(
                     ij,
-                    scheduler.server_message_address()
+                    scheduler.server_message_addresses()[0]
                 )
 
                 await asyncio.wait([done_waiter], timeout=10)
@@ -255,8 +255,8 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 get_invoc_patch.return_value = InvocationState.IN_PROGRESS
                 get_invoc_worker_patch.side_effect = lambda inv_id: \
                     {
-                        11234: workers[0].message_processor().listening_address(),
-                        11235: workers[1].message_processor().listening_address(),
+                        11234: workers[0].message_processor().listening_address(workers[0].worker_message_address()),
+                        11235: workers[1].message_processor().listening_address(workers[1].worker_message_address()),
                         80085: AddressChain('127.2.3.4:567'),  # BAD address
                     }.get(inv_id)
 
@@ -278,11 +278,11 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
                 await workers[0].run_task(
                     ij1,
-                    scheduler.server_message_address()
+                    scheduler.server_message_addresses()[0]
                 )
                 await workers[1].run_task(
                     ij2,
-                    scheduler.server_message_address()
+                    scheduler.server_message_addresses()[0]
                 )
 
                 await asyncio.wait([done_waiter], timeout=10)
@@ -300,7 +300,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
 
         workers = []
         for i in range(worker_count):
-            worker = Worker(sched.server_message_address())
+            worker = Worker(sched.server_message_addresses()[0])
             await worker.start()
             workers.append(worker)
 
@@ -345,7 +345,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
         sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
-        worker = Worker(sched.server_message_address(), scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test
+        worker = Worker(sched.server_message_addresses()[0], scheduler_ping_interval=999)  # huge ping interval to prevent pinger from interfering with the test
         await worker.start()
         self.assertTrue(sched.is_started())
         self.assertTrue(worker.is_started())

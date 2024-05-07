@@ -4,7 +4,7 @@ import time
 import unittest.mock
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.logging import get_logger, set_default_loglevel
-from lifeblood.nethelpers import get_localhost
+from lifeblood.nethelpers import get_localhost, get_default_addr
 from lifeblood.net_messages.address import AddressChain, DirectAddress
 from lifeblood.net_messages.messages import Message
 from lifeblood.net_messages.client import MessageClient
@@ -12,7 +12,7 @@ from lifeblood.net_messages.exceptions import MessageSendingError, MessageTransf
 
 from lifeblood.net_messages.impl.tcp_message_processor import TcpMessageProcessor, TcpMessageProxyProcessor
 
-from typing import Callable, List, Type, Awaitable
+from typing import Awaitable, Callable, List, Optional, Type, Tuple
 
 set_default_loglevel('DEBUG')
 logger = get_logger('message_test')
@@ -39,6 +39,17 @@ class TestReceiver(TcpMessageProcessor):
 class DummyReceiver(TestReceiver):
     pass
 
+
+class DummyMirrorReceiver(TestReceiver):
+    async def process_message(self, message: Message, client: MessageClient):
+        try:
+            await super().process_message(message, client)
+            data = message.message_body()
+            self._logger.debug(f'p:{message.message_session()}): got message {message}, {bytes(data)}')
+            await client.send_message(b'@@@'.join((message.message_source().encode('utf-8'), message.message_destination().encode('utf-8'), bytes(reversed(data)))))
+        except:
+            self._logger.exception('whoops!')
+            raise
 
 class DummyReceiverWithReply(TestReceiver):
     _counter = 0
@@ -73,7 +84,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct(self):
         async def _logic(proc1, proc2, proxies):
-            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_addresses()[0]) as client:  # type: MessageClient
                 timeout = 2
                 await client.send_message(b'foofoobarbar')
                 while len(proc2.messages_received) == 0:
@@ -88,7 +99,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_fail_stream(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
-            addr_to_nowhere = AddressChain.join_address(tuple(p.listening_address() for p in proxies) + (DirectAddress('127.11.22.33:6666'),))  # assume that address does not exist
+            addr_to_nowhere = AddressChain.join_address(tuple(p.listening_addresses()[0] for p in proxies) + (DirectAddress('127.11.22.33:6666'),))  # assume that address does not exist
             with proc1.message_client(addr_to_nowhere, send_retry_attempts=3) as client:
                 good = False
                 try:
@@ -113,7 +124,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
     async def test_timeout(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
             good = False
-            with proc1.message_client(AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()]), send_retry_attempts=3) as client:  # type: MessageClient
+            with proc1.message_client(AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0]]), send_retry_attempts=3) as client:  # type: MessageClient
                 client.set_base_attempt_timeout(0.6)
                 try:
                     await client.send_message(b'foofoobarbar')
@@ -133,7 +144,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
     async def test_timeout_with_lost_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
             good = False
-            with proc1.message_client(AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()]), send_retry_attempts=3) as client:  # type: MessageClient
+            with proc1.message_client(AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0]]), send_retry_attempts=3) as client:  # type: MessageClient
                 client.set_base_attempt_timeout(0.6)
                 try:
                     await client.send_message(b'foofoobarbar')
@@ -156,7 +167,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct_reply(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
-            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_addresses()[0]) as client:  # type: MessageClient
                 timeout = 2
                 logger.debug('c: sending message "foofoobarbar"')
                 await client.send_message(b'foofoobarbar')
@@ -183,7 +194,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_direct_parallel(self):
         async def _sub_logic(proc1: TestReceiver, proc2: TestReceiver):
-            with proc1.message_client(proc2.listening_address()) as client:  # type: MessageClient
+            with proc1.message_client(proc2.listening_addresses()[0]) as client:  # type: MessageClient
                 timeout = 2
                 logger.debug(f'c({client.session()}): sending message "foofoobarbar"')
                 await client.send_message(b'foofoobarbar')
@@ -241,7 +252,7 @@ class TestIntegration(IsolatedAsyncioTestCase):
 
     async def test_proxy(self):
         async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
-            address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
+            address = AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0]])
             logger.info(f'sending message to address: "{address}"')
             with proc1.message_client(address) as client:  # type: MessageClient
                 timeout = 2
@@ -259,56 +270,128 @@ class TestIntegration(IsolatedAsyncioTestCase):
         await self._direct_comm_helper(DummyReceiver, _logic, num_hops=4)
 
     async def test_proxy_reply(self):
-        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies):
-            address = AddressChain.join_address([prox.listening_address() for prox in proxies] + [proc2.listening_address()])
+        await self._direct_comm_helper(DummyReceiverWithReply, self._reply_proxy_logic, num_hops=3)
+
+    async def test_proxy_double_addresses_non_normalized_addresses(self):
+        if get_localhost() == get_default_addr():
+            # TODO: there can be multiple interfaces, but if nothing connects to interned - default_addr may be localhost
+            #  so this check is not correct
+            self.skipTest('need multiple network interfaces for this test')
+
+        for hops in range(1, 4):
+            print(f'testing hops {hops}')
+            await self._direct_comm_helper(
+                DummyReceiverWithReply,
+                lambda *args, **kwargs: self._reply_proxy_logic(*args, **kwargs, use_normalized_addresses=False),
+                num_hops=hops,
+                proc1_ip=get_localhost(),
+                proc2_ip=get_default_addr(),
+            )
+
+    async def test_proxy_double_addresses_normalized_addresses(self):
+        if get_localhost() == get_default_addr():
+            # TODO: there can be multiple interfaces, but if nothing connects to interned - default_addr may be localhost
+            #  so this check is not correct
+            self.skipTest('need multiple network interfaces for this test')
+
+        for hops in range(1, 4):
+            print(f'testing hops {hops}')
+            await self._direct_comm_helper(
+                DummyReceiverWithReply,
+                lambda *args, **kwargs: self._reply_proxy_logic(*args, **kwargs, use_normalized_addresses=True),
+                num_hops=hops,
+                proc1_ip=get_localhost(),
+                proc2_ip=get_default_addr(),
+            )
+
+    async def test_proxy_double_addresses_message_address_normalization(self):
+        if get_localhost() == get_default_addr():
+            # TODO: there can be multiple interfaces, but if nothing connects to interned - default_addr may be localhost
+            #  so this check is not correct
+            self.skipTest('need multiple network interfaces for this test')
+
+        async def _logic(proc1: TestReceiver, proc2: TestReceiver, proxies: List[TcpMessageProxyProcessor]):
+            address = AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0], proc2.listening_addresses()[0]])
+            expected_normalized_address = AddressChain.join_address([addr for prox in proxies for addr in prox.listening_addresses()] + [proc2.listening_addresses()[0]])
             logger.info(f'sending message to address: "{address}"')
-
             with proc1.message_client(address) as client:  # type: MessageClient
-                logger.debug('c: sending message "foofoobarbar"')
-                await client.send_message(b'foofoobarbar')
-                logger.debug('c: waiting for reply')
-                reply = await client.receive_message()
-                logger.debug(f'c: reply received: {reply}, {bytes(reply.message_body())}')
-                self.assertEqual(b'rabraboofoof', reply.message_body())
-                logger.debug('c: sending message "poweroverwhelming"')
-                await client.send_message(b'poweroverwhelming')
-                logger.debug('c: waiting for reply2')
-                reply = await client.receive_message()
-                logger.debug(f'c: reply2 received: {reply}, {bytes(reply.message_body())}')
-                self.assertEqual(b'!!!gnimlehwrevorewop', reply.message_body())
+                await client.send_message(b'get_message_addresses')
+                reply = await client.receive_message(5)
 
-                timeout = 2
-                while len(proc2.messages_received) == 0:
-                    await asyncio.sleep(0.1)
-                    timeout -= 0.1
-                    if timeout <= 0:
-                        raise RuntimeError(f'no message received! {len(proc2.messages_received)}')
+            reply_body = bytes(reply.message_body())
+            print(reply_body)
+            how_proc2_saw_message_source, how_proc2_saw_message_dest = (AddressChain(x.decode('utf-8')) for x in reply_body.split(b'@@@', 2)[:-1])  # type: AddressChain, AddressChain
+            self.assertEqual(expected_normalized_address, reply.message_source())
+            self.assertEqual(expected_normalized_address, AddressChain.join_address((*reversed(how_proc2_saw_message_source.split_address()[:-1]), how_proc2_saw_message_dest)))
 
-                timeout = 1
-                while any(proxy.forwarded_messages_count() < 4 for proxy in proxies):
-                    await asyncio.sleep(0.1)
-                    timeout -= 0.1
-                    if timeout <= 0:
-                        break  # will raise assertion error after anyway
-                self.assertEqual(1, len(proc2.messages_received))
-                for proxy in proxies:
-                    self.assertEqual(4, proxy.forwarded_messages_count())
-                self.assertEqual(b'foofoobarbar', proc2.messages_received[0].message_body())
+        await self._direct_comm_helper(
+            DummyMirrorReceiver,
+            _logic,
+            num_hops=4,
+            proc1_ip=get_localhost(),
+            proc2_ip=get_default_addr(),
+        )
 
-        await self._direct_comm_helper(DummyReceiverWithReply, _logic, num_hops=3)
+    async def _reply_proxy_logic(self, proc1: TestReceiver, proc2: TestReceiver, proxies, *, use_normalized_addresses=False):
+        # NOTE: this address construction relies on how _direct_comm_helper assigns addresses
+        if use_normalized_addresses:
+            address = AddressChain.join_address([addr for prox in proxies for addr in prox.listening_addresses()] + [proc2.listening_addresses()[0]])
+        else:
+            address = AddressChain.join_address([prox.listening_addresses()[0] for prox in proxies] + [proc2.listening_addresses()[0]])
+        logger.info(f'sending message to address: "{address}"')
+
+        with proc1.message_client(address) as client:  # type: MessageClient
+            logger.debug('c: sending message "foofoobarbar"')
+            await client.send_message(b'foofoobarbar')
+            logger.debug('c: waiting for reply')
+            reply = await client.receive_message()
+            logger.debug(f'c: reply received: {reply}, {bytes(reply.message_body())}')
+            self.assertEqual(b'rabraboofoof', reply.message_body())
+            logger.debug('c: sending message "poweroverwhelming"')
+            await client.send_message(b'poweroverwhelming')
+            logger.debug('c: waiting for reply2')
+            reply = await client.receive_message()
+            logger.debug(f'c: reply2 received: {reply}, {bytes(reply.message_body())}')
+            self.assertEqual(b'!!!gnimlehwrevorewop', reply.message_body())
+
+            timeout = 2
+            while len(proc2.messages_received) == 0:
+                await asyncio.sleep(0.1)
+                timeout -= 0.1
+                if timeout <= 0:
+                    raise RuntimeError(f'no message received! {len(proc2.messages_received)}')
+
+            timeout = 1
+            while any(proxy.forwarded_messages_count() < 4 for proxy in proxies):
+                await asyncio.sleep(0.1)
+                timeout -= 0.1
+                if timeout <= 0:
+                    break  # will raise assertion error after anyway
+            self.assertEqual(1, len(proc2.messages_received))
+            for proxy in proxies:
+                self.assertEqual(4, proxy.forwarded_messages_count())
+            self.assertEqual(b'foofoobarbar', proc2.messages_received[0].message_body())
 
     async def _direct_comm_helper(self,
                                   proc_class: Callable[[str, int], TestReceiver],
                                   logic: Callable[[TestReceiver, TestReceiver, List[TcpMessageProxyProcessor]], Awaitable[None]],
                                   num_hops: int = 0,
-                                  proxy_timeout: float = 30):
-        addr1 = (get_localhost(), 23456)
-        addr2 = (get_localhost(), 23457)
+                                  proxy_timeout: float = 30,
+                                  *,
+                                  proc1_ip: Optional[str] = None,
+                                  proc2_ip: Optional[str] = None,):
+        addr1 = (proc1_ip or get_localhost(), 23456)
+        addr2 = (proc2_ip or get_localhost(), 23457)
         proc1 = proc_class(*addr1)
         proc2 = proc_class(*addr2)
         proxies = []
         for i in range(num_hops):
-            proxy = TcpMessageProxyProcessor((get_localhost(), 23458 + i), stream_timeout=proxy_timeout)
+            if addr1[0] != addr2[0] and i % 2 == 0:
+                proxy = TcpMessageProxyProcessor([(addr1[0], 23458 + i), (addr2[0], 23458 + i)], stream_timeout=proxy_timeout)
+            elif addr1[0] != addr2[0] and i % 2 == 1 and i < num_hops - 1:
+                proxy = TcpMessageProxyProcessor([(addr2[0], 23458 + i), (addr1[0], 23458 + i)], stream_timeout=proxy_timeout)
+            else:
+                proxy = TcpMessageProxyProcessor((addr2[0], 23458 + i), stream_timeout=proxy_timeout)
             proxies.append(proxy)
 
         logger.info('starting up')

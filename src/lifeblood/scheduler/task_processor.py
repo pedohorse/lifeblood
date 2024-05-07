@@ -378,7 +378,7 @@ class TaskProcessor(SchedulerComponentBase):
                 with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
                     # import random
                     # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
-                    reply, fail_class, reply_message = await client.give_task(job, self.scheduler.server_message_address())
+                    reply, fail_class, reply_message = await client.give_task(job, self.scheduler.server_message_address(addr))
                     # TODO: introduce optional "worker cookie" - uid that one passes with some commands
                     #  like give_task to ensure that we are submitting here to the same worker task processing loop selected
                 self.__logger.debug(f'got reply {reply} ({fail_class}), ({reply_message})')

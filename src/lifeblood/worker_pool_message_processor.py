@@ -7,7 +7,7 @@ from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Iterable, Tuple, TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from .simple_worker_pool import WorkerPool
 
@@ -42,8 +42,8 @@ class WorkerPoolMessageHandler(CommandMessageHandlerBase):
 
 
 class WorkerPoolMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, worker_pool: "WorkerPool", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
-        super().__init__(listening_address,
+    def __init__(self, worker_pool: "WorkerPool", listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]]], *, backlog=4096, connection_pool_cache_time=300):
+        super().__init__(listening_address_or_addresses,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
                          message_handlers=(WorkerPoolMessageHandler(worker_pool),))

@@ -1,5 +1,4 @@
 import os
-import asyncio
 import aiofiles
 from contextlib import contextmanager
 from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, \
@@ -11,13 +10,12 @@ from .exceptions import AlreadyRunning
 from .enums import WorkerPingReply, TaskScheduleStatus, InvocationMessageResult
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
-from .net_messages.exceptions import MessageTransferTimeoutError, MessageTransferError
 from .net_messages.address import AddressChain
 from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 
 
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Iterable, Optional, Tuple, TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from .worker import Worker
 
@@ -204,8 +202,8 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
 
 
 class WorkerMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, worker: "Worker", listening_address: Tuple[str, int], *, backlog=4096, connection_pool_cache_time=300):
-        super().__init__(listening_address,
+    def __init__(self, worker: "Worker", listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]]], *, backlog=4096, connection_pool_cache_time=300):
+        super().__init__(listening_address_or_addresses,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
                          message_handlers=(WorkerCommandHandler(worker),))
