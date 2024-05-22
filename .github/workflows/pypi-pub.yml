@@ -50,7 +50,7 @@ jobs:
           VER=${{ github.ref_name }}
           VER=${VER:1}
           echo "PYPIVER=$VER" >> $GITHUB_ENV
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
           files:
             tools/*/*
