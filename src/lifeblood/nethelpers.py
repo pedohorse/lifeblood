@@ -93,10 +93,10 @@ def get_hostname() -> str:
 
 
 def get_default_broadcast_addr() -> str:
-    return get_broadcast_addr_for(addr=get_default_addr(), try_fallbacks=True)
+    return get_broadcast_addr_for(addr=get_default_addr())
 
 
-def get_broadcast_addr_for(addr: str, *, try_fallbacks=False) -> Optional[str]:
+def get_broadcast_addr_for(addr: str) -> Optional[str]:
     net_addrs = psutil.net_if_addrs()
     potential_mask = None
     for iface, ifdatalist in net_addrs.items():
@@ -108,8 +108,6 @@ def get_broadcast_addr_for(addr: str, *, try_fallbacks=False) -> Optional[str]:
                     return ifdata.broadcast
                 potential_mask = ifdata.netmask
     # ok, no proper broadcast - we can still try inverted mask
-    if not try_fallbacks:
-        return None
     if potential_mask:
         return '.'.join(str(x) for x in (~int(x) & 255 | int(y) for x, y in zip(potential_mask.split('.'), addr.split('.'))))
     # if all fails

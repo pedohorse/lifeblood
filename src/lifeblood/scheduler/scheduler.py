@@ -521,7 +521,7 @@ class Scheduler(NodeGraphHolderBase):
         if self.__do_broadcasting:
             # need to start a broadcaster for each interface from union of message and ui addresses
             for iface_addr in all_interfaces():
-                broadcast_address = get_broadcast_addr_for(iface_addr, try_fallbacks=False)
+                broadcast_address = get_broadcast_addr_for(iface_addr)
                 if broadcast_address is None:  # broadcast not supported
                     continue
                 broadcast_data = {}
