@@ -123,6 +123,7 @@ def all_interfaces(active_only: bool = True) -> List[str]:
     net_addrs = psutil.net_if_addrs()
     net_stats = psutil.net_if_stats()
     loopback_address = None  # store it separately to insert later into the list
+    maybe_loopback_addresses = []
     for iface, ifdatalist in net_addrs.items():
         if iface not in net_stats:  # probably impossible, just for sanity
             continue
@@ -138,6 +139,15 @@ def all_interfaces(active_only: bool = True) -> List[str]:
                     loopback_address = ifdata.address
                     continue  # do NOT add it to addrs list yet
             addrs.append(ifdata.address)
+            # in case there is no iface flagged with 'loopback' (like on windows)
+            #  we find possible interfaces
+            if ifdata.address in ('127.0.0.1',):
+                maybe_loopback_addresses.append(ifdata.address)
+    #
+    if loopback_address is None and maybe_loopback_addresses:
+        loopback_address = maybe_loopback_addresses[0]
+        if loopback_address in addrs:
+            addrs.remove(loopback_address)
     # now insert found loopback in the front
     if loopback_address is not None:
         addrs.insert(0, loopback_address)
