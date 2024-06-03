@@ -520,8 +520,8 @@ class Scheduler(NodeGraphHolderBase):
         # broadcasting
         if self.__do_broadcasting:
             # need to start a broadcaster for each interface from union of message and ui addresses
-            for iface_addr in all_interfaces():
-                broadcast_address = get_broadcast_addr_for(iface_addr, try_fallbacks=False)
+            for iface_addr in all_interfaces()[1:]:  # skipping first, as first is localhost
+                broadcast_address = get_broadcast_addr_for(iface_addr)
                 if broadcast_address is None:  # broadcast not supported
                     continue
                 broadcast_data = {}
