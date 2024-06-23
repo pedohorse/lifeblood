@@ -14,7 +14,7 @@ from PySide2.QtGui import QColor
 from typing import Any, Dict, Iterable, List, Optional
 
 
-_init_column_order = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem', 'groups', 'last_seen', 'worker_type')
+_init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', '__resources__', 'groups', 'last_seen', 'worker_type')
 
 
 class WorkerListWidget(QWidget):
@@ -38,7 +38,7 @@ class WorkerListWidget(QWidget):
         self.__worker_list.setModel(self.__sort_model)
         # self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
 
-        ico = _init_column_order
+        ico = _init_column_order_prototype
         self.__worker_list.horizontalHeader().resizeSection(ico.index('id'), 64)
         self.__worker_list.horizontalHeader().resizeSection(ico.index('state'), 64)
         self.__worker_list.horizontalHeader().resizeSection(ico.index('progress'), 64)
@@ -96,8 +96,6 @@ class WorkerListWidget(QWidget):
 
 
 class WorkerModel(QAbstractTableModel):
-    __cols_with_totals = {'cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem'}
-    __mem_cols = {'cpu_mem', 'gpu_mem'}
     SORT_ROLE = Qt.UserRole + 0
 
     group_update_requested = Signal(object, list)  # not int, cuz int in PySide is signed 32bit only
@@ -107,17 +105,56 @@ class WorkerModel(QAbstractTableModel):
         super(WorkerModel, self).__init__(parent)
         self.__logger = get_logger('viewer.worker_model')
         self.__scheduler_worker = worker
-        self.__workers: Dict[str, WorkerData] = {}  # address is the key
-        self.__order: List[str] = []
-        self.__inv_order: Dict[str, int] = {}
-        self.__cols = {'id': 'id', 'state': 'state', 'metadata.hostname': 'hostname', 'last_address': 'address', 'cpu_count': 'cpus', 'cpu_mem': 'mem',
-                       'gpu_count': 'gpus', 'gpu_mem': 'gmem', 'last_seen': 'last seen', 'worker_type': 'type',
-                       'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
-        self.__cols_order = _init_column_order
-        self.__colname_to_index = {k: i for i, k in enumerate(self.__cols_order)}
+
+        self.__workers: Dict[int, WorkerData] = {}  # worker id -> worker data
+        self.__worker_resources_names: List[str] = []
+
+        #
+        self.__order: List[int] = []
+
+        #
+        self.__inv_order: Dict[int, int] = {}  # used only for boost un full_update
+
+        #
+        self.__cols = {}
+        self.__cols_order = []
+        self.__colname_to_index = {}
         assert len(self.__cols) == len(self.__cols_order)
+        #
+
+        self.__last_update_structure_resources = None
+
+        self.__maybe_update_structure()
 
         self.start()
+
+    def __maybe_update_structure(self):
+        """
+        this update is updating data structure if resource definitions have changed.
+        appropriate qt events are emitted
+        """
+        if self.__worker_resources_names == self.__last_update_structure_resources:
+            return
+
+        if self.__last_update_structure_resources is not None:  # None is only on initial update/init
+            self.__logger.debug("worker resource definitions changed, updating data structure")
+        self.beginResetModel()
+        try:
+            self.__cols_order = list(_init_column_order_prototype)
+            i = self.__cols_order.index('__resources__')
+            self.__cols_order = self.__cols_order[:i] + self.__worker_resources_names + self.__cols_order[i+1:]
+
+            self.__cols = {'id': 'id', 'state': 'state', 'metadata.hostname': 'hostname', 'last_address': 'address',
+                           'last_seen': 'last seen', 'worker_type': 'type',
+                           'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
+
+            self.__cols.update({k: k.replace('_', ' ') for k in self.__worker_resources_names})
+
+            self.__colname_to_index = {k: i for i, k in enumerate(self.__cols_order)}
+            assert len(self.__cols) == len(self.__cols_order)
+        finally:
+            self.endResetModel()
+        self.__last_update_structure_resources = list(self.__worker_resources_names)
 
     def column_by_name(self, name) -> int:
         return self.__colname_to_index[name]
@@ -130,14 +167,14 @@ class WorkerModel(QAbstractTableModel):
         return self.__cols[self.__cols_order[section]]
 
     def columnCount(self, parent: QModelIndex = None) -> int:
-        return len(self.__cols)
+        return len(self.__cols_order)
 
     def rowCount(self, parent: QModelIndex = None) -> int:
         return len(self.__workers)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         def format_display(col_name, raw):
-            if col_name in self.__mem_cols:
+            if col_name.endswith('_mem'):
                 return nice_memory_formatting(raw)
             return raw
 
@@ -193,8 +230,12 @@ class WorkerModel(QAbstractTableModel):
             return worker.type.name
 
         raw_data = 'none'
-        if col_name in self.__cols_with_totals:  # if there's total - make value in format if val/total, like 20/32
-            raw_data = f'{format_display(col_name, getattr(worker.worker_resources, col_name))}/{format_display(col_name, getattr(worker.worker_resources, f"total_{col_name}"))}'
+        if col_name in self.__worker_resources_names:
+            i = self.__worker_resources_names.index(col_name)
+            if len(worker.worker_resources) <= i or worker.worker_resources[i].name != col_name:  # if data is called after worker_resource_names update, but before actual worker data update:
+                raw_data = '...'
+            else:
+                raw_data = f'{format_display(col_name, worker.worker_resources[i].value)}/{format_display(col_name, worker.worker_resources[i].total)}'
 
         return raw_data
 
@@ -205,6 +246,7 @@ class WorkerModel(QAbstractTableModel):
         return flags
 
     def setData(self, index: QModelIndex, value: Any, role: int = Qt.DisplayRole) -> bool:
+        # FOR NOW THIS ONLY SETS groups
         print(f'!setting {role}')
         if not index.isValid():
             return False
@@ -213,7 +255,7 @@ class WorkerModel(QAbstractTableModel):
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
-        hwid = self.__workers[self.__order[row]]['hwid']
+        hwid = self.__workers[self.__order[row]].hwid
         print(f'setting for {hwid}')
         if isinstance(value, str):
             groups = [y for y in (x.strip() for x in value.split(',')) if y != '']
@@ -234,14 +276,21 @@ class WorkerModel(QAbstractTableModel):
 
     @Slot(object)
     def workers_full_update(self, workers_data: WorkerBatchData):
+        if len(workers_data.workers) == 0:
+            return
+        # update resource definitions
+        any_worker = next(iter(workers_data.workers.values()))
+        self.__worker_resources_names = [x.name for x in any_worker.worker_resources]
+        self.__maybe_update_structure()
+
         # we filter UNKNOWNS here, currently i see no point
         # displaying them any time.
         # maybe unknowns should not be returned by update at all?
         with performance_measurer() as pm:
-            new_workers: Dict[str, WorkerData] = {
-                x.last_address: x for x in workers_data.workers.values()
+            new_workers: Dict[int, WorkerData] = {
+                x_id: x for x_id, x in workers_data.workers.items()
                 if x.state != WorkerState.UNKNOWN
-            }  # TODO: maybe use id instead of last_address?
+            }
             new_keys = set(new_workers.keys())
             old_keys = set(self.__workers.keys())
         _perf_preinit = pm.elapsed()
@@ -254,7 +303,8 @@ class WorkerModel(QAbstractTableModel):
                 # self.__workers[wroker_key].update(new_workers[worker_key])
                 for field in WorkerData.__dict__['__dataclass_fields__']:
                     value = getattr(new_workers[worker_key], field)
-                    if getattr(self.__workers[worker_key], field) != value:
+                    old_value = getattr(self.__workers[worker_key], field)
+                    if old_value != value:
                         setattr(self.__workers[worker_key], field, value)
                         row = self.__inv_order[worker_key]
                         if minrow > row:
@@ -295,7 +345,7 @@ class WorkerModel(QAbstractTableModel):
                     self.beginRemoveRows(QModelIndex(), self.__inv_order[key], self.__inv_order[key])
                     del self.__workers[key]
                     self.__order.remove(key)
-                    self.__inv_order = {x: i for i, x in enumerate(self.__order)}
+                    self.__inv_order = {x: i for i, x in enumerate(self.__order)}  # TODO: this can be more optimal than recreating the whole dict
                     self.endRemoveRows()
         _perf_remove = pm.elapsed()
 
