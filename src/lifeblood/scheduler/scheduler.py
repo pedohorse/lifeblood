@@ -18,12 +18,12 @@ from ..attribute_serialization import serialize_attributes, deserialize_attribut
 from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from ..scheduler_ui_protocol import SchedulerUiProtocol
-from ..invocationjob import InvocationJob
+from ..hardware_resources import HardwareResources
+from ..invocationjob import InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import WorkerPool
 from ..nethelpers import get_broadcast_addr_for, all_interfaces
-from ..net_classes import WorkerResources
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
 from ..basenode import BaseNode
@@ -803,7 +803,9 @@ class Scheduler(NodeGraphHolderBase):
     #
     # add new worker to db
     async def add_worker(
-            self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources,  # TODO: all resource should also go here
+            # TODO: WorkerResources (de)serialization
+            # TODO: Worker actually passing new WorkerResources on hello
+            self, addr: str, worker_type: WorkerType, worker_resources: HardwareResources,  # TODO: all resource should also go here
             *,
             assume_active: bool = True,
             worker_metadata: WorkerMetadata):
@@ -877,27 +879,28 @@ class Scheduler(NodeGraphHolderBase):
                 #                   '(?, ?, ?)',
                 #                   (worker_id, tstamp, ping_state))
 
+            resource_fields = tuple(x.name for x in self.data_access.get_worker_resource_definitions())
+            # checks
+            for field in resource_fields:
+                if field not in worker_resources:
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) does not declare expected resource "{field}", assume value=0')
+            for res_name, _ in worker_resources.items():
+                if res_name not in resource_fields:
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) declares resource "{res_name}" unknown to the scheduler')
+
             await con.execute('INSERT INTO resources '
-                              '(hwid, cpu_count, total_cpu_count, '
-                              'cpu_mem, total_cpu_mem, '
-                              'gpu_count, total_gpu_count, '
-                              'gpu_mem, total_gpu_mem) '
-                              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
-                              'ON CONFLICT(hwid) DO UPDATE SET '
-                              'cpu_count=excluded.cpu_count, total_cpu_count=excluded.total_cpu_count, '
-                              'cpu_mem=excluded.cpu_mem, total_cpu_mem=excluded.total_cpu_mem, '
-                              'gpu_count=excluded.gpu_count, total_gpu_count=excluded.total_gpu_count, '
-                              'gpu_mem=excluded.gpu_mem, total_gpu_mem=excluded.total_gpu_mem',
+                              '(hwid, ' +
+                              ', '.join(f'{field}, total_{field}' for field in resource_fields) +
+                              ') '
+                              'VALUES (?' + ', ?'*(2*len(resource_fields)) + ') '
+                              'ON CONFLICT(hwid) DO UPDATE SET ' +
+                              ', '.join(f'"{field}"=excluded.{field}, "total_{field}"=excluded.total_{field}' for field in resource_fields)
+                              ,
                               (worker_resources.hwid,
-                               worker_resources.cpu_count,
-                               worker_resources.total_cpu_count,
-                               worker_resources.cpu_mem,
-                               worker_resources.total_cpu_mem,
-                               worker_resources.gpu_count,
-                               worker_resources.total_gpu_count,
-                               worker_resources.gpu_mem,
-                               worker_resources.total_gpu_mem)
-                               )
+                               *(x for field in resource_fields for x in (
+                                   (worker_resources[field].value, worker_resources[field].value) if field in worker_resources else (0, 0))
+                                 ))
+                              )
             await self._update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
             self.data_access.set_worker_metadata(worker_resources.hwid, worker_metadata)
             await con.commit()
@@ -909,7 +912,7 @@ class Scheduler(NodeGraphHolderBase):
     #  or when scheduler picked worker and about to run this, which will lead to inconsistency warning
     #  NOTE!: so far it's always called from a STARTED transaction, so there should not be reentry possible
     #  But that is not enforced right now, easy to make mistake
-    async def _update_worker_resouce_usage(self, worker_id: int, resources: Optional[dict] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
+    async def _update_worker_resouce_usage(self, worker_id: int, resources: Optional[Requirements] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
         """
         updates resource information based on new worker resources usage
         as part of ongoing transaction
@@ -921,7 +924,8 @@ class Scheduler(NodeGraphHolderBase):
         :return: if commit is needed on connection (if db set operation happened)
         """
         assert connection.in_transaction, 'expectation failure'
-        resource_fields = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')
+        resource_definitions = self.data_access.get_worker_resource_definitions()
+        resource_fields = tuple(x.name for x in resource_definitions)
 
         workers_resources = self.data_access.mem_cache_workers_resources
         if hwid is None:
@@ -954,15 +958,14 @@ class Scheduler(NodeGraphHolderBase):
         else:
             workers_resources[worker_id] = {}
             for field in resource_fields:
-                if field not in resources:
+                if field not in resources.resources:
                     continue
-                if available_res[field] < resources[field]:
-                    raise NotEnoughResources(f'{field}: {resources[field]} out of {available_res[field]}')
+                if available_res[field] < resources.resources[field].min:
+                    raise NotEnoughResources(f'{field}: {resources.resources[field].min} out of {available_res[field]}')
                 # so we take preferred amount of resources (or minimum if pref not set), but no more than available
                 # if preferred is lower than min - it's ignored
                 workers_resources[worker_id][field] = min(available_res[field],
-                                                          max(resources.get(f'pref_{field}', resources[field]),
-                                                              resources[field]))
+                                                          max(resources.resources[field].pref, resources.resources[field].min))
                 available_res[field] -= workers_resources[worker_id][field]
 
             workers_resources[worker_id]['hwid'] = hwid  # just to ensure it was not overriden

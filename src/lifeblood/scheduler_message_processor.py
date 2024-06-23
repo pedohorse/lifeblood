@@ -5,7 +5,7 @@ from . import invocationjob
 from .taskspawn import TaskSpawn
 from .enums import WorkerState, WorkerType, SpawnStatus, InvocationState, InvocationMessageResult
 from .worker_messsage_processor import WorkerControlClient
-from .net_classes import WorkerResources
+from .hardware_resources import HardwareResources
 from .worker_metadata import WorkerMetadata
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
@@ -130,7 +130,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         res_data = args['worker_res'].encode('latin1')
 
         self._logger.debug('command: worker hello %s', addr)
-        worker_hardware: WorkerResources = WorkerResources.deserialize(res_data)
+        worker_hardware: HardwareResources = HardwareResources.deserialize(res_data)
         await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
         await client.send_message_as_json({'db_uid': self.__scheduler.db_uid()})
 
@@ -390,7 +390,7 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
 
-    async def say_hello(self, address_to_advertise: AddressChain, worker_type: WorkerType, worker_resources: WorkerResources, worker_metadata: WorkerMetadata) -> int:
+    async def say_hello(self, address_to_advertise: AddressChain, worker_type: WorkerType, worker_resources: HardwareResources, worker_metadata: WorkerMetadata) -> int:
         await self.__client.send_command('worker.hello', {
             'worker_addr': str(address_to_advertise),
             'worker_type': worker_type.value,

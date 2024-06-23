@@ -44,14 +44,14 @@ class TestBaseNodes(TestCase):
 
         # test individual elements
 
-        self.assertEqual(1.2, reqs.min_cpu_count())
-        self.assertEqual(2.3, reqs.preferred_cpu_count())
-        self.assertEqual(3.4, reqs.min_gpu_count())
-        self.assertEqual(4.5, reqs.preferred_gpu_count())
-        self.assertEqual(5600000000, reqs.min_memory_bytes())
-        self.assertEqual(6700000000, reqs.preferred_memory_bytes())
-        self.assertEqual(7800000000, reqs.min_gpu_memory_bytes())
-        self.assertEqual(8900000000, reqs.preferred_gpu_memory_bytes())
+        self.assertEqual(1.2, reqs.min_resource('cpu_count'))  # .min_cpu_count())
+        self.assertEqual(2.3, reqs.preferred_resource('cpu_count'))  # .preferred_cpu_count())
+        self.assertEqual(3.4, reqs.min_resource('gpu_count'))  # .min_gpu_count())
+        self.assertEqual(4.5, reqs.preferred_resource('gpu_count'))  # .preferred_gpu_count())
+        self.assertEqual(5600000000, reqs.min_resource('cpu_mem'))  # .min_memory_bytes())
+        self.assertEqual(6700000000, reqs.preferred_resource('cpu_mem'))  # .preferred_memory_bytes())
+        self.assertEqual(7800000000, reqs.min_resource('gpu_mem'))  # .min_gpu_memory_bytes())
+        self.assertEqual(8900000000, reqs.preferred_resource('gpu_mem'))  # .preferred_gpu_memory_bytes())
 
         self.assertSetEqual({'sasha', 'masha', 'dasha'}, reqs.groups())
         self.assertEqual(WorkerType.SCHEDULER_HELPER, reqs.worker_type())

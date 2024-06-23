@@ -11,7 +11,7 @@ from ..basenode_serialization import FailedToDeserialize
 from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
 from ..worker_messsage_processor import WorkerControlClient
-from ..invocationjob import InvocationJob
+from ..invocationjob import InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
@@ -156,8 +156,7 @@ class TaskProcessor(SchedulerComponentBase):
                         process_result.invocation_job._set_envresolver_arguments(await EnvironmentResolverArguments.deserialize_async(task_row['environment_resolver_data']))
 
                     taskdada_serialized = await process_result.invocation_job.serialize_async()
-                    invoc_requirements_sql = process_result.invocation_job.requirements().final_where_clause()
-                    invoc_requirements_dict_str = json.dumps(process_result.invocation_job.requirements().to_dict(resources_only=True))
+                    invoc_requirements_stash = process_result.invocation_job.requirements().pack_selection_info()
                     job_priority = process_result.invocation_job.priority()
                     async with con.execute('SELECT MAX(task_group_attributes.priority) AS priority FROM task_group_attributes '
                                            'INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group" '
@@ -170,7 +169,7 @@ class TaskProcessor(SchedulerComponentBase):
                     await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, '
                                       'priority = ? '
                                       'WHERE "id" = ?',
-                                      (taskdada_serialized, TaskState.READY.value, ':::'.join((invoc_requirements_sql, invoc_requirements_dict_str)),
+                                      (taskdada_serialized, TaskState.READY.value,  invoc_requirements_stash,
                                        group_priority + job_priority,
                                        task_id))
                     ui_task_delta.work_data_invocation_attempt = 0  # for ui event
@@ -558,7 +557,7 @@ class TaskProcessor(SchedulerComponentBase):
                     _debug_sel = time.perf_counter()
                     async with con.execute('SELECT tasks.id, tasks.parent_id, tasks.children_count, tasks.active_children_count, tasks.state, {attrs}'
                                            'tasks.node_id, tasks.node_input_name, tasks.node_output_name, tasks.name, tasks.split_level, '
-                                           'tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, '
+                                           '{maybe_get_req_clause}'
                                            'nodes.type as node_type, nodes.id as node_id, '
                                            'task_splits.split_id as split_id, task_splits.split_element as split_element, task_splits.split_count as split_count, task_splits.origin_task_id as split_origin_task_id '
                                            'FROM tasks INNER JOIN nodes ON tasks.node_id=nodes.id '
@@ -568,7 +567,8 @@ class TaskProcessor(SchedulerComponentBase):
                                            'AND dead = 0 '
                                            'ORDER BY {prio_sort} RANDOM()'.format(
                             prio_sort='tasks.priority DESC, ' if task_state == TaskState.READY else '',
-                            attrs='attributes, environment_resolver_data, ' if task_state in (TaskState.WAITING, TaskState.POST_WAITING) else ''
+                            attrs='attributes, environment_resolver_data, ' if task_state in (TaskState.WAITING, TaskState.POST_WAITING) else '',
+                            maybe_get_req_clause='tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, ' if task_state == TaskState.READY else '',
                             ),
 
                                            (task_state.value,)) as cur:
@@ -801,9 +801,9 @@ class TaskProcessor(SchedulerComponentBase):
                 continue
             #
             requirements_clause_sql: str = task_row["_invoc_requirement_clause"]
-            requirements_clause_dict = None
-            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:
-                requirements_clause_dict = json.loads(requirements_clause_sql[splitpos + 3:])
+            requirements_clause: Optional[Requirements] = None
+            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:  # move impl-specific logic to invoc req
+                requirements_clause = Requirements.deserialize_from_string(requirements_clause_sql[splitpos + 3:])
                 requirements_clause_sql = requirements_clause_sql[:splitpos]
             if requirements_clause_sql in where_empty_cache:
                 continue
@@ -856,7 +856,7 @@ class TaskProcessor(SchedulerComponentBase):
 
             # set resource usage straight away
             try:
-                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause_dict, hwid=worker['hwid'], connection=con)
+                await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause, hwid=worker['hwid'], connection=con)
             except NotEnoughResources:
                 self.__logger.error(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
                 continue

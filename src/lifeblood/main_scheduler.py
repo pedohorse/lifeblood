@@ -55,6 +55,20 @@ global_scratch_location = "{escape(get_local_scratch_path(), __esc)}"
 ##  but you can safely move logs and change location in config accordingly, but be sure scheduler is not accessing them at that time
 # store_logs_externally = true
 # store_logs_externally_location = /path/to/dir/where/to/store/logs
+
+# [resource_definitions.per_machine]
+## you can define custom per-machine resources.
+## default are cpu_count and cpu_mem that represents the number of CPU cores and main memory size.
+## If you override this value - ALL default definitions will be override, so you need to add them back
+## if you want to keep them
+# cpu_count.type = "float"
+# cpu_count.description = "CPU core count"
+# cpu_count.label = "CPU count"
+# cpu_mem.type = "int"
+# cpu_mem.description = "RAM amount in bytes"
+# cpu_mem.label = "RAM"
+# my_resource1.type = "float"
+# my_resource1.description = "the amount of rubber ducks that fit into the chassis"
 '''
 
 

@@ -1,15 +1,19 @@
 import os
 import re
 from copy import copy, deepcopy
+import json
 import asyncio
 import pickle
 from types import MappingProxyType
 from .enums import WorkerType
-from .net_classes import WorkerResources
+from dataclasses import dataclass, field
 
-from typing import Optional, Iterable, Union, Dict, List, Set, Tuple, TYPE_CHECKING
+from typing import Optional, Iterable, Union, Dict, List, Set, TYPE_CHECKING
 if TYPE_CHECKING:
     from .environment_resolver import EnvironmentResolverArguments
+
+
+Number = Union[int, float]
 
 
 class InvocationNotFinished(RuntimeError):
@@ -103,6 +107,67 @@ class InvocationEnvironment:
         self._enqueue_kv_method('append', key, value)
 
 
+@dataclass
+class ResourceRequirement:
+    min: Number = 0
+    pref: Number = 0
+
+
+class ResourceRequirements:
+    """
+    requirements for only resources
+    """
+    def __init__(self, data: Optional[Dict[str, ResourceRequirement]] = None):
+        if data:
+            self.__res: Dict[str, ResourceRequirement] = data
+        else:
+            self.__res: Dict[str, ResourceRequirement] = {}
+
+    def get(self, name: str, default_val=None):
+        return self.__res.get(name, default_val)
+
+    def __getitem__(self, name: str) -> ResourceRequirement:
+        """
+        get requirements for resource "name"
+        """
+        return self.__res[name]
+
+    def __setitem__(self, name: str, value: ResourceRequirement):
+        self.__res[name] = value
+
+    def __contains__(self, name):
+        return name in self.__res
+
+    def items(self):
+        return self.__res.items()
+
+
+@dataclass
+class Requirements:
+    resources: ResourceRequirements = field(default_factory=ResourceRequirements)
+    # devices:   TO ADD LATER
+
+    def serialize_to_string(self):
+        """
+        compact string representation
+        """
+        return json.dumps({
+            'r': {name: {'m': val.min, 'p': val.pref} for name, val in self.resources.items()}
+        })
+
+    @classmethod
+    def deserialize_from_string(cls, text: str) -> "Requirements":
+        """
+        reverse from serializa_to_stirng
+        """
+        data = json.loads(text)
+        return Requirements(
+            resources=ResourceRequirements({
+                name: ResourceRequirement(val['m'], val['p']) for name, val in data['r'].items()
+            })
+        )
+
+
 class InvocationRequirements:
     """
     requirements a worker has to match in order to be able to pick this task
@@ -112,55 +177,48 @@ class InvocationRequirements:
     then a 1 core machine may pick up one task, but 16 core machine will pick just 4 tasks
     """
     def __init__(self, *,
-                 min_cpu_count: Optional[int] = None,
-                 min_memory_bytes: Optional[int] = None,
-                 min_gpu_count: Optional[int] = None,
-                 min_gpu_memory_bytes: Optional[int] = None,
                  groups: Optional[Iterable[str]] = None,
-                 worker_type: WorkerType = WorkerType.STANDARD):
+                 worker_type: WorkerType = WorkerType.STANDARD,
+                 **resources):
+        """
+        each arg in **resources must start with "min_<name>" or "pref_<name>",
+        where <name> is the name of the resource
+        """
         self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
-        self.__min_cpu_count = min_cpu_count or 0
-        self.__min_memory_bytes = min_memory_bytes or 0
-        self.__min_gpu_count = min_gpu_count or 0
-        self.__min_gpu_memory_bytes = min_gpu_memory_bytes or 0
 
-        self.__pref_cpu_count = None
-        self.__pref_memory_bytes = None
-        self.__pref_gpu_count = None
-        self.__pref_gpu_memory_bytes = None
+        self.__res_req: Requirements = Requirements()  # Dict[str, ResourceRequirement] = {}
+        for arg_name, arg_val in resources.items():
+            if '_' not in arg_name:
+                raise RuntimeError(f'provided resource {arg_name} must start with either "min_", or "pref_"')
+            bound, res = arg_name.split(arg_name, 1)
+
+            if res not in self.__res_req.resources:
+                self.__res_req.resources[res] = ResourceRequirement()
+            if bound == 'min':
+                self.__res_req.resources[res].min = arg_val
+            elif bound == 'pref':
+                self.__res_req.resources[res].pref = arg_val
+            else:
+                raise RuntimeError(f'provided resource {arg_name} must start with either "min_", or "pref_"')
 
     # querries
 
     def groups(self) -> Set[str]:
         return set(self.__groups)
 
-    def min_cpu_count(self) -> Union[float, int]:
-        return self.__min_cpu_count
-
-    def min_memory_bytes(self) -> int:
-        return self.__min_memory_bytes
-
-    def preferred_cpu_count(self) -> Union[float, int]:
-        return self.__pref_cpu_count
-
-    def preferred_memory_bytes(self) -> int:
-        return self.__pref_memory_bytes
-
-    def min_gpu_count(self) -> Union[float, int]:
-        return self.__min_gpu_count
-
-    def min_gpu_memory_bytes(self) -> int:
-        return self.__min_gpu_memory_bytes
-
-    def preferred_gpu_count(self) -> Union[float, int]:
-        return self.__pref_gpu_count
-
-    def preferred_gpu_memory_bytes(self) -> int:
-        return self.__pref_gpu_memory_bytes
-
     def worker_type(self) -> WorkerType:
         return self.__worker_type
+
+    def min_resource(self, resource_name: str) -> Union[float, int]:
+        if resource_name not in self.__res_req.resources:
+            return 0
+        return self.__res_req.resources[resource_name].min
+
+    def preferred_resource(self, resource_name: str) -> Union[float, int]:
+        if resource_name not in self.__res_req.resources:
+            return 0
+        return self.__res_req.resources[resource_name].pref
 
     # setters
 
@@ -173,43 +231,23 @@ class InvocationRequirements:
     def add_group(self, group: str):
         self.__groups.add(group)
 
-    def set_min_cpu_count(self, min_cpu_count):
-        self.__min_cpu_count = min_cpu_count
+    def set_min_resource(self, resource_name: str, value: Union[float, int]):
+        if resource_name not in self.__res_req.resources:
+            self.__res_req.resources[resource_name] = ResourceRequirement()
+        self.__res_req.resources[resource_name].min = value
 
-    def set_min_memory_bytes(self, min_memory_bytes):
-        self.__min_memory_bytes = int(min_memory_bytes)
-
-    def set_preferred_cpu_count(self, pref_cpu_count):
-        self.__pref_cpu_count = pref_cpu_count
-
-    def set_preferred_memory_bytes(self, pref_memory_bytes):
-        self.__pref_memory_bytes = int(pref_memory_bytes)
-
-    def set_min_gpu_count(self, min_gpu_count):
-        self.__min_gpu_count = min_gpu_count
-
-    def set_min_gpu_memory_bytes(self, min_gpu_memory_bytes):
-        self.__min_gpu_memory_bytes = int(min_gpu_memory_bytes)
-
-    def set_preferred_gpu_count(self, pref_gpu_count):
-        self.__pref_gpu_count = pref_gpu_count
-
-    def set_preferred_gpu_memory_bytes(self, pref_gpu_memory_bytes):
-        self.__pref_gpu_memory_bytes = int(pref_gpu_memory_bytes)
+    def set_preferred_resource(self, resource_name: str, value: Union[float, int]):
+        if resource_name not in self.__res_req.resources:
+            self.__res_req.resources[resource_name] = ResourceRequirement()
+        self.__res_req.resources[resource_name].pref = value
 
     def set_worker_type(self, worker_type: WorkerType):
         self.__worker_type = worker_type
 
     def final_where_clause(self):
         conds = [f'("worker_type" = {self.__worker_type.value})']
-        if self.__min_cpu_count > 0:
-            conds.append(f'("cpu_count" >= {self.__min_cpu_count - 1e-8 if isinstance(self.__min_cpu_count, float) else self.__min_cpu_count})')   # to ensure sql compare will work
-        if self.__min_memory_bytes > 0:
-            conds.append(f'("cpu_mem" >= {self.__min_memory_bytes})')
-        if self.__min_gpu_count > 0:
-            conds.append(f'("gpu_count" >= {self.__min_gpu_count - 1e-8 if isinstance(self.__min_gpu_count, float) else self.__min_gpu_count})')  # to ensure sql compare will work
-        if self.__min_gpu_memory_bytes > 0:
-            conds.append(f'("gpu_mem" >= {self.__min_gpu_memory_bytes})')
+        for res_name, res_req in self.__res_req.resources.items():
+            conds.append(f'("{res_name}" >= {res_req.min - 1e-8 if isinstance(res_req.min, float) else res_req.min})')  # to ensure sql compare will work
         if len(self.__groups) > 0:
             esc = '\\'
 
@@ -218,49 +256,37 @@ class InvocationRequirements:
             conds.append(f'''(EXISTS (SELECT * FROM worker_groups wg WHERE wg."worker_hwid" == workers."hwid" AND ( {" OR ".join(f"""wg."group" LIKE '{_morph(x)}' ESCAPE '{esc}'""" for x in self.__groups)} )))''')
         return ' AND '.join(conds)
 
-    def to_dict(self, resources_only: bool = False) -> dict:
-        ret = {'cpu_count': self.__min_cpu_count,
-               'cpu_mem': self.__min_memory_bytes,
-               'gpu_count': self.__min_gpu_count,
-               'gpu_mem': self.__min_gpu_memory_bytes}
-        if self.__pref_cpu_count is not None:
-            ret['pref_cpu_count'] = self.__pref_cpu_count
-        if self.__pref_memory_bytes is not None:
-            ret['pref_cpu_mem'] = self.__pref_memory_bytes
-        if self.__pref_gpu_count is not None:
-            ret['pref_gpu_count'] = self.__pref_gpu_count
-        if self.__pref_gpu_memory_bytes is not None:
-            ret['pref_gpu_mem'] = self.__pref_gpu_memory_bytes
+    def pack_selection_info(self) -> str:
+        """
+        provides a string with enough info to select worker and update worker resource
+        """
+        return ':::'.join((self.final_where_clause(), self.__res_req.serialize_to_string()))
 
-        if resources_only:
-            return ret
-
-        ret['groups'] = tuple(self.groups())
-        return ret
-
-    def to_min_worker_resources(self) -> WorkerResources:
-        res = WorkerResources()
-        res.cpu_count = self.__min_cpu_count
-        res.cpu_mem = self.__min_memory_bytes
-        res.gpu_count = self.__min_gpu_count
-        res.gpu_mem = self.__min_gpu_memory_bytes
-        return res
-
+    # def to_min_worker_resources(self) -> WorkerResources:
+    #     res = WorkerResources()
+    #     res.cpu_count = self.__min_cpu_count
+    #     res.cpu_mem = self.__min_memory_bytes
+    #     res.gpu_count = self.__min_gpu_count
+    #     res.gpu_mem = self.__min_gpu_memory_bytes
+    #     return res
+    #
     def __gt__(self, other):
-        if not isinstance(other, WorkerResources):
-            raise NotImplementedError()
-        return self.__min_cpu_count > other.cpu_count and \
-               self.__min_memory_bytes > other.cpu_mem and \
-               self.__min_gpu_count > other.gpu_count and \
-               self.__min_gpu_memory_bytes > other.gpu_mem
-
+        raise NotImplementedError()
+    #     if not isinstance(other, WorkerResources):
+    #         raise NotImplementedError()
+    #     return self.__min_cpu_count > other.cpu_count and \
+    #            self.__min_memory_bytes > other.cpu_mem and \
+    #            self.__min_gpu_count > other.gpu_count and \
+    #            self.__min_gpu_memory_bytes > other.gpu_mem
+    #
     def __eq__(self, other):
-        if not isinstance(other, WorkerResources):
-            raise NotImplementedError()
-        return self.__min_cpu_count == other.cpu_count and \
-               self.__min_memory_bytes == other.cpu_mem and \
-               self.__min_gpu_count == other.gpu_count and \
-               self.__min_gpu_memory_bytes == other.gpu_mem
+        raise NotImplementedError()
+    #     if not isinstance(other, WorkerResources):
+    #         raise NotImplementedError()
+    #     return self.__min_cpu_count == other.cpu_count and \
+    #            self.__min_memory_bytes == other.cpu_mem and \
+    #            self.__min_gpu_count == other.gpu_count and \
+    #            self.__min_gpu_memory_bytes == other.gpu_mem
 
 
 class InvocationJob:

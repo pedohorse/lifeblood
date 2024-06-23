@@ -3,7 +3,7 @@ import aiosqlite
 import sqlite3
 import random
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ..attribute_serialization import serialize_attributes
 from ..db_misc import sql_init_script
 from ..expiring_collections import ExpiringValuesSetMap
@@ -15,9 +15,9 @@ from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
-SCHEDULER_DB_FORMAT_VERSION = 2
+SCHEDULER_DB_FORMAT_VERSION = 3
 
 
 @dataclass
@@ -40,11 +40,21 @@ class TaskSpawnData:
     environment_resolver_arguments: Optional[EnvironmentResolverArguments]
 
 
+@dataclass
+class WorkerResourceDefinition:
+    name: str
+    type: Type
+    description: str
+    label: str  # nicer looking user facing name
+
+
 class DataAccess:
     def __init__(self, db_path, db_connection_timeout):
         self.__logger = get_logger('scheduler.data_access')
         self.db_path: str = db_path
         self.db_timeout: int = db_connection_timeout
+
+        config = get_config('scheduler')
 
         # "public" members
         self.mem_cache_workers_resources: dict = {}
@@ -52,17 +62,90 @@ class DataAccess:
         self.__mem_cache_invocations: dict = {}
         #
 
+        # resource definitions
+        # TODO: load resource definitions from config
+        config_resources = config.get_option_noasync('resource_definitions.per_machine', None)
+        if config_resources is None:  # use default resource definitions
+            self.__worker_resource_definitions: Tuple[WorkerResourceDefinition, ...] = (
+                WorkerResourceDefinition('cpu_count',
+                                         float,
+                                         'CPU core count',
+                                         'CPU count'),
+                WorkerResourceDefinition('cpu_mem',
+                                         int,
+                                         'RAM amount in bytes',
+                                         'RAM'),
+                WorkerResourceDefinition('gpu_count',
+                                         float,
+                                         'number of GPUs',
+                                         'GPU count'),  # TODO: get rid of these in defaults when devices are implemented
+                WorkerResourceDefinition('gpu_mem',
+                                         int,
+                                         'combined GPU memory in bytes',
+                                         'GPU mem'),
+            )
+        else:
+            if not isinstance(config_resources, dict):
+                raise RuntimeError('bad config schema: resource_definitions.per_machine must be a mapping')  # TODO: turn into config schema error or smth
+            conf_2_type_mapping = {
+                'int': int,
+                'float': float,
+                'number': float,
+            }
+            res_defs = []
+            for res_name, res_data in config_resources.items():
+                if res_name.startswith('total_'):
+                    raise RuntimeError('resource name cannot start with "total_"')  # TODO: turn into config schema error or smth
+                res_type = conf_2_type_mapping.get(res_data.get('type').lower(), None)
+                if res_type is None:
+                    raise RuntimeError('resource type may be one of "int", "float", "number"')  # TODO: turn into config schema error or smth
+                res_defs.append(WorkerResourceDefinition(
+                    res_name,
+                    res_type,
+                    res_data.get('description', ''),
+                    res_data.get('label', res_name),
+                ))
+            self.__worker_resource_definitions: Tuple[WorkerResourceDefinition, ...] = tuple(res_defs)
+        #
+
         self.__task_blocking_values: Dict[int, int] = {}
         # on certain submission errors we might want to ban hwid for some time, as it can be assumed
         # that consecutive submission attempts will result in the same error (like package resolution error)
         self.__banned_hwids_per_task: ExpiringValuesSetMap = ExpiringValuesSetMap()
-        self.__ban_time = get_config('scheduler').get_option_noasync('data_access.hwid_ban_timeout', 10)
+        self.__ban_time = config.get_option_noasync('data_access.hwid_ban_timeout', 10)
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
         # ensure database is initialized
         with sqlite3.connect(db_path) as con:
             con.executescript(sql_init_script)
+        # update resource table straight away
+        # for now the logic is to keep existing columns
+        with sqlite3.connect(db_path) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.execute('PRAGMA table_info(resources)')
+            resource_rows = {x['name']: x for x in cur.fetchall() if x['name'] != 'hwid'}
+            cur.close()
+
+            need_commit = False
+            for res_def in self.__worker_resource_definitions:
+                col_type, col_def = {
+                    int: ('INTEGER', 0),
+                    float: ('INTEGER', 0),
+                }[res_def.type]
+                if res_def.name in resource_rows:  # skip existing
+                    if resource_rows[res_def.name]['type'] != col_type:
+                        con.execute(f'ALTER TABLE resources DROP COLUMN "{res_def.name}"')
+                        con.execute(f'ALTER TABLE resources DROP COLUMN "total_{res_def.name}"')
+                    else:
+                        continue
+                self.__logger.debug(f'adding new resource "{res_def.name}" of type {col_type} ({col_def}) into the table')
+                con.execute(f'ALTER TABLE resources ADD COLUMN "{res_def.name}" {col_type} NOT NULL DEFAULT {col_def}')
+                con.execute(f'ALTER TABLE resources ADD COLUMN "total_{res_def.name}" {col_type} NOT NULL DEFAULT {col_def}')
+                need_commit = True
+            if need_commit:
+                con.commit()
+
         with sqlite3.connect(db_path) as con:
             con.row_factory = sqlite3.Row
             cur = con.execute('SELECT * FROM lifeblood_metadata')
@@ -120,6 +203,12 @@ class DataAccess:
                                 newtask.environment_resolver_arguments.serialize() if newtask.environment_resolver_arguments is not None else None)) as newcur:
             new_id = newcur.lastrowid
         return new_id
+
+    def get_worker_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
+        """
+        get definitions of generic resources that workers can have
+        """
+        return self.__worker_resource_definitions
 
     async def housekeeping(self):
         """
@@ -386,7 +475,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 2:
+        if from_version < 1 or to_version > 3:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -404,4 +493,21 @@ class DataAccess:
         if to_version == 2:
             # need to ensure new node_object_state field is present
             con.execute('ALTER TABLE "nodes" ADD COLUMN "node_object_state" BLOB')
+            return True
+        if to_version == 3:
+            # there was a bug in prev init script, wrong column in index, now it randomly pops on rename,
+            # so we need to recreate that index
+            con.executescript(
+                'DROP INDEX task_group_attrs_state_creator_idx;'
+                'CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" ('
+                '    "state",'
+                '    "creator"'
+                ');'
+            )
+            # need to set default values for existing resource columns
+            for col_name in ('cpu_count', 'total_cpu_count', 'cpu_mem', 'total_cpu_mem', 'gpu_count', 'total_gpu_count', 'gpu_mem', 'total_gpu_mem'):
+                con.execute(f'ALTER TABLE "resources" RENAME COLUMN "{col_name}" TO "__old_{col_name}"')
+                con.execute(f'ALTER TABLE "resources" ADD COLUMN "{col_name}" INTEGER NOT NULL DEFAULT 0')
+                con.execute(f'UPDATE "resources" SET "{col_name}" = "__old_{col_name}"')
+                con.execute(f'ALTER TABLE "resources" DROP COLUMN "__old_{col_name}"')
             return True

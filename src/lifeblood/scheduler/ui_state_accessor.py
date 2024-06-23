@@ -15,9 +15,9 @@ from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
 from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, TasksChanged
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
-    NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
+    NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
-from .data_access import DataAccess
+from .data_access import DataAccess, WorkerResourceDefinition
 
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
@@ -420,18 +420,12 @@ class UIStateAccessor(SchedulerComponentBase):
 
     async def get_workers_ui_state(self) -> WorkerBatchData:
         self.__logger.debug('workers update')
+        resource_definitions = self.__data_access.get_worker_resource_definitions()
         async with self.__data_access.data_connection() as con, \
                 aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
             con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT workers."id", '
-                                   'cpu_count, '
-                                   'total_cpu_count, '
-                                   'cpu_mem, '
-                                   'total_cpu_mem, '
-                                   'gpu_count, '
-                                   'total_gpu_count, '
-                                   'gpu_mem, '
-                                   'total_gpu_mem, '
+            async with con.execute('SELECT workers."id", ' +
+                                   ''.join(f'{rd.name}, total_{rd.name}, ' for rd in resource_definitions) +
                                    'workers."hwid", '
                                    'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
@@ -448,7 +442,7 @@ class UIStateAccessor(SchedulerComponentBase):
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers)
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers, resource_definitions)
 
     #
     # task group mapping related crap
@@ -641,17 +635,30 @@ class UIStateAccessor(SchedulerComponentBase):
 
 # scheduler helpers
 
-def _pack_workers_from_raw(db_uid: int, ui_workers: dict) -> "WorkerBatchData":
+
+def _pack_workers_from_raw(db_uid: int, ui_workers: dict, resource_definitions: Tuple[WorkerResourceDefinition, ...]) -> "WorkerBatchData":
     """
     this is scheduler helper function, it's incoming data format is dictated purely by scheduler
     """
     workers = {}
     for worker_id, worker_raw in ui_workers.items():
         assert worker_id == worker_raw['id']
-        res = WorkerResources(worker_raw['cpu_count'], worker_raw['total_cpu_count'],
-                              worker_raw['cpu_mem'], worker_raw['total_cpu_mem'],
-                              worker_raw['gpu_count'], worker_raw['total_gpu_count'],
-                              worker_raw['gpu_mem'], worker_raw['total_gpu_mem'])
+        ress = []
+        for res_def in resource_definitions:
+            if res_def.type is int:
+                res_type = WorkerResourceType.INT
+            elif res_def.type is float:
+                res_type = WorkerResourceType.FLOAT
+            else:
+                raise NotImplementedError(f'unhandled worker resource definition type: {res_def.type}')
+            ress.append(WorkerResource(
+                res_def.type(worker_raw[res_def.name]),
+                res_def.type(worker_raw[f'total_{res_def.name}']),
+                res_type,
+                res_def.name,
+            ))
+
+        res = WorkerResources(ress)
         workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
                                         WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
                                         worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
@@ -714,13 +721,3 @@ def _pack_task_groups(db_uid: int, all_task_groups) -> "TaskGroupBatchData":
                                                 group_raw['priority'], stat)
 
     return TaskGroupBatchData(db_uid, task_groups)
-
-
-def _create_uidata_from_raw_noasync(db_uid, ui_nodes, ui_connections, ui_tasks, ui_workers, all_task_groups):
-
-    node_graph_data = _pack_nodes_connections_data(db_uid, ui_nodes, ui_connections)
-    tasks = _pack_tasks_data(db_uid, ui_tasks)
-    worker_batch_data = _pack_workers_from_raw(db_uid, ui_workers)
-    task_groups = _pack_task_groups(db_uid, all_task_groups)
-
-    return UiData(db_uid, node_graph_data, tasks, worker_batch_data, task_groups)

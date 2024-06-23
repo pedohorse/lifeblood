@@ -9,7 +9,7 @@ from . import logging
 from . import invocationjob
 from .taskspawn import TaskSpawn
 from .enums import WorkerType, SpawnStatus, WorkerState
-from .net_classes import WorkerResources
+from .hardware_resources import HardwareResources
 from .worker_metadata import WorkerMetadata
 
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -78,7 +78,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             addr = await read_string()
             workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
             reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
-            worker_hardware: WorkerResources = WorkerResources.deserialize(await reader.readexactly(reslength))
+            worker_hardware: HardwareResources = HardwareResources.deserialize(await reader.readexactly(reslength))
             metadata = WorkerMetadata(await read_string())
             await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
             writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
@@ -304,7 +304,7 @@ class SchedulerTaskClient:
         await self.__writer.drain()
         await self.__reader.readexactly(1)
 
-    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: WorkerResources, metadata: WorkerMetadata):
+    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: HardwareResources, metadata: WorkerMetadata):
         await self._ensure_conn_open()
         self.write_string('hello')
         self.write_string(address_to_advertise)
