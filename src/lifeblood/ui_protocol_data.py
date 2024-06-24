@@ -424,6 +424,9 @@ class WorkerResources(IBufferSerializable):
     def __init__(self, resources: List[WorkerResource]):
         self.__resources: List[WorkerResource] = resources
 
+    def __repr__(self):
+        return f'WorkerResources({repr(self.__resources)})'
+
     def __len__(self):
         return len(self.__resources)
 
@@ -435,6 +438,11 @@ class WorkerResources(IBufferSerializable):
 
     def __contains__(self, item):
         return item in self.__resources
+
+    def __eq__(self, other):
+        if not isinstance(other, WorkerResources):
+            return False
+        return self.__resources == other.__resources
 
     def serialize(self, stream: BufferedIOBase):
         stream.write(struct.pack('>Q', len(self.__resources)))
