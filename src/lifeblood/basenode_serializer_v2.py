@@ -8,7 +8,6 @@ from .uidata import ParameterFullValue
 from typing import Optional, Tuple, Union
 
 from .node_dataprovider_base import NodeDataProvider
-from .nodegraph_holder_base import NodeGraphHolderBase
 
 
 @dataclass
@@ -85,7 +84,7 @@ class NodeSerializerV2(NodeSerializerBase):
         state = node.get_state()
         return None if state is None else json.dumps(state, cls=NodeSerializerV2.Serializer).encode('latin1')
 
-    def deserialize(self, parent: NodeGraphHolderBase, node_id: int, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
+    def deserialize(self, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
         try:
             data_dict = json.loads(data.decode('latin1'), cls=NodeSerializerV2.Deserializer)
         except json.JSONDecodeError:
@@ -96,7 +95,6 @@ class NodeSerializerV2(NodeSerializerBase):
         if (fv := data_dict['format_version']) != 2:
             raise IncompatibleDeserializationMethod(f'format_version {fv} is not supported')
         new_node = node_data_provider.node_factory(data_dict['type_name'])(data_dict['name'])
-        new_node.set_parent(parent, node_id)
         try:
             with new_node.get_ui().block_ui_callbacks():
                 new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})

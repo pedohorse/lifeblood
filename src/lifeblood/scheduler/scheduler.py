@@ -276,13 +276,14 @@ class Scheduler(NodeGraphHolderBase):
                     try:
                         for serializer in self.__node_serializers:
                             try:
-                                node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
+                                node_object = await serializer.deserialize_async(self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
                                 break
                             except IncompatibleDeserializationMethod as e:
                                 self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
                                 continue
                         else:
                             raise FailedToDeserialize(f'node entry {node_id} has unknown serialization method')
+                        node_object.set_parent(self, node_id)
                         self.__node_objects[node_id] = node_object
                         return self.__node_objects[node_id]
                     except FailedToDeserialize:
