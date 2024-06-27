@@ -8,6 +8,7 @@ from .pluginloader import PluginNodeDataProvider
 from .scheduler import Scheduler
 from .basenode_serializer_v1 import NodeSerializerV1
 from .basenode_serializer_v2 import NodeSerializerV2
+from .scheduler_config_provider_file import SchedulerConfigProviderFileOverrides
 from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
 from .config import get_config, create_default_user_config_file, get_local_scratch_path
 from . import logging
@@ -78,15 +79,24 @@ def create_default_scheduler(db_file_path, *,
                  helpers_minimal_idle_to_ensure=1,
                  server_addr: Optional[Tuple[str, int, int]] = None,
                  server_ui_addr: Optional[Tuple[str, int]] = None) -> Scheduler:
+    legacy_addr = None
+    message_addr = None
+    if server_addr is not None:
+        legacy_addr = (server_addr[0], server_addr[1])
+        message_addr = (server_addr[0], server_addr[2])
+    config = SchedulerConfigProviderFileOverrides(
+        main_db_location=db_file_path,
+        do_broadcast=do_broadcasting,
+        broadcast_interval=broadcast_interval,
+        minimal_idle_helpers=helpers_minimal_idle_to_ensure,
+        legacy_server_address=legacy_addr,
+        message_processor_address=message_addr,
+        ui_address=server_ui_addr,
+    )
     return Scheduler(
-        db_file_path,
+        scheduler_config_provider=config,
         node_data_provider=PluginNodeDataProvider(),
         node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
-        do_broadcasting=do_broadcasting,
-        broadcast_interval=broadcast_interval,
-        helpers_minimal_idle_to_ensure=helpers_minimal_idle_to_ensure,
-        server_addr=server_addr,
-        server_ui_addr=server_ui_addr,
     )
 
 

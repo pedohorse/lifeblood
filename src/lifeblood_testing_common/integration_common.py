@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.enums import TaskState
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.nethelpers import get_default_addr
 from lifeblood.simple_worker_pool import WorkerPool
 from lifeblood.net_messages.address import AddressChain

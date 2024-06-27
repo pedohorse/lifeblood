@@ -3,17 +3,17 @@ import aiosqlite
 import sqlite3
 import random
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ..attribute_serialization import serialize_attributes
 from ..db_misc import sql_init_script
 from ..expiring_collections import ExpiringValuesSetMap
-from ..config import get_config
 from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
+from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
@@ -40,21 +40,15 @@ class TaskSpawnData:
     environment_resolver_arguments: Optional[EnvironmentResolverArguments]
 
 
-@dataclass
-class WorkerResourceDefinition:
-    name: str
-    type: Type
-    description: str
-    label: str  # nicer looking user facing name
-
-
 class DataAccess:
-    def __init__(self, db_path, db_connection_timeout):
+    def __init__(
+            self,
+            *,
+            config_provider: SchedulerConfigProviderBase
+    ):
         self.__logger = get_logger('scheduler.data_access')
-        self.db_path: str = db_path
-        self.db_timeout: int = db_connection_timeout
-
-        config = get_config('scheduler')
+        self.__db_path: str = config_provider.main_database_location()
+        self.__db_timeout: float = config_provider.main_database_connection_timeout()
 
         # "public" members
         self.mem_cache_workers_resources: dict = {}
@@ -62,73 +56,27 @@ class DataAccess:
         self.__mem_cache_invocations: dict = {}
         #
 
-        # resource definitions
-        # TODO: load resource definitions from config
-        config_resources = config.get_option_noasync('resource_definitions.per_machine', None)
-        if config_resources is None:  # use default resource definitions
-            self.__worker_resource_definitions: Tuple[WorkerResourceDefinition, ...] = (
-                WorkerResourceDefinition('cpu_count',
-                                         float,
-                                         'CPU core count',
-                                         'CPU count'),
-                WorkerResourceDefinition('cpu_mem',
-                                         int,
-                                         'RAM amount in bytes',
-                                         'RAM'),
-                WorkerResourceDefinition('gpu_count',
-                                         float,
-                                         'number of GPUs',
-                                         'GPU count'),  # TODO: get rid of these in defaults when devices are implemented
-                WorkerResourceDefinition('gpu_mem',
-                                         int,
-                                         'combined GPU memory in bytes',
-                                         'GPU mem'),
-            )
-        else:
-            if not isinstance(config_resources, dict):
-                raise RuntimeError('bad config schema: resource_definitions.per_machine must be a mapping')  # TODO: turn into config schema error or smth
-            conf_2_type_mapping = {
-                'int': int,
-                'float': float,
-                'number': float,
-            }
-            res_defs = []
-            for res_name, res_data in config_resources.items():
-                if res_name.startswith('total_'):
-                    raise RuntimeError('resource name cannot start with "total_"')  # TODO: turn into config schema error or smth
-                res_type = conf_2_type_mapping.get(res_data.get('type').lower(), None)
-                if res_type is None:
-                    raise RuntimeError('resource type may be one of "int", "float", "number"')  # TODO: turn into config schema error or smth
-                res_defs.append(WorkerResourceDefinition(
-                    res_name,
-                    res_type,
-                    res_data.get('description', ''),
-                    res_data.get('label', res_name),
-                ))
-            self.__worker_resource_definitions: Tuple[WorkerResourceDefinition, ...] = tuple(res_defs)
-        #
-
         self.__task_blocking_values: Dict[int, int] = {}
         # on certain submission errors we might want to ban hwid for some time, as it can be assumed
         # that consecutive submission attempts will result in the same error (like package resolution error)
         self.__banned_hwids_per_task: ExpiringValuesSetMap = ExpiringValuesSetMap()
-        self.__ban_time = config.get_option_noasync('data_access.hwid_ban_timeout', 10)
+        self.__ban_time = config_provider.hardware_ban_timeout()
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
         # ensure database is initialized
-        with sqlite3.connect(db_path) as con:
+        with sqlite3.connect(self.__db_path) as con:
             con.executescript(sql_init_script)
         # update resource table straight away
         # for now the logic is to keep existing columns
-        with sqlite3.connect(db_path) as con:
+        with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
             cur = con.execute('PRAGMA table_info(resources)')
             resource_rows = {x['name']: x for x in cur.fetchall() if x['name'] != 'hwid'}
             cur.close()
 
             need_commit = False
-            for res_def in self.__worker_resource_definitions:
+            for res_def in config_provider.hardware_resource_definitions():
                 col_type, col_def = {
                     int: ('INTEGER', 0),
                     float: ('INTEGER', 0),
@@ -146,7 +94,7 @@ class DataAccess:
             if need_commit:
                 con.commit()
 
-        with sqlite3.connect(db_path) as con:
+        with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
             cur = con.execute('SELECT * FROM lifeblood_metadata')
             metadata = cur.fetchone()  # there should be exactly one single row.
@@ -203,12 +151,6 @@ class DataAccess:
                                 newtask.environment_resolver_arguments.serialize() if newtask.environment_resolver_arguments is not None else None)) as newcur:
             new_id = newcur.lastrowid
         return new_id
-
-    def get_worker_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
-        """
-        get definitions of generic resources that workers can have
-        """
-        return self.__worker_resource_definitions
 
     async def housekeeping(self):
         """
@@ -452,10 +394,10 @@ class DataAccess:
 
     def data_connection(self) -> aiosqlite_overlay.ConnectionWithCallbacks:
         # TODO: con.row_factory = aiosqlite.Row must be here, ALMOST all places use it anyway, need to prune
-        return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
+        return aiosqlite_overlay.connect(self.__db_path, timeout=self.__db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
 
     def lazy_data_transaction(self, key_name: str):
-        return SharedLazyAiosqliteConnection(None, self.db_path, key_name, timeout=self.db_timeout)
+        return SharedLazyAiosqliteConnection(None, self.__db_path, key_name, timeout=self.__db_timeout)
 
     async def write_back_cache(self):
         self.__logger.info('pinger syncing temporary tables back...')

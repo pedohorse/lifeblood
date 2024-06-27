@@ -145,6 +145,7 @@ class TestSerialization(TestCase):
 
         test1_data, test1_state = ser.serialize(test1)
 
-        test1_act = ser.deserialize(parent, 123, dataprov, test1_data, test1_state)
+        test1_act = ser.deserialize(dataprov, test1_data, test1_state)
+        test1_act.set_parent(parent, 123)
 
         self.nodes_are_same(test1, test1_act)

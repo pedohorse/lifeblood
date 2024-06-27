@@ -167,11 +167,11 @@ class BaseNode:
     #         #  this may also apply to _ui_changed above, but nodes really SHOULD NOT change their own parameters during processing
     #         asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
-    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+    def _process_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!
         #  TODO: , in case threads do l1---r1    - release2 WILL leave lock in locked state forever, as it remembered it at l2
         #  TODO:                         l2---r2
-        return self.process_task(ProcessingContext(self, task_dict))
+        return self.process_task(ProcessingContext(self, task_dict, node_config))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -182,9 +182,9 @@ class BaseNode:
         """
         raise NotImplementedError()
 
-    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
+    def _postprocess_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  #TODO: read comment for _process_task_wrapper
-        return self.postprocess_task(ProcessingContext(self, task_dict))
+        return self.postprocess_task(ProcessingContext(self, task_dict, node_config))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -279,9 +279,9 @@ class BaseNodeWithTaskRequirements(BaseNode):
                         ui.add_parameter('worker gpu mem cost', 'min <memory (GBs)> preferred', NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
                         ui.add_parameter('worker gpu mem cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
 
-    def __apply_requirements(self, task_dict: dict, result: ProcessingResult):
+    def __apply_requirements(self, task_dict: dict, node_config: dict, result: ProcessingResult):
         if result.invocation_job is not None:
-            context = ProcessingContext(self, task_dict)
+            context = ProcessingContext(self, task_dict, node_config)
             raw_groups = context.param_value('worker groups').strip()
             reqs = result.invocation_job.requirements()
             if raw_groups != '':
@@ -302,13 +302,13 @@ class BaseNodeWithTaskRequirements(BaseNode):
             result.invocation_job.set_priority(context.param_value('priority adjustment'))
         return result
 
-    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
-        return self.__apply_requirements(task_dict, result)
+    def _process_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
+        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict, node_config)
+        return self.__apply_requirements(task_dict, node_config, result)
 
-    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
-        result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict)
-        return self.__apply_requirements(task_dict, result)
+    def _postprocess_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
+        result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict, node_config)
+        return self.__apply_requirements(task_dict, node_config, result)
 
 
 # class BaseNodeWithEnvironmentRequirements(BaseNode):

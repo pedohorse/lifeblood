@@ -1,13 +1,9 @@
 import asyncio
-import dataclasses
-
 import aiosqlite
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from dataclasses import dataclass
 import time
 from enum import Enum
-from queue import Queue
 from ..logging import get_logger
 from ..misc import atimeit, aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
@@ -17,7 +13,7 @@ from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, Ta
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
-from .data_access import DataAccess, WorkerResourceDefinition
+from ..worker_resource_definition import WorkerResourceDefinition
 
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
@@ -420,7 +416,7 @@ class UIStateAccessor(SchedulerComponentBase):
 
     async def get_workers_ui_state(self) -> WorkerBatchData:
         self.__logger.debug('workers update')
-        resource_definitions = self.__data_access.get_worker_resource_definitions()
+        resource_definitions = self.scheduler.config_provider.hardware_resource_definitions()
         async with self.__data_access.data_connection() as con, \
                 aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
             con.row_factory = aiosqlite.Row

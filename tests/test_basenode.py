@@ -1,14 +1,14 @@
 import os.path
 import random
-from unittest import IsolatedAsyncioTestCase, TestCase, mock
-import sqlite3
+from unittest import IsolatedAsyncioTestCase
 import tempfile
-from lifeblood.basenode import BaseNodeWithTaskRequirements, BaseNode, ProcessingResult
+from lifeblood.basenode import BaseNodeWithTaskRequirements, ProcessingResult
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.enums import WorkerType
-from lifeblood.db_misc import sql_init_script
 from lifeblood.scheduler.data_access import DataAccess
+from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
+
 
 class NoNodeWithReq(BaseNodeWithTaskRequirements):
     @classmethod
@@ -40,7 +40,7 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
         node.set_param_value('worker type', WorkerType.SCHEDULER_HELPER.value)
         node.set_param_value('priority adjustment', 9.0)
 
-        res = node._process_task_wrapper({})
+        res = node._process_task_wrapper({}, {})
 
         reqs = res.invocation_job.requirements()
 
@@ -77,7 +77,7 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
             for i in range(100):
                 with open(temp_db_path, 'w') as f:
                     pass
-                data_access = DataAccess(temp_db_path, 30)
+                data_access = DataAccess(config_provider=SchedulerConfigProviderOverrides(temp_db_path, 30))
                 async with data_access.data_connection() as con:
                     async with con.execute('SELECT "id" FROM "workers"') as cur:
                         self.assertEqual(0, len(await cur.fetchall()))

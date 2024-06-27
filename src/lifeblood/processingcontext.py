@@ -1,11 +1,9 @@
 from types import MappingProxyType
-import re
 
 from .attribute_serialization import deserialize_attributes_core
-from .config import get_config
 from .environment_resolver import EnvironmentResolverArguments
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
@@ -44,28 +42,30 @@ class ProcessingContext:
             raise AttributeError(f'node has no field {item}')
 
     class ConfigWrapper:
-        def __init__(self, node_type_id):
-            self.__config = get_config('scheduler.nodes')
-            self.__scheduler_globals = dict(get_config('scheduler').get_option_noasync('scheduler.globals', {}))
-            self.__nodetypeid = node_type_id
+        def __init__(self, node_config):
+            self.__node_config = node_config
 
         def get(self, key, default=None):
-            return self.__config.get_option_noasync(f'{self.__nodetypeid}.{key}',
-                                                    self.__scheduler_globals.get(key,
-                                                                                 default))
+            return self.__node_config.get(key, default)
 
         def __getitem__(self, item):
             return self.get(item)
 
-    def __init__(self, node: "BaseNode", task_dict: dict):
+    def __init__(self, node: "BaseNode", task_dict: dict, node_config: Dict[str, Union[str, int, float, list, dict]]):
+        """
+        All information node can access during processing.
+        This is read-only.
+        All modifications are to be done through ProcessingResult
+
+        :param node_config: extra mapping that node can access through parameter expressions
+        """
         task_dict = dict(task_dict)
         self.__task_attributes = deserialize_attributes_core(task_dict.get('attributes', '{}'))
         self.__task_dict = task_dict
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
         self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
-        sanitized_name = re.sub(r'\W', lambda m: f'x{ord(m.group(0))}', node.type_name())
         self.__env_args = EnvironmentResolverArguments.deserialize(task_dict.get('environment_resolver_data')) if task_dict.get('environment_resolver_data') is not None else None
-        self.__conf_wrapper = ProcessingContext.ConfigWrapper(sanitized_name)
+        self.__conf_wrapper = ProcessingContext.ConfigWrapper(node_config)
         self.__node = node
 
     def param_value(self, param_name: str):
