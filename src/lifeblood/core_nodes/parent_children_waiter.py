@@ -1,7 +1,7 @@
 import dataclasses
 from dataclasses import dataclass
 from lifeblood.attribute_serialization import deserialize_attributes_core
-from lifeblood.basenode import BaseNode, ProcessingError
+from lifeblood.node_plugin_base import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.taskspawn import TaskSpawn
 from lifeblood.exceptions import NodeNotReadyToProcess

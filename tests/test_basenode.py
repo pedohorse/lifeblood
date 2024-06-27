@@ -2,7 +2,7 @@ import os.path
 import random
 from unittest import IsolatedAsyncioTestCase
 import tempfile
-from lifeblood.basenode import BaseNodeWithTaskRequirements, ProcessingResult
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements, ProcessingResult
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.enums import WorkerType

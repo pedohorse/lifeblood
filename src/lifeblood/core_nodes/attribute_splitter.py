@@ -1,5 +1,5 @@
 from copy import copy
-from lifeblood.basenode import BaseNode
+from lifeblood.node_plugin_base import BaseNode
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 import math

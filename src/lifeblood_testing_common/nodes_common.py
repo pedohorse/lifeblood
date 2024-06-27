@@ -10,7 +10,8 @@ from unittest import mock, IsolatedAsyncioTestCase
 from lifeblood.attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from lifeblood.enums import TaskState
 from lifeblood.db_misc import sql_init_script
-from lifeblood.basenode import BaseNode, ProcessingResult
+from lifeblood.basenode import BaseNode
+from lifeblood.nodethings import ProcessingResult
 from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.scheduler import Scheduler
 from lifeblood_testing_common.common import create_default_scheduler

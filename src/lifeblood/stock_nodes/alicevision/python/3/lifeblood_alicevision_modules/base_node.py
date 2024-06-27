@@ -1,4 +1,4 @@
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 import shutil
 from pathlib import Path
 

@@ -2,7 +2,8 @@ import pickle
 from io import BytesIO
 from dataclasses import dataclass
 from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod
-from .basenode import BaseNode, NodeParameterType
+from .basenode import BaseNode
+from .enums import NodeParameterType
 
 from typing import Callable, Optional, Tuple, Union
 

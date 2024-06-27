@@ -2,7 +2,7 @@ import os
 import fnmatch
 import inspect
 from lifeblood.taskspawn import TaskSpawn
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.processingcontext import ProcessingContext

@@ -1,4 +1,4 @@
-from lifeblood.basenode import BaseNode, ProcessingError
+from lifeblood.node_plugin_base import BaseNode, ProcessingError
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.enums import NodeParameterType

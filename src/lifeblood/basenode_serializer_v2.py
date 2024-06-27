@@ -2,7 +2,8 @@ from dataclasses import dataclass, is_dataclass
 import json
 from .common_serialization import AttribSerializer, AttribDeserializer
 from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToApplyNodeState, FailedToApplyParameters
-from .basenode import BaseNode, NodeParameterType
+from .basenode import BaseNode
+from .enums import NodeParameterType
 from .uidata import ParameterFullValue
 
 from typing import Optional, Tuple, Union

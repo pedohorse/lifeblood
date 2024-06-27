@@ -1,6 +1,6 @@
 import sys
 import os
-from lifeblood.basenode import BaseNode, ProcessingResult, ProcessingContext, ProcessingError
+from lifeblood.node_plugin_base import BaseNode, ProcessingResult, ProcessingContext, ProcessingError
 from lifeblood.enums import NodeParameterType
 from lifeblood.paths import config_path
 from typing import Iterable
