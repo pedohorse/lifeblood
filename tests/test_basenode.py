@@ -3,6 +3,7 @@ import random
 from unittest import IsolatedAsyncioTestCase
 import tempfile
 from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements, ProcessingResult
+from lifeblood.worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.enums import WorkerType
@@ -27,22 +28,33 @@ class NoNodeWithReq(BaseNodeWithTaskRequirements):
 class TestBaseNodes(IsolatedAsyncioTestCase):
     async def test_requirements(self):
         node = NoNodeWithReq('foo')
-        node.set_param_value('worker cpu cost', 1.2)
-        node.set_param_value('worker cpu cost preferred', 2.3)
-        node.set_param_value('worker gpu cost', 3.4)
-        node.set_param_value('worker gpu cost preferred', 4.5)
-        node.set_param_value('worker mem cost', 5.6)
-        node.set_param_value('worker mem cost preferred', 6.7)
-        node.set_param_value('worker gpu mem cost', 7.8)
-        node.set_param_value('worker gpu mem cost preferred', 8.9)
 
-        node.set_param_value('worker groups', 'sasha masha dasha')
-        node.set_param_value('worker type', WorkerType.SCHEDULER_HELPER.value)
-        node.set_param_value('priority adjustment', 9.0)
+        node.set_param_value('__requirements__.res', 4)
+        node.set_param_value('__requirements__.name_res_0', "cpu_count")
+        node.set_param_value('__requirements__.type_res_0', 0)  # float
+        node.set_param_value('__requirements__.f_min_res_0', 1.2)
+        node.set_param_value('__requirements__.f_pref_res_0', 2.3)
+        node.set_param_value('__requirements__.name_res_1', "cpu_mem_b")
+        node.set_param_value('__requirements__.type_res_1', 0)  # float
+        node.set_param_value('__requirements__.f_min_res_1', 5600000000)
+        node.set_param_value('__requirements__.f_pref_res_1', 6700000000)
+        node.set_param_value('__requirements__.name_res_2', "gpu_count")
+        node.set_param_value('__requirements__.type_res_2', 0)  # float
+        node.set_param_value('__requirements__.f_min_res_2', 3.4)
+        node.set_param_value('__requirements__.f_pref_res_2', 4.5)
+        node.set_param_value('__requirements__.name_res_3', "gpu_mem_b")
+        node.set_param_value('__requirements__.type_res_3', 0)  # float
+        node.set_param_value('__requirements__.f_min_res_3', 7800000000)
+        node.set_param_value('__requirements__.f_pref_res_3', 8900000000)
+
+        node.set_param_value('__requirements__.worker_groups', 'sasha masha dasha')
+        node.set_param_value('__requirements__.worker_type', WorkerType.SCHEDULER_HELPER.value)
+        node.set_param_value('__requirements__.priority_adjustment', 9.0)
 
         res = node._process_task_wrapper({}, {})
 
         reqs = res.invocation_job.requirements()
+        print(reqs.final_where_clause())
 
         # test individual elements
 
@@ -50,10 +62,10 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
         self.assertEqual(2.3, reqs.preferred_resource('cpu_count'))  # .preferred_cpu_count())
         self.assertEqual(3.4, reqs.min_resource('gpu_count'))  # .min_gpu_count())
         self.assertEqual(4.5, reqs.preferred_resource('gpu_count'))  # .preferred_gpu_count())
-        self.assertEqual(5600000000, reqs.min_resource('cpu_mem'))  # .min_memory_bytes())
-        self.assertEqual(6700000000, reqs.preferred_resource('cpu_mem'))  # .preferred_memory_bytes())
-        self.assertEqual(7800000000, reqs.min_resource('gpu_mem'))  # .min_gpu_memory_bytes())
-        self.assertEqual(8900000000, reqs.preferred_resource('gpu_mem'))  # .preferred_gpu_memory_bytes())
+        self.assertEqual(5600000000, reqs.min_resource('cpu_mem_b'))  # .min_memory_bytes())
+        self.assertEqual(6700000000, reqs.preferred_resource('cpu_mem_b'))  # .preferred_memory_bytes())
+        self.assertEqual(7800000000, reqs.min_resource('gpu_mem_b'))  # .min_gpu_memory_bytes())
+        self.assertEqual(8900000000, reqs.preferred_resource('gpu_mem_b'))  # .preferred_gpu_memory_bytes())
 
         self.assertSetEqual({'sasha', 'masha', 'dasha'}, reqs.groups())
         self.assertEqual(WorkerType.SCHEDULER_HELPER, reqs.worker_type())
@@ -64,9 +76,9 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
         sql_part = reqs.final_where_clause()
         print(sql_part)
         self.assertIn('cpu_count', sql_part)
-        self.assertIn('cpu_mem', sql_part)
+        self.assertIn('cpu_mem_b', sql_part)
         self.assertIn('gpu_count', sql_part)
-        self.assertIn('gpu_mem', sql_part)
+        self.assertIn('gpu_mem_b', sql_part)
 
         rng = random.Random(1366613)
         _stat_pass = 0
@@ -77,7 +89,15 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
             for i in range(100):
                 with open(temp_db_path, 'w') as f:
                     pass
-                data_access = DataAccess(config_provider=SchedulerConfigProviderOverrides(temp_db_path, 30))
+                data_access = DataAccess(config_provider=SchedulerConfigProviderOverrides(
+                    temp_db_path, 30,
+                    resource_definitions=(  # this matches what we defined in params above, would be nice to combine these
+                        WorkerResourceDefinition('cpu_count', WorkerResourceDataType.GENERIC_FLOAT, '', ''),
+                        WorkerResourceDefinition('cpu_mem_b', WorkerResourceDataType.GENERIC_FLOAT, '', ''),
+                        WorkerResourceDefinition('gpu_count', WorkerResourceDataType.GENERIC_FLOAT, '', ''),
+                        WorkerResourceDefinition('gpu_mem_b', WorkerResourceDataType.GENERIC_FLOAT, '', ''),
+                    ),
+                ))
                 async with data_access.data_connection() as con:
                     async with con.execute('SELECT "id" FROM "workers"') as cur:
                         self.assertEqual(0, len(await cur.fetchall()))
@@ -96,15 +116,15 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
                                       (12345, '', 0, 0, 0, wt.value))
                     await con.execute('INSERT INTO resources '
                                       '(hwid, cpu_count, total_cpu_count, '
-                                      'cpu_mem, total_cpu_mem, '
+                                      'cpu_mem_b, total_cpu_mem_b, '
                                       'gpu_count, total_gpu_count, '
-                                      'gpu_mem, total_gpu_mem) '
+                                      'gpu_mem_b, total_gpu_mem_b) '
                                       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
                                       'ON CONFLICT(hwid) DO UPDATE SET '
                                       'cpu_count=excluded.cpu_count, total_cpu_count=excluded.total_cpu_count, '
-                                      'cpu_mem=excluded.cpu_mem, total_cpu_mem=excluded.total_cpu_mem, '
+                                      'cpu_mem_b=excluded.cpu_mem_b, total_cpu_mem_b=excluded.total_cpu_mem_b, '
                                       'gpu_count=excluded.gpu_count, total_gpu_count=excluded.total_gpu_count, '
-                                      'gpu_mem=excluded.gpu_mem, total_gpu_mem=excluded.total_gpu_mem',
+                                      'gpu_mem_b=excluded.gpu_mem_b, total_gpu_mem_b=excluded.total_gpu_mem_b',
                                       (12345,
                                        cpu_c,
                                        cpu_c,
@@ -122,7 +142,7 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
                                               ((12345, x) for x in grps))
                     await con.commit()
 
-                    async with con.execute(f'SELECT "id", "cpu_count", "cpu_mem", "gpu_count", "gpu_mem" FROM workers '
+                    async with con.execute(f'SELECT "id", "cpu_count", "cpu_mem_b", "gpu_count_b", "gpu_mem" FROM workers '
                                            f'LEFT JOIN resources ON workers.hwid == resources.hwid '
                                            f'WHERE {sql_part}') as cur:
                         res = await cur.fetchall()
