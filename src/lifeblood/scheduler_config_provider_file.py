@@ -1,5 +1,5 @@
 from lifeblood.scheduler_config_provider_default import SchedulerConfigProviderDefaults
-from .worker_resource_definition import WorkerResourceDefinition
+from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
 from . import defaults, paths
 from .config import get_config
 from .nethelpers import all_interfaces
@@ -32,6 +32,7 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
                 **dict(get_config('scheduler').get_option_noasync('scheduler.globals', {})),
                 **dict(self.__config.get_option_noasync(f'{node_type_id}', {})),
             }
+        return self.__node_config_cache[node_type_id]
 
     def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
         # resource definitions
@@ -42,9 +43,12 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
         if not isinstance(config_resources, dict):
             raise RuntimeError('bad config schema: resource_definitions.per_machine must be a mapping')  # TODO: turn into config schema error or smth
         conf_2_type_mapping = {
-            'int': int,
-            'float': float,
-            'number': float,
+            'int': WorkerResourceDataType.GENERIC_INT,
+            'float': WorkerResourceDataType.GENERIC_FLOAT,
+            'number': WorkerResourceDataType.GENERIC_FLOAT,
+            'cpu': WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT,
+            'mem': WorkerResourceDataType.MEMORY_BYTES,
+            'memory': WorkerResourceDataType.MEMORY_BYTES,
         }
         res_defs = []
         for res_name, res_data in config_resources.items():

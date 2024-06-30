@@ -98,7 +98,9 @@ class NodeSerializerV2(NodeSerializerBase):
         new_node = node_data_provider.node_factory(data_dict['type_name'])(data_dict['name'])
         try:
             with new_node.get_ui().block_ui_callbacks():
-                new_node.get_ui().set_parameters_batch({name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()})
+                param_dict = {name: ParameterFullValue(val.unexpanded_value, val.expression) for name, val in data_dict['parameters'].items()}
+                self.__resource_compatibility_filter(param_dict)  # TODO: remove this a couple of months in the future
+                new_node.get_ui().set_parameters_batch(param_dict)
         except Exception:
             # actually set_parameters_batch catches all reasonable exceptions and treats them as warnings,
             #  so this seems unreachable, but if something does happen - we treat it as fail to set all params
@@ -110,3 +112,22 @@ class NodeSerializerV2(NodeSerializerBase):
                 raise FailedToApplyNodeState(wrapped_expection=e)
 
         return new_node
+
+    @staticmethod
+    def __resource_compatibility_filter(param_dict: dict):
+        rename_params = {
+            'priority adjustment': '__requirements__.priority_adjustment',
+            'worker groups': '__requirements__.worker_groups',
+            'worker type': '__requirements__.worker_type',
+        }
+        for param_name in (
+                'worker cpu cost', 'worker cpu cost preferred', 'worker mem cost', 'worker mem cost preferred',
+                'worker gpu cost', 'worker gpu cost preferred', 'worker gpu mem cost', 'worker gpu mem cost preferred'
+        ):
+            if param_name in param_dict:
+                param_dict.pop(param_name)
+
+        for old_name, new_name in rename_params.items():
+            if new_name in param_dict or old_name not in param_dict:
+                continue
+            param_dict[new_name] = param_dict.pop(old_name)

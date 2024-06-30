@@ -13,7 +13,7 @@ from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, Ta
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
-from ..worker_resource_definition import WorkerResourceDefinition
+from ..worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
 
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
@@ -641,15 +641,17 @@ def _pack_workers_from_raw(db_uid: int, ui_workers: dict, resource_definitions: 
         assert worker_id == worker_raw['id']
         ress = []
         for res_def in resource_definitions:
-            if res_def.type is int:
+            if res_def.type in (WorkerResourceDataType.GENERIC_INT, WorkerResourceDataType.MEMORY_BYTES):
                 res_type = WorkerResourceType.INT
-            elif res_def.type is float:
+                convert_to_data_type = int
+            elif res_def.type in (WorkerResourceDataType.GENERIC_FLOAT, WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT):
                 res_type = WorkerResourceType.FLOAT
+                convert_to_data_type = float
             else:
                 raise NotImplementedError(f'unhandled worker resource definition type: {res_def.type}')
             ress.append(WorkerResource(
-                res_def.type(worker_raw[res_def.name]),
-                res_def.type(worker_raw[f'total_{res_def.name}']),
+                convert_to_data_type(worker_raw[res_def.name]),
+                convert_to_data_type(worker_raw[f'total_{res_def.name}']),
                 res_type,
                 res_def.name,
             ))

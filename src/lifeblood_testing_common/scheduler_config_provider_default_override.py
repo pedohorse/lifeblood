@@ -1,7 +1,9 @@
 from lifeblood.scheduler_config_provider_default import SchedulerConfigProviderDefaults
 from lifeblood.nethelpers import all_interfaces
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from lifeblood.worker_resource_definition import WorkerResourceDefinition
 
 
 class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
@@ -15,6 +17,9 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
             do_broadcast: Optional[bool] = None,
             broadcast_interval: Optional[float] = None,
             minimal_idle_helpers: Optional[int] = None,
+            node_per_node_config: Optional[Dict[str, Dict[str, Any]]] = None,
+            node_global_config: Optional[Dict[str, Dict[str, Any]]] = None,
+            resource_definitions: Optional[Tuple[WorkerResourceDefinition, ...]] = None,
     ):
         super().__init__()
         self.__main_db_location_override = main_db_location
@@ -25,6 +30,9 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
         self.__legacy_address = legacy_server_address
         self.__message_processor_address = message_processor_address
         self.__ui_address = ui_address
+        self.__node_per_node_config = node_per_node_config or {}
+        self.__node_global_config = node_global_config or {}
+        self.__resource_definitions = resource_definitions
 
     def main_database_location(self) -> str:
         return self.__main_db_location_override or super().main_database_location()
@@ -64,3 +72,13 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
 
     def server_ui_address(self) -> Tuple[str, int]:
         return self.__ui_address or super().server_ui_address()
+
+    def node_configuration(self, node_type_id: str) -> dict:
+        return {
+            **super().node_configuration(node_type_id),
+            **self.__node_global_config,
+            **self.__node_per_node_config.get(node_type_id, {}),
+        }
+
+    def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
+        return self.__resource_definitions or super().hardware_resource_definitions()

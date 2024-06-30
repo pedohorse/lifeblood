@@ -14,6 +14,7 @@ from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 from ..scheduler_config_provider_base import SchedulerConfigProviderBase
+from ..worker_resource_definition import WorkerResourceDataType
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
@@ -78,8 +79,10 @@ class DataAccess:
             need_commit = False
             for res_def in config_provider.hardware_resource_definitions():
                 col_type, col_def = {
-                    int: ('INTEGER', 0),
-                    float: ('INTEGER', 0),
+                    WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', 0),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
+                    WorkerResourceDataType.GENERIC_INT: ('INTEGER', 0),
+                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', 0),
+                    WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', 0),
                 }[res_def.type]
                 if res_def.name in resource_rows:  # skip existing
                     if resource_rows[res_def.name]['type'] != col_type:

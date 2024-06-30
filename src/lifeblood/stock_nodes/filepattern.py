@@ -65,7 +65,7 @@ class FilePattern(BaseNodeWithTaskRequirements):
             ui.add_parameter('pattern', 'file pattern', NodeParameterType.STRING, '')
             ui.add_parameter('file type', 'type', NodeParameterType.INT, 1).add_menu((('files', 1), ('dirs', 2), ('files and dirs', 3)))
             ui.add_parameter('inherit attributes', 'inherit attributes from parent', NodeParameterType.STRING, '')
-            ui.parameter('worker type').set_value(WorkerType.SCHEDULER_HELPER.value)
+            ui.parameter('__requirements__.worker_type').set_value(WorkerType.SCHEDULER_HELPER.value)
 
     @classmethod
     def label(cls) -> str:

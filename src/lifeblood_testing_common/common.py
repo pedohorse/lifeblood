@@ -3,7 +3,7 @@ from lifeblood.basenode_serializer_v2 import NodeSerializerV2
 from lifeblood.pluginloader import PluginNodeDataProvider  # TODO: this must be replaced by a testing mocker
 from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
 
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 async def chain(*coros):
@@ -18,7 +18,9 @@ def create_default_scheduler(
         broadcast_interval: Optional[int] = None,
         helpers_minimal_idle_to_ensure=1,
         server_addr: Optional[Tuple[str, int, int]] = None,
-        server_ui_addr: Optional[Tuple[str, int]] = None
+        server_ui_addr: Optional[Tuple[str, int]] = None,
+        node_per_node_config: Optional[Dict[str, Dict[str, Any]]] = None,
+        node_global_config: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Scheduler:
     legacy_addr = None
     message_addr = None
@@ -33,6 +35,8 @@ def create_default_scheduler(
         legacy_server_address=legacy_addr,
         message_processor_address=message_addr,
         ui_address=server_ui_addr,
+        node_per_node_config=node_per_node_config,
+        node_global_config=node_global_config,
     )
     return Scheduler(
         scheduler_config_provider=config,

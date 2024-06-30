@@ -199,7 +199,8 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                                        task_done_logic: Optional[Callable] = None,
                                        runcode: Optional[str] = None,
                                        worker_count: int = 1,
-                                       tasks_to_complete=None):
+                                       tasks_to_complete=None,
+                                       **kwargs):
         """
         generic logic runner helper.
         this will start scheduler and worker,
@@ -220,7 +221,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             ppatch.return_value = mock.AsyncMock(Pinger)
             wppatch.return_value = mock.AsyncMock()
 
-            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, **kwargs)
             await sched.start()
 
             workers = []

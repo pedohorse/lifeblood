@@ -32,8 +32,8 @@ class Arnold(BaseNodeWithTaskRequirements):
             ui.add_parameter('image path', 'output image file path', NodeParameterType.STRING, "`task['outimage']`")
             ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
 
-            ui.parameter('worker type').set_hidden(True)
-            ui.parameter('worker type').set_locked(True)
+            ui.parameter('__requirements__.worker_type').set_hidden(True)
+            ui.parameter('__requirements__.worker_type').set_locked(True)
 
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()

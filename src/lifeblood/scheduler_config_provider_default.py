@@ -1,6 +1,6 @@
 import os
 from .scheduler_config_provider_base import SchedulerConfigProviderBase
-from .worker_resource_definition import WorkerResourceDefinition
+from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
 from . import defaults
 from .nethelpers import all_interfaces
 
@@ -25,19 +25,19 @@ class SchedulerConfigProviderDefaults(SchedulerConfigProviderBase):
     def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
         return (
             WorkerResourceDefinition('cpu_count',
-                                     float,
+                                     WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT,
                                      'CPU core count',
                                      'CPU count'),
             WorkerResourceDefinition('cpu_mem',
-                                     int,
+                                     WorkerResourceDataType.MEMORY_BYTES,
                                      'RAM amount in bytes',
                                      'RAM'),
             WorkerResourceDefinition('gpu_count',
-                                     float,
+                                     WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT,
                                      'number of GPUs',
                                      'GPU count'),  # TODO: get rid of these in defaults when devices are implemented
             WorkerResourceDefinition('gpu_mem',
-                                     int,
+                                     WorkerResourceDataType.MEMORY_BYTES,
                                      'combined GPU memory in bytes',
                                      'GPU mem'),
         )
