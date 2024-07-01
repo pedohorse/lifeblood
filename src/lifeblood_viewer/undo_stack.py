@@ -174,11 +174,11 @@ class AsyncOperation(StackAwareOperation):
                 logger.exception(f'exception happened during do operation "{self}"')
                 success = False
             finally:
-                self._undo_stack()._operation_finalized(self, True, success)
-
-            if success and callback:
                 op_result = self._my_do_result()
                 assert op_result is not None
+                self._undo_stack()._operation_finalized(op=self, add_to_stack=op_result.status != OperationCompletionStatus.NotPerformed, success=success)
+
+            if success and callback:
                 callback(self, op_result)
 
         if self.__was_done:
