@@ -4,6 +4,7 @@ from .long_op import LongOperation, LongOperationData
 from .ui_snippets import UiNodeSnippetData
 from .graphics_items import Node, NodeConnection
 from lifeblood.snippets import NodeSnippetData
+from lifeblood.uidata import ParameterLocked, ParameterReadonly
 from PySide2.QtCore import QPointF
 
 from typing import Callable, TYPE_CHECKING, Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any, Sequence
@@ -330,10 +331,18 @@ class ParameterChangeOp(AsyncSceneOperation):
         longop.set_op_status(None, 'change parameter value')
         node_id = self.__scene._session_node_id_to_id(self.__node_sid)
         param = self.__scene.get_node(node_id).get_nodeui().parameter(self.__param_name)
-        if self.__new_value is not ...:
-            param.set_value(self.__new_value)
-        if self.__new_expression is not ...:
-            param.set_expression(self.__new_expression)
+        try:
+            if self.__new_value is not ...:
+                param.set_value(self.__new_value)
+            if self.__new_expression is not ...:
+                param.set_expression(self.__new_expression)
+        except ParameterLocked:
+            self._set_result(OperationCompletionDetails(OperationCompletionStatus.NotPerformed, 'parameter is locked'))
+            return
+        except ParameterReadonly:
+            self._set_result(OperationCompletionDetails(OperationCompletionStatus.NotPerformed, 'parameter is read only'))
+            return
+        # TODO: currently possible errors on scheduler side are ignored, not good
         self.__scene._send_node_parameters_change(node_id, [param], LongOperationData(longop))
         node = self.__scene.get_node(node_id)
         if node:
