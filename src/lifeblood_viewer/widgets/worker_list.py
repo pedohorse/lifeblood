@@ -1,5 +1,6 @@
 from datetime import datetime
-from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData
+from dataclasses import dataclass
+from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData, WorkerResources, WorkerMetadata
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
@@ -7,21 +8,21 @@ from lifeblood.misc import timeit, performance_measurer
 from lifeblood_viewer.connection_worker import SchedulerConnectionWorker
 from lifeblood_viewer.models.multiple_sort_model import MultipleFilterSortProxyModel
 
-from PySide2.QtWidgets import QWidget, QTableView, QHBoxLayout, QVBoxLayout, QHeaderView, QMenu, QLineEdit
+from PySide2.QtWidgets import QWidget, QTableView, QTreeView, QHBoxLayout, QVBoxLayout, QHeaderView, QMenu, QLineEdit
 from PySide2.QtCore import Slot, Signal, Qt, QAbstractItemModel, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QAbstractProxyModel, QPoint, QObject
 from PySide2.QtGui import QColor
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 
-_init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', '__resources__', 'groups', 'last_seen', 'worker_type')
+_init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'last_seen', '__resources__', 'groups', 'worker_type')
 
 
 class WorkerListWidget(QWidget):
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerListWidget, self).__init__(parent, Qt.Tool)
-        self.__worker_list = QTableView()
-        self.__worker_list.verticalHeader().setDefaultSectionSize(10)
+        self.__worker_list = QTreeView()  # QTableView()
+        #self.__worker_list.verticalHeader().setDefaultSectionSize(10)
         self.__worker_model = WorkerModel(worker, self)
 
         col_id = self.__worker_model.column_by_name('id')
@@ -39,13 +40,13 @@ class WorkerListWidget(QWidget):
         # self.__worker_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
 
         ico = _init_column_order_prototype
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('id'), 64)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('state'), 64)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('progress'), 64)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('task_id'), 64)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('last_address'), 140)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('last_seen'), 135)
-        self.__worker_list.horizontalHeader().resizeSection(ico.index('worker_type'), 135)
+        self.__worker_list.header().resizeSection(ico.index('id'), 64)
+        self.__worker_list.header().resizeSection(ico.index('state'), 64)
+        self.__worker_list.header().resizeSection(ico.index('progress'), 64)
+        self.__worker_list.header().resizeSection(ico.index('task_id'), 64)
+        self.__worker_list.header().resizeSection(ico.index('last_address'), 200)
+        self.__worker_list.header().resizeSection(ico.index('worker_type'), 135)
+        self.__worker_list.header().resizeSection(ico.index('last_seen'), 140)
 
         self.__worker_list.setSortingEnabled(True)
         self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
@@ -95,7 +96,32 @@ class WorkerListWidget(QWidget):
         menu.popup(gpos)
 
 
-class WorkerModel(QAbstractTableModel):
+@dataclass
+class WorkerModelData:  # almost like WorkerData, but better for display
+    id: Union[int, str]
+    worker_resources: WorkerResources
+    hwid: str
+    last_address: str
+    last_seen_timestamp: int
+    state: Union[WorkerState, Tuple[WorkerState, str]]
+    type: Optional[WorkerType]
+    current_invocation_node_id: Optional[int]
+    current_invocation_task_id: Optional[int]
+    current_invocation_id: Optional[int]
+    current_invocation_progress: Optional[float]
+    groups: Set[str]
+    metadata: Optional[WorkerMetadata]
+
+    @classmethod
+    def from_worker_data(cls, data: WorkerData) -> "WorkerModelData":
+        kwargs = {}
+        for field in WorkerData.__dict__['__dataclass_fields__']:
+            value = getattr(data, field)
+            kwargs[field] = value
+        return WorkerModelData(**kwargs)
+
+
+class WorkerModel(QAbstractItemModel):
     SORT_ROLE = Qt.UserRole + 0
 
     group_update_requested = Signal(object, list)  # not int, cuz int in PySide is signed 32bit only
@@ -106,14 +132,15 @@ class WorkerModel(QAbstractTableModel):
         self.__logger = get_logger('viewer.worker_model')
         self.__scheduler_worker = worker
 
-        self.__workers: Dict[int, WorkerData] = {}  # worker id -> worker data
+        self.__workers: Dict[int, WorkerModelData] = {}  # worker id -> worker data
         self.__worker_resources_names: List[str] = []
 
         #
-        self.__order: List[int] = []
+        self.__hwid_summaries: Dict[str, Optional[WorkerModelData]] = {}
 
         #
-        self.__inv_order: Dict[int, int] = {}  # used only for boost un full_update
+        self.__hwid_order: List[str] = []
+        self.__wid_order: Dict[str, List[int]] = {}
 
         #
         self.__cols = {}
@@ -127,6 +154,19 @@ class WorkerModel(QAbstractTableModel):
         self.__maybe_update_structure()
 
         self.start()
+
+    def index(self, row: int, column: int, parent: QModelIndex=None):
+        if parent is None:
+            parent = QModelIndex()
+        return self.createIndex(row, column,
+                                self.__hwid_order[parent.row()] if parent.isValid() else None
+                                )
+
+    def parent(self, index: QModelIndex):
+        if not index.isValid() or index.internalPointer() is None:
+            return QModelIndex()
+        hwid = index.internalPointer()
+        return self.createIndex(self.__hwid_order.index(hwid), 0, None)
 
     def __maybe_update_structure(self):
         """
@@ -170,7 +210,47 @@ class WorkerModel(QAbstractTableModel):
         return len(self.__cols_order)
 
     def rowCount(self, parent: QModelIndex = None) -> int:
-        return len(self.__workers)
+        if parent is None or not parent.isValid():  # root
+            return len(self.__hwid_order)
+        if parent.internalPointer() is not None:  # wid level, has no children
+            return 0
+        return len(self.__wid_order[self.__hwid_order[parent.row()]])
+
+    def __generate_summary(self, hwid):
+        workers = [self.__workers[x] for x in self.__wid_order[hwid]]
+        # make a pseudo worker statistical entry
+        state = WorkerState.UNKNOWN
+        if len(workers):
+            state = max((x.state for x in workers), key=lambda state: {
+                    WorkerState.ERROR: 10,  # just sorting order
+                    WorkerState.BUSY: 5,
+                    WorkerState.INVOKING: 4,
+                    WorkerState.IDLE: 1,
+                }.get(state, 0))
+
+        w_instate_count = 0
+        w_total_count = 0
+        for worker in workers:
+            if worker.state == state:
+                w_instate_count += 1
+            if worker.state != WorkerState.OFF:
+                w_total_count += 1
+
+        return WorkerModelData(
+            '',
+            workers[0].worker_resources if len(workers) else WorkerResources([]),
+            hwid,
+            workers[0].last_address if len(workers) else 'unknown',
+            max(x.last_seen_timestamp for x in workers) if len(workers) else 0.0,
+            (state, f'{w_instate_count}/{w_total_count}') if len(workers) else state,
+            None,
+            None,
+            None,
+            None,
+            min(x.current_invocation_progress or 100 for x in workers) if len(workers) else None,
+            workers[0].groups if len(workers) else (),
+            workers[0].metadata if len(workers) else None,
+        )
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         def format_display(col_name, raw):
@@ -185,27 +265,37 @@ class WorkerModel(QAbstractTableModel):
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
-        worker = self.__workers[self.__order[row]]
+        if not index.parent().isValid():  # first level (hwid)
+            hwid = self.__hwid_order[row]
+            if self.__hwid_summaries.get(hwid, None) is None:
+                self.__hwid_summaries[hwid] = self.__generate_summary(hwid)
+            worker = self.__hwid_summaries[hwid]
+        else:
+            worker = self.__workers[self.__wid_order[self.__hwid_order[index.parent().row()]][row]]
 
         if col_name == 'id':
             raw_data = worker.id
             return raw_data
         if col_name == 'state':
-            data = worker.state
+            if isinstance(worker.state, tuple):
+                state, extra = worker.state
+            else:
+                state = worker.state
+                extra = None
             if role == Qt.DisplayRole:
-                return data.name
+                return f'{state.name} {extra}' if extra else state.name
             elif role == Qt.BackgroundRole:
-                if data in (WorkerState.BUSY, WorkerState.INVOKING):
+                if state in (WorkerState.BUSY, WorkerState.INVOKING):
                     return QColor.fromRgb(255, 255, 0, 64)
-                if data == WorkerState.IDLE:
+                if state == WorkerState.IDLE:
                     return QColor.fromRgb(0, 255, 0, 64)
-                if data == WorkerState.OFF:
+                if state == WorkerState.OFF:
                     return QColor.fromRgb(0, 0, 0, 64)
-                if data == WorkerState.ERROR:
+                if state == WorkerState.ERROR:
                     return QColor.fromRgb(255, 0, 0, 64)
                 return None
             elif role == self.SORT_ROLE:  # for sorting
-                return data.value
+                return state.value
         if col_name.startswith('metadata.'):
             metafield = col_name.split('.', 1)[1]
             return getattr(worker.metadata, metafield)
@@ -213,7 +303,7 @@ class WorkerModel(QAbstractTableModel):
             data = worker.current_invocation_progress
             if role == self.SORT_ROLE:  # for sorting
                 return data
-            if worker.state == WorkerState.BUSY and data is not None:
+            if (worker.state == WorkerState.BUSY or isinstance(worker.state, tuple) and worker.state[0] == WorkerState.BUSY) and data is not None:
                 return f'{data}%'
             return ''
         if col_name == 'task_id':
@@ -227,6 +317,8 @@ class WorkerModel(QAbstractTableModel):
                 return worker.last_seen_timestamp
             return datetime.fromtimestamp(worker.last_seen_timestamp).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
+            if worker.type is None:
+                return None
             return worker.type.name
 
         raw_data = 'none'
@@ -255,7 +347,11 @@ class WorkerModel(QAbstractTableModel):
         row = index.row()
         col = index.column()
         col_name = self.__cols_order[col]
-        hwid = self.__workers[self.__order[row]].hwid
+        if not index.parent().isValid():  # first level (hwid)
+            hwid = self.__hwid_order[row]
+        else:
+            hwid = self.__hwid_order[index.parent().row()]
+            #hwid = self.__workers[self.__order[row]].hwid
         print(f'setting for {hwid}')
         if isinstance(value, str):
             groups = [y for y in (x.strip() for x in value.split(',')) if y != '']
@@ -270,8 +366,11 @@ class WorkerModel(QAbstractTableModel):
     def cancel_running_invocations(self, index: QModelIndex):
         if not index.isValid():
             return
+        if not index.parent().isValid():  # first level (hwid)
+            return
         row = index.row()
-        wid = self.__workers[self.__order[row]].id
+        wid = self.__wid_order[self.__hwid_order[index.parent().row()]][row]
+        #wid = self.__workers[self.__order[row]].id
         self.cancel_invocation_for_worker.emit(wid)
 
     @Slot(object)
@@ -298,55 +397,114 @@ class WorkerModel(QAbstractTableModel):
         # update
         _perf_signals = 0
         with performance_measurer() as pm:
-            minrow, maxrow = self.rowCount(), -1
+            rows_to_update = {}
+            workers_changed_hwid = []
             for worker_key in old_keys.intersection(new_keys):
-                # self.__workers[wroker_key].update(new_workers[worker_key])
                 for field in WorkerData.__dict__['__dataclass_fields__']:
                     value = getattr(new_workers[worker_key], field)
                     old_value = getattr(self.__workers[worker_key], field)
                     if old_value != value:
                         setattr(self.__workers[worker_key], field, value)
-                        row = self.__inv_order[worker_key]
-                        if minrow > row:
-                            minrow = row
-                        if maxrow < row:
-                            maxrow = row
-                        # colindex = self.__colname_to_index.get(key)
-                        # with performance_measurer() as pm1:
-                        #     if colindex is not None:
-                        #         self.dataChanged.emit(self.index(self.__inv_order[worker_key], colindex), self.index(self.__inv_order[worker_key], colindex))
-                        # _perf_signals += pm1.elapsed()
-            if minrow > -1:
-                # individual emits were VERY slow, even emiting once for ALL data is significantly faster, so we do this.
-                self.dataChanged.emit(self.index(minrow, 0), self.index(maxrow, self.columnCount()-1))  # TODO: this is very crude method of minimizing emit calls. IMPROVE
+                        hwid = self.__workers[worker_key].hwid
+                        wid = self.__workers[worker_key].id
+                        hwid_row = self.__hwid_order.index(hwid)
+                        wid_row = self.__wid_order[hwid].index(wid)
+                        if hwid_row not in rows_to_update:
+                            rows_to_update[hwid_row] = [wid_row, wid_row]
+                        else:
+                            rows_to_update[hwid_row][0] = min(wid_row, rows_to_update[hwid_row][0])
+                            rows_to_update[hwid_row][1] = max(wid_row, rows_to_update[hwid_row][1])
+                        if field == 'hwid':
+                            assert value == self.__workers[worker_key].hwid
+                            workers_changed_hwid.append([old_value, value, self.__workers[worker_key]])
+                        if hwid in self.__hwid_summaries:  # reset summary cache
+                            self.__hwid_summaries.pop(hwid)
+
+            # emit update signal
+            if len(rows_to_update) > 0:
+                self.dataChanged.emit(self.index(min(rows_to_update), 0), self.index(max(rows_to_update), self.columnCount()-1))
+                for hwid_row, (wid_row_min, wid_row_max) in rows_to_update.items():
+                    parent_index = self.index(hwid_row, 0)
+                    self.dataChanged.emit(self.index(wid_row_min, 0, parent_index), self.index(wid_row_max, self.columnCount(parent_index)-1, parent_index))
         _perf_update = pm.elapsed()
 
-        # insert
+        # note, at this point after update there MAY be workers in incorrect hwid parent (in case wid was reassigned by scheduler, that can rarely happen)
+        #  we have them in workers_changed_hwid list
+
+        # insert new
         with performance_measurer() as pm:
-            to_insert = new_keys - old_keys
-            if len(to_insert) > 0:
-                self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(to_insert) - 1)
-                for key in to_insert:
-                    assert key not in self.__workers
-                    assert key not in self.__inv_order
-                    self.__workers[key] = new_workers[key]
-                    self.__inv_order[key] = len(self.__order)
-                    self.__order.append(key)
+            hwid_to_new_worker = {}
+            for wid in new_keys - old_keys:
+                worker = new_workers[wid]
+                hwid_to_new_worker.setdefault(worker.hwid, []).append(worker)
+            for _, hwid, worker in workers_changed_hwid:
+                hwid_to_new_worker.setdefault(hwid, []).append(worker)
+            # first - insert new hwids
+            new_hwids = {x for x in hwid_to_new_worker if x not in self.__hwid_order}
+            if len(new_hwids) > 0:
+                self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount() + len(new_hwids) - 1)
+                for hwid in new_hwids:
+                    self.__hwid_order.append(hwid)
+                    self.__wid_order[hwid] = []
                 self.endInsertRows()
+            # now that all hwids exist - insert children
+            for hwid, new_workers_for_hwid in hwid_to_new_worker.items():
+                if len(new_workers_for_hwid) == 0:
+                    continue
+                if hwid in self.__hwid_summaries:  # reset summary cache
+                    self.__hwid_summaries.pop(hwid)
+                parent_index = self.index(self.__hwid_order.index(hwid), 0)
+                self.beginInsertRows(parent_index, self.rowCount(parent_index), self.rowCount(parent_index) + len(new_workers_for_hwid) - 1)
+                for worker in new_workers_for_hwid:
+                    assert worker.id not in self.__workers
+                    self.__workers[worker.id] = WorkerModelData.from_worker_data(worker)
+                    self.__wid_order[hwid].append(worker.id)
+                self.endInsertRows()
+
+            # signal parent update
+            if len(hwid_to_new_worker) > 0:
+                rows_to_update = [self.__hwid_order.index(x) for x in hwid_to_new_worker]
+                self.dataChanged.emit(self.index(min(rows_to_update), 0), self.index(max(rows_to_update), self.columnCount() - 1))
+
         _perf_insert = pm.elapsed()
 
         # remove
         with performance_measurer() as pm:
-            to_remove = old_keys - new_keys
-            if len(to_remove) > 0:
-                for key in to_remove:
-                    assert key in self.__workers
-                    assert key in self.__inv_order
-                    self.beginRemoveRows(QModelIndex(), self.__inv_order[key], self.__inv_order[key])
-                    del self.__workers[key]
-                    self.__order.remove(key)
-                    self.__inv_order = {x: i for i, x in enumerate(self.__order)}  # TODO: this can be more optimal than recreating the whole dict
+            hwid_to_wid_to_remove = {}
+            for wid in old_keys - new_keys:
+                hwid = self.__workers[wid]
+                hwid_to_wid_to_remove.setdefault(hwid, []).append(wid)
+            for hwid, _, worker in workers_changed_hwid:
+                hwid_to_wid_to_remove.setdefault(hwid, []).append(worker.id)
+
+            hwids_to_remove = set()
+            hwids_to_update = set()
+            for hwid, wids_to_remove in hwid_to_wid_to_remove.items():
+                if len(wids_to_remove) == 0:
+                    continue
+                for wid in wids_to_remove:
+                    assert wid in self.__workers
+                    parent_index = self.index(self.__hwid_order.index(hwid), 0)
+                    self.beginRemoveRows(parent_index, self.__wid_order[hwid].index(wid), self.__wid_order[hwid].index(wid))
+                    self.__workers.pop(wid)
+                    self.__wid_order[hwid].remove(wid)
+                    if len(self.__wid_order[hwid]) == 0:
+                        hwids_to_remove.add(hwid)
+                    else:
+                        hwids_to_update.add(hwid)
                     self.endRemoveRows()
+            for hwid in hwids_to_remove:
+                assert len(self.__wid_order[hwid]) == 0
+                self.beginRemoveRows(QModelIndex(), self.__hwid_order.index(hwid), self.__hwid_order.index(hwid))
+                self.__hwid_order.remove(hwid)
+                self.endRemoveRows()
+            if len(hwids_to_update) > 0:
+                rows_to_update = [self.__hwid_order.index(x) for x in hwids_to_update]
+                self.dataChanged.emit(self.index(min(rows_to_update), 0), self.index(max(rows_to_update), self.columnCount() - 1))
+            for hwid in hwids_to_update:
+                if hwid in self.__hwid_summaries:  # reset summary cache
+                    self.__hwid_summaries.pop(hwid)
+
         _perf_remove = pm.elapsed()
 
         if _perf_preinit + _perf_update + _perf_signals + _perf_insert + _perf_remove > 0.04:  # arbitrary threshold ~ 1/25 of a sec

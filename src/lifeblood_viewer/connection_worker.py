@@ -1021,8 +1021,10 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
         return self.set_environment_resolver_arguments(task_id, None)
 
     # TODO: problem below will affect ALL 64 bit arguments, need to correct all other functions
-    @Slot(object, list)  # interestingly since int here is 64 bit - i have to mark signal as object, but then it doesn't connect unless i specify slot as object too.
-    def set_worker_groups(self, whwid: int, groups: List[str]):
+    # interestingly since int here is 64 bit - i have to mark signal as object, but then it doesn't connect unless i specify slot as object too.
+    # switched int to str, so viewer only works with HWIDs as strings
+    @Slot(object, list)
+    def set_worker_groups(self, whwid: str, groups: List[str]):
         logger.debug(f'set_worker_groups with {whwid}, {groups}')
         if not self.ensure_connected():
             return
