@@ -26,8 +26,10 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 ui.add_parameter('__requirements__.priority_adjustment', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
                 with ui.multigroup_parameter_block('__requirements__.res', 'Resources'):
                     with ui.parameters_on_same_line_block():
-                        ui.add_parameter('__requirements__.name_res', None, NodeParameterType.STRING, 'res')
+                        name_param = ui.add_parameter('__requirements__.name_res', None, NodeParameterType.STRING, 'res')
+                        ui.add_parameter('__requirements__.label_res', None, NodeParameterType.STRING, 'label')
                         type_param = ui.add_parameter('__requirements__.type_res', None, NodeParameterType.INT, 0, can_have_expressions=False)
+                        name_param.set_hidden(True)
                         type_param.set_hidden(True)
                         ui.add_parameter('__requirements__.f_min_res', 'min <> preferred', NodeParameterType.FLOAT, 0.0) \
                             .set_value_limits(value_min=0) \
@@ -68,6 +70,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             self.__check_set('__requirements__.res', len(resource_defs))
             for i, res_def in enumerate(resource_defs):
                 self.__check_set(f'__requirements__.name_res_{i}', res_def.name)
+                self.__check_set(f'__requirements__.label_res_{i}', res_def.label or res_def.name)
                 if res_def.type in (WorkerResourceDataType.GENERIC_FLOAT, WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT, WorkerResourceDataType.MEMORY_BYTES):
                     self.__check_set(f'__requirements__.type_res_{i}', 0)
                 elif res_def.type in (WorkerResourceDataType.GENERIC_INT,):

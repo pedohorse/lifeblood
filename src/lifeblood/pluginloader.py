@@ -10,22 +10,20 @@ from pathlib import Path
 from .basenode import BaseNode
 from .node_dataprovider_base import NodeDataProvider
 from .snippets import NodeSnippetData
-from . import logging, plugin_info, paths
+from . import logging, plugin_info
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union, Set
 
 
 class PluginNodeDataProvider(NodeDataProvider):
     __instance = None
 
-    @classmethod
-    def instance(cls):
-        if cls.__instance is None:
-            cls.__instance = PluginNodeDataProvider()
-        return cls.__instance
-
-    def __init__(self):
+    # custom_plugins_path = paths.config_path('', 'custom_plugins')
+    # os.environ.get('LIFEBLOOD_PLUGIN_PATH', '').split(os.pathsep):
+    def __init__(self, custom_plugins_path: Union[str, Path], plugin_search_locations: Iterable[Union[str, Path]]):
         if self.__instance is not None:
+            # TODO: not very nice design, since it modifies os.environ,
+            #  so for now i force single instance, but this needs refactoring!
             raise RuntimeError("cannot have more than one PluginNodeDataProvider instance, as it manages global state")
 
         self.__plugins = {}
@@ -51,29 +49,36 @@ class PluginNodeDataProvider(NodeDataProvider):
         plugin_paths: List[Tuple[str, str]] = []  # list of tuples of path to dir, plugin category
         core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
         stock_plugins_path = os.path.join(os.path.dirname(__file__), 'stock_nodes')
-        custom_plugins_path = paths.config_path('', 'custom_plugins')
-        plugin_paths.append((core_plugins_path, 'core'))
-        plugin_paths.append((stock_plugins_path, 'stock'))
-        (custom_plugins_path/'custom_default').mkdir(parents=True, exist_ok=True)
 
+        # "custom" path always comes first, as earlier entries take precedence in case of conflicts
+        if isinstance(custom_plugins_path, str):
+            custom_plugins_path = Path(custom_plugins_path)
+        # create dir for the "custom package". all changes (preset/settings creation) BY DEFAULT go into this package
+        (custom_plugins_path / 'custom_default').mkdir(parents=True, exist_ok=True)
         plugin_paths.append((str(custom_plugins_path), 'user'))
 
+        # user defined packages come next
         extra_paths = []
-        for path in os.environ.get('LIFEBLOOD_PLUGIN_PATH', '').split(os.pathsep):
-            if path == '':
-                continue
-            if not os.path.isabs(path):
+        for path in plugin_search_locations:
+            if isinstance(path, str):
+                path = Path(path)
+            if not path.is_absolute():
                 self.logger.warning(f'"{path}" is not absolute, skipping')
                 continue
-            if not os.path.exists(path):
+            if not path.exists():
                 self.logger.warning(f'"{path}" does not exist, skipping')
                 continue
             extra_paths.append(path)
             self.logger.debug(f'using extra plugin path: "{path}"')
 
-        plugin_paths.extend((x, 'extra') for x in extra_paths)
+        plugin_paths.extend((str(x), 'extra') for x in extra_paths)
 
-        for plugin_path, plugin_category in plugin_paths:
+        # then core and stock come as the baseline
+        plugin_paths.append((stock_plugins_path, 'stock'))
+        plugin_paths.append((core_plugins_path, 'core'))
+
+        # load all plugins
+        for plugin_path, plugin_category in reversed(plugin_paths):
             for filename in os.listdir(plugin_path):
                 filepath = os.path.join(plugin_path, filename)
                 if os.path.isdir(filepath):
@@ -87,18 +92,13 @@ class PluginNodeDataProvider(NodeDataProvider):
         self.logger.info('loaded node types:\n\t' + '\n\t'.join(self.__plugins.keys()))
         self.logger.info('loaded node presets:\n\t' + '\n\t'.join(f'{pkg}::{label}' for pkg, pkgdata in self.__presets.items() for label in pkgdata.keys()))
 
-        # load default settings
-        default_settings_config_path = paths.config_path('defaults.toml', 'scheduler.nodes')
-        if default_settings_config_path.exists():
-            with open(default_settings_config_path) as f:
-                self.__default_settings_config = toml.load(f)
-
-            bad_defaults = []
-            for node_type, settings_name in self.__default_settings_config.items():
-                if settings_name not in self.__nodes_settings.get(node_type, {}):
-                    self.logger.warning(f'"{settings_name}" is set as default for "{node_type}", but no such settings is loaded')
-                    bad_defaults.append(node_type)
-                    continue
+        # check default settings
+        bad_defaults = []
+        for node_type, settings_name in self.__default_settings_config.items():
+            if settings_name not in self.__nodes_settings.get(node_type, {}):
+                self.logger.warning(f'"{settings_name}" is set as default for "{node_type}", but no such settings is loaded')
+                bad_defaults.append(node_type)
+                continue
 
     def _install_node(self, filepath, plugin_category, parent_package=None):
         """
@@ -155,7 +155,8 @@ class PluginNodeDataProvider(NodeDataProvider):
             | |_node1.py    <- these are loaded as usual node plugins
             | |_node2.py    <-/
             |_data          <- just a convenient place to store shit, can be accessed with data from plugin
-            |_settings      <- for future saved nodes settings. not implemented yet
+            |_settings      <- for future saved nodes settings
+            | |_defaults.toml  <- config containing default node settings for node types
             | |_node_type_name1
             | | |_settings1.lbs
             | | |_settings2.lbs
@@ -231,9 +232,12 @@ class PluginNodeDataProvider(NodeDataProvider):
         settings_path = os.path.join(package_path, 'settings')
         if os.path.exists(settings_path):
             for nodetype_name in os.listdir(settings_path):
+                nodetype_path = os.path.join(settings_path, nodetype_name)
+                if not os.path.isdir(nodetype_path):
+                    # ignore files, just look for dirs
+                    continue
                 if nodetype_name not in self.__nodes_settings:
                     self.__nodes_settings[nodetype_name] = {}
-                nodetype_path = os.path.join(settings_path, nodetype_name)
                 for preset_filename in os.listdir(nodetype_path):
                     preset_name, fileext = os.path.splitext(preset_filename)
                     if fileext != '.lbs':
@@ -243,6 +247,12 @@ class PluginNodeDataProvider(NodeDataProvider):
                             self.__nodes_settings[nodetype_name][preset_name] = toml.load(f)
                     except Exception as e:
                         self.logger.error(f'failed to load settings {nodetype_name}/{preset_name}, error: {str(e)}')
+
+            settings_defaults_config_path = os.path.join(settings_path, 'defaults.toml')
+            if os.path.exists(settings_defaults_config_path):
+                with open(settings_defaults_config_path) as f:
+                    settings_defaults = toml.load(f)
+                self.__default_settings_config.update(settings_defaults)
 
     def plugin_hash(self, plugin_name) -> str:
         return self.__plugin_file_hashes[plugin_name]
@@ -286,14 +296,17 @@ class PluginNodeDataProvider(NodeDataProvider):
     def node_preset(self, package_name: str, preset_name: str) -> NodeSnippetData:
         return self.__presets[package_name][preset_name]
 
-    def add_settings_to_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
-
+    def __expand_package_path(self, package_name_or_path) -> Path:
         if isinstance(package_name_or_path, str) and package_name_or_path in self.__package_locations:
             package_name_or_path = self.__package_locations[package_name_or_path]
         else:
             package_name_or_path = Path(package_name_or_path)
         if package_name_or_path not in self.__package_locations.values():
-            raise RuntimeError('no package with that name or pathfound')
+            raise RuntimeError('no package with that name or path found')
+        return package_name_or_path
+
+    def add_settings_to_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
+        package_name_or_path = self.__expand_package_path(package_name_or_path)
 
         # at this point package_name_or_path is path
         assert package_name_or_path.exists()
@@ -306,13 +319,17 @@ class PluginNodeDataProvider(NodeDataProvider):
         # add to settings
         self.__nodes_settings.setdefault(node_type_name, {})[settings_name] = settings
 
-    def set_settings_as_default(self, node_type_name: str, settings_name: Optional[str]):
+    # set_settings_as_default
+    def set_settings_as_default_in_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: Optional[str]):
         """
 
+        :param package_name_or_path: existing package path to set defaults in
         :param node_type_name:
         :param settings_name: if None - unset any defaults
         :return:
         """
+        package_name_or_path = self.__expand_package_path(package_name_or_path)
+
         if node_type_name not in self.__nodes_settings:
             raise RuntimeError(f'node type "{self.__nodes_settings}" is unknown')
         if settings_name is not None and settings_name not in self.__nodes_settings[node_type_name]:
@@ -321,27 +338,7 @@ class PluginNodeDataProvider(NodeDataProvider):
             self.__default_settings_config.pop(node_type_name)
         else:
             self.__default_settings_config[node_type_name] = settings_name
-        config_path = paths.config_path('defaults.toml', 'scheduler.nodes')
+        config_path = package_name_or_path / 'settings' / 'defaults.toml'
         config_path.parent.mkdir(parents=True, exist_ok=True)  # ensure it exists
         with open(config_path, 'w') as f:
             toml.dump(self.__default_settings_config, f)
-
-    # def apply_settings(self, node: BaseNode, settings_name: str) -> None:
-    #     if settings_name not in self.node_settings_names(node.type_name()):
-    #         raise RuntimeError(f'requested settings "{settings_name}" not found for type "{node.type_name()}"')
-    #     settings = self.node_settings(node.type_name(), settings_name)
-    #     node.apply_settings(settings)
-
-    # def create_node(self, type_name: str, name: str) -> BaseNode:
-    #     if type_name not in self.__plugins:
-    #         if type_name == 'basenode':  # debug case! base class should never be created directly!
-    #             self.logger.warning('creating BASENODE. if it\'s not for debug/test purposes - it\'s bad!')
-    #             from .basenode import BaseNode
-    #             node = BaseNode(name)
-    #         raise RuntimeError('unknown plugin')
-    #     node: "BaseNode" = self.__plugins[type_name].node_class()(name)
-    #     # now set defaults, before parent is set to prevent ui callbacks to parent
-    #     if type_name in self.__default_settings_config:
-    #         node.apply_settings(self.__default_settings_config[type_name])
-    #     node.set_data_provider(self)
-    #     return node

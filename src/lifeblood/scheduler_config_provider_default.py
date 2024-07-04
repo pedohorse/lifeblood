@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from .scheduler_config_provider_base import SchedulerConfigProviderBase
 from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
 from . import defaults
@@ -31,7 +32,7 @@ class SchedulerConfigProviderDefaults(SchedulerConfigProviderBase):
             WorkerResourceDefinition('cpu_mem',
                                      WorkerResourceDataType.MEMORY_BYTES,
                                      'RAM amount in bytes',
-                                     'RAM'),
+                                     'CPU ram (GB)'),
             WorkerResourceDefinition('gpu_count',
                                      WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT,
                                      'number of GPUs',
@@ -39,7 +40,7 @@ class SchedulerConfigProviderDefaults(SchedulerConfigProviderBase):
             WorkerResourceDefinition('gpu_mem',
                                      WorkerResourceDataType.MEMORY_BYTES,
                                      'combined GPU memory in bytes',
-                                     'GPU mem'),
+                                     'GPU ram (GB)'),
         )
 
     def hardware_ban_timeout(self) -> float:
@@ -89,3 +90,9 @@ class SchedulerConfigProviderDefaults(SchedulerConfigProviderBase):
 
     def scheduler_helpers_minimal(self) -> int:
         return 1
+
+    def node_data_provider_custom_plugins_path(self) -> Path:
+        return Path.cwd() / 'custom_plugins'
+
+    def node_data_provider_extra_plugin_paths(self) -> Tuple[Path, ...]:
+        return ()

@@ -1,6 +1,5 @@
 import sys
 import os
-import re
 from pathlib import Path
 import asyncio
 import signal
@@ -8,69 +7,11 @@ from .pluginloader import PluginNodeDataProvider
 from .scheduler import Scheduler
 from .basenode_serializer_v1 import NodeSerializerV1
 from .basenode_serializer_v2 import NodeSerializerV2
+from .scheduler_config_provider_base import SchedulerConfigProviderBase
 from .scheduler_config_provider_file import SchedulerConfigProviderFileOverrides
-from .defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port
-from .config import get_config, create_default_user_config_file, get_local_scratch_path
 from . import logging
-from . import paths
-from .text import escape
 
 from typing import Optional, Tuple
-
-
-__esc = '\\"'
-
-default_config = f'''
-[core]
-## you can uncomment stuff below to specify some static values
-## 
-# server_ip = "192.168.0.2"
-# server_port = {default_scheduler_port()}
-# ui_ip = "192.168.0.2"
-# ui_port = {default_ui_port()}
-
-## you can turn off scheduler broadcasting if you want to manually configure viewer and workers to connect
-## to a specific address
-# broadcast = false
-
-[scheduler]
-
-[scheduler.globals]
-## entries from this section will be available to any node from config[key] 
-##
-## if you use more than 1 machine - you must change this to a network location shared among all workers
-## by default it's set to scheduler's machine local temp path, and will only work for 1 machine setup 
-global_scratch_location = "{escape(get_local_scratch_path(), __esc)}"
-
-[scheduler.database]
-## you can specify default database path, 
-##  but this can be overriden with command line argument --db-path
-# path = "/path/to/database.db"
-
-## uncomment line below to store task logs outside of the database
-##  it works in a way that all NEW logs will be saved according to settings below
-##  existing logs will be kept where they are
-##  external logs will ALWAYS be looked for in location specified by store_logs_externally_location
-##  so if you have ANY logs saved externally - you must keep store_logs_externally_location defined in the config, 
-##    or those logs will be inaccessible
-##  but you can safely move logs and change location in config accordingly, but be sure scheduler is not accessing them at that time
-# store_logs_externally = true
-# store_logs_externally_location = /path/to/dir/where/to/store/logs
-
-# [resource_definitions.per_machine]
-## you can define custom per-machine resources.
-## default are cpu_count and cpu_mem that represents the number of CPU cores and main memory size.
-## If you override this value - ALL default definitions will be override, so you need to add them back
-## if you want to keep them
-# cpu_count.type = "float"
-# cpu_count.description = "CPU core count"
-# cpu_count.label = "CPU count"
-# cpu_mem.type = "int"
-# cpu_mem.description = "RAM amount in bytes"
-# cpu_mem.label = "RAM"
-# my_resource1.type = "float"
-# my_resource1.description = "the amount of rubber ducks that fit into the chassis"
-'''
 
 
 def create_default_scheduler(db_file_path, *,
@@ -95,12 +36,15 @@ def create_default_scheduler(db_file_path, *,
     )
     return Scheduler(
         scheduler_config_provider=config,
-        node_data_provider=PluginNodeDataProvider(),
+        node_data_provider=PluginNodeDataProvider(
+            custom_plugins_path=config.node_data_provider_custom_plugins_path(),
+            plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+        ),
         node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
     )
 
 
-async def main_async(db_path=None, *, broadcast_interval: Optional[int] = None):
+async def main_async(config: SchedulerConfigProviderBase):
     def graceful_closer(*args):
         scheduler.stop()
 
@@ -114,11 +58,15 @@ async def main_async(db_path=None, *, broadcast_interval: Optional[int] = None):
             await asyncio.sleep(1)
         graceful_closer()
 
-    scheduler = create_default_scheduler(
-        db_path,
-        do_broadcasting=broadcast_interval > 0 if broadcast_interval is not None else None,
-        broadcast_interval=broadcast_interval
+    scheduler = Scheduler(
+        scheduler_config_provider=config,
+        node_data_provider=PluginNodeDataProvider(
+            custom_plugins_path=config.node_data_provider_custom_plugins_path(),
+            plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+        ),
+        node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
     )
+
     win_signal_waiting_task = None
     try:
         asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_closer)
@@ -148,16 +96,11 @@ def main(argv):
     opts = parser.parse_args(argv)
 
     # check and create default config if none
-    create_default_user_config_file('scheduler', default_config)
-
-    config = get_config('scheduler')
-    if opts.db_path is not None:
-        db_path = opts.db_path
-    else:
-        db_path = config.get_option_noasync('scheduler.database.path', str(paths.default_main_database_location()))
+    SchedulerConfigProviderFileOverrides.generate_default_config_file_if_needed()
 
     global_logger = logging.get_logger('scheduler')
 
+    db_path = opts.db_path
     fd = None
     if opts.ephemeral:
         if opts.db_path is not None:
@@ -182,10 +125,16 @@ def main(argv):
 
         fd, db_path = tempfile.mkstemp(dir=lb_shm_path, prefix='shedb-')
 
+    config = SchedulerConfigProviderFileOverrides(
+        main_db_location=db_path,
+        do_broadcast=opts.broadcast_interval > 0 if opts.broadcast_interval is not None else None,
+        broadcast_interval=opts.broadcast_interval,
+    )
+
     if opts.verbosity_pinger:
         logging.get_logger('scheduler.worker_pinger').setLevel(opts.verbosity_pinger)
     try:
-        asyncio.run(main_async(db_path, broadcast_interval=opts.broadcast_interval))
+        asyncio.run(main_async(config))
     except KeyboardInterrupt:
         global_logger.warning('SIGINT caught')
         global_logger.info('SIGINT caught. Scheduler is stopped now.')

@@ -1,4 +1,5 @@
 from .worker_resource_definition import WorkerResourceDefinition
+from pathlib import Path
 
 from typing import Optional, Tuple
 
@@ -9,6 +10,10 @@ class SchedulerConfigProviderBase:
 
     this should be responsible for using config values and making sense of them
     nothing in scheduler should use get_config directly and parse it's values by itself
+
+    Currently, Scheduler Config Providers are supposed to be IMMUTABLE,
+     meaning any config changes at runtime are NOT supported, as there are no mechanisms of informing interested parties (config users)
+     about the changes
     """
     def main_database_location(self) -> str:
         """
@@ -114,5 +119,20 @@ class SchedulerConfigProviderBase:
         """
         how many scheduler helper processes to ensure are always available
         values below 1 should not be legal
+        """
+        raise NotImplementedError()
+
+    # configuration of Node Data Provider
+    def node_data_provider_custom_plugins_path(self) -> Path:
+        """
+        path to a special package where scheduler stores overrides
+        This package always overrides everything else in case of conflict
+        """
+        raise NotImplementedError()
+
+    def node_data_provider_extra_plugin_paths(self) -> Tuple[Path, ...]:
+        """
+        extra plugins to load.
+        returns a number of paths where to search for packages
         """
         raise NotImplementedError()
