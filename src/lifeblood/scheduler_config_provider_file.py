@@ -23,11 +23,12 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
      - Currently the config is sorta immutable.
         - IF config reread/update is ever implemented - a mechanism to inform config users about the change must be designed!
     """
+
     @classmethod
-    def generate_default_config_file_if_needed(cls):
+    def generate_default_config_text(cls) -> str:
         dcp = SchedulerConfigProviderDefaults()
         ping_interval, ping_idle_interval, ping_off_interval, dormant_ping_multiplier = dcp.ping_intervals()
-        create_default_user_config_file('scheduler', default_config.format(
+        return default_config.format(
             server_ip='0.0.0.0',  # special case, this will be transformed into a proper ip:port pair tuple of tuples
             server_port=dcp.legacy_server_address()[1],
             ui_ip=dcp.server_ui_address()[0],
@@ -46,7 +47,11 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
             housekeeping_interval=dcp.task_processor_housekeeping_interval(),
             ignore_node_deserialization_failures='true' if dcp.ignore_node_deserialization_failures() else 'false',
             minimum_idle_helpers=dcp.scheduler_helpers_minimal(),
-        ))
+        )
+
+    @classmethod
+    def generate_default_config_file_if_needed(cls):
+        create_default_user_config_file('scheduler', cls.generate_default_config_text())
 
     def __init__(
             self,

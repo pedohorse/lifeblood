@@ -3,7 +3,7 @@ import unittest
 import shutil
 import toml  # for raw file comparison
 from lifeblood.config import get_config
-
+from lifeblood.scheduler_config_provider_file import SchedulerConfigProviderFile
 
 class StandardConfigTest(unittest.TestCase):
     _stash = None
@@ -96,11 +96,13 @@ class StandardConfigTest(unittest.TestCase):
 
 class DefaultComponentConfigTest(unittest.TestCase):
     def test_default_schediler(self):
-        from lifeblood.main_scheduler import default_config
-        data = toml.loads(default_config)
-        self.assertIn('scheduler', data)
-        self.assertIn('globals', data['scheduler'])
-        self.assertNotEqual('', data['scheduler']['globals']['global_scratch_location'])
+        config_text = SchedulerConfigProviderFile.generate_default_config_text()
+        data = toml.loads(config_text)
+        # not much we can test just like that,
+        # TODO: ideally would be to test for existence of certain form of commented entries, values of which bein equal to defaults.
+        self.assertIn('nodes', data)
+        self.assertIn('globals', data['nodes'])
+        self.assertNotEqual('', data['nodes']['globals']['global_scratch_location'])
 
     def test_default_worker(self):
         """
