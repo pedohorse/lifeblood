@@ -435,7 +435,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             settings = await asyncio.get_event_loop().run_in_executor(None, pickle.loads, await reader.readexactly(datasize))
             data_provider = self.__scheduler.node_data_provider()
             try:
-                data_provider.add_settings_to_existing_package('custom_default', node_type_name, settings_name, settings)
+                top_package_path = data_provider.loaded_packages_paths()[0]
+                data_provider.add_settings_to_existing_package(top_package_path, node_type_name, settings_name, settings)
             except RuntimeError as e:
                 self.__logger.error(f'failed to add custom node settings: {str(e)}')
                 writer.write(b'\0')
@@ -451,7 +452,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 settings_name = None
             data_provider = self.__scheduler.node_data_provider()
             try:
-                data_provider.set_settings_as_default_in_existing_package('custom_default', node_type_name, settings_name)
+                top_package_path = data_provider.loaded_packages_paths()[0]
+                data_provider.set_settings_as_default_in_existing_package(top_package_path, node_type_name, settings_name)
             except RuntimeError:
                 self.__logger.error(f'failed to set node default settings: {str(e)}')
                 writer.write(b'\0')

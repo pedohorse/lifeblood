@@ -12,15 +12,19 @@ from .node_dataprovider_base import NodeDataProvider
 from .snippets import NodeSnippetData
 from . import logging, plugin_info
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union, Set
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, Set, Sequence
 
 
 class PluginNodeDataProvider(NodeDataProvider):
     __instance = None
 
-    # custom_plugins_path = paths.config_path('', 'custom_plugins')
-    # os.environ.get('LIFEBLOOD_PLUGIN_PATH', '').split(os.pathsep):
-    def __init__(self, custom_plugins_path: Union[str, Path], plugin_search_locations: Iterable[Union[str, Path]]):
+    def __init__(self, plugin_paths: Sequence[Tuple[Path, str]]):
+        """
+        Plugin Node Data Provider will search for plugins in given locations.
+
+        custom_package - is the package that is always loaded last, overriding anything from previous packages
+        it's purpose is to serve as the "user overrides" package, where all the global changes go
+        """
         if self.__instance is not None:
             # TODO: not very nice design, since it modifies os.environ,
             #  so for now i force single instance, but this needs refactoring!
@@ -46,46 +50,16 @@ class PluginNodeDataProvider(NodeDataProvider):
 
         self.logger.info('loading core plugins')
         self.__plugins = {}
-        plugin_paths: List[Tuple[str, str]] = []  # list of tuples of path to dir, plugin category
-        core_plugins_path = os.path.join(os.path.dirname(__file__), 'core_nodes')
-        stock_plugins_path = os.path.join(os.path.dirname(__file__), 'stock_nodes')
 
-        # "custom" path always comes first, as earlier entries take precedence in case of conflicts
-        if isinstance(custom_plugins_path, str):
-            custom_plugins_path = Path(custom_plugins_path)
-        # create dir for the "custom package". all changes (preset/settings creation) BY DEFAULT go into this package
-        (custom_plugins_path / 'custom_default').mkdir(parents=True, exist_ok=True)
-        plugin_paths.append((str(custom_plugins_path), 'user'))
-
-        # user defined packages come next
-        extra_paths = []
-        for path in plugin_search_locations:
-            if isinstance(path, str):
-                path = Path(path)
-            if not path.is_absolute():
-                self.logger.warning(f'"{path}" is not absolute, skipping')
-                continue
-            if not path.exists():
-                self.logger.warning(f'"{path}" does not exist, skipping')
-                continue
-            extra_paths.append(path)
-            self.logger.debug(f'using extra plugin path: "{path}"')
-
-        plugin_paths.extend((str(x), 'extra') for x in extra_paths)
-
-        # then core and stock come as the baseline
-        plugin_paths.append((stock_plugins_path, 'stock'))
-        plugin_paths.append((core_plugins_path, 'core'))
-
+        self.__loaded_package_paths: List[Path] = []
         # load all plugins
         for plugin_path, plugin_category in reversed(plugin_paths):
-            for filename in os.listdir(plugin_path):
-                filepath = os.path.join(plugin_path, filename)
-                if os.path.isdir(filepath):
+            for filepath in plugin_path.iterdir():
+                if filepath.is_dir():
                     self._install_package(filepath, plugin_category)
+                    self.__loaded_package_paths.insert(0, filepath)
                 else:
-                    filebasename, fileext = os.path.splitext(filename)
-                    if fileext != '.py':
+                    if filepath.suffix != '.py':
                         continue
                     self._install_node(filepath, plugin_category)
 
@@ -100,7 +74,7 @@ class PluginNodeDataProvider(NodeDataProvider):
                 bad_defaults.append(node_type)
                 continue
 
-    def _install_node(self, filepath, plugin_category, parent_package=None):
+    def _install_node(self, filepath: Path, plugin_category: str, parent_package=None):
         """
 
         :param filepath:
@@ -108,8 +82,7 @@ class PluginNodeDataProvider(NodeDataProvider):
         :param parent_package: path to the base of the package, if this plugin is part of one, else - None
         :return:
         """
-        filename = os.path.basename(filepath)
-        filebasename, fileext = os.path.splitext(filename)
+        filebasename = filepath.stem
 
         # calc module hash
         hasher = hashlib.md5()
@@ -140,7 +113,7 @@ class PluginNodeDataProvider(NodeDataProvider):
         # TODO: what if it's overriding existing module?
         sys.modules[modpath] = mod
 
-    def _install_package(self, package_path, plugin_category):
+    def _install_package(self, package_path: Path, plugin_category: str):
         """
         package structure:
             [package_name:dir]
@@ -171,57 +144,55 @@ class PluginNodeDataProvider(NodeDataProvider):
         :param plugin_category:
         :return:
         """
-        package_name = os.path.basename(package_path)
+        package_name = package_path.name
         if package_name not in self.__package_locations:  # read logic of this up
-            self.__package_locations[package_name] = Path(package_path)
+            self.__package_locations[package_name] = package_path
         # add extra bin paths
         extra_bins = []
         for subbin in (f'{platform.system().lower()}-{platform.machine().lower()}', 'any'):
-            bin_base_path = os.path.join(package_path, 'bin', subbin)
-            if not os.path.exists(bin_base_path):
+            bin_base_path = package_path / 'bin' / subbin
+            if not bin_base_path.exists():
                 continue
             extra_bins.append(bin_base_path)
         if extra_bins:
-            os.environ['PATH'] = os.pathsep.join(extra_bins) + os.environ['PATH']
+            os.environ['PATH'] = os.pathsep.join(str(x) for x in extra_bins) + os.environ['PATH']  # TODO: this should only be accessible to that one plugin
 
         # install extra python modules
-        python_base_path = os.path.join(package_path, 'python')
-        if os.path.exists(python_base_path):
+        python_base_path = package_path / 'python'
+        if python_base_path.exists():
             sysver = sys.version_info
-            pyvers = [tuple(int(y) for y in x.split('.')) for x in os.listdir(python_base_path) if x.isdigit() or re.match(r'^\d+\.\d+$', x)]
+            pyvers = [tuple(int(y) for y in x.name.split('.')) for x in python_base_path.iterdir() if x.name.isdigit() or re.match(r'^\d+\.\d+$', x.name)]
             pyvers = [x for x in pyvers if x[0] == sysver.major
                                            and (len(x) < 2 or x[1] == sysver.minor)
                                            and (len(x) < 3 or x[2] == sysver.micro)]
             pyvers = sorted(pyvers, key=lambda x: len(x), reverse=True)
             for pyver in pyvers:
-                extra_python = os.path.join(python_base_path, '.'.join(str(x) for x in pyver))
-                sys.path.append(extra_python)
+                extra_python = python_base_path / '.'.join(str(x) for x in pyver)
+                sys.path.append(str(extra_python))
 
-                # TODO: this is questionable, this will affect all child processes, we don't want that
-                os.environ['PYTHONPATH'] = os.pathsep.join((extra_python, os.environ['PYTHONPATH'])) if 'PYTHONPATH' in os.environ else extra_python
+                # TODO: this is questionable, this will affect all child processes, we don't want that, this should only be accessible to that one plugin
+                os.environ['PYTHONPATH'] = os.pathsep.join((str(extra_python), os.environ['PYTHONPATH'])) if 'PYTHONPATH' in os.environ else extra_python
 
         # install nodes
-        nodes_path = os.path.join(package_path, 'nodes')
-        if os.path.exists(nodes_path):
-            for filename in os.listdir(nodes_path):
-                filebasename, fileext = os.path.splitext(filename)
-                if fileext != '.py':
+        nodes_path = package_path / 'nodes'
+        if nodes_path.exists():
+            for filepath in nodes_path.iterdir():
+                if filepath.suffix != '.py':
                     continue
-                self._install_node(os.path.join(nodes_path, filename), plugin_category, package_path)
+                self._install_node(filepath, plugin_category, package_path)
 
         # install presets
-        presets_path = os.path.join(package_path, 'presets')
-        if os.path.exists(presets_path):
-            for filename in os.listdir(presets_path):
-                filebasename, fileext = os.path.splitext(filename)
-                if fileext != '.lbp':
+        presets_path = package_path / 'presets'
+        if presets_path.exists():
+            for filepath in presets_path.iterdir():
+                if filepath.suffix != '.lbp':
                     continue
                 try:
-                    with open(os.path.join(presets_path, filename), 'rb') as f:
+                    with open(filepath, 'rb') as f:
                         snippet = NodeSnippetData.deserialize(f.read())
                     snippet.add_tag('preset')
                 except Exception as e:
-                    self.logger.error(f'failed to load snippet {filebasename}, error: {str(e)}')
+                    self.logger.error(f'failed to load snippet "{filepath.stem}", error: {str(e)}')
                     continue
 
                 if package_name not in self.__presets:
@@ -229,27 +200,25 @@ class PluginNodeDataProvider(NodeDataProvider):
                 self.__presets[package_name][snippet.label] = snippet
 
         # install node settings
-        settings_path = os.path.join(package_path, 'settings')
-        if os.path.exists(settings_path):
-            for nodetype_name in os.listdir(settings_path):
-                nodetype_path = os.path.join(settings_path, nodetype_name)
-                if not os.path.isdir(nodetype_path):
+        settings_path = package_path / 'settings'
+        if settings_path.exists():
+            for nodetype_path in settings_path.iterdir():
+                if not nodetype_path.is_dir():
                     # ignore files, just look for dirs
                     continue
-                if nodetype_name not in self.__nodes_settings:
-                    self.__nodes_settings[nodetype_name] = {}
-                for preset_filename in os.listdir(nodetype_path):
-                    preset_name, fileext = os.path.splitext(preset_filename)
-                    if fileext != '.lbs':
+                if nodetype_path.name not in self.__nodes_settings:
+                    self.__nodes_settings[nodetype_path.name] = {}
+                for preset_filepath in nodetype_path.iterdir():
+                    if preset_filepath.suffix != '.lbs':
                         continue
                     try:
-                        with open(os.path.join(nodetype_path, preset_filename), 'r') as f:
-                            self.__nodes_settings[nodetype_name][preset_name] = toml.load(f)
+                        with open(preset_filepath, 'r') as f:
+                            self.__nodes_settings[nodetype_path.name][preset_filepath.stem] = toml.load(f)
                     except Exception as e:
-                        self.logger.error(f'failed to load settings {nodetype_name}/{preset_name}, error: {str(e)}')
+                        self.logger.error(f'failed to load settings {nodetype_path.name}/{preset_filepath.stem}, error: {str(e)}')
 
-            settings_defaults_config_path = os.path.join(settings_path, 'defaults.toml')
-            if os.path.exists(settings_defaults_config_path):
+            settings_defaults_config_path = settings_path / 'defaults.toml'
+            if settings_defaults_config_path.exists():
                 with open(settings_defaults_config_path) as f:
                     settings_defaults = toml.load(f)
                 self.__default_settings_config.update(settings_defaults)
@@ -305,6 +274,9 @@ class PluginNodeDataProvider(NodeDataProvider):
             raise RuntimeError('no package with that name or path found')
         return package_name_or_path
 
+    def loaded_packages_paths(self) -> Tuple[Path, ...]:
+        return tuple(self.__loaded_package_paths)
+
     def add_settings_to_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
         package_name_or_path = self.__expand_package_path(package_name_or_path)
 
@@ -315,11 +287,16 @@ class PluginNodeDataProvider(NodeDataProvider):
             base_path.mkdir(parents=True, exist_ok=True)
         with open(base_path / (settings_name + '.lbs'), 'w') as f:
             toml.dump(settings, f)
-
+        if package_name_or_path not in self.__loaded_package_paths:
+            return  # if we modified not loaded package - no need to update configuration
         # add to settings
-        self.__nodes_settings.setdefault(node_type_name, {})[settings_name] = settings
+        # TODO: fix, settings taking effect depends on loading order.
+        #  so far it's only used for changing leftmost package, so the problem does not emerge
+        if package_name_or_path == self.__loaded_package_paths[0]:
+            self.__nodes_settings.setdefault(node_type_name, {})[settings_name] = settings
+        else:
+            raise NotImplementedError("TBD")
 
-    # set_settings_as_default
     def set_settings_as_default_in_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: Optional[str]):
         """
 
@@ -334,11 +311,33 @@ class PluginNodeDataProvider(NodeDataProvider):
             raise RuntimeError(f'node type "{self.__nodes_settings}" is unknown')
         if settings_name is not None and settings_name not in self.__nodes_settings[node_type_name]:
             raise RuntimeError(f'node type "{self.__nodes_settings}" doesn\'t have settings "{settings_name}"')
-        if settings_name is None and node_type_name in self.__default_settings_config:
-            self.__default_settings_config.pop(node_type_name)
-        else:
-            self.__default_settings_config[node_type_name] = settings_name
         config_path = package_name_or_path / 'settings' / 'defaults.toml'
+        # read existing
+        settings_defaults = {}
+        if config_path.exists():
+            # TODO: refactor this module to work with Package representations
+            #  so that when something is updated in any package - final data can be layered fast
+            with open(config_path, 'r') as f:
+                settings_defaults = toml.load(f)
+        if settings_name is None:
+            settings_defaults.pop(node_type_name)
+        else:
+            settings_defaults[node_type_name] = settings_name
+        # save config
         config_path.parent.mkdir(parents=True, exist_ok=True)  # ensure it exists
         with open(config_path, 'w') as f:
-            toml.dump(self.__default_settings_config, f)
+            toml.dump(settings_defaults, f)
+
+        if package_name_or_path not in self.__loaded_package_paths:
+            return  # if we modified not loaded package - no need to update configuration
+
+        # TODO: fix, settings taking effect depends on loading order.
+        #  so far it's only used for changing leftmost package, so the problem does not emerge
+        if package_name_or_path == self.__loaded_package_paths[0]:
+            if settings_name is None:
+                if node_type_name in self.__default_settings_config:
+                    self.__default_settings_config.pop(node_type_name)  # TODO: this is incorrect in case other packages have opinions on that
+            else:
+                self.__default_settings_config[node_type_name] = settings_name
+        else:
+            raise NotImplementedError("TBD")

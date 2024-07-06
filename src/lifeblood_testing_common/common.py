@@ -1,3 +1,5 @@
+from pathlib import Path
+import lifeblood
 from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.worker_resource_definition import WorkerResourceDefinition
 from lifeblood.basenode_serializer_v2 import NodeSerializerV2
@@ -43,6 +45,11 @@ def create_default_scheduler(
     )
     return Scheduler(
         scheduler_config_provider=config,
-        node_data_provider=PluginNodeDataProvider(),
+        node_data_provider=PluginNodeDataProvider(
+            plugin_paths=(
+                (Path(lifeblood.__file__).parent / 'stock_nodes', 'stock'),
+                (Path(lifeblood.__file__).parent / 'core_nodes', 'core'),
+            )
+        ),
         node_serializers=[NodeSerializerV2()],
     )

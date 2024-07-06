@@ -11,15 +11,18 @@ from .scheduler_config_provider_base import SchedulerConfigProviderBase
 from .scheduler_config_provider_file import SchedulerConfigProviderFileOverrides
 from . import logging
 
-from typing import Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Union
 
 
-def create_default_scheduler(db_file_path, *,
-                 do_broadcasting: Optional[bool] = None,
-                 broadcast_interval: Optional[int] = None,
-                 helpers_minimal_idle_to_ensure=1,
-                 server_addr: Optional[Tuple[str, int, int]] = None,
-                 server_ui_addr: Optional[Tuple[str, int]] = None) -> Scheduler:
+def create_default_scheduler(
+        db_file_path,
+        *,
+        do_broadcasting: Optional[bool] = None,
+        broadcast_interval: Optional[int] = None,
+        helpers_minimal_idle_to_ensure=1,
+        server_addr: Optional[Tuple[str, int, int]] = None,
+        server_ui_addr: Optional[Tuple[str, int]] = None
+) -> Scheduler:
     legacy_addr = None
     message_addr = None
     if server_addr is not None:
@@ -37,11 +40,52 @@ def create_default_scheduler(db_file_path, *,
     return Scheduler(
         scheduler_config_provider=config,
         node_data_provider=PluginNodeDataProvider(
-            custom_plugins_path=config.node_data_provider_custom_plugins_path(),
-            plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+            plugin_paths=construct_plugin_paths(
+                custom_plugins_path=config.node_data_provider_custom_plugins_path(),
+                plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+            ),
         ),
         node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
     )
+
+
+def construct_plugin_paths(custom_plugins_path: Union[None, str, Path], plugin_search_locations: Iterable[Union[str, Path]]) -> List[Tuple[Path, str]]:
+    logger = logging.get_logger('scheduler')
+    plugin_paths: List[Tuple[Path, str]] = []  # list of tuples of path to dir, plugin category
+    core_plugins_path = Path(__file__).parent / 'core_nodes'
+    stock_plugins_path = Path(__file__).parent / 'stock_nodes'
+
+    # "custom" path always comes first, as earlier entries take precedence in case of conflicts
+    if custom_plugins_path is not None:
+        if isinstance(custom_plugins_path, str):
+            custom_plugins_path = Path(custom_plugins_path)
+        if not custom_plugins_path.is_absolute():
+            custom_plugins_path = custom_plugins_path.absolute()
+        # create dir for the "custom package". all changes (preset/settings creation) BY DEFAULT go into this package
+        (custom_plugins_path / 'custom_default').mkdir(parents=True, exist_ok=True)
+        plugin_paths.append((custom_plugins_path, 'user'))
+
+    # user defined packages come next
+    extra_paths = []
+    for path in plugin_search_locations:
+        if isinstance(path, str):
+            path = Path(path)
+        if not path.is_absolute():
+            logger.warning(f'"{path}" is not absolute, skipping')
+            continue
+        if not path.exists():
+            logger.warning(f'"{path}" does not exist, skipping')
+            continue
+        extra_paths.append(path)
+        logger.debug(f'using extra plugin path: "{path}"')
+
+    plugin_paths.extend((x, 'extra') for x in extra_paths)
+
+    # then core and stock come as the baseline
+    plugin_paths.append((stock_plugins_path, 'stock'))
+    plugin_paths.append((core_plugins_path, 'core'))
+
+    return plugin_paths
 
 
 async def main_async(config: SchedulerConfigProviderBase):
@@ -61,8 +105,10 @@ async def main_async(config: SchedulerConfigProviderBase):
     scheduler = Scheduler(
         scheduler_config_provider=config,
         node_data_provider=PluginNodeDataProvider(
-            custom_plugins_path=config.node_data_provider_custom_plugins_path(),
-            plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+            plugin_paths=construct_plugin_paths(
+                custom_plugins_path=config.node_data_provider_custom_plugins_path(),
+                plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
+            ),
         ),
         node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
     )

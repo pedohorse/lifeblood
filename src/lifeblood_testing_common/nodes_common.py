@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 import sqlite3
 from unittest import mock, IsolatedAsyncioTestCase
+import lifeblood
 from lifeblood.attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from lifeblood.enums import TaskState
 from lifeblood.db_misc import sql_init_script
@@ -26,7 +27,13 @@ from lifeblood.environment_resolver import EnvironmentResolverArguments, BaseSim
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Union
 
 
-plugin_data_provider = PluginNodeDataProvider()
+# TODO: fix PluginNodeDataProvider's multiple instance problem and remove this global usage
+plugin_data_provider = PluginNodeDataProvider(
+    plugin_paths=(
+        (Path(lifeblood.__file__).parent / 'stock_nodes', 'stock'),
+        (Path(lifeblood.__file__).parent / 'core_nodes', 'core'),
+    )
+)
 
 
 def create_node(node_type: str, node_name: str, scheduler, node_id):

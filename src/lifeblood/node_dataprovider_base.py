@@ -40,6 +40,9 @@ class NodeDataProvider:
     def node_preset(self, package_name: str, preset_name: str) -> NodeSnippetData:
         raise NotImplementedError()
 
+    def loaded_packages_paths(self) -> Tuple[Path, ...]:
+        raise NotImplementedError()
+
     def add_settings_to_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
         raise NotImplementedError()
 
