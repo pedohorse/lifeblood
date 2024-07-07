@@ -119,13 +119,24 @@ class NodeSerializerV2(NodeSerializerBase):
             'priority adjustment': '__requirements__.priority_adjustment',
             'worker groups': '__requirements__.worker_groups',
             'worker type': '__requirements__.worker_type',
+            'worker cpu cost': '__requirements__.f_min_res_0',
+            'worker cpu cost preferred': '__requirements__.f_pref_res_0',
+            'worker mem cost': '__requirements__.f_min_res_1',
+            'worker mem cost preferred': '__requirements__.f_pref_res_1',
         }
         for param_name in (
-                'worker cpu cost', 'worker cpu cost preferred', 'worker mem cost', 'worker mem cost preferred',
                 'worker gpu cost', 'worker gpu cost preferred', 'worker gpu mem cost', 'worker gpu mem cost preferred'
         ):
             if param_name in param_dict:
                 param_dict.pop(param_name)
+
+        if 'worker cpu cost' in param_dict and '__requirements__.res' not in param_dict:
+            param_dict['__requirements__.res'] = ParameterData(
+                '__requirements__.res',
+                NodeParameterType.INT,
+                2,
+                None,
+            )
 
         for old_name, new_name in rename_params.items():
             if new_name in param_dict or old_name not in param_dict:
