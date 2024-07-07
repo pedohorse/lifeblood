@@ -124,32 +124,3 @@ class BaseNodeWithTaskRequirements(BaseNode):
     def _postprocess_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict, node_config)
         return self.__apply_requirements(task_dict, node_config, result)
-
-
-# class BaseNodeWithEnvironmentRequirements(BaseNode):
-#     def __init__(self, name: str):
-#         super(BaseNodeWithEnvironmentRequirements, self).__init__(name)
-#         ui = self.get_ui()
-#         with ui.initializing_interface_lock():
-#             with ui.collapsable_group_block('main environment resolver', 'task environment resolver additional requirements'):
-#                 ui.add_parameter('main env resolver name', 'resolver name', NodeParameterType.STRING, 'StandardEnvironmentResolver')
-#                 with ui.multigroup_parameter_block('main env resolver arguments'):
-#                     with ui.parameters_on_same_line_block():
-#                         type_param = ui.add_parameter('main env resolver arg type', '', NodeParameterType.INT, 0)
-#                         type_param.add_menu((('int', NodeParameterType.INT.value),
-#                                              ('bool', NodeParameterType.BOOL.value),
-#                                              ('float', NodeParameterType.FLOAT.value),
-#                                              ('string', NodeParameterType.STRING.value),
-#                                              ('json', -1)
-#                                              ))
-#
-#                         ui.add_parameter('main env resolver arg svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
-#                         ui.add_parameter('main env resolver arg ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
-#                         ui.add_parameter('main env resolver arg fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
-#                         ui.add_parameter('main env resolver arg bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
-#                         ui.add_parameter('main env resolver arg jvalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', -1)
-#
-#     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-#         result = super(BaseNodeWithEnvironmentRequirements, self)._process_task_wrapper(task_dict)
-#         result.invocation_job.environment_resolver_arguments()
-#         return result

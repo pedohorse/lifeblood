@@ -21,9 +21,6 @@ class PluginNodeDataProvider(NodeDataProvider):
     def __init__(self, plugin_paths: Sequence[Tuple[Path, str]]):
         """
         Plugin Node Data Provider will search for plugins in given locations.
-
-        custom_package - is the package that is always loaded last, overriding anything from previous packages
-        it's purpose is to serve as the "user overrides" package, where all the global changes go
         """
         if self.__instance is not None:
             # TODO: not very nice design, since it modifies os.environ,

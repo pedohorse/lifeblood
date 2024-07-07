@@ -21,8 +21,7 @@ _init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.
 class WorkerListWidget(QWidget):
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
         super(WorkerListWidget, self).__init__(parent, Qt.Tool)
-        self.__worker_list = QTreeView()  # QTableView()
-        #self.__worker_list.verticalHeader().setDefaultSectionSize(10)
+        self.__worker_list = QTreeView()
         self.__worker_model = WorkerModel(worker, self)
 
         col_id = self.__worker_model.column_by_name('id')
@@ -230,17 +229,22 @@ class WorkerModel(QAbstractItemModel):
 
         w_instate_count = 0
         w_total_count = 0
+        summ_address = workers[0].last_address.rsplit('|', 1)[0] if len(workers) else 'unknown'
         for worker in workers:
             if worker.state == state:
                 w_instate_count += 1
             if worker.state != WorkerState.OFF:
                 w_total_count += 1
+            # address
+            if summ_address != worker.last_address.rsplit('|', 1)[0]:
+                summ_address = '<multiple>'
+
 
         return WorkerModelData(
             '',
             workers[0].worker_resources if len(workers) else WorkerResources([]),
             hwid,
-            workers[0].last_address if len(workers) else 'unknown',
+            summ_address,
             max(x.last_seen_timestamp for x in workers) if len(workers) else 0.0,
             (state, f'{w_instate_count}/{w_total_count}') if len(workers) else state,
             None,

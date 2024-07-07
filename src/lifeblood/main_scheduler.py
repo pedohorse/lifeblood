@@ -14,42 +14,7 @@ from . import logging
 from typing import Iterable, List, Optional, Tuple, Union
 
 
-def create_default_scheduler(
-        db_file_path,
-        *,
-        do_broadcasting: Optional[bool] = None,
-        broadcast_interval: Optional[int] = None,
-        helpers_minimal_idle_to_ensure=1,
-        server_addr: Optional[Tuple[str, int, int]] = None,
-        server_ui_addr: Optional[Tuple[str, int]] = None
-) -> Scheduler:
-    legacy_addr = None
-    message_addr = None
-    if server_addr is not None:
-        legacy_addr = (server_addr[0], server_addr[1])
-        message_addr = (server_addr[0], server_addr[2])
-    config = SchedulerConfigProviderFileOverrides(
-        main_db_location=db_file_path,
-        do_broadcast=do_broadcasting,
-        broadcast_interval=broadcast_interval,
-        minimal_idle_helpers=helpers_minimal_idle_to_ensure,
-        legacy_server_address=legacy_addr,
-        message_processor_address=message_addr,
-        ui_address=server_ui_addr,
-    )
-    return Scheduler(
-        scheduler_config_provider=config,
-        node_data_provider=PluginNodeDataProvider(
-            plugin_paths=construct_plugin_paths(
-                custom_plugins_path=config.node_data_provider_custom_plugins_path(),
-                plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
-            ),
-        ),
-        node_serializers=[NodeSerializerV2(), NodeSerializerV1()],
-    )
-
-
-def construct_plugin_paths(custom_plugins_path: Union[None, str, Path], plugin_search_locations: Iterable[Union[str, Path]]) -> List[Tuple[Path, str]]:
+def __construct_plugin_paths(custom_plugins_path: Union[None, str, Path], plugin_search_locations: Iterable[Union[str, Path]]) -> List[Tuple[Path, str]]:
     logger = logging.get_logger('scheduler')
     plugin_paths: List[Tuple[Path, str]] = []  # list of tuples of path to dir, plugin category
     core_plugins_path = Path(__file__).parent / 'core_nodes'
@@ -105,7 +70,7 @@ async def main_async(config: SchedulerConfigProviderBase):
     scheduler = Scheduler(
         scheduler_config_provider=config,
         node_data_provider=PluginNodeDataProvider(
-            plugin_paths=construct_plugin_paths(
+            plugin_paths=__construct_plugin_paths(
                 custom_plugins_path=config.node_data_provider_custom_plugins_path(),
                 plugin_search_locations=config.node_data_provider_extra_plugin_paths(),
             ),

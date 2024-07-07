@@ -11,7 +11,7 @@ from ..basenode_serialization import FailedToDeserialize
 from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
 from ..worker_messsage_processor import WorkerControlClient
-from ..invocationjob import InvocationJob, Requirements
+from ..invocationjob import InvocationJob, Requirements, InvocationRequirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
@@ -803,11 +803,8 @@ class TaskProcessor(SchedulerComponentBase):
                 self.__logger.warning(f'{task_row["id"]} reached maximum invocation attempts, setting it to error state')
                 continue
             #
-            requirements_clause_sql: str = task_row["_invoc_requirement_clause"]
-            requirements_clause: Optional[Requirements] = None
-            if (splitpos := requirements_clause_sql.rfind(':::')) > -1:  # move impl-specific logic to invoc req
-                requirements_clause = Requirements.deserialize_from_string(requirements_clause_sql[splitpos + 3:])
-                requirements_clause_sql = requirements_clause_sql[:splitpos]
+            requirements_clause_sql, requirements_clause = InvocationRequirements.unpack_selection_info(task_row["_invoc_requirement_clause"])
+
             if requirements_clause_sql in where_empty_cache:
                 continue
             try:

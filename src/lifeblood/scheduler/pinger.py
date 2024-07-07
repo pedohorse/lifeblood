@@ -23,10 +23,6 @@ class Pinger(SchedulerComponentBase):
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
 
         self.__ping_interval, self.__ping_idle_interval, self.__ping_off_interval, self.__dormant_mode_ping_interval_multiplier = self.scheduler.config_provider.ping_intervals()
-        #config.get_option_noasync('scheduler.pinger.ping_interval', 10)  # interval for active workers (workers doing work)
-        #config.get_option_noasync('scheduler.pinger.ping_idle_interval', 30)  # interval for idle workers
-        #config.get_option_noasync('scheduler.pinger.ping_off_interval', 60)  # interval for off/errored workers  (not really used since workers need to report back first)
-        #config.get_option_noasync('scheduler.pinger.dormant_ping_multiplier', 5)
         self.__ping_interval_mult = 1
 
     def _main_task(self):

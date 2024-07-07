@@ -8,7 +8,7 @@ from types import MappingProxyType
 from .enums import WorkerType
 from dataclasses import dataclass, field
 
-from typing import Optional, Iterable, Union, Dict, List, Set, TYPE_CHECKING
+from typing import Optional, Iterable, Union, Dict, List, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .environment_resolver import EnvironmentResolverArguments
 
@@ -96,10 +96,6 @@ class InvocationEnvironment:
             value = str(value)
         self.__action_queue.append((method, key, value))
 
-    # def __getattr__(self, item):
-    #     return lambda k, v: self._enqueue_kv_method(item, k, v)
-
-    # these 2 guys are explicitly added only for IDE popup hints
     def prepend(self, key: str, value):
         self._enqueue_kv_method('prepend', key, value)
 
@@ -259,35 +255,22 @@ class InvocationRequirements:
     def pack_selection_info(self) -> str:
         """
         provides a string with enough info to select worker and update worker resource
+        this is to be stored in SQLite db
         """
         return ':::'.join((self.final_where_clause(), self.__res_req.serialize_to_string()))
 
-    # def to_min_worker_resources(self) -> WorkerResources:
-    #     res = WorkerResources()
-    #     res.cpu_count = self.__min_cpu_count
-    #     res.cpu_mem = self.__min_memory_bytes
-    #     res.gpu_count = self.__min_gpu_count
-    #     res.gpu_mem = self.__min_gpu_memory_bytes
-    #     return res
-    #
-    def __gt__(self, other):
-        raise NotImplementedError()
-    #     if not isinstance(other, WorkerResources):
-    #         raise NotImplementedError()
-    #     return self.__min_cpu_count > other.cpu_count and \
-    #            self.__min_memory_bytes > other.cpu_mem and \
-    #            self.__min_gpu_count > other.gpu_count and \
-    #            self.__min_gpu_memory_bytes > other.gpu_mem
-    #
-    def __eq__(self, other):
-        raise NotImplementedError()
-    #     if not isinstance(other, WorkerResources):
-    #         raise NotImplementedError()
-    #     return self.__min_cpu_count == other.cpu_count and \
-    #            self.__min_memory_bytes == other.cpu_mem and \
-    #            self.__min_gpu_count == other.gpu_count and \
-    #            self.__min_gpu_memory_bytes == other.gpu_mem
-
+    @classmethod
+    def unpack_selection_info(cls, packed_string: str) -> Tuple[str, Requirements]:
+        """
+        returns sql clause  and  requirements
+        reverse of what pack_selection_info() does
+        """
+        splitpos = packed_string.rfind(':::')
+        if splitpos < 0:
+            raise ValueError(f'malformed argument string: {repr(packed_string)}')
+        requirements_clause = Requirements.deserialize_from_string(packed_string[splitpos + 3:])
+        requirements_clause_sql = packed_string[:splitpos]
+        return requirements_clause_sql, requirements_clause
 
 class InvocationJob:
     """
