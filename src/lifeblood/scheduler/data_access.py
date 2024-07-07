@@ -109,7 +109,7 @@ class DataAccess:
                 col_type, col_def = {
                     WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', float(res_def.default)),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
                     WorkerResourceDataType.GENERIC_INT: ('INTEGER', int(res_def.default)),
-                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', float(res_def.default)),
+                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', int(res_def.default)),
                     WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', int(res_def.default)),
                 }[res_def.type]
                 if res_def.name in resource_rows:  # skip existing
