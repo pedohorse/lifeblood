@@ -68,6 +68,34 @@ class DataAccess:
         # ensure database is initialized
         with sqlite3.connect(self.__db_path) as con:
             con.executescript(sql_init_script)
+
+        # upgrade db definitions
+        with sqlite3.connect(self.__db_path) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.execute('SELECT * FROM lifeblood_metadata')
+            metadata = cur.fetchone()  # there should be exactly one single row.
+            cur.close()
+            if metadata is None:  # if there's no - the DB has not been initialized yet
+                # we need 64bit signed id to save into db
+                db_uid = random.getrandbits(64)  # this is actual db_uid
+                db_uid_signed = struct.unpack('>q', struct.pack('>Q', db_uid))[0]  # this one goes to db
+                con.execute('INSERT INTO lifeblood_metadata ("version", "component", "unique_db_id")'
+                            'VALUES (?, ?, ?)', (SCHEDULER_DB_FORMAT_VERSION, 'scheduler', db_uid_signed))
+                con.commit()
+                # reget metadata
+                cur = con.execute('SELECT * FROM lifeblood_metadata')
+                metadata = cur.fetchone()  # there should be exactly one single row.
+                cur.close()
+            elif metadata['version'] != SCHEDULER_DB_FORMAT_VERSION:
+                self.__database_schema_upgrade(con, metadata['version'], SCHEDULER_DB_FORMAT_VERSION)  # returns true if commit needed, but we do update next line anyway
+                con.execute('UPDATE lifeblood_metadata SET "version" = ?', (SCHEDULER_DB_FORMAT_VERSION,))
+                con.commit()
+                # reget metadata
+                cur = con.execute('SELECT * FROM lifeblood_metadata')
+                metadata = cur.fetchone()  # there should be exactly one single row.
+                cur.close()
+            self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
         # update resource table straight away
         # for now the logic is to keep existing columns
         with sqlite3.connect(self.__db_path) as con:
@@ -98,32 +126,6 @@ class DataAccess:
                 need_commit = True
             if need_commit:
                 con.commit()
-
-        with sqlite3.connect(self.__db_path) as con:
-            con.row_factory = sqlite3.Row
-            cur = con.execute('SELECT * FROM lifeblood_metadata')
-            metadata = cur.fetchone()  # there should be exactly one single row.
-            cur.close()
-            if metadata is None:  # if there's no - the DB has not been initialized yet
-                # we need 64bit signed id to save into db
-                db_uid = random.getrandbits(64)  # this is actual db_uid
-                db_uid_signed = struct.unpack('>q', struct.pack('>Q', db_uid))[0]  # this one goes to db
-                con.execute('INSERT INTO lifeblood_metadata ("version", "component", "unique_db_id")'
-                            'VALUES (?, ?, ?)', (SCHEDULER_DB_FORMAT_VERSION, 'scheduler', db_uid_signed))
-                con.commit()
-                # reget metadata
-                cur = con.execute('SELECT * FROM lifeblood_metadata')
-                metadata = cur.fetchone()  # there should be exactly one single row.
-                cur.close()
-            elif metadata['version'] != SCHEDULER_DB_FORMAT_VERSION:
-                self.__database_schema_upgrade(con, metadata['version'], SCHEDULER_DB_FORMAT_VERSION)  # returns true if commit needed, but we do update next line anyway
-                con.execute('UPDATE lifeblood_metadata SET "version" = ?', (SCHEDULER_DB_FORMAT_VERSION,))
-                con.commit()
-                # reget metadata
-                cur = con.execute('SELECT * FROM lifeblood_metadata')
-                metadata = cur.fetchone()  # there should be exactly one single row.
-                cur.close()
-            self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
 
     async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
         # TODO: scheduler must use this instead of creating directly
