@@ -164,7 +164,7 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
             os.unlink(temp_db_path)
         print(f'wedging tests:\n\taccept: {_stat_pass}\n\tdecline: {_stat_fail}')
 
-    def test_resource_definition_simple(self):
+    async def test_resource_definition_simple(self):
         fd, temp_db_path = tempfile.mkstemp(suffix='_test.db', dir='/dev/shm' if os.path.exists('/dev/shm') else None)
         try:
             config = SchedulerConfigProviderOverrides(
@@ -179,11 +179,11 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
 
             # Not the best test, as it tests with implementation-specific defaults
             # but before data_access is properly separated from scheduler - there's no proper unit testing it separately
-            with sqlite3.connect(temp_db_path) as con:
+            async with data_access.data_connection() as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute('PRAGMA table_info(resources)')
-                resource_rows = {x['name']: x for x in cur.fetchall() if x['name'] != 'hwid'}
-                cur.close()
+                async with con.execute('PRAGMA table_info(resources)') as cur:
+                    resource_rows = {x['name']: x for x in await cur.fetchall() if x['name'] != 'hwid'}
+
             self.assertSetEqual({'fooo', 'total_fooo', 'boar', 'total_boar'}, set(resource_rows.keys()))
             self.assertEqual(12.3, float(resource_rows['fooo']['dflt_value']))
             self.assertEqual(12.3, float(resource_rows['total_fooo']['dflt_value']))
