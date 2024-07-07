@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from typing import Union
+
 
 class WorkerResourceDataType(Enum):
     """
@@ -19,3 +21,4 @@ class WorkerResourceDefinition:
     type: WorkerResourceDataType
     description: str
     label: str  # nicer looking user facing name
+    default: Union[float, int] = 0

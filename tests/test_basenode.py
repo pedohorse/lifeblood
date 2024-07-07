@@ -1,5 +1,6 @@
 import os.path
 import random
+import sqlite3
 from unittest import IsolatedAsyncioTestCase
 import tempfile
 from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements, ProcessingResult
@@ -162,3 +163,32 @@ class TestBaseNodes(IsolatedAsyncioTestCase):
             os.close(fd)
             os.unlink(temp_db_path)
         print(f'wedging tests:\n\taccept: {_stat_pass}\n\tdecline: {_stat_fail}')
+
+    def test_resource_definition_simple(self):
+        fd, temp_db_path = tempfile.mkstemp(suffix='_test.db', dir='/dev/shm' if os.path.exists('/dev/shm') else None)
+        try:
+            config = SchedulerConfigProviderOverrides(
+                main_db_location=temp_db_path,
+                resource_definitions=(
+                    WorkerResourceDefinition('fooo', WorkerResourceDataType.GENERIC_FLOAT, '', '', 12.3),
+                    WorkerResourceDefinition('boar', WorkerResourceDataType.GENERIC_INT, '', '', 234),
+                )
+            )
+
+            data_access = DataAccess(config_provider=config)
+
+            # Not the best test, as it tests with implementation-specific defaults
+            # but before data_access is properly separated from scheduler - there's no proper unit testing it separately
+            with sqlite3.connect(temp_db_path) as con:
+                con.row_factory = sqlite3.Row
+                cur = con.execute('PRAGMA table_info(resources)')
+                resource_rows = {x['name']: x for x in cur.fetchall() if x['name'] != 'hwid'}
+                cur.close()
+            self.assertSetEqual({'fooo', 'total_fooo', 'boar', 'total_boar'}, set(resource_rows.keys()))
+            self.assertEqual(12.3, float(resource_rows['fooo']['dflt_value']))
+            self.assertEqual(12.3, float(resource_rows['total_fooo']['dflt_value']))
+            self.assertEqual(234, int(resource_rows['boar']['dflt_value']))
+            self.assertEqual(234, int(resource_rows['total_boar']['dflt_value']))
+        finally:
+            os.close(fd)
+            os.unlink(temp_db_path)

@@ -79,13 +79,15 @@ class DataAccess:
             need_commit = False
             for res_def in config_provider.hardware_resource_definitions():
                 col_type, col_def = {
-                    WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', 0),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
-                    WorkerResourceDataType.GENERIC_INT: ('INTEGER', 0),
-                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', 0),
-                    WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', 0),
+                    WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', float(res_def.default)),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
+                    WorkerResourceDataType.GENERIC_INT: ('INTEGER', int(res_def.default)),
+                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', float(res_def.default)),
+                    WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', int(res_def.default)),
                 }[res_def.type]
                 if res_def.name in resource_rows:  # skip existing
-                    if resource_rows[res_def.name]['type'] != col_type:
+                    # dflt_value is string repr of the number, so we have to convert col_def to compare. not the best way for floating numbers
+                    if resource_rows[res_def.name]['type'] != col_type or resource_rows[res_def.name]['dflt_value'] != str(col_def):
+                        self.__logger.warning(f'existing resource definition changed for "{res_def.name}", recreating, all resource data will be lost')
                         con.execute(f'ALTER TABLE resources DROP COLUMN "{res_def.name}"')
                         con.execute(f'ALTER TABLE resources DROP COLUMN "total_{res_def.name}"')
                     else:
