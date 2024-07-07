@@ -9,9 +9,6 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
 
-__logger = get_logger('worker_resources')
-
-
 __mem_parse_re = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*([BKMGTP]?)\s*$')
 
 
@@ -20,7 +17,7 @@ def _try_parse_mem_spec(s: Union[str, int], default: Optional[int] = None):
         return s
     match = __mem_parse_re.match(s)
     if not match:
-        __logger.warning(f'could not parse "{s}", using default')
+        get_logger('worker_resources').warning(f'could not parse "{s}", using default')
         return default
     bytes_count = float(match.group(1))
     coeff = match.group(2)
@@ -33,7 +30,7 @@ def _try_parse_mem_spec(s: Union[str, int], default: Optional[int] = None):
                  'P': 10**15}
 
     if coeff not in coeff_map:
-        __logger.warning(f'could not parse "{s}", wtf is "{coeff}"? using default')
+        get_logger('worker_resources').warning(f'could not parse "{s}", wtf is "{coeff}"? using default')
         return default
 
     if coeff:
@@ -100,3 +97,8 @@ class HardwareResources:
         for res_name, res in self.__resources.items():
             parts.append(f'{res_name}: {res.value}')
         return f'<hwid={self.hwid}, {", ".join(parts)}>'
+
+    def __eq__(self, other):
+        if not isinstance(other, HardwareResources):
+            return False
+        return self.hwid == other.hwid and self.__resources == other.__resources
