@@ -2,7 +2,7 @@ import os
 from math import sqrt, floor, ceil
 import re
 
-from lifeblood.basenode import BaseNode
+from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.uidata import NodeParameterType
 from lifeblood.processingcontext import ProcessingContext

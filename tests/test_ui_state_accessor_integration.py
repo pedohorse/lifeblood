@@ -12,7 +12,7 @@ from lifeblood.ui_protocol_data import DataNotSet
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from lifeblood.logging import get_logger
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 
 
 def purge_db(testdbpath):

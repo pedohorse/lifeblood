@@ -698,7 +698,7 @@ class ParametersLayoutBase(ParameterHierarchyItem):
                 return layout.parameter(name)
             except ParameterNotFound:
                 continue
-        raise ParameterNotFound(f'parameter {name} not found in layout hierarchy')
+        raise ParameterNotFound(f'parameter "{name}" not found in layout hierarchy')
 
     def visible(self) -> bool:
         return len(self.children()) != 0 and any(x.visible() for x in self.items())

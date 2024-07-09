@@ -1,5 +1,5 @@
 from copy import copy
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
@@ -34,8 +34,8 @@ class Redshift(BaseNodeWithTaskRequirements):
             ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
 
             # ui.parameter('')
-            ui.parameter('worker type').set_hidden(True)
-            ui.parameter('worker type').set_locked(True)
+            ui.parameter('__requirements__.worker_type').set_hidden(True)
+            ui.parameter('__requirements__.worker_type').set_locked(True)
 
     def process_task(self, context) -> ProcessingResult:
         args = context.task_attributes()

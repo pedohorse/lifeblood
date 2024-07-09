@@ -1,6 +1,6 @@
 import sys
 
-from lifeblood.basenode import BaseNode
+from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult, InvocationJob
 from lifeblood.invocationjob import InvocationRequirements
 from lifeblood.enums import NodeParameterType, WorkerType

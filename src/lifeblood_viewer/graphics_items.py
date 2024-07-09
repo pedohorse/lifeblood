@@ -694,7 +694,7 @@ class Node(NetworkItemWithUI):
 
                     menu_items_inv = self.__nodeui_menucache[param_name]['menu_items_inv']
                     menu_order_inv = self.__nodeui_menucache[param_name]['menu_order_inv']
-                    if item.is_readonly():
+                    if item.is_readonly() or item.is_locked():  # TODO: treat locked items somehow different, but for now it's fine
                         imgui.text(menu_items_inv[item.value()])
                         return
                     else:
@@ -702,7 +702,7 @@ class Node(NetworkItemWithUI):
                         if changed:
                             new_item_val = menu_items[menu_order[val]]
                 else:
-                    if item.is_readonly():
+                    if item.is_readonly() or item.is_locked():  # TODO: treat locked items somehow different, but for now it's fine
                         imgui.text(f'{item.value()}')
                         return
                     param_type = item.type()
@@ -776,6 +776,7 @@ class Node(NetworkItemWithUI):
 
             if changed or expr_changed:
                 scene: QGraphicsImguiScene = self.scene()
+                # TODO: op below may fail, so callback to display error should be provided
                 scene.change_node_parameter(self.get_id(), item,
                                             new_item_val if changed else ...,
                                             new_item_expression if expr_changed else ...)

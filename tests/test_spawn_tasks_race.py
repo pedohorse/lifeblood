@@ -1,5 +1,6 @@
 import asyncio
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
+from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
 from lifeblood_testing_common.common import chain
 from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
@@ -12,7 +13,8 @@ class TestSpawnTasksRace(IsolatedAsyncioTestCaseWithDb):
         which in reality can happen for example in _awaiter (where transaction is passed to spawn),
         and spawn called by message server for example.
         """
-        sched = Scheduler(self.db_file, do_broadcasting=False, node_data_provider=None, node_serializers=[None])
+        config = SchedulerConfigProviderOverrides(main_db_location=self.db_file, do_broadcast=False)
+        sched = Scheduler(scheduler_config_provider=config, node_data_provider=None, node_serializers=[None])
         async with sched.data_access.data_connection() as con:
             await con.execute('BEGIN IMMEDIATE')
             task1 = asyncio.create_task(sched.spawn_tasks([NewTask('foo1', 1, None, {})]))

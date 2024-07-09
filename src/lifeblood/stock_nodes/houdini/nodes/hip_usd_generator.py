@@ -1,5 +1,5 @@
 from copy import copy
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.processingcontext import ProcessingContext
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment

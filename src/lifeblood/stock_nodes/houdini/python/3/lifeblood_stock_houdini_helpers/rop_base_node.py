@@ -1,4 +1,4 @@
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
@@ -31,8 +31,8 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
             ui.add_parameter('attrs', 'attributes to copy to children', NodeParameterType.STRING, '')
 
-            ui.parameter('worker type').set_hidden(True)
-            ui.parameter('worker type').set_locked(True)
+            ui.parameter('__requirements__.worker_type').set_hidden(True)
+            ui.parameter('__requirements__.worker_type').set_locked(True)
 
     def _take_parm_name(self, context) -> str:
         raise NotImplementedError()

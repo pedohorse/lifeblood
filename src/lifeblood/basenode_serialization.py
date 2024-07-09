@@ -1,7 +1,6 @@
 import asyncio
 from .basenode import BaseNode
 from .node_dataprovider_base import NodeDataProvider
-from .nodegraph_holder_base import NodeGraphHolderBase
 
 from typing import Iterable, List, Optional, Tuple
 
@@ -31,11 +30,11 @@ class NodeSerializerBase:
     def serialize_state_only(self, node: BaseNode) -> Optional[bytes]:
         raise NotImplementedError()
 
-    def deserialize(self, parent: NodeGraphHolderBase, node_id: int, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
+    def deserialize(self, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
         raise NotImplementedError()
 
-    async def deserialize_async(self, parent: NodeGraphHolderBase, node_id: int, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
-        return await asyncio.get_event_loop().run_in_executor(None, self.deserialize, parent, node_id, node_data_provider, data, state)
+    async def deserialize_async(self, node_data_provider: NodeDataProvider, data: bytes, state: Optional[bytes]) -> BaseNode:
+        return await asyncio.get_event_loop().run_in_executor(None, self.deserialize, node_data_provider, data, state)
 
     async def serialize_async(self, node: BaseNode) -> Tuple[bytes, Optional[bytes]]:
         return await asyncio.get_event_loop().run_in_executor(None, self.serialize, node)

@@ -2,6 +2,7 @@ import os
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.scheduler.data_access import DataAccess, TaskSpawnData
 from lifeblood.enums import TaskState
+from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
 
 
 class TestTaskBlocking(IsolatedAsyncioTestCase):
@@ -14,7 +15,7 @@ class TestTaskBlocking(IsolatedAsyncioTestCase):
             os.unlink(self.db_file)
 
     async def test_simple(self):
-        data_access = DataAccess(self.db_file, 60)
+        data_access = DataAccess(config_provider=SchedulerConfigProviderOverrides(self.db_file, 60))
         node_id = await data_access.create_node('null', 'test node')
         task_id = await data_access.create_task(TaskSpawnData('test task', None, {}, TaskState.WAITING, node_id, 'main', None))
 
@@ -60,7 +61,7 @@ class TestTaskBlocking(IsolatedAsyncioTestCase):
         self.assertTrue(await data_access.is_task_blocked(task_id))
 
     async def test_reset(self):
-        data_access = DataAccess(self.db_file, 60)
+        data_access = DataAccess(config_provider=SchedulerConfigProviderOverrides(self.db_file, 60))
         node_id = await data_access.create_node('null', 'test node')
         task_id = await data_access.create_task(TaskSpawnData('test task', None, {}, TaskState.WAITING, node_id, 'main', None))
 

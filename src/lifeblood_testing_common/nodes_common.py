@@ -7,13 +7,15 @@ import tempfile
 from pathlib import Path
 import sqlite3
 from unittest import mock, IsolatedAsyncioTestCase
+import lifeblood
 from lifeblood.attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from lifeblood.enums import TaskState
 from lifeblood.db_misc import sql_init_script
-from lifeblood.basenode import BaseNode, ProcessingResult
+from lifeblood.basenode import BaseNode
+from lifeblood.nodethings import ProcessingResult
 from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.scheduler import Scheduler
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.worker import Worker
 from lifeblood.invocationjob import InvocationJob, Environment
 from lifeblood.scheduler.pinger import Pinger
@@ -25,7 +27,13 @@ from lifeblood.environment_resolver import EnvironmentResolverArguments, BaseSim
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Union
 
 
-plugin_data_provider = PluginNodeDataProvider()
+# TODO: fix PluginNodeDataProvider's multiple instance problem and remove this global usage
+plugin_data_provider = PluginNodeDataProvider(
+    plugin_paths=(
+        (Path(lifeblood.__file__).parent / 'stock_nodes', 'stock'),
+        (Path(lifeblood.__file__).parent / 'core_nodes', 'core'),
+    )
+)
 
 
 def create_node(node_type: str, node_name: str, scheduler, node_id):
@@ -89,7 +97,7 @@ class PseudoTask:
         self.__task_dict['node_input_name'] = self.__input_name
 
     def get_context_for(self, node: BaseNode) -> ProcessingContext:
-        return ProcessingContext(node, self.task_dict())
+        return ProcessingContext(node, self.task_dict(), {})
 
     def task_dict(self) -> dict:
         return {**self.__task_dict, **{
@@ -198,7 +206,8 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                                        task_done_logic: Optional[Callable] = None,
                                        runcode: Optional[str] = None,
                                        worker_count: int = 1,
-                                       tasks_to_complete=None):
+                                       tasks_to_complete=None,
+                                       **kwargs):
         """
         generic logic runner helper.
         this will start scheduler and worker,
@@ -219,7 +228,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             ppatch.return_value = mock.AsyncMock(Pinger)
             wppatch.return_value = mock.AsyncMock()
 
-            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
+            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, **kwargs)
             await sched.start()
 
             workers = []
@@ -327,7 +336,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                             'outimage': out_exr_path,
                             'frames': [1, 2, 3]
                         }
-                        res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(start_attrs)}))
+                        res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(start_attrs)}, {}))
 
                         ij = res.invocation_job
                         self.assertTrue(ij is not None)
@@ -357,7 +366,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
                             **start_attrs,
                             **updated_attrs
-                        })}))
+                        })}, {}))
                         if res.attributes_to_set:
                             updated_attrs.update(res.attributes_to_set)
 
@@ -427,7 +436,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     for param, val in params.items():
                         node.set_param_value(param, val)
 
-                res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(task_attrs)}))
+                res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(task_attrs)}, {}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
@@ -462,7 +471,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
                     **task_attrs,
                     **updated_attrs
-                })}))
+                })}, {}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 

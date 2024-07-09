@@ -4,9 +4,7 @@ import time
 from .. import logging
 from ..worker_messsage_processor import WorkerControlClient
 from ..enums import WorkerState, InvocationState, WorkerPingState, WorkerPingReply
-from ..ui_protocol_data import TaskDelta
 from .scheduler_component_base import SchedulerComponentBase
-from ..config import get_config
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
 
@@ -17,15 +15,14 @@ if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smt
 
 
 class Pinger(SchedulerComponentBase):
-    def __init__(self, scheduler: "Scheduler"):
+    def __init__(
+            self,
+            scheduler: "Scheduler",
+    ):
         super().__init__(scheduler)
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
-        config = get_config('scheduler')
 
-        self.__ping_interval = config.get_option_noasync('scheduler.pinger.ping_interval', 10)  # interval for active workers (workers doing work)
-        self.__ping_idle_interval = config.get_option_noasync('scheduler.pinger.ping_idle_interval', 30)  # interval for idle workers
-        self.__ping_off_interval = config.get_option_noasync('scheduler.pinger.ping_off_interval', 60)  # interval for off/errored workers  (not really used since workers need to report back first)
-        self.__dormant_mode_ping_interval_multiplier = config.get_option_noasync('scheduler.pinger.dormant_ping_multiplier', 5)
+        self.__ping_interval, self.__ping_idle_interval, self.__ping_off_interval, self.__dormant_mode_ping_interval_multiplier = self.scheduler.config_provider.ping_intervals()
         self.__ping_interval_mult = 1
 
     def _main_task(self):

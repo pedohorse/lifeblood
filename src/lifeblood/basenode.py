@@ -1,12 +1,10 @@
 import asyncio
-import re
 from copy import deepcopy
 from typing import Dict, Optional, Any
 from .nodethings import ProcessingResult
 from .uidata import NodeUi, ParameterNotFound, Parameter
 from .processingcontext import ProcessingContext
 from .logging import get_logger
-from .enums import NodeParameterType, WorkerType
 from .plugin_info import PluginInfo, empty_plugin_info
 from .nodegraph_holder_base import NodeGraphHolderBase
 
@@ -55,6 +53,9 @@ class BaseNode:
     def set_parent(self, graph_holder: NodeGraphHolderBase, node_id_in_graph: int):
         self.__parent = graph_holder
         self.__parent_nid = node_id_in_graph
+
+    def parent(self) -> Optional[NodeGraphHolderBase]:
+        return self.__parent
 
     def logger(self) -> "Logger":
         return self.__logger
@@ -167,11 +168,11 @@ class BaseNode:
     #         #  this may also apply to _ui_changed above, but nodes really SHOULD NOT change their own parameters during processing
     #         asyncio.get_event_loop().create_task(self.__parent.node_reports_changes_needs_saving(self.__parent_nid))
 
-    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
+    def _process_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!
         #  TODO: , in case threads do l1---r1    - release2 WILL leave lock in locked state forever, as it remembered it at l2
         #  TODO:                         l2---r2
-        return self.process_task(ProcessingContext(self, task_dict))
+        return self.process_task(ProcessingContext(self, task_dict, node_config))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -182,9 +183,9 @@ class BaseNode:
         """
         raise NotImplementedError()
 
-    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
+    def _postprocess_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  #TODO: read comment for _process_task_wrapper
-        return self.postprocess_task(ProcessingContext(self, task_dict))
+        return self.postprocess_task(ProcessingContext(self, task_dict, node_config))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -252,96 +253,3 @@ class BaseNode:
         restore state as given by get_state
         """
         pass
-
-
-class BaseNodeWithTaskRequirements(BaseNode):
-    def __init__(self, name: str):
-        super(BaseNodeWithTaskRequirements, self).__init__(name)
-        ui = self.get_ui()
-        with ui.initializing_interface_lock():
-            with ui.collapsable_group_block('main worker requirements', 'worker requirements'):
-                ui.add_parameter('priority adjustment', 'priority adjustment', NodeParameterType.FLOAT, 0).set_slider_visualization(-100, 100)
-                with ui.parameters_on_same_line_block():
-                    ui.add_parameter('worker cpu cost', 'min <cpu (cores)> preferred', NodeParameterType.FLOAT, 1.0).set_value_limits(value_min=0)
-                    ui.add_parameter('worker cpu cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-                with ui.parameters_on_same_line_block():
-                    ui.add_parameter('worker mem cost', 'min <memory (GBs)> preferred', NodeParameterType.FLOAT, 0.5).set_value_limits(value_min=0)
-                    ui.add_parameter('worker mem cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-                ui.add_parameter('worker groups', 'groups (space or comma separated)', NodeParameterType.STRING, '')
-                ui.add_parameter('worker type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
-                    .add_menu((('standard', WorkerType.STANDARD.value),
-                               ('scheduler helper', WorkerType.SCHEDULER_HELPER.value)))
-                with ui.collapsable_group_block('gpu main worker requirements', 'gpu requirements'):
-                    with ui.parameters_on_same_line_block():
-                        ui.add_parameter('worker gpu cost', 'min <gpus> preferred', NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-                        ui.add_parameter('worker gpu cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-                    with ui.parameters_on_same_line_block():
-                        ui.add_parameter('worker gpu mem cost', 'min <memory (GBs)> preferred', NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-                        ui.add_parameter('worker gpu mem cost preferred', None, NodeParameterType.FLOAT, 0.0).set_value_limits(value_min=0)
-
-    def __apply_requirements(self, task_dict: dict, result: ProcessingResult):
-        if result.invocation_job is not None:
-            context = ProcessingContext(self, task_dict)
-            raw_groups = context.param_value('worker groups').strip()
-            reqs = result.invocation_job.requirements()
-            if raw_groups != '':
-                reqs.add_groups(re.split(r'[ ,]+', raw_groups))
-            reqs.set_min_cpu_count(context.param_value('worker cpu cost'))
-            reqs.set_min_memory_bytes(context.param_value('worker mem cost') * 10**9)
-            reqs.set_min_gpu_count(context.param_value('worker gpu cost'))
-            reqs.set_min_gpu_memory_bytes(context.param_value('worker gpu mem cost') * 10**9)
-            # preferred
-            pref_cpu_count = context.param_value('worker cpu cost preferred')
-            pref_mem_bytes = context.param_value('worker mem cost preferred') * 10**9
-            pref_gpu_count = context.param_value('worker gpu cost preferred')
-            pref_gpu_mem_bytes = context.param_value('worker gpu mem cost preferred') * 10**9
-            if pref_cpu_count > 0:
-                reqs.set_preferred_cpu_count(pref_cpu_count)
-            if pref_mem_bytes > 0:
-                reqs.set_preferred_memory_bytes(pref_mem_bytes)
-            if pref_gpu_count > 0:
-                reqs.set_preferred_gpu_count(pref_gpu_count)
-            if pref_gpu_mem_bytes > 0:
-                reqs.set_preferred_gpu_memory_bytes(pref_gpu_mem_bytes)
-
-            reqs.set_worker_type(WorkerType(context.param_value('worker type')))
-            result.invocation_job.set_requirements(reqs)
-            result.invocation_job.set_priority(context.param_value('priority adjustment'))
-        return result
-
-    def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-        result = super(BaseNodeWithTaskRequirements, self)._process_task_wrapper(task_dict)
-        return self.__apply_requirements(task_dict, result)
-
-    def _postprocess_task_wrapper(self, task_dict) -> ProcessingResult:
-        result = super(BaseNodeWithTaskRequirements, self)._postprocess_task_wrapper(task_dict)
-        return self.__apply_requirements(task_dict, result)
-
-
-# class BaseNodeWithEnvironmentRequirements(BaseNode):
-#     def __init__(self, name: str):
-#         super(BaseNodeWithEnvironmentRequirements, self).__init__(name)
-#         ui = self.get_ui()
-#         with ui.initializing_interface_lock():
-#             with ui.collapsable_group_block('main environment resolver', 'task environment resolver additional requirements'):
-#                 ui.add_parameter('main env resolver name', 'resolver name', NodeParameterType.STRING, 'StandardEnvironmentResolver')
-#                 with ui.multigroup_parameter_block('main env resolver arguments'):
-#                     with ui.parameters_on_same_line_block():
-#                         type_param = ui.add_parameter('main env resolver arg type', '', NodeParameterType.INT, 0)
-#                         type_param.add_menu((('int', NodeParameterType.INT.value),
-#                                              ('bool', NodeParameterType.BOOL.value),
-#                                              ('float', NodeParameterType.FLOAT.value),
-#                                              ('string', NodeParameterType.STRING.value),
-#                                              ('json', -1)
-#                                              ))
-#
-#                         ui.add_parameter('main env resolver arg svalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', NodeParameterType.STRING.value)
-#                         ui.add_parameter('main env resolver arg ivalue', 'val', NodeParameterType.INT, 0).append_visibility_condition(type_param, '==', NodeParameterType.INT.value)
-#                         ui.add_parameter('main env resolver arg fvalue', 'val', NodeParameterType.FLOAT, 0.0).append_visibility_condition(type_param, '==', NodeParameterType.FLOAT.value)
-#                         ui.add_parameter('main env resolver arg bvalue', 'val', NodeParameterType.BOOL, False).append_visibility_condition(type_param, '==', NodeParameterType.BOOL.value)
-#                         ui.add_parameter('main env resolver arg jvalue', 'val', NodeParameterType.STRING, '').append_visibility_condition(type_param, '==', -1)
-#
-#     def _process_task_wrapper(self, task_dict) -> ProcessingResult:
-#         result = super(BaseNodeWithEnvironmentRequirements, self)._process_task_wrapper(task_dict)
-#         result.invocation_job.environment_resolver_arguments()
-#         return result

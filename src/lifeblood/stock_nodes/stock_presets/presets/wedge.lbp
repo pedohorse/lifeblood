@@ -140,8 +140,8 @@
             "type": "hip_driver_renderer",
             "name": "hip_driver_renderer Hykap copy",
             "parameters": {
-                "priority adjustment": {
-                    "name": "priority adjustment",
+                "__requirements__.priority_adjustment": {
+                    "name": "__requirements__.priority_adjustment",
                     "type": {
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
@@ -150,8 +150,8 @@
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
-                "worker cpu cost": {
-                    "name": "worker cpu cost",
+                "__requirements__.f_min_res_0": {
+                    "name": "__requirements__.f_min_res_0",
                     "type": {
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
@@ -160,8 +160,8 @@
                     "expr": "task['requirements']['cpu']['min']",
                     "__dataclass__": "ParamData"
                 },
-                "worker cpu cost preferred": {
-                    "name": "worker cpu cost preferred",
+                "__requirements__.f_pref_res_0": {
+                    "name": "__requirements__.f_pref_res_0",
                     "type": {
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
@@ -170,8 +170,8 @@
                     "expr": "task['requirements']['cpu']['pref']",
                     "__dataclass__": "ParamData"
                 },
-                "worker mem cost": {
-                    "name": "worker mem cost",
+                "__requirements__.f_min_res_1": {
+                    "name": "__requirements__.f_min_res_1",
                     "type": {
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
@@ -180,8 +180,8 @@
                     "expr": "task['requirements']['cmem']['min']",
                     "__dataclass__": "ParamData"
                 },
-                "worker mem cost preferred": {
-                    "name": "worker mem cost preferred",
+                "__requirements__.f_pref_res_1": {
+                    "name": "__requirements__.f_pref_res_1",
                     "type": {
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
@@ -190,8 +190,8 @@
                     "expr": "task['requirements']['cmem']['pref']",
                     "__dataclass__": "ParamData"
                 },
-                "worker groups": {
-                    "name": "worker groups",
+                "__requirements__.worker_groups": {
+                    "name": "__requirements__.worker_groups",
                     "type": {
                         "value": 3,
                         "__NodeParameterType__": "==3*E=="
@@ -200,8 +200,8 @@
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
-                "worker type": {
-                    "name": "worker type",
+                "__requirements__.worker_type": {
+                    "name": "__requirements__.worker_type",
                     "type": {
                         "value": 0,
                         "__NodeParameterType__": "==3*E=="

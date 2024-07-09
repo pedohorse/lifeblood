@@ -12,7 +12,7 @@ import time
 import tempfile
 from . import logging
 from .nethelpers import get_addr_to, get_localhost, get_hostname
-from .net_classes import WorkerResources
+from .hardware_resources import HardwareResources
 from .worker_metadata import WorkerMetadata
 from .exceptions import WorkerNotAvailable, AlreadyRunning, \
     InvocationMessageWrongInvocationId, InvocationMessageAddresseeTimeout, InvocationCancelled
@@ -91,10 +91,12 @@ class Worker:
         self.__local_invocation_server_address_string: str = ''
 
         self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
-        self.__my_resources = WorkerResources(cpu_count=config.get_option_noasync('resources.cpu_count'),
-                                              cpu_mem=config.get_option_noasync('resources.cpu_mem'),
-                                              gpu_count=config.get_option_noasync('resources.gpu_count'),
-                                              gpu_mem=config.get_option_noasync('resources.gpu_mem'))
+        self.__my_resources = HardwareResources(
+            cpu_count=config.get_option_noasync('resources.cpu_count') or psutil.cpu_count(),
+            cpu_mem=config.get_option_noasync('resources.cpu_mem') or psutil.virtual_memory().total,
+            gpu_count=config.get_option_noasync('resources.gpu_count') or 0,
+            gpu_mem=config.get_option_noasync('resources.gpu_mem') or 0,
+        )
         self.__task_changing_state_lock = asyncio.Lock()
         self.__task_switching_event = asyncio.Event()  # this will signal invocation message waiters to cancel what they are doing
         self.__stop_lock = threading.Lock()

@@ -1,4 +1,4 @@
-from lifeblood.basenode import BaseNode
+from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.enums import NodeParameterType
 from lifeblood.taskspawn import TaskSpawn

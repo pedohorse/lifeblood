@@ -1,4 +1,3 @@
-import sys
 import os
 from pathlib import Path
 import time
@@ -12,18 +11,17 @@ from aiorwlock import RWLock
 from contextlib import asynccontextmanager
 
 from .. import logging
-from .. import paths
 from ..nodegraph_holder_base import NodeGraphHolderBase
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
 from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from ..scheduler_ui_protocol import SchedulerUiProtocol
-from ..invocationjob import InvocationJob
+from ..hardware_resources import HardwareResources
+from ..invocationjob import InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import WorkerPool
 from ..nethelpers import get_broadcast_addr_for, all_interfaces
-from ..net_classes import WorkerResources
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
 from ..basenode import BaseNode
@@ -32,13 +30,12 @@ from ..node_dataprovider_base import NodeDataProvider
 from ..basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToDeserialize
 from ..enums import WorkerState, WorkerPingState, TaskState, InvocationState, WorkerType, \
     SchedulerMode, TaskGroupArchivedState
-from ..config import get_config
-from ..defaults import scheduler_port as default_scheduler_port, ui_port as default_ui_port, scheduler_message_port as default_scheduler_message_port
 from .. import aiosqlite_overlay
 from ..ui_protocol_data import TaskData, TaskDelta, IncompleteInvocationLogData, InvocationLogData
 
 from ..net_messages.address import DirectAddress, AddressChain
 from ..scheduler_message_processor import SchedulerMessageProcessor
+from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
@@ -50,22 +47,15 @@ from typing import Optional, Any, Tuple, List, Iterable, Union, Dict
 
 
 class Scheduler(NodeGraphHolderBase):
-    def __init__(self, db_file_path, *,
+    def __init__(self, *,
+                 scheduler_config_provider: SchedulerConfigProviderBase,
                  node_data_provider: NodeDataProvider,
                  node_serializers: List[NodeSerializerBase],
-                 do_broadcasting: Optional[bool] = None,
-                 broadcast_interval: Optional[int] = None,
-                 helpers_minimal_idle_to_ensure=1,
-                 server_addr: Optional[Tuple[str, int, int]] = None,
-                 server_ui_addr: Optional[Tuple[str, int]] = None):
+                 ):
         """
         TODO: add a docstring
 
-        :param db_file_path:
-        :param do_broadcasting:
-        :param helpers_minimal_idle_to_ensure:
-        :param server_addr:
-        :param server_ui_addr:
+        :param scheduler_config_provider:
         """
         self.__node_data_provider: NodeDataProvider = node_data_provider
         if len(node_serializers) < 1:
@@ -76,8 +66,7 @@ class Scheduler(NodeGraphHolderBase):
         self.__node_objects: Dict[int, BaseNode] = {}
         self.__node_objects_locks: Dict[int, RWLock] = {}
         self.__node_objects_creation_locks: Dict[int, asyncio.Lock] = {}
-        config = get_config('scheduler')
-        self.__config = config
+        self.__config_provider: SchedulerConfigProviderBase = scheduler_config_provider
 
         # this lock will prevent tasks from being reported cancelled and done at the same exact time should that ever happen
         # this lock is overkill already, but we can make it even more overkill by using set of locks for each invoc id
@@ -86,22 +75,18 @@ class Scheduler(NodeGraphHolderBase):
 
         self.__all_components = None
         self.__started_event = asyncio.Event()
-
-        if db_file_path is None:
-            db_file_path = config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
-        if not db_file_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
-            db_file_path = os.path.realpath(os.path.expanduser(db_file_path))
-
-        self.__logger.debug(f'starting scheduler with database: {db_file_path}')
-
-        self.db_path = db_file_path
-        self.data_access: DataAccess = DataAccess(db_file_path, 30)
+        
+        self.__db_path = scheduler_config_provider.main_database_location()
+        if not self.__db_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
+            self.__db_path = os.path.realpath(os.path.expanduser(self.__db_path))
+        self.__logger.debug(f'starting scheduler with database: {self.__db_path}')
+        self.data_access: DataAccess = DataAccess(
+            config_provider=self.__config_provider,
+        )
         ##
 
-        self.__use_external_log = config.get_option_noasync('core.database.store_logs_externally', False)
-        self.__external_log_location: Optional[Path] = config.get_option_noasync('core.database.store_logs_externally_location', None)
-        if self.__use_external_log and not self.__external_log_location:
-            raise SchedulerConfigurationError('if store_logs_externally is set - store_logs_externally_location must be set too')
+        self.__use_external_log = self.__config_provider.external_log_location() is not None
+        self.__external_log_location: Optional[Path] = self.__config_provider.external_log_location()
         if self.__use_external_log:
             external_log_path = Path(self.__use_external_log)
             if external_log_path.exists() and external_log_path.is_file():
@@ -119,33 +104,12 @@ class Scheduler(NodeGraphHolderBase):
         self.__ui_address = None
         self.__legacy_command_server_address = None
 
-        if server_addr is not None:
-            server_ip, legacy_server_port, message_server_port = server_addr
-        else:
-            legacy_server_port = config.get_option_noasync(
-                'core.legacy_server_port',
-                config.get_option_noasync(
-                    'core.server_port',
-                    default_scheduler_port()
-                )
-            )
-            message_server_port = config.get_option_noasync('core.server_message_port', default_scheduler_message_port())
-            server_ip = config.get_option_noasync('core.server_ip', '0.0.0.0')  # use all ifaces by default
-            
-        if server_ip == '0.0.0.0':  # message_processor address must be addressable, no catchall
-            for iface_ip in all_interfaces():
-                self.__message_processor_addresses.append(DirectAddress.from_host_port(iface_ip, message_server_port))
-        else:
-            self.__message_processor_addresses.append(DirectAddress.from_host_port(server_ip, message_server_port))
-        self.__legacy_command_server_address = (server_ip, legacy_server_port)
-            
-        if server_ui_addr is None:
-            self.__ui_address = (
-                config.get_option_noasync('core.ui_ip', server_ip or '0.0.0.0'),
-                config.get_option_noasync('core.ui_port', default_ui_port())
-            )
-        else:
-            self.__ui_address = server_ui_addr
+        legacy_server_ip, legacy_server_port = self.__config_provider.legacy_server_address()  # TODO: this CAN be None
+        for message_server_ip, message_server_port in self.__config_provider.server_message_addresses():
+            self.__message_processor_addresses.append(DirectAddress.from_host_port(message_server_ip, message_server_port))
+        self.__legacy_command_server_address = (legacy_server_ip, legacy_server_port)
+
+        self.__ui_address = self.__config_provider.server_ui_address()
 
         self.__stop_event = asyncio.Event()
         self.__server_closing_task = None
@@ -155,21 +119,21 @@ class Scheduler(NodeGraphHolderBase):
         self.__message_processor: Optional[SchedulerMessageProcessor] = None
         self.__ui_server = None
         self.__ui_server_coro_args = {'protocol_factory': self._ui_protocol_factory, 'host': self.__ui_address[0], 'port': self.__ui_address[1], 'backlog': 16}
-        self.__legacy_server_coro_args = {'protocol_factory': self._scheduler_protocol_factory, 'host': server_ip, 'port': legacy_server_port, 'backlog': 16}
+        self.__legacy_server_coro_args = {'protocol_factory': self._scheduler_protocol_factory, 'host': legacy_server_ip, 'port': legacy_server_port, 'backlog': 16}
 
-        if do_broadcasting is None:
-            do_broadcasting = config.get_option_noasync('core.broadcast', True)
-        if broadcast_interval is None or broadcast_interval <= 0:
-            broadcast_interval = config.get_option_noasync('core.broadcast_interval', 10)
-        self.__do_broadcasting = do_broadcasting
-        self.__broadcasting_interval = broadcast_interval
+        self.__do_broadcasting = self.__config_provider.broadcast_interval() is not None
+        self.__broadcasting_interval = self.__config_provider.broadcast_interval() or 0
         self.__broadcasting_servers = []
 
         self.__worker_pool = None
-        self.__worker_pool_helpers_minimal_idle_to_ensure = helpers_minimal_idle_to_ensure
+        self.__worker_pool_helpers_minimal_idle_to_ensure = self.__config_provider.scheduler_helpers_minimal()
 
         self.__event_loop = asyncio.get_running_loop()
         assert self.__event_loop is not None, 'Scheduler MUST be created within working event loop, in the main thread'
+
+    @property
+    def config_provider(self) -> SchedulerConfigProviderBase:
+        return self.__config_provider
 
     def get_event_loop(self):
         return self.__event_loop
@@ -276,17 +240,18 @@ class Scheduler(NodeGraphHolderBase):
                     try:
                         for serializer in self.__node_serializers:
                             try:
-                                node_object = await serializer.deserialize_async(self, node_id, self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
+                                node_object = await serializer.deserialize_async(self.__node_data_provider, node_row['node_object'], node_row['node_object_state'])
                                 break
                             except IncompatibleDeserializationMethod as e:
                                 self.__logger.warning(f'deserialization method failed with {e} ({serializer})')
                                 continue
                         else:
                             raise FailedToDeserialize(f'node entry {node_id} has unknown serialization method')
+                        node_object.set_parent(self, node_id)
                         self.__node_objects[node_id] = node_object
                         return self.__node_objects[node_id]
                     except FailedToDeserialize:
-                        if self.__config.get_option_noasync('core.ignore_node_deserialization_failures', False):
+                        if self.__config_provider.ignore_node_deserialization_failures():
                             pass  # ignore errors, recreate node
                         else:
                             raise
@@ -803,7 +768,9 @@ class Scheduler(NodeGraphHolderBase):
     #
     # add new worker to db
     async def add_worker(
-            self, addr: str, worker_type: WorkerType, worker_resources: WorkerResources,  # TODO: all resource should also go here
+            # TODO: WorkerResources (de)serialization
+            # TODO: Worker actually passing new WorkerResources on hello
+            self, addr: str, worker_type: WorkerType, worker_resources: HardwareResources,  # TODO: all resource should also go here
             *,
             assume_active: bool = True,
             worker_metadata: WorkerMetadata):
@@ -877,27 +844,28 @@ class Scheduler(NodeGraphHolderBase):
                 #                   '(?, ?, ?)',
                 #                   (worker_id, tstamp, ping_state))
 
+            resource_fields = tuple(x.name for x in self.__config_provider.hardware_resource_definitions())
+            # checks
+            for field in resource_fields:
+                if field not in worker_resources:
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) does not declare expected resource "{field}", assume value=0')
+            for res_name, _ in worker_resources.items():
+                if res_name not in resource_fields:
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) declares resource "{res_name}" unknown to the scheduler')
+
             await con.execute('INSERT INTO resources '
-                              '(hwid, cpu_count, total_cpu_count, '
-                              'cpu_mem, total_cpu_mem, '
-                              'gpu_count, total_gpu_count, '
-                              'gpu_mem, total_gpu_mem) '
-                              'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
-                              'ON CONFLICT(hwid) DO UPDATE SET '
-                              'cpu_count=excluded.cpu_count, total_cpu_count=excluded.total_cpu_count, '
-                              'cpu_mem=excluded.cpu_mem, total_cpu_mem=excluded.total_cpu_mem, '
-                              'gpu_count=excluded.gpu_count, total_gpu_count=excluded.total_gpu_count, '
-                              'gpu_mem=excluded.gpu_mem, total_gpu_mem=excluded.total_gpu_mem',
+                              '(hwid, ' +
+                              ', '.join(f'{field}, total_{field}' for field in resource_fields) +
+                              ') '
+                              'VALUES (?' + ', ?'*(2*len(resource_fields)) + ') '
+                              'ON CONFLICT(hwid) DO UPDATE SET ' +
+                              ', '.join(f'"{field}"=excluded.{field}, "total_{field}"=excluded.total_{field}' for field in resource_fields)
+                              ,
                               (worker_resources.hwid,
-                               worker_resources.cpu_count,
-                               worker_resources.total_cpu_count,
-                               worker_resources.cpu_mem,
-                               worker_resources.total_cpu_mem,
-                               worker_resources.gpu_count,
-                               worker_resources.total_gpu_count,
-                               worker_resources.gpu_mem,
-                               worker_resources.total_gpu_mem)
-                               )
+                               *(x for field in resource_fields for x in (
+                                   (worker_resources[field].value, worker_resources[field].value) if field in worker_resources else (0, 0))
+                                 ))
+                              )
             await self._update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
             self.data_access.set_worker_metadata(worker_resources.hwid, worker_metadata)
             await con.commit()
@@ -909,7 +877,7 @@ class Scheduler(NodeGraphHolderBase):
     #  or when scheduler picked worker and about to run this, which will lead to inconsistency warning
     #  NOTE!: so far it's always called from a STARTED transaction, so there should not be reentry possible
     #  But that is not enforced right now, easy to make mistake
-    async def _update_worker_resouce_usage(self, worker_id: int, resources: Optional[dict] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
+    async def _update_worker_resouce_usage(self, worker_id: int, resources: Optional[Requirements] = None, *, hwid=None, connection: aiosqlite.Connection) -> bool:
         """
         updates resource information based on new worker resources usage
         as part of ongoing transaction
@@ -921,7 +889,8 @@ class Scheduler(NodeGraphHolderBase):
         :return: if commit is needed on connection (if db set operation happened)
         """
         assert connection.in_transaction, 'expectation failure'
-        resource_fields = ('cpu_count', 'cpu_mem', 'gpu_count', 'gpu_mem')
+        resource_definitions = self.__config_provider.hardware_resource_definitions()
+        resource_fields = tuple(x.name for x in resource_definitions)
 
         workers_resources = self.data_access.mem_cache_workers_resources
         if hwid is None:
@@ -954,15 +923,14 @@ class Scheduler(NodeGraphHolderBase):
         else:
             workers_resources[worker_id] = {}
             for field in resource_fields:
-                if field not in resources:
+                if field not in resources.resources:
                     continue
-                if available_res[field] < resources[field]:
-                    raise NotEnoughResources(f'{field}: {resources[field]} out of {available_res[field]}')
+                if available_res[field] < resources.resources[field].min:
+                    raise NotEnoughResources(f'{field}: {resources.resources[field].min} out of {available_res[field]}')
                 # so we take preferred amount of resources (or minimum if pref not set), but no more than available
                 # if preferred is lower than min - it's ignored
                 workers_resources[worker_id][field] = min(available_res[field],
-                                                          max(resources.get(f'pref_{field}', resources[field]),
-                                                              resources[field]))
+                                                          max(resources.resources[field].pref, resources.resources[field].min))
                 available_res[field] -= workers_resources[worker_id][field]
 
             workers_resources[worker_id]['hwid'] = hwid  # just to ensure it was not overriden

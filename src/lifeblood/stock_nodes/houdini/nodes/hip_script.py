@@ -1,4 +1,4 @@
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
@@ -45,8 +45,8 @@ class HipScript(BaseNodeWithTaskRequirements):
                 ui.add_parameter('save hip path', '', NodeParameterType.STRING, '')\
                     .append_visibility_condition(save_hip, '==', True)
 
-            ui.parameter('worker type').set_hidden(True)
-            ui.parameter('worker type').set_locked(True)
+            ui.parameter('__requirements__.worker_type').set_hidden(True)
+            ui.parameter('__requirements__.worker_type').set_locked(True)
 
     def process_task(self, context) -> ProcessingResult:
         script = 'import os, hou\n'

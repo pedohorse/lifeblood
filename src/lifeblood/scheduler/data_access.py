@@ -7,17 +7,18 @@ from dataclasses import dataclass
 from ..attribute_serialization import serialize_attributes
 from ..db_misc import sql_init_script
 from ..expiring_collections import ExpiringValuesSetMap
-from ..config import get_config
 from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
+from ..scheduler_config_provider_base import SchedulerConfigProviderBase
+from ..worker_resource_definition import WorkerResourceDataType
 
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
-SCHEDULER_DB_FORMAT_VERSION = 2
+SCHEDULER_DB_FORMAT_VERSION = 3
 
 
 @dataclass
@@ -41,10 +42,14 @@ class TaskSpawnData:
 
 
 class DataAccess:
-    def __init__(self, db_path, db_connection_timeout):
+    def __init__(
+            self,
+            *,
+            config_provider: SchedulerConfigProviderBase
+    ):
         self.__logger = get_logger('scheduler.data_access')
-        self.db_path: str = db_path
-        self.db_timeout: int = db_connection_timeout
+        self.__db_path: str = config_provider.main_database_location()
+        self.__db_timeout: float = config_provider.main_database_connection_timeout()
 
         # "public" members
         self.mem_cache_workers_resources: dict = {}
@@ -56,14 +61,16 @@ class DataAccess:
         # on certain submission errors we might want to ban hwid for some time, as it can be assumed
         # that consecutive submission attempts will result in the same error (like package resolution error)
         self.__banned_hwids_per_task: ExpiringValuesSetMap = ExpiringValuesSetMap()
-        self.__ban_time = get_config('scheduler').get_option_noasync('data_access.hwid_ban_timeout', 10)
+        self.__ban_time = config_provider.hardware_ban_timeout()
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
         # ensure database is initialized
-        with sqlite3.connect(db_path) as con:
+        with sqlite3.connect(self.__db_path) as con:
             con.executescript(sql_init_script)
-        with sqlite3.connect(db_path) as con:
+
+        # upgrade db definitions
+        with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
             cur = con.execute('SELECT * FROM lifeblood_metadata')
             metadata = cur.fetchone()  # there should be exactly one single row.
@@ -88,6 +95,37 @@ class DataAccess:
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
+        # update resource table straight away
+        # for now the logic is to keep existing columns
+        with sqlite3.connect(self.__db_path) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.execute('PRAGMA table_info(resources)')
+            resource_rows = {x['name']: x for x in cur.fetchall() if x['name'] != 'hwid'}
+            cur.close()
+
+            need_commit = False
+            for res_def in config_provider.hardware_resource_definitions():
+                col_type, col_def = {
+                    WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', float(res_def.default)),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
+                    WorkerResourceDataType.GENERIC_INT: ('INTEGER', int(res_def.default)),
+                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', int(res_def.default)),
+                    WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', int(res_def.default)),
+                }[res_def.type]
+                if res_def.name in resource_rows:  # skip existing
+                    # dflt_value is string repr of the number, so we have to convert col_def to compare. not the best way for floating numbers
+                    if resource_rows[res_def.name]['type'] != col_type or resource_rows[res_def.name]['dflt_value'] != str(col_def):
+                        self.__logger.warning(f'existing resource definition changed for "{res_def.name}", recreating, all resource data will be lost')
+                        con.execute(f'ALTER TABLE resources DROP COLUMN "{res_def.name}"')
+                        con.execute(f'ALTER TABLE resources DROP COLUMN "total_{res_def.name}"')
+                    else:
+                        continue
+                self.__logger.debug(f'adding new resource "{res_def.name}" of type {col_type} ({col_def}) into the table')
+                con.execute(f'ALTER TABLE resources ADD COLUMN "{res_def.name}" {col_type} NOT NULL DEFAULT {col_def}')
+                con.execute(f'ALTER TABLE resources ADD COLUMN "total_{res_def.name}" {col_type} NOT NULL DEFAULT {col_def}')
+                need_commit = True
+            if need_commit:
+                con.commit()
 
     async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
         # TODO: scheduler must use this instead of creating directly
@@ -363,10 +401,10 @@ class DataAccess:
 
     def data_connection(self) -> aiosqlite_overlay.ConnectionWithCallbacks:
         # TODO: con.row_factory = aiosqlite.Row must be here, ALMOST all places use it anyway, need to prune
-        return aiosqlite_overlay.connect(self.db_path, timeout=self.db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
+        return aiosqlite_overlay.connect(self.__db_path, timeout=self.__db_timeout, pragmas_after_connect=('synchronous=NORMAL',))
 
     def lazy_data_transaction(self, key_name: str):
-        return SharedLazyAiosqliteConnection(None, self.db_path, key_name, timeout=self.db_timeout)
+        return SharedLazyAiosqliteConnection(None, self.__db_path, key_name, timeout=self.__db_timeout)
 
     async def write_back_cache(self):
         self.__logger.info('pinger syncing temporary tables back...')
@@ -386,7 +424,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 2:
+        if from_version < 1 or to_version > 3:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -404,4 +442,21 @@ class DataAccess:
         if to_version == 2:
             # need to ensure new node_object_state field is present
             con.execute('ALTER TABLE "nodes" ADD COLUMN "node_object_state" BLOB')
+            return True
+        if to_version == 3:
+            # there was a bug in prev init script, wrong column in index, now it randomly pops on rename,
+            # so we need to recreate that index
+            con.executescript(
+                'DROP INDEX task_group_attrs_state_creator_idx;'
+                'CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" ('
+                '    "state",'
+                '    "creator"'
+                ');'
+            )
+            # need to set default values for existing resource columns
+            for col_name in ('cpu_count', 'total_cpu_count', 'cpu_mem', 'total_cpu_mem', 'gpu_count', 'total_gpu_count', 'gpu_mem', 'total_gpu_mem'):
+                con.execute(f'ALTER TABLE "resources" RENAME COLUMN "{col_name}" TO "__old_{col_name}"')
+                con.execute(f'ALTER TABLE "resources" ADD COLUMN "{col_name}" INTEGER NOT NULL DEFAULT 0')
+                con.execute(f'UPDATE "resources" SET "{col_name}" = "__old_{col_name}"')
+                con.execute(f'ALTER TABLE "resources" DROP COLUMN "__old_{col_name}"')
             return True

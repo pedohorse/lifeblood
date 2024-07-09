@@ -1,6 +1,6 @@
 import sys
 import os
-from lifeblood.basenode import BaseNodeWithTaskRequirements, ProcessingResult, ProcessingContext, ProcessingError
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements, ProcessingResult, ProcessingContext, ProcessingError
 from lifeblood.enums import NodeParameterType
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.paths import config_path

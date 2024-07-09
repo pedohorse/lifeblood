@@ -8,6 +8,7 @@ from .buffer_serializable import IBufferSerializable
 from .enums import TaskState, WorkerState, WorkerType, TaskGroupArchivedState, InvocationState
 from .worker_metadata import WorkerMetadata
 from dataclasses import dataclass
+from enum import Enum
 
 from typing import Dict, List, Tuple, Type, Optional, Set, Union
 
@@ -406,27 +407,74 @@ class NodeGraphStructureData(IBufferSerializable):
         return NodeGraphStructureData(db_uid, nodes, connections)
 
 
+class WorkerResourceType(Enum):
+    INT = 0
+    FLOAT = 1
+
+
 @dataclass
+class WorkerResource:
+    value: Union[int, float]
+    total: Union[int, float]
+    type: WorkerResourceType
+    name: str
+
+
 class WorkerResources(IBufferSerializable):
-    cpu_count: float
-    total_cpu_count: float
-    cpu_mem: int
-    total_cpu_mem: int
-    gpu_count: float
-    total_gpu_count: float
-    gpu_mem: int
-    total_gpu_mem: int
+    def __init__(self, resources: List[WorkerResource]):
+        self.__resources: List[WorkerResource] = resources
+
+    def __repr__(self):
+        return f'WorkerResources({repr(self.__resources)})'
+
+    def __len__(self):
+        return len(self.__resources)
+
+    def __getitem__(self, item):
+        return self.__resources[item]
+
+    def __iter__(self):
+        return iter(self.__resources)
+
+    def __contains__(self, item):
+        return item in self.__resources
+
+    def __eq__(self, other):
+        if not isinstance(other, WorkerResources):
+            return False
+        return self.__resources == other.__resources
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>ddQQddQQ', self.cpu_count, self.total_cpu_count, self.cpu_mem, self.total_cpu_mem,
-                                 self.gpu_count, self.total_gpu_count, self.gpu_mem, self.total_gpu_mem))
+        stream.write(struct.pack('>Q', len(self.__resources)))
+        for res in self.__resources:
+            if res.type == WorkerResourceType.INT:
+                s = 'Q'
+            elif res.type == WorkerResourceType.FLOAT:
+                s = 'd'
+            else:
+                raise NotImplementedError()
+            stream.write(struct.pack(f'>B{s}{s}', res.type.value, res.value, res.total))
+            _serialize_string(res.name, stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "WorkerResources":
-        cpu_count, total_cpu_count, cpu_mem, total_cpu_mem, \
-        gpu_count, total_gpu_count, gpu_mem, total_gpu_mem = struct.unpack('>ddQQddQQ', stream.readexactly(64))
-        return WorkerResources(cpu_count, total_cpu_count, cpu_mem, total_cpu_mem,
-                               gpu_count, total_gpu_count, gpu_mem, total_gpu_mem)
+        resources = []
+        num_res, = struct.unpack('>Q', stream.readexactly(8))
+        for i in range(num_res):
+            res_type_val, = struct.unpack('>B', stream.readexactly(1))
+            res_type = WorkerResourceType(res_type_val)
+            if res_type == WorkerResourceType.INT:
+                s = 'Q'
+                ss = 8
+            elif res_type == WorkerResourceType.FLOAT:
+                s = 'd'
+                ss = 8
+            else:
+                raise NotImplementedError()
+            value, total = struct.unpack(f'>{s}{s}', stream.readexactly(2 * ss))
+            name = _deserialize_string(stream)
+            resources.append(WorkerResource(value, total, res_type, name))
+        return WorkerResources(resources)
 
 
 @dataclass

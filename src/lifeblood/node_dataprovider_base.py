@@ -6,6 +6,12 @@ from typing import Any, Callable, Dict, Optional, Set, Tuple, Type, Union
 
 
 class NodeDataProvider:
+    """
+    Node Data Provider is responsible for providing node-related data.
+    It can use config providers to figure out where to search for node data,
+    but ultimately it is this class's responsibility to load/save all node-related data,
+    even though some things may fall into gray area between the two.
+    """
     def node_settings_names(self, type_name: str) -> Set[str]:
         raise NotImplementedError()
 
@@ -34,8 +40,11 @@ class NodeDataProvider:
     def node_preset(self, package_name: str, preset_name: str) -> NodeSnippetData:
         raise NotImplementedError()
 
+    def loaded_packages_paths(self) -> Tuple[Path, ...]:
+        raise NotImplementedError()
+
     def add_settings_to_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: str, settings: Dict[str, Any]):
         raise NotImplementedError()
 
-    def set_settings_as_default(self, node_type_name: str, settings_name: Optional[str]):
+    def set_settings_as_default_in_existing_package(self, package_name_or_path: Union[str, Path], node_type_name: str, settings_name: Optional[str]):
         raise NotImplementedError()

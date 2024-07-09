@@ -332,6 +332,12 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__overlay_message.move(self.width()//2 - label_size.width()//2, max(self.height()//2, self.height()*29//30 - label_size.height()))
         self.__overlay_message.raise_()
 
+    def _generic_operation_finished_callback(self, _, result: OperationCompletionDetails):
+        if result.status == OperationCompletionStatus.PartialSuccess:
+            self.show_message(f'::warning::{result.details}')
+        elif result.status == OperationCompletionStatus.NotPerformed:
+            self.show_message(f'::error::{result.details}')
+
     def rescan_presets(self):
         self.__viewer_presets = {}
         for preset_base_path in self.__preset_scan_paths:
@@ -520,12 +526,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     @Slot()
     def delete_selected(self):
-        def _on_finished(_, result: OperationCompletionDetails):
-            if result.status == OperationCompletionStatus.PartialSuccess:
-                self.show_message(f'::warning::{result.details}')
-            elif result.status == OperationCompletionStatus.NotPerformed:
-                self.show_message(f'::error::{result.details}')
-        self.__scene.delete_selected_nodes(callback=_on_finished)
+        self.__scene.delete_selected_nodes(callback=self._generic_operation_finished_callback)
 
     @Slot(str, str, QPointF)
     def get_snippet_from_scheduler_and_create_nodes(self, package: str, preset_name: str, pos: QPointF):

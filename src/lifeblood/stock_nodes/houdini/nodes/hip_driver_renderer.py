@@ -1,5 +1,5 @@
 from copy import copy
-from lifeblood.basenode import BaseNodeWithTaskRequirements
+from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
@@ -66,8 +66,8 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ui.add_parameter('attrs to extract', 'detail attributes to extract', NodeParameterType.STRING, '')
             ui.add_parameter('intrinsics to extract', 'detail intrinsics to extract', NodeParameterType.STRING, '')
 
-            ui.parameter('worker type').set_hidden(True)
-            ui.parameter('worker type').set_locked(True)
+            ui.parameter('__requirements__.worker_type').set_hidden(True)
+            ui.parameter('__requirements__.worker_type').set_locked(True)
 
     @staticmethod
     def _fescape(s):

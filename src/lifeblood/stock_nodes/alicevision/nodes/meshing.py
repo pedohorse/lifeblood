@@ -1,4 +1,4 @@
-from lifeblood.basenode import ProcessingResult, ProcessingContext, ProcessingError
+from lifeblood.node_plugin_base import ProcessingResult, ProcessingContext, ProcessingError
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.enums import NodeParameterType
 from lifeblood_alicevision_modules.base_node import AlicevisionBaseNode

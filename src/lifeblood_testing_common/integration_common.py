@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.enums import TaskState
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.nethelpers import get_default_addr
 from lifeblood.simple_worker_pool import WorkerPool
 from lifeblood.net_messages.address import AddressChain
@@ -34,6 +34,14 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
     def this_test_dir(cls) -> Path:
         return Path(inspect.getmodule(cls).__file__).parent
 
+    @classmethod
+    def node_configs(cls) -> Tuple[dict, dict]:
+        """
+        first one - per-node
+        second one - global
+        """
+        return {}, {}
+
     async def asyncSetUp(self):
         db_name = self.db_file
         shutil.copy2(self.this_test_dir() / self._initial_db_file(), db_name)
@@ -41,11 +49,14 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         test_server_port1 = 18273
         test_server_port2 = 18283
         test_server_port3 = 18293
+        c1, c2 = self.node_configs()
         self.scheduler = create_default_scheduler(
             db_name,
             do_broadcasting=False,
             server_addr=(get_default_addr(), test_server_port1, test_server_port2),
-            server_ui_addr=(get_default_addr(), test_server_port3)
+            server_ui_addr=(get_default_addr(), test_server_port3),
+            node_per_node_config=c1,
+            node_global_config=c2,
         )
         self.worker_pool = WorkerPool(
             scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),

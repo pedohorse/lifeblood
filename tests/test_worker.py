@@ -9,7 +9,7 @@ from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.net_messages.address import AddressChain
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 
 
 class RunningSchedulerTests(IsolatedAsyncioTestCase):

@@ -12,7 +12,7 @@ from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
 from lifeblood.net_messages.exceptions import MessageTransferError
 from lifeblood.scheduler_task_protocol import SchedulerTaskClient
-from lifeblood.main_scheduler import create_default_scheduler
+from lifeblood_testing_common.common import create_default_scheduler
 
 
 def purge_db(recreate=True):

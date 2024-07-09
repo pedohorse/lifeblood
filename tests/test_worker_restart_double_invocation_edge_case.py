@@ -4,6 +4,7 @@ import os
 from contextlib import contextmanager
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
 from lifeblood_testing_common.common import chain
+from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
 from unittest import mock
 from lifeblood.enums import TaskState, WorkerState, WorkerPingState, TaskScheduleStatus, InvocationState
 from lifeblood.invocationjob import InvocationJob
@@ -124,8 +125,9 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
         await self._helper_test_multi_invoc(3, 1, delays=[0, 0.25, 0])
 
     async def _helper_test_multi_invoc(self, racing_tasks_count: int, num_empty_invocs: int = 0, delays: Optional[List[int]] = None):
-        sched = Scheduler(self.db_file, do_broadcasting=False, node_data_provider=None, node_serializers=[None])
-        data_access = DataAccess(self.db_file, 60)
+        config = SchedulerConfigProviderOverrides(self.db_file, 60, do_broadcast=False)
+        sched = Scheduler(scheduler_config_provider=config, node_data_provider=None, node_serializers=[None])
+        data_access = DataAccess(config_provider=config)
         m = mock.MagicMock()
         m.data_access = data_access
         task_ids = []

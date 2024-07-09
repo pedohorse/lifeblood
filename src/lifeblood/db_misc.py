@@ -36,14 +36,6 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 );
 CREATE TABLE IF NOT EXISTS "resources" (
 	"hwid"	TEXT NOT NULL UNIQUE,
-	"cpu_count"	INTEGER NOT NULL,
-	"total_cpu_count"	INTEGER NOT NULL,
-	"cpu_mem"	INTEGER NOT NULL,
-	"total_cpu_mem"	INTEGER NOT NULL,
-	"gpu_count"	INTEGER NOT NULL,
-	"total_gpu_count"	INTEGER NOT NULL,
-	"gpu_mem"	INTEGER NOT NULL,
-	"total_gpu_mem"	INTEGER NOT NULL,
 	PRIMARY KEY("hwid")
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS "workers" (
@@ -114,7 +106,7 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	PRIMARY KEY("group")
 );
 CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" (
-	"status",
+	"state",
 	"creator"
 );
 CREATE INDEX IF NOT EXISTS "task_dead" ON "tasks" (

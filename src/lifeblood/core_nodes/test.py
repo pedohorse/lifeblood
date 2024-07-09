@@ -1,6 +1,6 @@
 import time
 
-from lifeblood.basenode import BaseNode
+from lifeblood.node_plugin_base import BaseNode
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.uidata import NodeParameterType
