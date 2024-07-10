@@ -665,6 +665,17 @@
                 2236.7178859566125
             ],
             "__dataclass__": "NodeData"
+        },
+        {
+            "tmpid": 9,
+            "type": "killer",
+            "name": "kill unused",
+            "parameters": {},
+            "pos": [
+                4750.981089337652,
+                2560.5255375361307
+            ],
+            "__dataclass__": "NodeData"
         }
     ],
     "connections": [
@@ -728,6 +739,13 @@
             "tmpout": 1,
             "out_name": "main",
             "tmpin": 2,
+            "in_name": "main",
+            "__dataclass__": "ConnData"
+        },
+        {
+            "tmpout": 3,
+            "out_name": "children",
+            "tmpin": 9,
             "in_name": "main",
             "__dataclass__": "ConnData"
         }
