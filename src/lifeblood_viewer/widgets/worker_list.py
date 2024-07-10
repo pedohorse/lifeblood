@@ -476,7 +476,7 @@ class WorkerModel(QAbstractItemModel):
         with performance_measurer() as pm:
             hwid_to_wid_to_remove = {}
             for wid in old_keys - new_keys:
-                hwid = self.__workers[wid]
+                hwid = self.__workers[wid].hwid
                 hwid_to_wid_to_remove.setdefault(hwid, []).append(wid)
             for hwid, _, worker in workers_changed_hwid:
                 hwid_to_wid_to_remove.setdefault(hwid, []).append(worker.id)
