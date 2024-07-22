@@ -29,6 +29,12 @@ listen_to_broadcast = true
 # cpu_mem = "128G"  # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ... 
 # gpu_count = 1     # by default treated as the number devices
 # gpu_mem = "8G"    # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ...
+
+[devices.gpu.gpu1]  # you can name it however you want instead of gpu1
+# be sure to override these values below with actual ones!
+mem = "4G"
+opencl_ver = 3.0
+cuda_cc = 5.0
 '''
 
 
@@ -100,7 +106,15 @@ async def main_async(worker_type=WorkerType.STANDARD,
                 continue
             addr = AddressChain(scheduler_info['message_address'])
             try:
-                worker = Worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = Worker(
+                    addr,
+                    child_priority_adjustment=child_priority_adjustment,
+                    worker_type=worker_type,
+                    config=get_config('worker'),
+                    singleshot=singleshot,
+                    worker_id=worker_id,
+                    pool_address=pool_address
+                )
                 await worker.start()  # note that server is already started at this point
             except Exception:
                 logger.exception('could not start the worker')
@@ -115,7 +129,15 @@ async def main_async(worker_type=WorkerType.STANDARD,
             addr = AddressChain(await config.get_option('worker.scheduler_address', get_default_addr()))
             logger.debug(f'using {addr}')
             try:
-                worker = Worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = Worker(
+                    addr,
+                    child_priority_adjustment=child_priority_adjustment,
+                    worker_type=worker_type,
+                    config=get_config('worker'),
+                    singleshot=singleshot,
+                    worker_id=worker_id,
+                    pool_address=pool_address
+                )
                 await worker.start()  # note that server is already started at this point
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))

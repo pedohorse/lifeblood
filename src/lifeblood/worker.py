@@ -21,7 +21,7 @@ from .scheduler_message_processor import SchedulerWorkerControlClient
 from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
 from .worker_pool_message_processor import WorkerPoolControlClient
 from .invocationjob import InvocationJob
-from .config import get_config
+from .config import get_config, Config
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
 from .paths import log_path
@@ -44,6 +44,7 @@ class Worker:
     def __init__(self, scheduler_addr: AddressChain, *,
                  child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
                  worker_type: WorkerType = WorkerType.STANDARD,
+                 config: Optional[Config] = None,  # TODO: this should be replaced with config provider with a fixed interface
                  singleshot: bool = False,
                  scheduler_ping_interval: float = 10,
                  scheduler_ping_miss_threshold: int = 6,
@@ -56,10 +57,10 @@ class Worker:
         :param worker_type:
         :param singleshot:
         """
-        config = get_config('worker')
+        self.__config = config or get_config('worker')
         self.__logger = logging.get_logger('worker')
         self.log_root_path: str = ''
-        for self.log_root_path in (os.path.expandvars(config.get_option_noasync('worker.logpath', log_path('invocations', 'worker', ensure_path_exists=False))),
+        for self.log_root_path in (os.path.expandvars(self.__config.get_option_noasync('worker.logpath', log_path('invocations', 'worker', ensure_path_exists=False))),
                                    os.path.join(tempfile.gettempdir(), 'lifeblood', 'worker_logs')):
             logs_ok = True
             try:
@@ -90,13 +91,40 @@ class Worker:
         self.__local_invocation_server: Optional[asyncio.Server] = None
         self.__local_invocation_server_address_string: str = ''
 
-        self.__local_shared_dir = config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
+        self.__local_shared_dir = self.__config.get_option_noasync("local_shared_dir_path", os.path.join(tempfile.gettempdir(), 'lifeblood_worker', 'shared'))
+
+        # resources
+        config_resources = self.__config.get_option_noasync('resources')
+        config_devices = self.__config.get_option_noasync('devices')
+        if config_resources is not None:  # schema check
+            if not isinstance(config_resources, dict):
+                raise RuntimeError('resources config section must be a mapping')
+        else:
+            config_resources = {}
+        if config_devices is not None:  # schema check
+            if not isinstance(config_devices, dict):
+                raise RuntimeError('devices config section must be a mapping')
+            for key, val in config_devices.items():
+                if not isinstance(key, str):
+                    raise RuntimeError('devices mapping.device types (keys) must be strings')
+                if not isinstance(val, dict):
+                    raise RuntimeError('devices mapping.device type.devices config section must be a mapping')
+                for key_name, val_res in val.items():
+                    if not isinstance(key_name, str):
+                        raise RuntimeError('devices mapping.device type.names (keys) must be strings')
+                    if not isinstance(val_res, dict):
+                        raise RuntimeError('devices mapping.device type.device type.names.resources config section must be a mapping')
+        else:
+            config_devices = {}
         self.__my_resources = HardwareResources(
-            cpu_count=config.get_option_noasync('resources.cpu_count') or psutil.cpu_count(),
-            cpu_mem=config.get_option_noasync('resources.cpu_mem') or psutil.virtual_memory().total,
-            gpu_count=config.get_option_noasync('resources.gpu_count') or 0,
-            gpu_mem=config.get_option_noasync('resources.gpu_mem') or 0,
+            resources={
+                'cpu_count': psutil.cpu_count(),
+                'cpu_mem':  psutil.virtual_memory().total,
+                **config_resources
+            },
+            devices=[(dev_type, dev_name, dev_res) for dev_type, dev_dev in config_devices.items() for dev_name, dev_res in dev_dev.items()],
         )
+
         self.__task_changing_state_lock = asyncio.Lock()
         self.__task_switching_event = asyncio.Event()  # this will signal invocation message waiters to cancel what they are doing
         self.__stop_lock = threading.Lock()
@@ -345,9 +373,8 @@ class Worker:
 
             try:
                 if task.environment_resolver_arguments() is None:
-                    config = get_config('worker')
-                    resolver = environment_resolver.get_resolver(config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))
-                    resolver_arguments = config.get_option_noasync('default_env_wrapper.arguments', {})
+                    resolver = environment_resolver.get_resolver(self.__config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))
+                    resolver_arguments = self.__config.get_option_noasync('default_env_wrapper.arguments', {})
                 else:
                     env_res_args = task.environment_resolver_arguments()
                     resolver = env_res_args.get_resolver()
@@ -423,7 +450,7 @@ class Worker:
                 await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task initialized\n').encode('UTF-8'))
 
                 progress_reporting_task = None
-                minimum_progress_reporting_interval = await get_config('worker').get_option('minimum_progress_reporting_interval', 1.0)
+                minimum_progress_reporting_interval = await self.__config.get_option('minimum_progress_reporting_interval', 1.0)
                 last_progress_reported_timestamp = time.monotonic() - minimum_progress_reporting_interval
                 last_progress_reported = None
                 last_progress_attempted_to_report = None
