@@ -8,7 +8,7 @@ from threading import Lock
 from . import paths
 from .logging import get_logger
 
-from typing import Any, List, Tuple, Union, Callable, Set
+from typing import Any, List, Optional, Tuple, Union, Callable, Set
 
 
 _conf_cache = {}
@@ -71,9 +71,12 @@ class Config:
     class OverrideNotFound(RuntimeError):
         pass
 
-    def __init__(self, subname: str, base_name: str = 'config', overrides=None):
-        config_path = paths.config_path(f'{base_name}.toml', subname)
-        configd_path = paths.config_path(f'{base_name}.d', subname)
+    def __init__(self, subname: Optional[str], base_name: str = 'config', overrides=None):
+        config_path = None
+        configd_path = None
+        if subname:
+            config_path = paths.config_path(f'{base_name}.toml', subname)
+            configd_path = paths.config_path(f'{base_name}.d', subname)
         self.__writable_config_path = config_path
         self.__conf_lock = Lock()
         self.__write_file_lock = Lock()
@@ -81,8 +84,10 @@ class Config:
         self.__sources: List["Path"] = []
         self.__broken_sources: Set["Path"] = set()
 
-        self.__config_paths_to_check = [config_path]
-        if configd_path.exists() and configd_path.is_dir():
+        self.__config_paths_to_check = []
+        if configd_path:
+            self.__config_paths_to_check.append(config_path)
+        if configd_path and configd_path.exists() and configd_path.is_dir():
             self.__config_paths_to_check.extend(sorted(filepath for filepath in configd_path.iterdir() if filepath.suffix == '.toml'))
 
         self.__stuff = {}
@@ -124,7 +129,7 @@ class Config:
             else:
                 self.__sources.append(config_path)
 
-    def writeable_file(self) -> "Path":
+    def writeable_file(self) -> Optional[Path]:
         """
         Get the path to the file chis config changes will be saved into.
         The file might not yet exist
@@ -250,7 +255,8 @@ class Config:
                 clevel[name] = value
                 break
             clevel = clevel[name]
-        self.write_config_noasync()
+        if self.writeable_file():
+            self.write_config_noasync()
 
     def set_option_noasync(self, option_name: str, value: Any) -> None:
         with self.__conf_lock:
@@ -263,6 +269,8 @@ class Config:
         self.__encoder_generator = generator
 
     def write_config_noasync(self):
+        if not self.__writable_config_path:
+            raise RuntimeError('cannot write config: no config file set')
         with self.__write_file_lock:
             if not os.path.exists(self.__writable_config_path):
                 os.makedirs(os.path.dirname(self.__writable_config_path), exist_ok=True)
