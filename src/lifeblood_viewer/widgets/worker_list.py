@@ -15,7 +15,7 @@ from PySide2.QtGui import QColor
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 
-_init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'last_seen', '__resources__', 'groups', 'worker_type')
+_init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'last_seen', '__resources__', 'devices', 'groups', 'worker_type')
 
 
 class WorkerListWidget(QWidget):
@@ -98,8 +98,8 @@ class WorkerListWidget(QWidget):
 @dataclass
 class WorkerModelData:  # almost like WorkerData, but better for display
     id: Union[int, str]
-    worker_resources: WorkerResources
-    hwid: str
+    #worker_resources: WorkerResources
+    hwid: int
     last_address: str
     last_seen_timestamp: int
     state: Union[WorkerState, Tuple[WorkerState, str]]
@@ -131,15 +131,18 @@ class WorkerModel(QAbstractItemModel):
         self.__logger = get_logger('viewer.worker_model')
         self.__scheduler_worker = worker
 
+        self.__qt_gc_roots = {}
+
         self.__workers: Dict[int, WorkerModelData] = {}  # worker id -> worker data
         self.__worker_resources_names: List[str] = []
+        self.__worker_hw_resources: Dict[int, WorkerResources] = {}
 
         #
-        self.__hwid_summaries: Dict[str, Optional[WorkerModelData]] = {}
+        self.__hwid_summaries: Dict[int, Optional[WorkerModelData]] = {}  # Dict[hwid, ...
 
         #
-        self.__hwid_order: List[str] = []
-        self.__wid_order: Dict[str, List[int]] = {}
+        self.__hwid_order: List[int] = []  # List[hwid]
+        self.__wid_order: Dict[int, List[int]] = {}  # Dict[hwid, List[worker_id]]
 
         #
         self.__cols = {}
@@ -157,14 +160,21 @@ class WorkerModel(QAbstractItemModel):
     def index(self, row: int, column: int, parent: QModelIndex=None):
         if parent is None:
             parent = QModelIndex()
+        hwid = self.__hwid_order[parent.row()]
+        if hwid not in self.__qt_gc_roots:
+            self.__qt_gc_roots[hwid] = (hwid,)
+        inter_pointer = self.__qt_gc_roots[hwid]
+        # this old pyside2 (not tested in 6) bug: createIndex does not bump ref count, so we must ensure ref is not gc-ed
+        #  another pyside2 (not tested in 6) bug: ints are clamped to 32bit, but hwid uses all 64 bits
+        #  but yes, self.__qt_gc_roots is a POTENTIAL MEMORY LEAK. fortunately this scenario happens in an almost impossible use case.
         return self.createIndex(row, column,
-                                self.__hwid_order[parent.row()] if parent.isValid() else None
+                                inter_pointer if parent.isValid() else None,
                                 )
 
     def parent(self, index: QModelIndex):
         if not index.isValid() or index.internalPointer() is None:
             return QModelIndex()
-        hwid = index.internalPointer()
+        hwid, = index.internalPointer()
         return self.createIndex(self.__hwid_order.index(hwid), 0, None)
 
     def __maybe_update_structure(self):
@@ -185,7 +195,7 @@ class WorkerModel(QAbstractItemModel):
 
             self.__cols = {'id': 'id', 'state': 'state', 'metadata.hostname': 'hostname', 'last_address': 'address',
                            'last_seen': 'last seen', 'worker_type': 'type',
-                           'progress': 'progress', 'groups': 'groups', 'task_id': 'task id'}
+                           'progress': 'progress', 'devices': 'devices', 'groups': 'groups', 'task_id': 'task id'}
 
             self.__cols.update({k: k.replace('_', ' ') for k in self.__worker_resources_names})
 
@@ -242,7 +252,7 @@ class WorkerModel(QAbstractItemModel):
 
         return WorkerModelData(
             '',
-            workers[0].worker_resources if len(workers) else WorkerResources([]),
+            #workers[0].worker_resources if len(workers) else WorkerResources([]),
             hwid,
             summ_address,
             max(x.last_seen_timestamp for x in workers) if len(workers) else 0.0,
@@ -258,13 +268,13 @@ class WorkerModel(QAbstractItemModel):
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         def format_display(col_name, raw):
-            if col_name.endswith('_mem'):
+            if col_name.endswith('_mem') or col_name == 'mem':
                 return nice_memory_formatting(raw)
             return raw
 
         if not index.isValid():
             return None
-        if role not in (Qt.DisplayRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
+        if role not in (Qt.DisplayRole, Qt.ToolTipRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
             return None
         row = index.row()
         col = index.column()
@@ -328,10 +338,25 @@ class WorkerModel(QAbstractItemModel):
         raw_data = 'none'
         if col_name in self.__worker_resources_names:
             i = self.__worker_resources_names.index(col_name)
-            if len(worker.worker_resources) <= i or worker.worker_resources[i].name != col_name:  # if data is called after worker_resource_names update, but before actual worker data update:
+            if not (worker_resources := self.__worker_hw_resources.get(worker.hwid)):
+                return 'internal error'
+            if len(worker_resources) <= i or worker_resources[i].name != col_name:  # if data is called after worker_resource_names update, but before actual worker data update:
                 raw_data = '...'
             else:
-                raw_data = f'{format_display(col_name, worker.worker_resources[i].value)}/{format_display(col_name, worker.worker_resources[i].total)}'
+                raw_data = f'{format_display(col_name, worker_resources[i].value)}/{format_display(col_name, worker_resources[i].total)}'
+        if col_name == 'devices':
+            if not (worker_resources := self.__worker_hw_resources.get(worker.hwid)):
+                return 'internal error'
+            dev_info_parts = []
+            for worker_device in worker_resources.devices:
+                text = f'{worker_device.type_name}: {worker_device.name}[{"idle" if worker_device.available else "busy"}]'
+                if role == Qt.ToolTipRole:
+                    res_parts = []
+                    for dev_res in worker_device.resources:
+                        res_parts.append(f'{dev_res.name}={format_display(dev_res.name, dev_res.value)}')
+                        text += f' ({",".join(res_parts)})'
+                dev_info_parts.append(text)
+            return '\n'.join(dev_info_parts)
 
         return raw_data
 
@@ -381,9 +406,10 @@ class WorkerModel(QAbstractItemModel):
     def workers_full_update(self, workers_data: WorkerBatchData):
         if len(workers_data.workers) == 0:
             return
-        # update resource definitions
-        any_worker = next(iter(workers_data.workers.values()))
-        self.__worker_resources_names = [x.name for x in any_worker.worker_resources]
+        # update resources and resource definitions
+        any_hwres = next(iter(workers_data.resources.values()))
+        # TODO: use resource definitions here
+        self.__worker_resources_names = [x.name for x in any_hwres]
         self.__maybe_update_structure()
 
         # we filter UNKNOWNS here, currently i see no point
@@ -423,6 +449,15 @@ class WorkerModel(QAbstractItemModel):
                             workers_changed_hwid.append([old_value, value, self.__workers[worker_key]])
                         if hwid in self.__hwid_summaries:  # reset summary cache
                             self.__hwid_summaries.pop(hwid)
+                # since resources are separate - need to check changes there too
+                hwid = self.__workers[worker_key].hwid
+                res = workers_data.resources.get(hwid)
+                if res != self.__worker_hw_resources.get(hwid):
+                    hwid_row = self.__hwid_order.index(hwid)
+                    rows_to_update[hwid_row] = [0, len(self.__wid_order[hwid])-1]  # update all children
+
+            # actually update resource values
+            self.__worker_hw_resources = workers_data.resources
 
             # emit update signal
             if len(rows_to_update) > 0:
