@@ -420,12 +420,28 @@ class WorkerResource:
     name: str
 
 
+@dataclass
+class WorkerDeviceResource:
+    value: Union[int, float]
+    type: WorkerResourceType
+    name: str
+
+
+@dataclass
+class WorkerDevice:
+    type_name: str
+    name: str
+    available: bool
+    resources: List[WorkerDeviceResource]
+
+
 class WorkerResources(IBufferSerializable):
-    def __init__(self, resources: List[WorkerResource]):
+    def __init__(self, resources: List[WorkerResource], devices: List[WorkerDevice]):
         self.__resources: List[WorkerResource] = resources
+        self.__devices: List[WorkerDevice] = devices
 
     def __repr__(self):
-        return f'WorkerResources({repr(self.__resources)})'
+        return f'WorkerResources({repr(self.__resources)}, {repr(self.__devices)})'
 
     def __len__(self):
         return len(self.__resources)
@@ -439,13 +455,17 @@ class WorkerResources(IBufferSerializable):
     def __contains__(self, item):
         return item in self.__resources
 
+    @property
+    def devices(self) -> List[WorkerDevice]:
+        return self.__devices
+
     def __eq__(self, other):
         if not isinstance(other, WorkerResources):
             return False
-        return self.__resources == other.__resources
+        return self.__resources == other.__resources and self.__devices == other.__devices
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>Q', len(self.__resources)))
+        stream.write(struct.pack('>QQ', len(self.__resources), len(self.__devices)))
         for res in self.__resources:
             if res.type == WorkerResourceType.INT:
                 s = 'Q'
@@ -455,11 +475,25 @@ class WorkerResources(IBufferSerializable):
                 raise NotImplementedError()
             stream.write(struct.pack(f'>B{s}{s}', res.type.value, res.value, res.total))
             _serialize_string(res.name, stream)
+        for dev in self.__devices:
+            _serialize_string(dev.type_name, stream)
+            _serialize_string(dev.name, stream)
+            stream.write(struct.pack('>?Q', dev.available, len(dev.resources)))
+            for res in dev.resources:
+                if res.type == WorkerResourceType.INT:
+                    s = 'Q'
+                elif res.type == WorkerResourceType.FLOAT:
+                    s = 'd'
+                else:
+                    raise NotImplementedError()
+                stream.write(struct.pack(f'>B{s}', res.type.value, res.value))
+                _serialize_string(res.name, stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "WorkerResources":
         resources = []
-        num_res, = struct.unpack('>Q', stream.readexactly(8))
+        devices = []
+        num_res, num_dev = struct.unpack('>QQ', stream.readexactly(16))
         for i in range(num_res):
             res_type_val, = struct.unpack('>B', stream.readexactly(1))
             res_type = WorkerResourceType(res_type_val)
@@ -474,14 +508,34 @@ class WorkerResources(IBufferSerializable):
             value, total = struct.unpack(f'>{s}{s}', stream.readexactly(2 * ss))
             name = _deserialize_string(stream)
             resources.append(WorkerResource(value, total, res_type, name))
-        return WorkerResources(resources)
+        for dev_i in range(num_dev):
+            dev_type = _deserialize_string(stream)
+            dev_name = _deserialize_string(stream)
+            dev_available, num_res = struct.unpack('>?Q', stream.readexactly(9))
+            dev_res = []
+            for i in range(num_res):
+                res_type_val, = struct.unpack('>B', stream.readexactly(1))
+                res_type = WorkerResourceType(res_type_val)
+                if res_type == WorkerResourceType.INT:
+                    s = 'Q'
+                    ss = 8
+                elif res_type == WorkerResourceType.FLOAT:
+                    s = 'd'
+                    ss = 8
+                else:
+                    raise NotImplementedError()
+                value, = struct.unpack(f'>{s}', stream.readexactly(ss))
+                name = _deserialize_string(stream)
+                dev_res.append(WorkerDeviceResource(value, res_type, name))
+            devices.append(WorkerDevice(dev_type, dev_name, dev_available, dev_res))
+
+        return WorkerResources(resources, devices)
 
 
 @dataclass
 class WorkerData(IBufferSerializable):
     id: int
-    worker_resources: WorkerResources
-    hwid: str
+    hwid: int
     last_address: str
     last_seen_timestamp: int
     state: WorkerState
@@ -494,15 +548,13 @@ class WorkerData(IBufferSerializable):
     metadata: Optional[WorkerMetadata]
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQII?Q?Q?Q?dQ?', self.id, self.last_seen_timestamp, self.state.value, self.type.value,
+        stream.write(struct.pack('>QQQII?Q?Q?Q?dQ?', self.id, self.hwid, self.last_seen_timestamp, self.state.value, self.type.value,
                                  self.current_invocation_node_id is not None, self.current_invocation_node_id or 0,
                                  self.current_invocation_task_id is not None, self.current_invocation_task_id or 0,
                                  self.current_invocation_id is not None, self.current_invocation_id or 0,
                                  self.current_invocation_progress is not None, self.current_invocation_progress or 0.0,
                                  len(self.groups),
                                  self.metadata is not None))
-        self.worker_resources.serialize(stream)
-        _serialize_string(self.hwid, stream)
         _serialize_string(self.last_address, stream)
         for group in self.groups:
             _serialize_string(group, stream)
@@ -513,12 +565,12 @@ class WorkerData(IBufferSerializable):
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "WorkerData":
-        worker_id, last_seen_timestamp, state_value, type_value, \
+        worker_id, hwid, last_seen_timestamp, state_value, type_value, \
             has_current_invocation_node_id, current_invocation_node_id, \
             has_current_invocation_task_id, current_invocation_task_id, \
             has_current_invocation_id, current_invocation_id, \
             has_current_invocation_progress, current_invocation_progress, \
-            groups_count, has_metadata = struct.unpack('>QQII?Q?Q?Q?dQ?', stream.readexactly(69))
+            groups_count, has_metadata = struct.unpack('>QQQII?Q?Q?Q?dQ?', stream.readexactly(77))
         if not has_current_invocation_node_id:
             current_invocation_node_id = None
         if not has_current_invocation_task_id:
@@ -527,8 +579,6 @@ class WorkerData(IBufferSerializable):
             current_invocation_id = None
         if not has_current_invocation_progress:
             current_invocation_progress = None
-        worker_resources = WorkerResources.deserialize(stream)
-        hwid = _deserialize_string(stream)
         last_address = _deserialize_string(stream)
         groups = set()
         for i in range(groups_count):
@@ -536,28 +586,37 @@ class WorkerData(IBufferSerializable):
         metadata = None
         if has_metadata:
             metadata = WorkerMetadata(_deserialize_string(stream))
-        return WorkerData(worker_id, worker_resources, hwid, last_address, last_seen_timestamp, WorkerState(state_value), WorkerType(type_value),
+        return WorkerData(worker_id, hwid, last_address, last_seen_timestamp, WorkerState(state_value), WorkerType(type_value),
                           current_invocation_node_id, current_invocation_task_id, current_invocation_id, current_invocation_progress, groups, metadata)
 
 
 @dataclass
 class WorkerBatchData(IBufferSerializable):
     db_uid: int
-    workers: Dict[int, WorkerData]
+    workers: Dict[int, WorkerData]  # worker_id to worker data
+    resources: Dict[int, WorkerResources]  # hwid to resources
+    # TODO: pass definitions separately from resources
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQ', self.db_uid, len(self.workers)))
+        stream.write(struct.pack('>QQQ', self.db_uid, len(self.workers), len(self.resources)))
         for task in self.workers.values():
             task.serialize(stream)
+        for hwid, resource in self.resources.items():
+            stream.write(struct.pack('>Q', hwid))
+            resource.serialize(stream)
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "WorkerBatchData":
-        db_uid, tasks_count, = struct.unpack('>QQ', stream.readexactly(16))
+        db_uid, tasks_count, resource_count = struct.unpack('>QQQ', stream.readexactly(24))
         workers = {}
+        resources = {}
         for i in range(tasks_count):
             task_data = WorkerData.deserialize(stream)
             workers[task_data.id] = task_data
-        return WorkerBatchData(db_uid, workers)
+        for i in range(resource_count):
+            hwid, = struct.unpack('>Q', stream.readexactly(8))
+            resources[hwid] = WorkerResources.deserialize(stream)
+        return WorkerBatchData(db_uid, workers, resources)
 
 
 @dataclass

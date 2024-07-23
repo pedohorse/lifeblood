@@ -1306,7 +1306,7 @@ class UIProtocolSocketClient:
         w.flush()
         assert r.readexactly(1) == b'\1'
 
-    def set_worker_groups(self, worker_hwid: str, groups: Iterable[str]):
+    def set_worker_groups(self, worker_hwid: int, groups: Iterable[str]):
         """
         NOTE:
             internal scheduler's HWIDs are integers,
@@ -1316,8 +1316,7 @@ class UIProtocolSocketClient:
         groups = list(groups)
         r, w = self.__connection.get_rw_pair()
         w.write_string('setworkergroups')
-        hwid = int(worker_hwid)
-        w.write(struct.pack('>QQ', hwid, len(groups)))
+        w.write(struct.pack('>QQ', worker_hwid, len(groups)))
         for group in groups:
             w.write_string(group)
         w.flush()
