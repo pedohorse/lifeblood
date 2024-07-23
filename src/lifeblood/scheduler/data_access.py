@@ -16,9 +16,9 @@ from ..environment_resolver import EnvironmentResolverArguments
 from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 from ..worker_resource_definition import WorkerResourceDataType
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 3
+SCHEDULER_DB_FORMAT_VERSION = 5
 
 
 @dataclass
@@ -105,13 +105,9 @@ class DataAccess:
             cur.close()
 
             need_commit = False
+            # create tables for resources
             for res_def in config_provider.hardware_resource_definitions():
-                col_type, col_def = {
-                    WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', float(res_def.default)),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
-                    WorkerResourceDataType.GENERIC_INT: ('INTEGER', int(res_def.default)),
-                    WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', int(res_def.default)),
-                    WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', int(res_def.default)),
-                }[res_def.type]
+                col_type, col_def = resource_definition_to_sql_type_and_default(res_def)
                 if res_def.name in resource_rows:  # skip existing
                     # dflt_value is string repr of the number, so we have to convert col_def to compare. not the best way for floating numbers
                     if resource_rows[res_def.name]['type'] != col_type or resource_rows[res_def.name]['dflt_value'] != str(col_def):
@@ -126,6 +122,27 @@ class DataAccess:
                 need_commit = True
             if need_commit:
                 con.commit()
+
+            # create tables for devices
+            for dev_def in config_provider.hardware_device_type_definitions():
+                # delete existing definitions
+                dev_type_table_name = f'hardware_device_type__{dev_def.name}'
+
+                dev_res_sql_parts = [
+                    '"dev_id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT',
+                    '"hw_dev_name" TEXT NOT NULL',  # unique within hwid index of the device
+                    '"available" INTEGER NOT NULL DEFAULT 1',
+                    '"hwid" INTEGER NOT NULL',
+                ]
+                for dev_res_dev in dev_def.resources:
+                    col_type, col_def = resource_definition_to_sql_type_and_default(res_def)
+                    dev_res_sql_parts.append(f'"res__{dev_res_dev.name}" {col_type} DEFAULT {col_def}')
+                dev_res_sql_parts.append('FOREIGN KEY("hwid") REFERENCES "resources"("hwid") ON UPDATE CASCADE ON DELETE CASCADE')
+                dev_res_sql_parts.append('UNIQUE("hwid","hw_dev_name")')
+
+                con.execute(f'DROP TABLE IF EXISTS "{dev_type_table_name}"')
+                con.execute(f'CREATE TABLE "{dev_type_table_name}" ({",".join(dev_res_sql_parts)})')
+
 
     async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
         # TODO: scheduler must use this instead of creating directly
@@ -424,7 +441,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 3:
+        if from_version < 1 or to_version > 5:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -460,3 +477,37 @@ class DataAccess:
                 con.execute(f'UPDATE "resources" SET "{col_name}" = "__old_{col_name}"')
                 con.execute(f'ALTER TABLE "resources" DROP COLUMN "__old_{col_name}"')
             return True
+        if to_version == 4:
+            # need to fix _invoc_requirement_clause
+            # this is a very dirty fix that might break some task processing
+            con.execute('UPDATE "tasks" SET "state"=?, "_invoc_requirement_clause"=NULL WHERE _invoc_requirement_clause IS NOT NULL', (TaskState.WAITING.value,))
+            return True
+        if to_version == 5:
+            con.execute('PRAGMA legacy_alter_table=ON')
+            con.execute('ALTER TABLE "resources" RENAME TO "__old_resources"')
+            con.executescript('''\
+CREATE TABLE IF NOT EXISTS "resources" (
+    "hwid" INTEGER NOT NULL UNIQUE,
+    PRIMARY KEY("hwid")
+) WITHOUT ROWID;''')
+            cur = con.execute('PRAGMA table_info(__old_resources)')
+            rows = cur.fetchall()
+            cur.close()
+            for row in rows:
+                if row['name'] == 'hwid':
+                    continue
+                con.execute(f'ALTER TABLE resources ADD COLUMN "{row["name"]}" {row["type"]} NOT NULL DEFAULT {row["dflt_value"]}')
+            con.execute('INSERT INTO "resources" SELECT * FROM "__old_resources"')
+            con.execute('DROP TABLE "__old_resources"')
+            con.execute('PRAGMA legacy_alter_table=OFF')
+            con.execute('PRAGMA integrity_check')
+            return True
+
+
+def resource_definition_to_sql_type_and_default(res_def) -> Tuple[str, Union[float, int, str]]:
+    return {
+        WorkerResourceDataType.GENERIC_FLOAT: ('INTEGER', float(res_def.default)),  # use INTEGER for floats, as it is more flexible in sqlite, see https://sqlite.org/flextypegood.html
+        WorkerResourceDataType.GENERIC_INT: ('INTEGER', int(res_def.default)),
+        WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT: ('INTEGER', int(res_def.default)),
+        WorkerResourceDataType.MEMORY_BYTES: ('INTEGER', int(res_def.default)),
+    }[res_def.type]

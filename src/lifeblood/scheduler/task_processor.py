@@ -47,6 +47,8 @@ class TaskProcessor(SchedulerComponentBase):
         # task processing coroutimes
         self.awaiter_executor = ThreadPoolExecutor(thread_name_prefix='awaiter')  # TODO: max_workers= set from config
 
+        self.__known_device_type_names = set(x.name for x in self.scheduler.config_provider.hardware_device_type_definitions())
+
         self.__invocation_attempts = self.scheduler.config_provider.invocation_attempts()
         self.__housekeeping_interval = self.scheduler.config_provider.task_processor_housekeeping_interval()
 
@@ -810,14 +812,31 @@ class TaskProcessor(SchedulerComponentBase):
             try:
                 self.__logger.debug('submitter selecting worker')
                 # we get total for further optimizations
+                dev_join_clauses = []
+                join_where_clauses = []
+                for dev_type in requirements_clause.devices.device_types():
+                    if dev_type not in self.__known_device_type_names:
+                        raise ConfigurationError(f'unknown device type "{dev_type}"')
+                    dev_type_table_name = f'hardware_device_type__{dev_type}'
+                    for i in range(requirements_clause.devices[dev_type].min):
+                        dev_join_clauses.append(f'LEFT JOIN "{dev_type_table_name}" AS "{dev_type_table_name}__{i}" ON workers.hwid="{dev_type_table_name}__{i}".hwid')
+                        join_where_clauses.append(f'{dev_type_table_name}__{i}.available==1')
+                        if i > 0:
+                            join_where_clauses.append(f'"{dev_type_table_name}__{i-1}".dev_id<"{dev_type_table_name}__{i}".dev_id')
+
                 async with con.execute(f'SELECT COUNT(workers.id) as "total" from workers '
-                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                       f'WHERE state == ? AND ( {requirements_clause_sql} )', (WorkerState.IDLE.value,)) as worcur:
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid ' +
+                                       ' '.join(dev_join_clauses) +
+                                       f' WHERE state == ? AND ( {requirements_clause_sql} )' +
+                                       (f' AND ({" AND ".join(join_where_clauses)}) ' if join_where_clauses else ''),  # clause to ensure proper dev table join
+                                       (WorkerState.IDLE.value,)) as worcur:
                     potential_count = (await worcur.fetchone())['total']
                 # actual selecting workers
                 async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
-                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) '
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid ' +
+                                       ' '.join(dev_join_clauses) +
+                                       f' WHERE state == ? AND ( {requirements_clause_sql} ) ' +
+                                       (f' AND ({" AND ".join(join_where_clauses)}) ' if join_where_clauses else '') +  # clause to ensure proper dev table join
                                        f'AND workers.hwid NOT IN ({",".join(str(x) for x in self.scheduler.data_access.get_suspended_hwids(task_row["id"]))}) '
                                        f'ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
                     worker = await worcur.fetchone()
@@ -858,7 +877,7 @@ class TaskProcessor(SchedulerComponentBase):
             try:
                 await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause, hwid=worker['hwid'], connection=con)
             except NotEnoughResources:
-                self.__logger.error(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
+                self.__logger.exception(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
                 continue
 
             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',

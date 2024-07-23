@@ -137,29 +137,94 @@ class ResourceRequirements:
     def items(self):
         return self.__res.items()
 
+    def __eq__(self, other):
+        if not isinstance(other, ResourceRequirements):
+            return False
+        return self.__res == other.__res
+
+
+@dataclass
+class DeviceRequirement:
+    resources: ResourceRequirements = field(default_factory=ResourceRequirements)
+    min: int = 1
+    pref: int = 0
+
+
+class DeviceRequirements:
+    """
+    requirements for only devices
+    """
+    def __init__(self, data: Optional[Dict[str, DeviceRequirement]] = None):
+        if data:
+            self.__dev: Dict[str, DeviceRequirement] = data
+        else:
+            self.__dev: Dict[str, DeviceRequirement] = {}
+
+    def get(self, name: str, default_val=None):
+        return self.__dev.get(name, default_val)
+
+    def __getitem__(self, device_type: str) -> DeviceRequirement:
+        """
+        get requirements for device type "device_type"
+        """
+        return self.__dev[device_type]
+
+    def __setitem__(self, name: str, value: DeviceRequirement):
+        self.__dev[name] = value
+
+    def __contains__(self, name):
+        return name in self.__dev
+
+    def device_types(self) -> Tuple[str, ...]:
+        return tuple(self.__dev.keys())
+
+    def items(self):
+        return self.__dev.items()
+
+    def __eq__(self, other):
+        if not isinstance(other, DeviceRequirements):
+            return False
+        return self.__dev == other.__dev
+
 
 @dataclass
 class Requirements:
     resources: ResourceRequirements = field(default_factory=ResourceRequirements)
-    # devices:   TO ADD LATER
+    devices: DeviceRequirements = field(default_factory=DeviceRequirements)
 
     def serialize_to_string(self):
         """
         compact string representation
         """
         return json.dumps({
-            'r': {name: {'m': val.min, 'p': val.pref} for name, val in self.resources.items()}
+            'r': {name: {'m': val.min, 'p': val.pref} for name, val in self.resources.items()},
+            'd': {
+                dev_type: {
+                    'r': {name: {'m': val.min, 'p': val.pref} for name, val in dev.resources.items()},
+                    'm': dev.min,
+                    'p': dev.pref,
+                } for dev_type, dev in self.devices.items()
+            }
         })
 
     @classmethod
     def deserialize_from_string(cls, text: str) -> "Requirements":
         """
-        reverse from serializa_to_stirng
+        reverse from serialize_to_string
         """
         data = json.loads(text)
         return Requirements(
             resources=ResourceRequirements({
                 name: ResourceRequirement(val['m'], val['p']) for name, val in data['r'].items()
+            }),
+            devices=DeviceRequirements({
+                name: DeviceRequirement(
+                    resources=ResourceRequirements({
+                       name: ResourceRequirement(val['m'], val['p']) for name, val in dev['r'].items()
+                    }),
+                    min=dev['m'],
+                    pref=dev['p'],
+                ) for name, dev in data['d'].items()
             })
         )
 
@@ -183,7 +248,7 @@ class InvocationRequirements:
         self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
 
-        self.__res_req: Requirements = Requirements()  # Dict[str, ResourceRequirement] = {}
+        self.__res_req: Requirements = Requirements()
         for arg_name, arg_val in resources.items():
             if '_' not in arg_name:
                 raise RuntimeError(f'provided resource {arg_name} must start with either "min_", or "pref_"')
@@ -216,6 +281,9 @@ class InvocationRequirements:
             return 0
         return self.__res_req.resources[resource_name].pref
 
+    def requested_devices(self) -> DeviceRequirements:
+        return self.__res_req.devices
+
     # setters
 
     def set_groups(self, groups):
@@ -226,6 +294,9 @@ class InvocationRequirements:
 
     def add_group(self, group: str):
         self.__groups.add(group)
+
+    def set_device_requirement(self, dev_type: str, min_count: int, pref_count: int, resources: ResourceRequirements):
+        self.__res_req.devices[dev_type] = DeviceRequirement(resources, min_count, pref_count)
 
     def set_min_resource(self, resource_name: str, value: Union[float, int]):
         if resource_name not in self.__res_req.resources:
@@ -244,6 +315,15 @@ class InvocationRequirements:
         conds = [f'("worker_type" = {self.__worker_type.value})']
         for res_name, res_req in self.__res_req.resources.items():
             conds.append(f'("{res_name}" >= {res_req.min - 1e-8 if isinstance(res_req.min, float) else res_req.min})')  # to ensure sql compare will work
+        for dev_type, dev_reqs in self.__res_req.devices.items():
+            if dev_reqs.min == 0:
+                continue
+            dev_type_table_name = f'hardware_device_type__{dev_type}'
+            for dev_i in range(dev_reqs.min):
+                for res_name, res_req in dev_reqs.resources.items():
+                    # expecting join sql clause to join device tables with __i prefix
+                    # TODO: all this SQL expecting something, and here... this implementation-specific logic must be moved to data_access
+                    conds.append(f'("{dev_type_table_name}__{dev_i}"."res__{res_name}" >= {res_req.min - 1e-8 if isinstance(res_req.min, float) else res_req.min})')
         if len(self.__groups) > 0:
             esc = '\\'
 
@@ -271,6 +351,16 @@ class InvocationRequirements:
         requirements_clause = Requirements.deserialize_from_string(packed_string[splitpos + 3:])
         requirements_clause_sql = packed_string[:splitpos]
         return requirements_clause_sql, requirements_clause
+
+
+@dataclass
+class InvocationResources:
+    """
+    the resources assigned by the scheduler to be used for an invocation
+    """
+    resources: Dict[str, Union[float, int]]  # resource name to quantity
+    devices: Dict[str, List[str]]  # device type to name list
+
 
 class InvocationJob:
     """

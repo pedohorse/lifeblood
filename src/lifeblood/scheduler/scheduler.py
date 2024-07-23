@@ -43,7 +43,7 @@ from .pinger import Pinger
 from .task_processor import TaskProcessor
 from .ui_state_accessor import UIStateAccessor
 
-from typing import Optional, Any, Tuple, List, Iterable, Union, Dict
+from typing import Optional, Any, Tuple, List, Iterable, Union, Dict, Set
 
 
 class Scheduler(NodeGraphHolderBase):
@@ -844,15 +844,25 @@ class Scheduler(NodeGraphHolderBase):
                 #                   '(?, ?, ?)',
                 #                   (worker_id, tstamp, ping_state))
 
-            resource_fields = tuple(x.name for x in self.__config_provider.hardware_resource_definitions())
+            resource_fields: Tuple[str, ...] = tuple(x.name for x in self.__config_provider.hardware_resource_definitions())
+            # device_type_names = tuple(x.name for x in self.__config_provider.hardware_device_type_definitions())
+            device_type_resource_fields: Dict[str, Tuple[str, ...]] = {x.name: tuple(r.name for r in x.resources) for x in self.__config_provider.hardware_device_type_definitions()}
+            # in case worker_resources contain dev_types not known to config - they will be ignored
+            devices_to_register = []
             # checks
             for field in resource_fields:
                 if field not in worker_resources:
                     self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) does not declare expected resource "{field}", assume value=0')
             for res_name, _ in worker_resources.items():
                 if res_name not in resource_fields:
-                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) declares resource "{res_name}" unknown to the scheduler')
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) declares resource "{res_name}" unknown to the scheduler, ignoring')
+            for dev_type, dev_name, dev_res in worker_resources.devices():
+                if dev_type not in device_type_resource_fields:
+                    self.__logger.warning(f'worker (hwid:{worker_resources.hwid}) declares device type "{dev_type}" unknown to the scheduler, ignoring')
+                    continue
+                devices_to_register.append((dev_type, dev_name, {res_name: res_val for res_name, res_val in dev_res.items() if res_name in device_type_resource_fields[dev_type]}))
 
+            # TODO: note that below sql breaks if there are no resource_fields (which is an unlikely config, but not impossible)
             await con.execute('INSERT INTO resources '
                               '(hwid, ' +
                               ', '.join(f'{field}, total_{field}' for field in resource_fields) +
@@ -863,9 +873,37 @@ class Scheduler(NodeGraphHolderBase):
                               ,
                               (worker_resources.hwid,
                                *(x for field in resource_fields for x in (
-                                   (worker_resources[field].value, worker_resources[field].value) if field in worker_resources else (0, 0))
+                                   (worker_resources[field].value, worker_resources[field].value) if field in worker_resources else (0, 0))  # TODO: do NOT invent defaults here, only set known fields, like in dev code below
                                  ))
                               )
+
+            for dev_type, dev_name, dev_res in sorted(devices_to_register, key=lambda x: (x[0], x[1])):  # sort by (deva_type, dev_name) to ensure some consistent order
+
+                dev_type_table_name = f'hardware_device_type__{dev_type}'
+                if dev_res:
+                    await con.execute(
+                        f'INSERT INTO "{dev_type_table_name}" '
+                        f'(hwid, hw_dev_name, ' +
+                        ', '.join(f'res__{field}' for field, _ in dev_res.items()) +
+                        ') '
+                        'VALUES (?, ?' + ', ?'*(len(dev_res)) + ') '
+                        'ON CONFLICT(hwid,"hw_dev_name") DO UPDATE SET ' +
+                        ', '.join(f'"res__{field}"=excluded.res__{field}' for field in dev_res)
+                        ,
+                        (worker_resources.hwid, dev_name,
+                         *(res_val.value for _, res_val in dev_res.items())
+                         )
+                    )
+                else:
+                    await con.execute(
+                        f'INSERT INTO "{dev_type_table_name}" '
+                        f'(hwid, hw_dev_name) ' +
+                        'VALUES (?, ?) '
+                        'ON CONFLICT(hwid,"hw_dev_name") DO NOTHING'
+                        ,
+                        (worker_resources.hwid, dev_name)
+                    )
+
             await self._update_worker_resouce_usage(worker_id, hwid=worker_resources.hwid, connection=con)  # used resources are inited to none
             self.data_access.set_worker_metadata(worker_resources.hwid, worker_metadata)
             await con.commit()
@@ -889,8 +927,9 @@ class Scheduler(NodeGraphHolderBase):
         :return: if commit is needed on connection (if db set operation happened)
         """
         assert connection.in_transaction, 'expectation failure'
-        resource_definitions = self.__config_provider.hardware_resource_definitions()
-        resource_fields = tuple(x.name for x in resource_definitions)
+
+        resource_fields = tuple(x.name for x in self.__config_provider.hardware_resource_definitions())
+        device_type_names = tuple(x.name for x in self.__config_provider.hardware_device_type_definitions())
 
         workers_resources = self.data_access.mem_cache_workers_resources
         if hwid is None:
@@ -903,25 +942,45 @@ class Scheduler(NodeGraphHolderBase):
                                       f'{", ".join("total_"+x for x in resource_fields)} '
                                       f'FROM resources WHERE hwid == ?', (hwid,)) as rescur:
             available_res = dict(await rescur.fetchone())
+        available_dev_type_to_ids: Dict[str, Dict[int, Dict[str, Union[int, float, str]]]] = {}
+        current_available_dev_type_to_ids: Dict[str, Set[int]] = {}
+        for dev_type in device_type_names:
+            dev_type_table_name = f'hardware_device_type__{dev_type}'
+            async with connection.execute(
+                    f'SELECT * FROM "{dev_type_table_name}" WHERE hwid == ?',
+                    (hwid,)) as rescur:
+                all_dev_rows = [dict(x) for x in await rescur.fetchall()]
+            available_dev_type_to_ids[dev_type] = {
+                x['dev_id']: {k[len('res__'):]: v for k, v in x.items() if k.startswith('res__')}  # resource cols start with res__
+                for x in all_dev_rows
+            }  # note, these are ALL devices, with "available" 0 and 1 values, we don't *trust* "available", we recalc them below, just like with non-total res
+            current_available_dev_type_to_ids[dev_type] = {x['dev_id'] for x in all_dev_rows if x['available']}  # now this counts available to check later if anything changed
         current_available = {k: v for k, v in available_res.items() if not k.startswith('total_')}
-        available_res = {k[len('total_'):]: v for k, v in available_res.items() if k.startswith('total_')}
+        available_res = {k[len('total_'):]: v for k, v in available_res.items() if k.startswith('total_')}  # start with full total res
 
         for wid, res in workers_resources.items():
             if wid == worker_id:
                 continue  # SKIP worker_id currently being set
             if res.get('hwid') != hwid:
                 continue
+            # recalc actual available resources based on cached worker_resources
             for field in resource_fields:
-                if field not in res:
+                if field not in res.get('res', {}):
                     continue
-                available_res[field] -= res[field]
+                available_res[field] -= res['res'][field]
+            # recalc actual available devices based on cached worker_resources
+            for dev_type in device_type_names:
+                if dev_type not in res.get('dev', {}):
+                    continue
+                for dev_id in res['dev'][dev_type]:
+                    available_dev_type_to_ids[dev_type].pop(dev_id)
         ##
 
         # now choose proper amount of resources to pick
         if resources is None:
             workers_resources[worker_id] = {'hwid': hwid}  # remove resource usage info
         else:
-            workers_resources[worker_id] = {}
+            workers_resources[worker_id] = {'res': {}, 'dev': {}}
             for field in resource_fields:
                 if field not in resources.resources:
                     continue
@@ -929,19 +988,53 @@ class Scheduler(NodeGraphHolderBase):
                     raise NotEnoughResources(f'{field}: {resources.resources[field].min} out of {available_res[field]}')
                 # so we take preferred amount of resources (or minimum if pref not set), but no more than available
                 # if preferred is lower than min - it's ignored
-                workers_resources[worker_id][field] = min(available_res[field],
-                                                          max(resources.resources[field].pref, resources.resources[field].min))
-                available_res[field] -= workers_resources[worker_id][field]
+                workers_resources[worker_id]['res'][field] = min(available_res[field],
+                                                                 max(resources.resources[field].pref, resources.resources[field].min))
+                available_res[field] -= workers_resources[worker_id]['res'][field]
+
+            selected_devs: Dict[str, List[int]] = {}  # dev_type to list of dev_ids of that type that are picked
+            for dev_type, dev_reqs in resources.devices.items():
+                if dev_type not in available_dev_type_to_ids:
+                    raise NotEnoughResources(f'device "{dev_type}" missing')  # this shouldn't happen - this whole func is only called when resources are checked
+                for dev_id, dev_res in available_dev_type_to_ids[dev_type].items():
+                    # now we check if dev fits requirements
+                    is_good = True
+                    for req_name, req_val in dev_reqs.resources.items():  # we ignore pref in current logic - devices are always taken full
+                        if req_name not in dev_res:
+                            raise NotEnoughResources(f'device "{dev_type}" does not have requested resource "{req_name}"')  # this also should not happen
+                        if dev_res[req_name] < req_val.min:
+                            is_good = False
+                            break
+                    if is_good:
+                        selected_devs.setdefault(dev_type, []).append(dev_id)
+                        if len(selected_devs[dev_type]) >= max(dev_reqs.min, dev_reqs.pref):
+                            # we selected enough devices of this type
+                            break
+                # now remove selected from available
+                for dev_id in selected_devs.get(dev_type, []):
+                    available_dev_type_to_ids[dev_type].pop(dev_id)
+                # sanity check
+                if dev_reqs.min > 0 and len(selected_devs[dev_type]) < dev_reqs.min:
+                    raise NotEnoughResources(f'device "{dev_type}: cannot select {dev_reqs.min} out of {len(selected_devs[dev_type])}')
+            workers_resources[worker_id]['dev'] = selected_devs
 
             workers_resources[worker_id]['hwid'] = hwid  # just to ensure it was not overriden
 
         self.__logger.debug(f'updating resources {hwid} with {available_res} against {current_available}')
         self.__logger.debug(workers_resources)
 
-        if available_res == current_available:  # nothing needs to be updated
+        available_res_didnt_change = available_res == current_available
+        available_devs_didnt_change = all(set(available_dev_type_to_ids[dev_type].keys()) == current_available_dev_type_to_ids[dev_type] for dev_type in device_type_names)
+        if available_res == current_available and available_devs_didnt_change:  # nothing needs to be updated
             return False
-
-        await connection.execute(f'UPDATE resources SET {", ".join(f"{k}={v}" for k, v in available_res.items())} WHERE hwid == ?', (hwid,))
+        
+        if not available_res_didnt_change:
+            await connection.execute(f'UPDATE resources SET {", ".join(f"{k}={v}" for k, v in available_res.items())} WHERE hwid == ?', (hwid,))
+        if not available_devs_didnt_change:
+            for dev_type in device_type_names:  # TODO: only update affected tables
+                dev_type_table_name = f'hardware_device_type__{dev_type}'
+                await connection.execute(f'UPDATE "{dev_type_table_name}" SET "available"=0')
+                await connection.executemany(f'UPDATE "{dev_type_table_name}" SET "available"=1 WHERE dev_id==?', ((x,) for x in available_dev_type_to_ids[dev_type].keys()))
         return True
 
     #
@@ -996,8 +1089,8 @@ class Scheduler(NodeGraphHolderBase):
             await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
             await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
             await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.READY.value, x["task_id"]) for x in invocations))
-            await self._update_worker_resouce_usage(wid, hwid=hwid, connection=con)
-            del self.data_access.mem_cache_workers_resources[wid]  # remove from cache
+            await self._update_worker_resouce_usage(wid, hwid=hwid, connection=con)  # oh wait, it happens right here, still an assert won't hurt
+            del self.data_access.mem_cache_workers_resources[wid]  # remove from cache  # TODO: ENSURE resources were already unset for this wid
             if len(invocations) > 0:
                 con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_updated, [TaskDelta(x["task_id"], state=TaskState.READY) for x in invocations])  # ui event
             await con.commit()
