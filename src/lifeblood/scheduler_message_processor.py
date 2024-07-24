@@ -1,3 +1,5 @@
+import asyncio
+
 import aiofiles
 from contextlib import contextmanager
 from . import logging
@@ -89,8 +91,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         returns keys:
             ok: ok is ok
         """
-        task_data = args['task'].encode('latin1')
-        task = await invocationjob.InvocationJob.deserialize_async(task_data)
+        task = await asyncio.get_event_loop().run_in_executor(None, invocationjob.Invocation.deserialize_from_data, args['task'])
 
         stdout = args['stdout']
         stderr = args['stderr']
@@ -104,8 +105,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         returns keys:
             ok: ok is ok
         """
-        task_data = args['task'].encode('latin1')
-        task = await invocationjob.InvocationJob.deserialize_async(task_data)
+        task = await asyncio.get_event_loop().run_in_executor(None, invocationjob.Invocation.deserialize_from_data, args['task'])
 
         stdout = args['stdout']
         stderr = args['stderr']
@@ -356,26 +356,26 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         reply = await self.__client.receive_message()
         return WorkerState((await reply.message_body_as_json())['state'])
 
-    async def report_task_done(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
+    async def report_task_done(self, task: invocationjob.Invocation, stdout_file: str, stderr_file: str):
         async with aiofiles.open(stdout_file, 'r', errors='replace') as f:
             stdout = await f.read()
         async with aiofiles.open(stderr_file, 'r', errors='replace') as f:
             stderr = await f.read()
         await self.__client.send_command('worker.done', {
-            'task': (await task.serialize_async()).decode('latin1'),
+            'task': await asyncio.get_event_loop().run_in_executor(None, task.serialize_to_data),
             'stdout': stdout,
             'stderr': stderr
         })
         reply = await self.__client.receive_message()
         assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'
 
-    async def report_task_canceled(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
+    async def report_task_canceled(self, task: invocationjob.Invocation, stdout_file: str, stderr_file: str):
         async with aiofiles.open(stdout_file, 'r') as f:
             stdout = await f.read()
         async with aiofiles.open(stderr_file, 'r') as f:
             stderr = await f.read()
         await self.__client.send_command('worker.dropped', {
-            'task': (await task.serialize_async()).decode('latin1'),
+            'task': await asyncio.get_event_loop().run_in_executor(None, task.serialize_to_data),
             'stdout': stdout,
             'stderr': stderr
         })

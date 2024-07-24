@@ -17,7 +17,7 @@ from ..worker_messsage_processor import WorkerControlClient
 from ..scheduler_task_protocol import SchedulerTaskProtocol, SpawnStatus
 from ..scheduler_ui_protocol import SchedulerUiProtocol
 from ..hardware_resources import HardwareResources
-from ..invocationjob import InvocationJob, Requirements
+from ..invocationjob import Invocation, InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import WorkerPool
@@ -607,7 +607,7 @@ class Scheduler(NodeGraphHolderBase):
 
     #
     # worker reports done task
-    async def task_done_reported(self, task: InvocationJob, stdout: str, stderr: str):
+    async def task_done_reported(self, task: Invocation, stdout: str, stderr: str):
         """
         scheduler comm protocols should call this when a task is done
          TODO: this is almost the same code as for task_cancel_reported, maybe unify?
@@ -624,7 +624,7 @@ class Scheduler(NodeGraphHolderBase):
         else:
             self.__logger.error(f'out of attempts trying to report done invocation {task.invocation_id()}, probably something is not right with the state of the database')
 
-    async def __task_done_reported_inner(self, task: InvocationJob, stdout: str, stderr: str):
+    async def __task_done_reported_inner(self, task: Invocation, stdout: str, stderr: str):
         """
 
         """
@@ -704,7 +704,7 @@ class Scheduler(NodeGraphHolderBase):
 
     #
     # worker reports canceled task
-    async def task_cancel_reported(self, task: InvocationJob, stdout: str, stderr: str):
+    async def task_cancel_reported(self, task: Invocation, stdout: str, stderr: str):
         """
         scheduler comm protocols should call this when a task is cancelled
         """
@@ -720,7 +720,7 @@ class Scheduler(NodeGraphHolderBase):
         else:
             self.__logger.error(f'out of attempts trying to report cancel invocation {task.invocation_id()}, probably something is not right with the state of the database')
 
-    async def __task_cancel_reported_inner(self, task: InvocationJob, stdout: str, stderr: str):
+    async def __task_cancel_reported_inner(self, task: Invocation, stdout: str, stderr: str):
         async with self.__invocation_reporting_lock, \
                    self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row

@@ -15,6 +15,7 @@ from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 from ..worker_resource_definition import WorkerResourceDataType
+from ..invocationjob import InvocationResources
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
@@ -223,6 +224,21 @@ class DataAccess:
         """
         return self.__mem_cache_invocations.get(invocation_id, {}).get('progress', None)
     #
+
+    async def get_invocation_resources_assigned_to(self, worker_id: int) -> Optional[InvocationResources]:
+        if (res_data := self.mem_cache_workers_resources.get(worker_id)) is None:
+            return None
+        res = dict(res_data.get('res', {}))
+        dev = {}
+        async with self.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            for dev_type, dev_id_list in res_data.get('dev', {}).items():
+                if len(dev_id_list) == 0:
+                    continue
+                dev_type_table_name = f'hardware_device_type__{dev_type}'
+                async with con.execute(f'SELECT hw_dev_name FROM "{dev_type_table_name}" WHERE dev_id IN ({",".join(str(x) for x in dev_id_list)})') as cur:
+                    dev[dev_type] = [row['hw_dev_name'] for row in await cur.fetchall()]
+        return InvocationResources(res, dev)
 
     async def hint_task_needs_blocking(self, task_id: int, *, inc_amount: int = 1, con: Optional[aiosqlite.Connection] = None) -> bool:
         """

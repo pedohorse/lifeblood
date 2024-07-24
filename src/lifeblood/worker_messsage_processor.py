@@ -1,4 +1,5 @@
 import os
+import asyncio
 import aiofiles
 from contextlib import contextmanager
 from .exceptions import NotEnoughResources, ProcessInitializationError, WorkerNotAvailable, \
@@ -72,7 +73,7 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
         returns keys:
             status: TaskScheduleStatus, status of the operation
         """
-        task = invocationjob.InvocationJob.deserialize(args['task'].encode('latin1'))
+        task = await asyncio.get_event_loop().run_in_executor(None, invocationjob.Invocation.deserialize_from_data, args['task'])
         addr = AddressChain(args['reply_to']) if args.get('reply_to') else original_message.message_source()
         reply = {}
 
@@ -231,12 +232,12 @@ class WorkerControlClient:
         data_json = await reply_message.message_body_as_json()
         return WorkerPingReply(data_json['ps']), float(data_json['pv'])
 
-    async def give_task(self, task: invocationjob.InvocationJob, reply_address: Optional[AddressChain] = None) -> Tuple[TaskScheduleStatus, str, str]:
+    async def give_task(self, task: invocationjob.Invocation, reply_address: Optional[AddressChain] = None) -> Tuple[TaskScheduleStatus, str, str]:
         """
         if reply_address is not given - message source address will be used
         """
         await self.__client.send_command('task', {
-            'task': (await task.serialize_async()).decode('latin1'),
+            'task': await asyncio.get_event_loop().run_in_executor(None, task.serialize_to_data),
             'reply_to': str(reply_address) if reply_address else None
         })
 

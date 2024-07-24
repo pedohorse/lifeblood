@@ -20,7 +20,7 @@ from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
 from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
 from .worker_pool_message_processor import WorkerPoolControlClient
-from .invocationjob import InvocationJob
+from .invocationjob import Invocation
 from .config import get_config, Config
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
@@ -53,7 +53,6 @@ class Worker:
         """
 
         :param scheduler_addr:
-        :param scheduler_port:
         :param worker_type:
         :param singleshot:
         """
@@ -83,7 +82,7 @@ class Worker:
         self.__scheduler_db_uid: int = 0  # unsigned 64bit int
         self.__running_process: Optional[asyncio.subprocess.Process] = None
         self.__running_process_start_time: float = 0
-        self.__running_task: Optional[InvocationJob] = None
+        self.__running_task: Optional[Invocation] = None
         self.__running_task_progress: Optional[float] = None
         self.__running_awaiter = None
         self.__previous_notrunning_awaiter = None  # here we will temporarily save running_awaiter before it is set to None again when task canceled or finished, to avoid task being GCd while in work
@@ -106,14 +105,26 @@ class Worker:
                 raise RuntimeError('devices config section must be a mapping')
             for key, val in config_devices.items():
                 if not isinstance(key, str):
-                    raise RuntimeError('devices mapping.device types (keys) must be strings')
+                    raise RuntimeError('devices config <device_type> (keys) must be strings')
                 if not isinstance(val, dict):
-                    raise RuntimeError('devices mapping.device type.devices config section must be a mapping')
-                for key_name, val_res in val.items():
+                    raise RuntimeError('devices config <device_type>.<> (values) config section must be a mapping')
+                for key_name, val_devname_data in val.items():
                     if not isinstance(key_name, str):
-                        raise RuntimeError('devices mapping.device type.names (keys) must be strings')
-                    if not isinstance(val_res, dict):
-                        raise RuntimeError('devices mapping.device type.device type.names.resources config section must be a mapping')
+                        raise RuntimeError('devices config <device_type>.<device_name> (keys) must be strings')
+                    if not isinstance(val_devname_data, dict):
+                        raise RuntimeError('devices config <device_type>.<device_name>.<> (values) section must be a mapping')
+                    if 'resources' in val_devname_data:
+                        for key_resname, val_resval in val_devname_data['resources'].items():
+                            if not isinstance(key_resname, str):
+                                raise RuntimeError('devices config <device_type>.<device_name>.resources.<res_name> (keys) must be strings')
+                            if not isinstance(val_resval, (int, float, str)):
+                                raise RuntimeError('devices config <device_type>.<device_name>.resources.<res_name>.<> (values) must be ints, floats or special strings like "32G"')
+                    if 'tags' in val_devname_data:
+                        for key_tagname, val_tagval in val_devname_data['tags'].items():
+                            if not isinstance(key_tagname, str):
+                                raise RuntimeError('devices config <device_type>.<device_name>.tags.<res_name> (keys) must be strings')
+                            if not isinstance(val_tagval, (int, float, str)):
+                                raise RuntimeError('devices config <device_type>.<device_name>.tags.<res_name>.<> (values) must be ints, floats or strings')
         else:
             config_devices = {}
         self.__my_resources = HardwareResources(
@@ -122,8 +133,13 @@ class Worker:
                 'cpu_mem':  psutil.virtual_memory().total,
                 **config_resources
             },
-            devices=[(dev_type, dev_name, dev_res) for dev_type, dev_dev in config_devices.items() for dev_name, dev_res in dev_dev.items()],
+            devices=[(dev_type, dev_name, dev_stuff.get('resources', {})) for dev_type, dev_dev in config_devices.items() for dev_name, dev_stuff in dev_dev.items()],
         )
+        self.__my_device_tags = {
+            dev_type: {
+                dev_name: {tag_name: tag_val for tag_name, tag_val in dev_stuff.get('tags', {}).items()} for dev_name, dev_stuff in dev_dev.items()
+            } for dev_type, dev_dev in config_devices.items()
+        }
 
         self.__task_changing_state_lock = asyncio.Lock()
         self.__task_switching_event = asyncio.Event()  # this will signal invocation message waiters to cancel what they are doing
@@ -331,14 +347,14 @@ class Worker:
         path = os.path.join(self.log_root_path, f'db_{self.__scheduler_db_uid:016x}', 'invocations', str(invocation_id or self.__running_task.invocation_id()))
         await asyncio.get_event_loop().run_in_executor(None, shutil.rmtree, path)  # assume that deletion MAY take time, so allow util tasks to be processed while we wait
 
-    async def run_task(self, task: InvocationJob, report_to: AddressChain):
+    async def run_task(self, task: Invocation, report_to: AddressChain):
         if self.__stopped:
             raise WorkerNotAvailable()
         self.__logger.debug(f'locks are {self.__task_changing_state_lock.locked()}')
         async with self.__task_changing_state_lock:
             self.__logger.debug('run_task: task_change_state locks acquired')
             # we must ensure picking up and finishing tasks is in critical section
-            assert len(task.args()) > 0
+            assert len(task.job_definition().args()) > 0
             if self.__running_process is not None:
                 raise AlreadyRunning('Task already in progress')
 
@@ -348,10 +364,10 @@ class Worker:
             # save external files
             self.__extra_files_base_dir = None
             extra_files_map: Dict[str, str] = {}
-            if len(task.extra_files()) > 0:
+            if len(task.job_definition().extra_files()) > 0:
                 self.__extra_files_base_dir = tempfile.mkdtemp(prefix='lifeblood_efs_')  # TODO: add base temp dir to config
                 self.__logger.debug(f'creating extra file temporary dir at {self.__extra_files_base_dir}')
-            for exfilepath, exfiledata in task.extra_files().items():
+            for exfilepath, exfiledata in task.job_definition().extra_files().items():
                 self.__logger.info(f'saving extra job file {exfilepath}')
                 exfilepath_parts = exfilepath.split('/')
                 tmpfilepath = os.path.join(self.__extra_files_base_dir, *exfilepath_parts)
@@ -361,22 +377,22 @@ class Worker:
                 extra_files_map[exfilepath] = tmpfilepath
 
             # check args for extra file references
-            if len(task.extra_files()) > 0:
+            if len(task.job_definition().extra_files()) > 0:
                 args = []
-                for arg in task.args():
-                    if isinstance(arg, str) and arg.startswith(':/') and arg[2:] in task.extra_files():
+                for arg in task.job_definition().args():
+                    if isinstance(arg, str) and arg.startswith(':/') and arg[2:] in task.job_definition().extra_files():
                         args.append(extra_files_map[arg[2:]])
                     else:
                         args.append(arg)
             else:
-                args = task.args()
+                args = task.job_definition().args()
 
             try:
-                if task.environment_resolver_arguments() is None:
+                if task.job_definition().environment_resolver_arguments() is None:
                     resolver = environment_resolver.get_resolver(self.__config.get_option_noasync('default_env_wrapper.name', 'TrivialEnvironmentResolver'))
                     resolver_arguments = self.__config.get_option_noasync('default_env_wrapper.arguments', {})
                 else:
-                    env_res_args = task.environment_resolver_arguments()
+                    env_res_args = task.job_definition().environment_resolver_arguments()
                     resolver = env_res_args.get_resolver()
                     resolver_arguments = env_res_args.arguments()
 
@@ -388,14 +404,20 @@ class Worker:
             # TODO: resolver args get_environment() acually does resolution so should be renamed to like resolve_environment()
             #  Environment's resolve() actually just expands and merges everything, so naming it "resolve" is misleading next to EnvironmentResolver
 
-            env = task.env().resolve(env)
+            env = task.job_definition().env().resolve(env)
 
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
+            for dev_type, dev_name_list in task.resources_to_use().devices.items():
+                for i, dev_name in enumerate(dev_name_list):
+                    env[f'LBDEV_TYPE{i}'] = dev_type
+                    env[f'LBDEV_NAME{i}'] = dev_name
+                    env[f'LBDEV_TAGS{i}'] = ','.join(f'{tag_name}={tag_val}' for tag_name, tag_val in self.__my_device_tags.get(dev_type, {}).get(dev_name, {}).items())
+
             # we do NOT set all attribs to env - just a frame list can easily hit proc env size limit
-            for aname, aval in task.attributes().items():
+            for aname, aval in task.job_definition().attributes().items():
                 if aname.startswith('_'):  # skip attributes starting with _
                     continue
                 # TODO: THINK OF A BETTER LOGIC !
@@ -413,7 +435,8 @@ class Worker:
                 self.__running_process: asyncio.subprocess.Process = await resolver.create_process(
                     resolver_arguments,
                     args,
-                    env=env
+                    env=env,
+                    resources_to_use=task.resources_to_use(),
                 )
             except Exception as e:
                 self.__logger.exception('task creation failed with error: %s' % (repr(e),))
@@ -466,7 +489,7 @@ class Worker:
                         done, tasks_to_wait = await asyncio.wait(tasks_to_wait, return_when=asyncio.FIRST_COMPLETED)
                         if rout_task in done:
                             buff_line = rout_task.result()
-                            progress = self.__running_task.match_stdout_progress(buff_line)
+                            progress = self.__running_task.job_definition().match_stdout_progress(buff_line)
                             if progress is not None:
                                 self.__running_task_progress = progress
                             if buff_line != b'':  # this can only happen at eof
@@ -475,7 +498,7 @@ class Worker:
                                 tasks_to_wait.add(rout_task)
                         if rerr_task in done:
                             buff_line = rerr_task.result()
-                            progress = self.__running_task.match_stderr_progress(buff_line)
+                            progress = self.__running_task.job_definition().match_stderr_progress(buff_line)
                             if progress is not None:
                                 self.__running_task_progress = progress
                             if buff_line != b'':  # this can only happen at eof
@@ -547,7 +570,7 @@ class Worker:
     def is_task_running(self) -> bool:
         return self.__running_task is not None
 
-    def running_invocation(self) -> Optional[InvocationJob]:
+    def running_invocation(self) -> Optional[Invocation]:
         return self.__running_task
 
     async def deliver_invocation_message(self, destination_invocation_id: int, destination_addressee: str, source_invocation_id: Optional[int], message_body: bytes, addressee_timeout: float = 90.0):
