@@ -11,6 +11,7 @@ from lifeblood.nethelpers import get_default_addr
 from lifeblood.simple_worker_pool import WorkerPool
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.taskspawn import NewTask
+from lifeblood.worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 from lifeblood.enums import SpawnStatus
 
 from typing import Dict, Iterable, Optional, Tuple, Union
@@ -57,6 +58,8 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             server_ui_addr=(get_default_addr(), test_server_port3),
             node_per_node_config=c1,
             node_global_config=c2,
+            resource_definitions=self._resource_definitions(),
+            device_type_definitions=self._device_type_definitions(),
         )
         self.worker_pool = WorkerPool(
             scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
@@ -96,7 +99,7 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         print(f'expecting {expected_states}')
         # so expected_states is dict of task id to (state, is paused, node_id), not node name
 
-        required_succ_time = 0
+        required_succ_time = self._required_expected_state_keep_time()
 
         # wait for processing
         timeout = self._timeout()
@@ -180,6 +183,9 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
     async def _additional_checks_on_finish(self):
         return
 
+    def _required_expected_state_keep_time(self) -> float:
+        return 0.0
+
     def _timeout(self) -> float:
         return 15.0
 
@@ -191,3 +197,9 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
 
     def _maximum_total(self) -> int:
         return 16
+
+    def _resource_definitions(self) -> Optional[Tuple[WorkerResourceDefinition, ...]]:
+        return None
+
+    def _device_type_definitions(self) -> Optional[Tuple[WorkerDeviceTypeDefinition, ...]]:
+        return None

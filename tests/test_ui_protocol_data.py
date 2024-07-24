@@ -6,7 +6,7 @@ from lifeblood.buffered_connection import BufferedReaderWrapper
 from lifeblood.worker_metadata import WorkerMetadata
 from lifeblood.ui_protocol_data import UiData, NodeGraphStructureData, \
     NodeData, NodeConnectionData, TaskBatchData, TaskData, WorkerData, WorkerResources, WorkerResource, WorkerResourceType, \
-    WorkerBatchData, TaskGroupData, TaskGroupStatisticsData, TaskGroupBatchData, TaskDelta
+    WorkerBatchData, TaskGroupData, TaskGroupStatisticsData, TaskGroupBatchData, TaskDelta, WorkerDevice, WorkerDeviceResource
 from lifeblood.ui_events import TasksChanged, TasksUpdated, TasksRemoved, TaskFullState, TaskEvent
 
 
@@ -25,17 +25,25 @@ class Tests(TestCase):
                 11: TaskData(11, None, 10, 5, TaskState.ERROR, "oh noooo", True, 1531, "main", "out",
                              'a task', 2, 11, 52.1, 8484, 158, 816, {'groo', 'froo'})
             }), WorkerBatchData(0, {
-                121: WorkerData(121, WorkerResources(
+                121: WorkerData(121,
+                                1928374, '127.1.2.333:blo', 1234567, WorkerState.BUSY, WorkerType.STANDARD,
+                                1534, 8273, 7573, 55.5, {"borker", "gorker"},
+                                WorkerMetadata("fooo"))
+            }, {
+                1928374: WorkerResources(
                     [
                         WorkerResource(12.3, 23.4, WorkerResourceType.FLOAT, 'cpu_count'),
                         WorkerResource(929283838, 939384848, WorkerResourceType.INT, 'cpu_mem'),
                         WorkerResource(56.7, 67.8, WorkerResourceType.FLOAT, 'gpu_count'),
                         WorkerResource(84847575, 85857676, WorkerResourceType.INT, 'gpu_mem'),
+                    ],
+                    [
+                        WorkerDevice('footype', 'dename', True, [
+                            WorkerDeviceResource(12.21, WorkerResourceType.FLOAT, 'lompas'),
+                            WorkerDeviceResource(55, WorkerResourceType.INT, 'wompas')
+                        ])
                     ]
                 ),
-                                '1928374', '127.1.2.333:blo', 1234567, WorkerState.BUSY, WorkerType.STANDARD,
-                                1534, 8273, 7573, 55.5, {"borker", "gorker"},
-                                WorkerMetadata("fooo"))
             }), TaskGroupBatchData(0, {
                 'grooup foo': TaskGroupData('grooup foo', 2345678, TaskGroupArchivedState.ARCHIVED, 22.3,
                                             TaskGroupStatisticsData(45, 56, 67, 78))
