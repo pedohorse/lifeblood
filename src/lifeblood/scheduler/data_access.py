@@ -461,10 +461,10 @@ class DataAccess:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
-        if from_version - to_version > 1:
+        if to_version - from_version > 1:
             need_commit = False
             for i in range(from_version, to_version):
-                need_commit = self.__database_schema_upgrade(con, from_version, from_version + 1) or need_commit
+                need_commit = self.__database_schema_upgrade(con, i, i + 1) or need_commit
             return need_commit
 
         # at this point we are sure that from_version +1 = to_version
