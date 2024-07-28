@@ -9,7 +9,7 @@ from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 
 from lifeblood.config import get_config
-from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator
+from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator, MultiGroupLayout
 from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState, InvocationState
@@ -798,12 +798,21 @@ class Node(NetworkItemWithUI):
         elif isinstance(item, CollapsableVerticalGroup):
             expanded, _ = imgui.collapsing_header(f'{item.label()}##{item.name()}')
             if expanded:
+                imgui.indent(5)
                 for child in item.items(recursive=False):
                     h, w = item.relative_size_for_child(child)
-                    imgui.indent(5)
                     self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
-                    imgui.unindent(5)
+                imgui.unindent(5)
                 imgui.separator()
+        elif isinstance(item, ParametersLayoutBase):
+            imgui.indent(5)
+            for child in item.items(recursive=False):
+                h, w = item.relative_size_for_child(child)
+                if isinstance(child, Parameter):
+                    if not child.visible():
+                        continue
+                self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
+            imgui.unindent(5)
         elif isinstance(item, ParametersLayoutBase):
             for child in item.items(recursive=False):
                 h, w = item.relative_size_for_child(child)
