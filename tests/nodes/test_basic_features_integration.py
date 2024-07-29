@@ -34,7 +34,7 @@ class TestNodeStuff(FullIntegrationTestCase):
             },
         }
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         pass
 
     def _minimal_idle_to_ensure(self) -> int:

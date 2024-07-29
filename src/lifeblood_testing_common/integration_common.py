@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 from unittest import IsolatedAsyncioTestCase
 from lifeblood.enums import TaskState
+from lifeblood.config import Config
 from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.nethelpers import get_default_addr
 from lifeblood.simple_worker_pool import WorkerPool
@@ -60,12 +61,14 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             node_global_config=c2,
             resource_definitions=self._resource_definitions(),
             device_type_definitions=self._device_type_definitions(),
+            helpers_minimal_idle_to_ensure=self._minimal_helper_idle_to_ensure(),
         )
         self.worker_pool = WorkerPool(
             scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
             minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
             minimal_total_to_ensure=self._minimal_total_to_ensure(),
             maximum_total=self._maximum_total(),
+            config=self._worker_config()
         )
 
         await self.scheduler.start()
@@ -73,8 +76,8 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
 
     async def asyncTearDown(self):
         self.worker_pool.stop()
-        self.scheduler.stop()
         await self.worker_pool.wait_till_stops()
+        self.scheduler.stop()
         await self.scheduler.wait_till_stops()
         self.worker_pool = None
         self.scheduler = None
@@ -106,7 +109,8 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         ts1 = time.perf_counter()
         check_succ_time = None
         while timeout > 0:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(max(0.0, self._additional_checks_interval()))
+            await self._additional_checks_during_run()
             ts2 = time.perf_counter()
             timeout -= ts2 - ts1
             ts1 = ts2
@@ -127,7 +131,7 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             actual_attribs, _ = await self.scheduler.get_task_attributes(task_id)
             self.assertDictEqual(attribs, {k: v for k, v in actual_attribs.items() if k in attribs}, 'tasks finished as expected, but attribs are wrong')
 
-        await self._additional_checks_on_finish()
+        await self._additional_checks_on_finish({i: (await self.scheduler.get_task_attributes(task_id))[0] for i, task_id in enumerate(task_ids)})
 
     async def __check_tasks(self, expected_states: Dict[int, Tuple[TaskState, int]]) -> bool:
         actual = {task_id: (
@@ -180,8 +184,31 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         """
         return {}
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
+        """
+        additional checks ran on finish.
+        result of this function is ignored - so raise on errors
+
+        :param task_attributes: mapping of task ORDER (not task id) in which it was created by create_tasks to attributes
+        """
         return
+
+    async def _additional_checks_during_run(self):
+        """
+        this check is called every very small time interval
+        you can use it to check how things are going,
+        but do not put heavy logic in here
+        """
+        return
+
+    def _worker_config(self) -> Optional[Config]:
+        """
+        optionally, a custom worker configuration
+        """
+        return None
+
+    def _additional_checks_interval(self) -> float:
+        return 0.5
 
     def _required_expected_state_keep_time(self) -> float:
         return 0.0
@@ -190,6 +217,9 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
         return 15.0
 
     def _minimal_idle_to_ensure(self) -> int:
+        return 1
+
+    def _minimal_helper_idle_to_ensure(self) -> int:
         return 1
 
     def _minimal_total_to_ensure(self) -> int:

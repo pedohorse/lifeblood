@@ -27,7 +27,7 @@ class ParentChildrenIntegrationTest(FullIntegrationTestCase):
             3: {'foo': list(range(11, 11+20*2, 4))},
         }
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         stat = await self.scheduler.data_access.invocations_statistics()
         self.assertEqual(75, stat.total)
         self.assertEqual(75, stat.finished_good)

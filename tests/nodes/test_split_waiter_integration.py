@@ -21,7 +21,7 @@ class SplitWaiterIntegrationTest(FullIntegrationTestCase):
             0: {'farmes': list(range(22, 422, 2))},
         }
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         stat = await self.scheduler.data_access.invocations_statistics()
         self.assertEqual(50, stat.total)
         self.assertEqual(50, stat.finished_good)
