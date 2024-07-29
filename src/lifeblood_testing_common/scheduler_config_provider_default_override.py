@@ -49,7 +49,7 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
         return self.__broadcast_interval_override if self.__broadcast_interval_override is not None else super()._config_broadcast_interval()
 
     def scheduler_helpers_minimal(self) -> int:
-        return self.__minimal_idle_helpers or super().scheduler_helpers_minimal()
+        return self.__minimal_idle_helpers if self.__minimal_idle_helpers is not None else super().scheduler_helpers_minimal()
 
     def legacy_server_address(self) -> Optional[Tuple[str, int]]:
         return self.__legacy_address or super().legacy_server_address()
