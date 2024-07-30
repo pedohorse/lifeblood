@@ -552,6 +552,7 @@ class InvocationJob:
         return self.__args
 
     def env(self):
+        # TODO: ensure this is never modified by mistake
         return self.__env
 
     def exit_code_means_error(self, exit_code: int):
