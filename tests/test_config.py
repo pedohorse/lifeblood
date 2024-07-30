@@ -1,8 +1,9 @@
 import os
+from pathlib import Path
 import unittest
 import shutil
 import toml  # for raw file comparison
-from lifeblood.config import get_config
+from lifeblood.config import get_config, Config
 from lifeblood.scheduler_config_provider_file import SchedulerConfigProviderFile
 
 class StandardConfigTest(unittest.TestCase):
@@ -79,7 +80,7 @@ class StandardConfigTest(unittest.TestCase):
                                    'bar': {"qwe.asd": {'foof': {'nana.k..': [1, 2, 3]}}}}, expected_config_file_path)
         self.assertListEqual([1, 2, 3], config.get_option_noasync('bar."qwe.asd"."foof"."nana.k.."'))
 
-    def test_condigd(self):
+    def test_configd(self):
         config = get_config('boofar')
         expected_config_file_path = os.path.join(self.config_base_path, 'boofar', 'config.toml')
         self.assertEqual(expected_config_file_path, str(config.writeable_file()))
@@ -93,9 +94,64 @@ class StandardConfigTest(unittest.TestCase):
         self.assertDictEqual({'wow': 'cat'}, config.get_option_noasync('some'))
         self.assertDictEqual({'wee': 'so much'}, config.get_option_noasync('body'))
 
+    def test_save_as_copy(self):
+        for overrides in ({}, {'main': {'one': 666}}, {'some': {'wow': 'dog'}}):
+            config = Config('boofar')
+            config1 = Config('boofar')
+            self.assertEqual(config, config1)
+
+            if overrides:
+                config.set_overrides(overrides)
+                config1.set_overrides(overrides)
+            other_config_path = Path(self.config_base_path) / '_tests_' / 'config.toml'
+            config.save_as_copy(other_config_path, collapse_overrides=False)
+
+            # ensure config was not changed
+            self.assertEqual(config, config1)
+
+            config2 = Config(str(other_config_path.parent))
+            if overrides:
+                self.assertFalse(config.is_same_as(config2))  # not same without overrides
+                config2.set_overrides(overrides)
+            # ensure saved config is the same
+            self.assertNotEqual(config, config2)  # not equal cuz loaded from different places
+            self.assertTrue(config.is_same_as(config2))
+
+            if not overrides:
+                continue
+
+            config.save_as_copy(other_config_path, collapse_overrides=True)
+            config2 = Config(str(other_config_path.parent))
+
+            # ensure config was not changed
+            self.assertEqual(config, config1)
+
+            # ensure saved config is the same, but since overrides are collapsed in config2 - they are same, but not equal
+            self.assertNotEqual(config, config2)
+            self.assertTrue(config.is_same_as(config2))
+
+    def test_save_as(self):
+        for overrides in ({}, {'main': {'one': 666}}, {'some': {'wow': 'dog'}}):
+            config = Config('boofar')
+            config1 = Config('boofar')
+            self.assertEqual(config, config1)
+
+            if overrides:
+                config.set_overrides(overrides)
+                config1.set_overrides(overrides)
+            other_config_path = Path(self.config_base_path) / '_tests1_' / 'config.toml'
+            config.save_as(other_config_path, collapse_overrides=False)
+
+            config2 = Config(str(other_config_path.parent))
+
+            if overrides:
+                self.assertNotEqual(config, config2)
+                config2.set_overrides(overrides)
+            self.assertEqual(config, config2)
+
 
 class DefaultComponentConfigTest(unittest.TestCase):
-    def test_default_schediler(self):
+    def test_default_scheduler(self):
         config_text = SchedulerConfigProviderFile.generate_default_config_text()
         data = toml.loads(config_text)
         # not much we can test just like that,
