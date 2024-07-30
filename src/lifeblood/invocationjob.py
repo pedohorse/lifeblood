@@ -77,6 +77,18 @@ class InvocationEnvironment:
             value = str(value)
         self.__action_queue.append(('__setitem__', key, value))
 
+    def __setitem__(self, key, value):
+        return self.set_variable(key, value)
+
+    def extend(self, other: Union["InvocationEnvironment", Environment]):
+        if isinstance(other, InvocationEnvironment):
+            self.__action_queue.extend(other.__action_queue)
+        elif isinstance(other, Environment):
+            for key, value in other.items():
+                self.set_variable(key, value)
+        else:
+            raise ValueError(f'argument must be of InvocationEnvironment or Environment type')
+
     def resolve(self, base_env: Optional[Environment] = None, additional_environment_to_expand_with: Optional[Environment] = None) -> Environment:
         """
         resolves action queue and produces final environment
@@ -115,6 +127,9 @@ class ResourceRequirement:
     min: Number = 0
     pref: Number = 0
 
+    def __repr__(self):
+        return f'<Requirement: min={self.min},pref={self.pref}>'
+
 
 class ResourceRequirements:
     """
@@ -149,12 +164,18 @@ class ResourceRequirements:
             return False
         return self.__res == other.__res
 
+    def __repr__(self):
+        return f'<ResourceRequirements: {repr(self.__res)}>'
+
 
 @dataclass
 class DeviceRequirement:
     resources: ResourceRequirements = field(default_factory=ResourceRequirements)
     min: int = 1
     pref: int = 0
+
+    def __repr__(self):
+        return f'<DeviceRequirement: min={self.min},pref={self.pref},res={self.resources}>'
 
 
 class DeviceRequirements:
@@ -193,6 +214,8 @@ class DeviceRequirements:
             return False
         return self.__dev == other.__dev
 
+    def __repr__(self):
+        return f'<DeviceRequirements: {repr(self.__dev)}>'
 
 @dataclass
 class Requirements:
