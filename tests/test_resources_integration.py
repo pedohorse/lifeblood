@@ -12,8 +12,6 @@ from typing import Iterable, Optional, Tuple
 
 
 class ResourceBaseTestCase(FullIntegrationTestCase):
-    __test__ = True
-
     def _device_type_definitions(self) -> Optional[Tuple[WorkerDeviceTypeDefinition, ...]]:
         return (
             WorkerDeviceTypeDefinition('gapauu', (
@@ -58,6 +56,8 @@ class ResourceBaseTestCase(FullIntegrationTestCase):
 
 
 class TestDeviceRequirement(ResourceBaseTestCase):
+    __test__ = True
+
     @classmethod
     def _initial_db_file(cls) -> str:
         return 'data/test_resources.db'
@@ -117,6 +117,8 @@ class TestDeviceRequirement(ResourceBaseTestCase):
 
 
 class TestResourceRequirement(ResourceBaseTestCase):
+    __test__ = True
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__reached_full_cpu = False
