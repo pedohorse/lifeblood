@@ -469,3 +469,23 @@ def get_free_tcp_port(ip, starting_at=20001):
                 continue
             raise
     return starting_at
+
+
+def get_provided_devices():
+    """
+    get devices that were dedicated to current invocation by the worker
+
+    returns: dict of {dev_type to {dev_name to {tag_name to tag_value}}}
+    """
+    i = 0
+    devices = {key: {} for key in os.environ.get('LBDEV_TYPES').split(',')}
+    while True:
+        dev_type = os.environ.get(f'LBDEV_TYPE{i}')
+        dev_name = os.environ.get(f'LBDEV_NAME{i}')
+        dev_tags = os.environ.get(f'LBDEV_TAGS{i}')
+        i += 1
+        if any(x is None for x in (dev_type, dev_name, dev_tags)):
+            break
+        devices.setdefault(dev_type, {})[dev_name] = {tag_name: tag_val for tagpair in dev_tags.split(',') if tagpair for tag_name, tag_val in (tagpair.split('=', 1),)}
+
+    return devices
