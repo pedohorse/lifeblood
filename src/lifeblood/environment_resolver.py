@@ -27,8 +27,9 @@ from .attribute_serialization import serialize_attributes_core, deserialize_attr
 from .toml_coders import TomlFlatConfigEncoder
 from .process_utils import create_process, oh_no_its_windows
 from .exceptions import ProcessInitializationError
+from .invocationjob import Environment
 
-from typing import Dict,  Iterable, List, Mapping, Optional, Type
+from typing import Dict,  Iterable, List, Mapping, Optional, Type, Union
 
 
 _resolvers: Dict[str, Type["BaseEnvironmentResolver"]] = {}  # this should be loaded from plugins
@@ -132,7 +133,7 @@ class BaseEnvironmentResolver:
         raise NotImplementedError()
 
     async def create_process(self, arguments: Mapping, call_args: List[str], *,
-                             env: Optional[invocationjob.Environment] = None,
+                             extra_env: Union[invocationjob.InvocationEnvironment, invocationjob.Environment, None] = None,
                              cwd: Optional[str] = None,
                              resources_to_use: Optional[invocationjob.InvocationResources] = None) -> asyncio.subprocess.Process:
         """
@@ -140,7 +141,7 @@ class BaseEnvironmentResolver:
 
         :param arguments: EnvironmentResolverArguments for the resolver
         :param call_args: what to call: process and arguments
-        :param env: optional environment to launch process in. If None - get_environment should be called
+        :param extra_env: optional extra environment add to launch process in.
         :param cwd: current working directory for the process
         :param resources_to_use: resources that resolver should give to the process and enforce
         """
@@ -149,11 +150,10 @@ class BaseEnvironmentResolver:
 
 class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
     async def create_process(self, arguments: Mapping, call_args: List[str], *,
-                             env: Optional[invocationjob.Environment] = None,
+                             extra_env: Union[invocationjob.InvocationEnvironment, invocationjob.Environment, None] = None,
                              cwd: Optional[str] = None,
                              resources_to_use: Optional[invocationjob.InvocationResources] = None) -> asyncio.subprocess.Process:
-        if env is None:
-            env = await self.get_environment(arguments)
+        env = await self._resolve_environment_for_process_creation(arguments, extra_env)
 
         if os.path.isabs(call_args[0]):
             bin_path = call_args[0]
@@ -179,6 +179,14 @@ class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
 
         return await create_process(call_args, env, cwd)
 
+    async def _resolve_environment_for_process_creation(self,
+                             arguments: Mapping,
+                             extra_env: Union[invocationjob.InvocationEnvironment, invocationjob.Environment, None] = None) -> Environment:
+        env = await self.get_environment(arguments)
+        if extra_env:
+            env = extra_env.resolve(base_env=env)
+        return env
+
 
 class BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(BaseSimpleProcessSpawnEnvironmentResolver):
     # even though lifeblood worker runs with python interpreter - it does NOT expect
@@ -186,18 +194,18 @@ class BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(BaseSimpleProcess
     #  However, simple one user artist might not care, and would just want python code to work without any packages setup.
     #  So to simplify the life of smaller setup users, this hack was introduced.
     async def create_process(self, arguments: Mapping, call_args: List[str], *,
-                             env: Optional[invocationjob.Environment] = None,
+                             extra_env: Union[invocationjob.InvocationEnvironment, invocationjob.Environment, None] = None,
                              cwd: Optional[str] = None,
                              resources_to_use: Optional[invocationjob.InvocationResources] = None) -> asyncio.subprocess.Process:
         """
         This introduces path to sys.executable if no python is found in PATH, yet `python` is first arg in call_args
         """
-        if env is None:
-            env = await self.get_environment(arguments)
+        env = await self._resolve_environment_for_process_creation(arguments, extra_env)
+
         if call_args[0] in ('python', 'python.exe') and shutil.which(call_args[0], path=env.get('PATH', '')) is None:
             env.append('PATH', os.path.dirname(sys.executable))
 
-        return await super().create_process(arguments, call_args, env=env, cwd=cwd, resources_to_use=resources_to_use)
+        return await super().create_process(arguments, call_args, extra_env=extra_env, cwd=cwd, resources_to_use=resources_to_use)
 
 
 class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat):

@@ -20,7 +20,7 @@ from .worker_messsage_processor import WorkerMessageProcessor
 from .scheduler_message_processor import SchedulerWorkerControlClient
 from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, WorkerInvocationServerProtocol
 from .worker_pool_message_processor import WorkerPoolControlClient
-from .invocationjob import Invocation
+from .invocationjob import Invocation, InvocationEnvironment
 from .config import get_config, Config
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
@@ -395,8 +395,6 @@ class Worker:
                     env_res_args = task.job_definition().environment_resolver_arguments()
                     resolver = env_res_args.get_resolver()
                     resolver_arguments = env_res_args.arguments()
-
-                env = await resolver.get_environment(resolver_arguments)
             except environment_resolver.ResolutionImpossibleError as e:
                 self.__logger.error(f'cannot run the task: Unable to resolve environment: {str(e)}')
                 raise
@@ -404,12 +402,14 @@ class Worker:
             # TODO: resolver args get_environment() acually does resolution so should be renamed to like resolve_environment()
             #  Environment's resolve() actually just expands and merges everything, so naming it "resolve" is misleading next to EnvironmentResolver
 
-            env = task.job_definition().env().resolve(env)
+            env = InvocationEnvironment()  # task.job_definition().env().resolve(env)
 
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
+
+            env['LBDEV_TYPES'] = ','.join({dev_type for dev_type, _, _ in self.__my_resources.devices()})
             for dev_type, dev_name_list in task.resources_to_use().devices.items():
                 for i, dev_name in enumerate(dev_name_list):
                     env[f'LBDEV_TYPE{i}'] = dev_type
@@ -435,7 +435,7 @@ class Worker:
                 self.__running_process: asyncio.subprocess.Process = await resolver.create_process(
                     resolver_arguments,
                     args,
-                    env=env,
+                    extra_env=env,
                     resources_to_use=task.resources_to_use(),
                 )
             except Exception as e:
