@@ -1,6 +1,7 @@
 import random
 import sys
 import os
+import copy
 import errno
 import shutil
 import threading
@@ -402,7 +403,7 @@ class Worker:
             # TODO: resolver args get_environment() acually does resolution so should be renamed to like resolve_environment()
             #  Environment's resolve() actually just expands and merges everything, so naming it "resolve" is misleading next to EnvironmentResolver
 
-            env = InvocationEnvironment()  # task.job_definition().env().resolve(env)
+            env = copy.deepcopy(task.job_definition().env() or InvocationEnvironment())
 
             env.prepend('PYTHONPATH', self.__rt_module_dir)
             env['LIFEBLOOD_RUNTIME_IID'] = task.invocation_id()
