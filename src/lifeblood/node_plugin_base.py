@@ -92,6 +92,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 ui.add_parameter('__requirements__.worker_type', 'worker type', NodeParameterType.INT, WorkerType.STANDARD.value)\
                     .add_menu((('standard', WorkerType.STANDARD.value),
                                ('scheduler helper', WorkerType.SCHEDULER_HELPER.value)))
+                ui.add_separator()
                 # devices
                 with ui.multigroup_parameter_block('__requirements__.dev', 'Devices'):
                     with ui.parameters_on_same_line_block():
@@ -133,7 +134,6 @@ class BaseNodeWithTaskRequirements(BaseNode):
 
                 self.__res_defs_set(dev_type_to_dev_res_defs[dev_def.name], '__requirements__.dev.', i)
 
-
         #
         super().set_parent(graph_holder, node_id_in_graph)
 
@@ -162,6 +162,8 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 dev_res_reqs = ResourceRequirements()
                 for res_name, (res_min, res_pref) in self.__res_collect(context, self.__dev_res_definitions[dev_type], '__requirements__.dev.', dev_i).items():
                     dev_res_reqs[res_name] = ResourceRequirement(res_min, res_pref)
+                if dev_min == 0 and dev_pref == 0:  # no need to add empty requirement
+                    continue
                 reqs.set_device_requirement(dev_type, dev_min, dev_pref, dev_res_reqs)
 
             reqs.set_worker_type(WorkerType(context.param_value('__requirements__.worker_type')))
