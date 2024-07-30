@@ -3,11 +3,14 @@ import errno
 import argparse
 import asyncio
 import signal
+import shutil
+import tempfile
 import time
 import itertools
+from pathlib import Path
 from types import MappingProxyType
 import json
-from .config import get_config
+from .config import get_config, Config
 from .broadcasting import await_broadcast
 from .defaults import message_proxy_port
 from .pulse_checker import PulseChecker
@@ -53,6 +56,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                  priority=ProcessPriorityAdjustment.NO_CHANGE,
                  scheduler_address: AddressChain,
                  message_proxy_address: Optional[Tuple[Optional[str], Optional[int]]] = None,
+                 config: Optional[Config] = None,
                  ):
         """
         manages a pool of workers.
@@ -78,6 +82,8 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__housekeeping_interval = housekeeping_interval
         self.__worker_priority = priority
         self.__scheduler_address = scheduler_address
+        self.__worker_config = config or get_config('worker')
+        self.__worker_config_dir: Optional[Path] = None
 
         # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
         self.__suspiciously_short_process_time = worker_suspicious_lifetime
@@ -133,6 +139,11 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
         self.__pulse_checker = PulseChecker(self.__scheduler_address, self.__message_proxy, interval=10, maximum_misses=10)
         self.__pulse_checker.add_pulse_fail_callback(self._on_pulse_fail)
         await self.__pulse_checker.start()
+
+        # create config file for workers
+        self.__worker_config_dir = Path(tempfile.mkdtemp('lifeblood_worker_temp_config'))
+        self.__worker_config.save_as_copy(self.__worker_config_dir / 'config.toml', collapse_overrides=True)
+
         self.__logger.debug(f'worker pool message protocol listening on {self.__message_proxy.listening_addresses()}')
 
     def stop(self):
@@ -148,6 +159,9 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
             return
         self.__stop_event.set()  # stops local_worker_pool_manager
         self.__server_closer_waiter = asyncio.create_task(_server_closer())  # server will be closed here
+        if self.__worker_config_dir is not None and not self.__worker_config_dir.exists():
+            shutil.rmtree(self.__worker_config_dir)
+            self.__worker_config_dir = None
         self.__stopped = True
 
     def __await__(self):
@@ -192,6 +206,7 @@ class WorkerPool:  # TODO: split base class, make this just one of implementatio
                 '--no-loop',
                 '--id', str(self.__next_wid),
                 '--pool-address', str(pool_address),
+                '--override-config-path', str(self.__worker_config_dir),
                 '--scheduler-address',
                 AddressChain.join_address((
                     pool_address,
