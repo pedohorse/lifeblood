@@ -3,6 +3,7 @@ from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
+from lifeblood_stock_houdini_helpers.common import gpu_device_env_common_code
 
 from typing import Iterable
 
@@ -75,8 +76,14 @@ class HipScript(BaseNodeWithTaskRequirements):
                   '__main_body__()\n' \
                  f'hou.hipFile.save({repr(dest_hip)})\n'
 
-        job = InvocationJob(['hython', ':/work_to_do.py'])
+        launch_wrapper_code = (
+                gpu_device_env_common_code() +
+                'import sys, subprocess\n'
+                'sys.exit(subprocess.Popen(sys.argv[1:]).wait())')
+
+        job = InvocationJob(['python', ':/launch_wrapper.py', 'hython', ':/work_to_do.py'])
         job.set_extra_file('work_to_do.py', script)
+        job.set_extra_file('launch_wrapper.py', launch_wrapper_code)
         return ProcessingResult(job=job)
 
     def postprocess_task(self, context) -> ProcessingResult:
