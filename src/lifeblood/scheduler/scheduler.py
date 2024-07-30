@@ -994,8 +994,13 @@ class Scheduler(NodeGraphHolderBase):
 
             selected_devs: Dict[str, List[int]] = {}  # dev_type to list of dev_ids of that type that are picked
             for dev_type, dev_reqs in resources.devices.items():
+                if dev_reqs.min == 0 and dev_reqs.pref == 0:  # trivial check
+                    continue
                 if dev_type not in available_dev_type_to_ids:
-                    raise NotEnoughResources(f'device "{dev_type}" missing')  # this shouldn't happen - this whole func is only called when resources are checked
+                    if dev_reqs.min > 0:
+                        raise NotEnoughResources(f'device "{dev_type}" missing')  # this shouldn't happen - this whole func is only called when resources are checked
+                    else:
+                        continue
                 for dev_id, dev_res in available_dev_type_to_ids[dev_type].items():
                     # now we check if dev fits requirements
                     is_good = True
