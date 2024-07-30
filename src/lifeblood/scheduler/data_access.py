@@ -228,6 +228,8 @@ class DataAccess:
     async def get_invocation_resources_assigned_to(self, worker_id: int) -> Optional[InvocationResources]:
         if (res_data := self.mem_cache_workers_resources.get(worker_id)) is None:
             return None
+        if 'res' not in res_data and 'dev' not in res_data:
+            return None
         res = dict(res_data.get('res', {}))
         dev = {}
         async with self.data_connection() as con:
