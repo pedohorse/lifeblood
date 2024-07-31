@@ -8,7 +8,7 @@ from types import MappingProxyType
 from .enums import WorkerType
 from dataclasses import dataclass, field
 
-from typing import Optional, Iterable, Union, Dict, List, Set, Tuple, TYPE_CHECKING
+from typing import Optional, Iterable, Mapping, Union, Dict, List, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .environment_resolver import EnvironmentResolverArguments
 
@@ -25,8 +25,12 @@ class BadProgressRegexp(RuntimeError):
 
 
 class Environment(dict):
-    def __init__(self, *args, **kwargs):
-        super(Environment, self).__init__(*args, **kwargs)
+    def __init__(self, init: Optional[Mapping] = None):
+        if init is not None:
+            init_dict = {key: str(val) for key, val in init.items()}
+        else:
+            init_dict = {}
+        super(Environment, self).__init__(init_dict)
         self.__expandre = re.compile(r'\$(?:(\w+)|{(\w+)})')
         self.__extra_expand_dict = {}
 
@@ -68,8 +72,7 @@ class Environment(dict):
 
 
 class InvocationEnvironment:
-    def __init__(self, *args, **kwargs):
-        super(InvocationEnvironment, self).__init__(*args, **kwargs)
+    def __init__(self):
         self.__action_queue = []
 
     def set_variable(self, key: str, value):
