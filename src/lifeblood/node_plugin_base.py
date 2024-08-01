@@ -18,7 +18,7 @@ from typing import Dict, Optional, Tuple, Union
 
 class BaseNodeWithTaskRequirements(BaseNode):
     @staticmethod
-    def __res_block_helper(ui: NodeUi, base_prefix: str, hide_name: bool = True):
+    def __res_block_helper(ui: NodeUi, base_prefix: str, hide_name: bool = True, min_res_label: str = 'min <> preferred'):
         with ui.multigroup_parameter_block(f'{base_prefix}res', 'Resources'):
             with ui.parameters_on_same_line_block():
                 name_param = ui.add_parameter(f'{base_prefix}name_res', None, NodeParameterType.STRING, 'res')
@@ -26,13 +26,13 @@ class BaseNodeWithTaskRequirements(BaseNode):
                 type_param = ui.add_parameter(f'{base_prefix}type_res', None, NodeParameterType.INT, 0, can_have_expressions=False)
                 name_param.set_hidden(hide_name)
                 type_param.set_hidden(True)
-                ui.add_parameter(f'{base_prefix}f_min_res', 'min <> preferred', NodeParameterType.FLOAT, 0.0) \
+                ui.add_parameter(f'{base_prefix}f_min_res', min_res_label, NodeParameterType.FLOAT, 0.0) \
                     .set_value_limits(value_min=0) \
                     .append_visibility_condition(type_param, '==', 0)
                 ui.add_parameter(f'{base_prefix}f_pref_res', None, NodeParameterType.FLOAT, 0.0) \
                     .set_value_limits(value_min=0) \
                     .append_visibility_condition(type_param, '==', 0)
-                ui.add_parameter(f'{base_prefix}i_min_res', 'min <> preferred', NodeParameterType.INT, 0) \
+                ui.add_parameter(f'{base_prefix}i_min_res', min_res_label, NodeParameterType.INT, 0) \
                     .set_value_limits(value_min=0) \
                     .append_visibility_condition(type_param, '==', 1)
                 ui.add_parameter(f'{base_prefix}i_pref_res', None, NodeParameterType.INT, 0) \
@@ -62,7 +62,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             res[res_name] = (res_min, res_pref)
         return res
 
-    def __res_defs_set(self, resource_defs, base_prefix: str, base_index: Optional[int] = None):
+    def __res_defs_set(self, resource_defs, base_prefix: str, base_index: Optional[int] = None, hide_prefs: bool = False):
         pre1 = f'_{base_index}' if base_index is not None else ""
         pre2 = f'{base_index}.' if base_index is not None else ""
         self.__check_set(f'{base_prefix}res{pre1}', len(resource_defs))
@@ -71,8 +71,12 @@ class BaseNodeWithTaskRequirements(BaseNode):
             self.__check_set(f'{base_prefix}label_res_{pre2}{i}', res_def.label or res_def.name)
             if res_def.type in (WorkerResourceDataType.GENERIC_FLOAT, WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT, WorkerResourceDataType.MEMORY_BYTES):
                 self.__check_set(f'{base_prefix}type_res_{pre2}{i}', 0)
+                if hide_prefs:
+                    self.param(f'{base_prefix}f_pref_res_{pre2}{i}').set_hidden(True)
             elif res_def.type in (WorkerResourceDataType.GENERIC_INT,):
                 self.__check_set(f'{base_prefix}type_res_{pre2}{i}', 1)
+                if hide_prefs:
+                    self.param(f'{base_prefix}i_pref_res_{pre2}{i}').set_hidden(True)
             else:
                 raise NotImplementedError(f'unknown resource data type "{res_def.type}"')
 
@@ -101,7 +105,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
                             .set_value_limits(value_min=0)
                         ui.add_parameter('__requirements__.pref_dev', None, NodeParameterType.INT, 0) \
                             .set_value_limits(value_min=0)
-                    self.__res_block_helper(ui, '__requirements__.dev.')
+                    self.__res_block_helper(ui, '__requirements__.dev.', min_res_label='min')
                 ui.parameter(f'__requirements__.dev').set_hidden(True)
 
     def __check_set(self, param_name: str, value):
@@ -132,7 +136,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
             for i, dev_def in enumerate(device_defs):  # type: int, WorkerDeviceTypeDefinition
                 self.__check_set(f'__requirements__.type_dev_{i}', dev_def.name)
 
-                self.__res_defs_set(dev_type_to_dev_res_defs[dev_def.name], '__requirements__.dev.', i)
+                self.__res_defs_set(dev_type_to_dev_res_defs[dev_def.name], '__requirements__.dev.', i, hide_prefs=True)
 
         #
         super().set_parent(graph_holder, node_id_in_graph)
