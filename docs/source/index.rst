@@ -20,6 +20,7 @@ where tasks that travel from node to node and may produce workload to be execute
     concepts
     installation
     usage
+    resource_control
     network_config
     tutorials
     nodes

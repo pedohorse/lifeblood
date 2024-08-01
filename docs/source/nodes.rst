@@ -28,6 +28,7 @@ Nodes
     :maxdepth: 1
     :caption: Stock Nodes:
 
+    nodes/stock/houdini/hip_driver_renderer
     nodes/stock/houdini/karma
     nodes/stock/houdini/mantra
     nodes/stock/matrixnotifier
