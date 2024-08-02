@@ -23,6 +23,7 @@ from .worker_invocation_protocol import WorkerInvocationProtocolHandlerV10, Work
 from .worker_pool_message_processor import WorkerPoolControlClient
 from .invocationjob import Invocation, InvocationEnvironment
 from .config import get_config, Config
+from .misc import get_unique_machine_id
 from . import environment_resolver
 from .enums import WorkerType, WorkerState, ProcessPriorityAdjustment
 from .paths import log_path
@@ -129,6 +130,7 @@ class Worker:
         else:
             config_devices = {}
         self.__my_resources = HardwareResources(
+            hwid=get_unique_machine_id() if self.__config.get_option_noasync('worker.override_hwid') is None else self.__config.get_option_noasync('worker.override_hwid'),
             resources={
                 'cpu_count': psutil.cpu_count(),
                 'cpu_mem':  psutil.virtual_memory().total,
