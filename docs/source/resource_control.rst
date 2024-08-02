@@ -22,9 +22,16 @@ Machine Resources
 
 Machine resources belong to certain "hardware" (or machine). Single machine can run multiple workers (usually through worker pools)
 
-.. note::
+.. admonition:: Reminder
 
-    :ref:`Worker <worker>` - is the component of Lifeblood that actually does the work
+    | :ref:`Worker <worker>` - is the component of Lifeblood that actually does the work
+    | **One** worker can do only **one** invocation job at the same time.
+    | Multiple workers can and are run on the same machine to efficiently use all available resources
+    | :ref:`Worker pool<usage pools>` is yet another component of Lifeblood responsible for managing workers on the same machine -
+      that's what you are actually launching on your machine(s) that you want to load with work.
+
+    Please note, Lifeblood's **Worker Pool** concept is **radically different from Deadline's concept of worker pools**
+    and means a completely different thing, so please don't think let a familiar word confuse you
 
 There are 2 fundamental types of machine resources:
 

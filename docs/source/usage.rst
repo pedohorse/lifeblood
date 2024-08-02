@@ -171,8 +171,8 @@ Read more :ref:`in worker documentation <worker>`
 
 .. _usage pools:
 
-Use Pools instead
-^^^^^^^^^^^^^^^^^
+Use Worker Pools instead
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 Instead of starting individual workers you will probably want to start some kind of worker pool that will manage workers
 for you
