@@ -1038,7 +1038,7 @@ class Scheduler(NodeGraphHolderBase):
         if not available_devs_didnt_change:
             for dev_type in device_type_names:  # TODO: only update affected tables
                 dev_type_table_name = f'hardware_device_type__{dev_type}'
-                await connection.execute(f'UPDATE "{dev_type_table_name}" SET "available"=0')
+                await connection.execute(f'UPDATE "{dev_type_table_name}" SET "available"=0 WHERE hwid==?', (hwid,))
                 await connection.executemany(f'UPDATE "{dev_type_table_name}" SET "available"=1 WHERE dev_id==?', ((x,) for x in available_dev_type_to_ids[dev_type].keys()))
         return True
 
