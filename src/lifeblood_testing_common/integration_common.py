@@ -70,16 +70,32 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             maximum_total=self._maximum_total(),
             config=self._worker_config()
         )
+        self.worker_pool2 = None
+        if worker_config2 := self._worker_config2():
+            self.worker_pool2 = WorkerPool(
+                scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
+                minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
+                minimal_total_to_ensure=self._minimal_total_to_ensure(),
+                maximum_total=self._maximum_total(),
+                config=worker_config2
+            )
 
         await self.scheduler.start()
         await self.worker_pool.start()
+        if self.worker_pool2:
+            await self.worker_pool2.start()
 
     async def asyncTearDown(self):
         self.worker_pool.stop()
+        if self.worker_pool2:
+            self.worker_pool2.stop()
         await self.worker_pool.wait_till_stops()
+        if self.worker_pool2:
+            await self.worker_pool2.wait_till_stops()
         self.scheduler.stop()
         await self.scheduler.wait_till_stops()
         self.worker_pool = None
+        self.worker_pool2 = None
         self.scheduler = None
 
     async def test_main(self):
@@ -204,6 +220,13 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
     def _worker_config(self) -> Optional[Config]:
         """
         optionally, a custom worker configuration
+        """
+        return None
+
+    def _worker_config2(self) -> Optional[Config]:
+        """
+        if returns not None - a config for yet another worker
+        NOTE: it only makes sense for this config to have a different hwid from first config
         """
         return None
 
