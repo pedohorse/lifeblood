@@ -17,7 +17,7 @@ def config_path(config_name: str, subname: Optional[str] = None) -> Path:
 def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> Path:
     if config_env_var_name in os.environ:
         return Path(os.environ[config_env_var_name])/subname/config_name
-    base = Path('~')
+    base = Path.home()
     if subname is None:
         subname = 'common'
     if '.' in subname:
