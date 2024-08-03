@@ -164,11 +164,11 @@ class PluginNodeDataProvider(NodeDataProvider):
                                            and (len(x) < 3 or x[2] == sysver.micro)]
             pyvers = sorted(pyvers, key=lambda x: len(x), reverse=True)
             for pyver in pyvers:
-                extra_python = python_base_path / '.'.join(str(x) for x in pyver)
-                sys.path.append(str(extra_python))
+                extra_python_str = str(python_base_path / '.'.join(str(x) for x in pyver))
+                sys.path.append(extra_python_str)
 
                 # TODO: this is questionable, this will affect all child processes, we don't want that, this should only be accessible to that one plugin
-                os.environ['PYTHONPATH'] = os.pathsep.join((str(extra_python), os.environ['PYTHONPATH'])) if 'PYTHONPATH' in os.environ else extra_python
+                os.environ['PYTHONPATH'] = os.pathsep.join((extra_python_str, os.environ['PYTHONPATH'])) if 'PYTHONPATH' in os.environ else extra_python_str
 
         # install nodes
         nodes_path = package_path / 'nodes'
