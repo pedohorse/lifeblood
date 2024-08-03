@@ -77,7 +77,9 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
         self.__node_plugin_paths: Tuple[Path, ...] = tuple(node_plugin_paths)
 
     def main_database_location(self) -> str:
-        return self.__config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
+        return os.path.expanduser(
+            self.__config.get_option_noasync('core.database.path', str(paths.default_main_database_location()))
+        )
 
     def node_configuration(self, node_type_id: str) -> Mapping:
         if node_type_id not in self.__node_config_cache:
@@ -240,7 +242,7 @@ class SchedulerConfigProviderFileOverrides(SchedulerConfigProviderFile):
         self.__ui_address = ui_address
 
     def main_database_location(self) -> str:
-        return self.__main_db_location_override or super().main_database_location()
+        return os.path.expanduser(self.__main_db_location_override) if self.__main_db_location_override is not None else super().main_database_location()
     
     def main_database_connection_timeout(self) -> float:
         return self.__main_db_connection_timeout or super().main_database_connection_timeout()
