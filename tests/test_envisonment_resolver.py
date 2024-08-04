@@ -1,13 +1,17 @@
+import shutil
+import sys
 import os
 import unittest
+from typing import Mapping
 from unittest import mock
-from lifeblood import environment_resolver
+from lifeblood.environment_resolver import StandardEnvironmentResolver, EnvironmentResolverArguments, BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat
+
 from lifeblood_client import environment_resolver as client_environment_resolver
 from lifeblood.invocationjob import Environment
 from lifeblood.toml_coders import TomlFlatConfigEncoder
+from lifeblood.process_utils import oh_no_its_windows
 import toml
 from pathlib import Path
-from lifeblood import config
 
 
 class PropertyMock(mock.PropertyMock):
@@ -35,7 +39,7 @@ class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
             os.environ['LIFEBLOOD_CONFIG_LOCATION'] = cls._stash
 
     async def test_one(self):
-        ser = environment_resolver.StandardEnvironmentResolver()
+        ser = StandardEnvironmentResolver()
         origenv = Environment(os.environ)
         env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0'})
 
@@ -50,7 +54,7 @@ class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_two(self):
-        ser = environment_resolver.StandardEnvironmentResolver()
+        ser = StandardEnvironmentResolver()
         origenv = Environment(os.environ)
         env = await ser.get_environment({'package.houdini': '>18.0.0,<19.0.0',
                                          'package.assmouth': '~=2.3.2'})
@@ -146,24 +150,37 @@ class StandardEnvResTest(unittest.IsolatedAsyncioTestCase):
             pdiv.side_effect = lambda path0, path1: Path(pathsep.join((str(path0), str(path1)))) if str(path1) not in ('', '.') else path0
             pname.side_effect = lambda self: Path(str(self).rsplit(pathsep, 1)[-1])
 
-            result = environment_resolver.StandardEnvironmentResolver.autodetect_houdini()
+            result = StandardEnvironmentResolver.autodetect_houdini()
             print(result)
             self.assertIn('houdini.py3_10', result)
             self.assertEqual('C:\\Program Files\\Side Effects Software\\Houdini 19.5.640\\bin', result['houdini.py3_10']['19.5.640']['env']['PATH']['prepend'])
+
+    async def test_base_env(self):
+        def add_hacks(env):
+            if oh_no_its_windows and 'PYTHONIOENCODING' not in env:
+                env['PYTHONIOENCODING'] = 'UTF-8'
+            return env
+
+        envres1 = StandardEnvironmentResolver()
+        self.assertDictEqual(add_hacks(dict(os.environ)), await envres1.get_environment({}))
+        envres2 = StandardEnvironmentResolver({})
+        self.assertDictEqual(add_hacks({}), await envres2.get_environment({}))
+        envres3 = StandardEnvironmentResolver({'foo': 'bar'})
+        self.assertDictEqual(add_hacks({'foo': 'bar'}), await envres3.get_environment({}))
 
 
 class TestMainVsClientCompatibility(unittest.TestCase):
     def test_serde1(self):
         client_envarg = client_environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
         data = client_envarg.serialize()
-        envarg = environment_resolver.EnvironmentResolverArguments.deserialize(data)
+        envarg = EnvironmentResolverArguments.deserialize(data)
 
         self.assertEqual(client_envarg.name(), envarg.name())
         self.assertEqual(client_envarg.arguments(), envarg.arguments())
         self.assertEqual(client_envarg.serialize(), envarg.serialize())
 
     def test_serde1inv(self):
-        envarg = environment_resolver.EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
+        envarg = EnvironmentResolverArguments('foobar', {'abc': 'qwe', 'def': 2.3, 'ghi': ['q', 2, 3.3, {'4': []}]})
         data = envarg.serialize()
         client_envarg = client_environment_resolver.EnvironmentResolverArguments.deserialize(data)
 
@@ -186,7 +203,7 @@ class TestMainVsClientCompatibility(unittest.TestCase):
             }
         )
         data = client_envarg.serialize()
-        envarg = environment_resolver.EnvironmentResolverArguments.deserialize(data)
+        envarg = EnvironmentResolverArguments.deserialize(data)
 
         self.assertEqual(client_envarg.name(), envarg.name())
         self.assertEqual(client_envarg.arguments(), envarg.arguments())
@@ -196,7 +213,7 @@ class TestMainVsClientCompatibility(unittest.TestCase):
         """
         supported non-json cases
         """
-        envarg = environment_resolver.EnvironmentResolverArguments(
+        envarg = EnvironmentResolverArguments(
             'foobar',
             {
                 'key': (1, 4.3, (6, 5)),
@@ -212,3 +229,54 @@ class TestMainVsClientCompatibility(unittest.TestCase):
         self.assertEqual(client_envarg.name(), envarg.name())
         self.assertEqual(client_envarg.arguments(), envarg.arguments())
         self.assertEqual(client_envarg.serialize(), envarg.serialize())
+
+
+class TestBaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(unittest.IsolatedAsyncioTestCase):
+    if oh_no_its_windows:
+        @staticmethod
+        def normalize_path(x: str):
+            """
+            stoopid windows...
+            """
+            x = x.lower()
+            if os.path.splitext(x)[1] != '.exe':
+                x += '.exe'
+            return x
+    else:
+        @staticmethod
+        def normalize_path(x: str):
+            return x
+
+    class BaseSimpleBlaBlaBlaTest(BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat):
+        def __init__(self, base_env):
+            super().__init__()
+            self.__base_env = base_env
+
+        async def get_environment(self, arguments: Mapping) -> "Environment":
+            return Environment(self.__base_env)
+
+    async def test_create_process_no_python(self):
+        envres = TestBaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat.BaseSimpleBlaBlaBlaTest({})
+
+        with mock.patch('lifeblood.environment_resolver.create_process') as m:
+            await envres.create_process({}, ['python', '/foo/bar'])
+
+        self.assertTrue(m.called)
+
+        self.assertEqual(
+            self.normalize_path(sys.executable),
+            self.normalize_path(shutil.which(m.call_args[0][0][0], path=m.call_args[0][1].get('PATH', None)))
+        )
+
+    async def test_create_process_yes_python(self):
+        expected_python = Path(__file__).parent / 'data' / 'fake_bin' / 'python'
+        envres = TestBaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat.BaseSimpleBlaBlaBlaTest({'PATH': str(expected_python.parent)})
+
+        with mock.patch('lifeblood.environment_resolver.create_process') as m:
+            await envres.create_process({}, ['python', '/foo/bar'])
+
+        self.assertTrue(m.called)
+        self.assertEqual(
+            self.normalize_path(str(expected_python)),
+            self.normalize_path(shutil.which(m.call_args[0][0][0], path=m.call_args[0][1].get('PATH', None)))
+        )
