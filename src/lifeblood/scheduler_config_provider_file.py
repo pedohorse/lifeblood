@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 from lifeblood.scheduler_config_provider_default import SchedulerConfigProviderDefaults
 from lifeblood.logging import get_logger
-from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
+from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType, WorkerDeviceTypeDefinition
 from . import paths
-from .config import get_config
+from .config import Config
 from .nethelpers import all_interfaces
 from .exceptions import SchedulerConfigurationError
 from .config import create_default_user_config_file, get_local_scratch_path
@@ -49,17 +49,15 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
             minimum_idle_helpers=dcp.scheduler_helpers_minimal(),
         )
 
-    @classmethod
-    def generate_default_config_file_if_needed(cls):
-        create_default_user_config_file('scheduler', cls.generate_default_config_text())
-
     def __init__(
             self,
+            main_config: Config,
+            nodes_config: Config,
     ):
         logger = get_logger('scheduler.config_provider')
 
-        self.__config = get_config('scheduler')
-        self.__nodes_config = get_config('scheduler.nodes')
+        self.__config = main_config
+        self.__nodes_config = nodes_config
 
         # cache node config mappings to get them fast when processing context is needed
         #  this is the lazy solution
@@ -93,12 +91,8 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
             }
         return self.__node_config_cache[node_type_id]
 
-    def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
-        # resource definitions
-        config_resources = self.__config.get_option_noasync('resource_definitions.per_machine', None)
-        if config_resources is None:  # use default resource definitions
-            return super().hardware_resource_definitions()
-
+    @classmethod
+    def __parse_resource_definitions(cls, config_resources) -> Tuple[WorkerResourceDefinition, ...]:
         if not isinstance(config_resources, dict):
             raise RuntimeError('bad config schema: resource_definitions.per_machine must be a mapping')  # TODO: turn into config schema error or smth
         conf_2_type_mapping = {
@@ -110,7 +104,7 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
             'memory': WorkerResourceDataType.MEMORY_BYTES,
         }
         res_defs = []
-        for res_name, res_data in config_resources.items():
+        for res_name, res_data in sorted(config_resources.items(), key=lambda pair: pair[0]):
             if res_name.startswith('total_'):
                 raise RuntimeError('resource name cannot start with "total_"')  # TODO: turn into config schema error or smth
             res_type = conf_2_type_mapping.get(res_data.get('type').lower(), None)
@@ -123,6 +117,30 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
                 res_data.get('label', res_name),
             ))
         return tuple(res_defs)
+
+    def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
+        # resource definitions
+        config_resources = self.__config.get_option_noasync('resource_definitions.per_machine', None)
+        if config_resources is None:  # use default resource definitions
+            return super().hardware_resource_definitions()
+
+        return self.__parse_resource_definitions(config_resources)
+
+    def hardware_device_type_definitions(self) -> Tuple[WorkerDeviceTypeDefinition, ...]:
+        config_devices = self.__config.get_option_noasync('device_type_definitions', None)
+        if config_devices is None:  # use default resource definitions
+            return super().hardware_device_type_definitions()
+        if not isinstance(config_devices, dict):
+            raise RuntimeError('bad config schema: resource_definitions.per_machine must be a mapping')  # TODO: turn into config schema error or smth
+
+        dev_defs = []
+        for dev_type_name, dev_type_res_config in sorted(config_devices.items(), key=lambda pair: pair[0]):
+            dev_defs.append(WorkerDeviceTypeDefinition(
+                dev_type_name,
+                self.__parse_resource_definitions(dev_type_res_config),
+            ))
+
+        return tuple(dev_defs)
 
     def hardware_ban_timeout(self) -> float:
         return self.__config.get_option_noasync('data_access.hwid_ban_timeout', super().hardware_ban_timeout())
@@ -221,6 +239,8 @@ class SchedulerConfigProviderFile(SchedulerConfigProviderDefaults):
 class SchedulerConfigProviderFileOverrides(SchedulerConfigProviderFile):
     def __init__(
             self,
+            main_config: Config,
+            nodes_config: Config,
             *,
             main_db_location: Optional[str] = None,
             main_db_connection_timeout: Optional[float] = None,
@@ -231,7 +251,10 @@ class SchedulerConfigProviderFileOverrides(SchedulerConfigProviderFile):
             broadcast_interval: Optional[float] = None,
             minimal_idle_helpers: Optional[int] = None,
     ):
-        super().__init__()
+        super().__init__(
+            main_config=main_config,
+            nodes_config=nodes_config,
+        )
         self.__main_db_location_override = main_db_location
         self.__main_db_connection_timeout = main_db_connection_timeout
         self.__do_broadcast_override = do_broadcast
@@ -273,9 +296,9 @@ class SchedulerConfigProviderFileOverrides(SchedulerConfigProviderFile):
 
 
 default_config = '''
-[core]
 ## you can uncomment stuff below to specify some static values
 ## 
+# [core]
 # server_ip = "{server_ip}"
 # server_port = {server_port}
 # ui_ip = "{ui_ip}"
@@ -304,15 +327,15 @@ default_config = '''
 global_scratch_location = "{scratch_location}"
 
 
-[data_access]
+# [data_access]
 # hwid_ban_timeout = {hwid_ban_timeout}
 
 
-[task_processor]
+# [task_processor]
 # invocation_attempts = {invocation_attempts}
 # housekeeping_interval = {housekeeping_interval}
 
-[pinger]
+# [pinger]
 # ping_interval = {ping_interval}
 # ping_idle_interval = {ping_idle_interval}
 # ping_off_interval = {ping_off_interval}
@@ -335,12 +358,41 @@ global_scratch_location = "{scratch_location}"
 ## default are cpu_count and cpu_mem that represents the number of CPU cores and main memory size.
 ## If you override this value - ALL default definitions will be override, so you need to add them back
 ## if you want to keep them
+## defaults
 # cpu_count.type = "cpu"
 # cpu_count.description = "CPU core count"
 # cpu_count.label = "CPU count"
 # cpu_mem.type = "mem"
 # cpu_mem.description = "RAM amount in bytes"
 # cpu_mem.label = "CPU ram (GB)"
+## add your own resources
 # my_resource1.type = "float"
 # my_resource1.description = "the amount of rubber ducks that fit into the chassis"
+
+## you can define custom devices that machines can have.
+## if you do so - you will override the default devices such as gpu,
+## therefore you need to explicitly define them here
+## you can do that by uncommenting the section below
+## defaults
+# [device_type_definitions.gpu]
+# mem.type = "mem" 
+# mem.description = "gpu device memory (VRAM)"
+# mem.label = "Gpu Memory (GB)"
+# opencl_ver.type = "float"
+# opencl_ver.description = "OpenCL version required"
+# opencl_ver.label = "OpenCL version"
+# opencl_ver.default = 1.2
+# cuda_cc.type = "float"
+# cuda_cc.description = "CUDA Compute Capability required"
+# cuda_cc.label = 'CUDA CC'
+## add your own device devinitions like this:
+# [device_type_definitions.plumbus]
+# shmee.type = "int"
+# shmee.description = "Shmee count"
+# shmee.label = "Shmee"
+# shmee.default = 2
+# doognol.type = "float"
+# doognol.description = "Fraction of deFunbling the doongnols"
+# doognol.label = "Doongol (Zhi)"
+# doognol.default = 0.5
 '''

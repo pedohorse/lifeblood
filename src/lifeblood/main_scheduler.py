@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import asyncio
 import signal
+from .config import get_config, create_default_user_config_file
 from .pluginloader import PluginNodeDataProvider
 from .scheduler import Scheduler
 from .basenode_serializer_v1 import NodeSerializerV1
@@ -107,7 +108,7 @@ def main(argv):
     opts = parser.parse_args(argv)
 
     # check and create default config if none
-    SchedulerConfigProviderFileOverrides.generate_default_config_file_if_needed()
+    create_default_user_config_file('scheduler', SchedulerConfigProviderFileOverrides.generate_default_config_text())
 
     global_logger = logging.get_logger('scheduler')
 
@@ -137,6 +138,8 @@ def main(argv):
         fd, db_path = tempfile.mkstemp(dir=lb_shm_path, prefix='shedb-')
 
     config = SchedulerConfigProviderFileOverrides(
+        main_config=get_config('scheduler'),
+        nodes_config=get_config('scheduler.nodes'),
         main_db_location=db_path,
         do_broadcast=opts.broadcast_interval > 0 if opts.broadcast_interval is not None else None,
         broadcast_interval=opts.broadcast_interval,
