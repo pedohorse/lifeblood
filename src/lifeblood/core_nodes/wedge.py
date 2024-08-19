@@ -81,7 +81,7 @@ class Wedge(BaseNode):
                 for i in range(cnt):
                     new_vals = cur_vals.copy()
                     if inc is None:
-                        t = i * 1.0 / (cnt-1)
+                        t = i * 1.0 / max(1, cnt-1)
                         new_vals[attr] = fr*(1-t) + to*t
                     else:
                         new_vals[attr] = fr + i*inc
