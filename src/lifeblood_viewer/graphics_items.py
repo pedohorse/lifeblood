@@ -704,6 +704,9 @@ class Node(NetworkItemWithUI):
                 else:
                     if item.is_readonly() or item.is_locked():  # TODO: treat locked items somehow different, but for now it's fine
                         imgui.text(f'{item.value()}')
+                        if item.label():
+                            imgui.same_line()
+                            imgui.text(f'{item.label()}')
                         return
                     param_type = item.type()
                     if param_type == NodeParameterType.BOOL:

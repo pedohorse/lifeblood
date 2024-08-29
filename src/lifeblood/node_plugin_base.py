@@ -98,15 +98,14 @@ class BaseNodeWithTaskRequirements(BaseNode):
                                ('scheduler helper', WorkerType.SCHEDULER_HELPER.value)))
                 ui.add_separator()
                 # devices
-                with ui.multigroup_parameter_block('__requirements__.dev', 'Devices'):
+                with ui.multigroup_parameter_block('__requirements__.dev', 'Device types'):
                     with ui.parameters_on_same_line_block():
-                        ui.add_parameter('__requirements__.type_dev', 'Device Type', NodeParameterType.STRING, '')
+                        ui.add_parameter('__requirements__.type_dev', 'Devices Required:', NodeParameterType.STRING, '')
                         ui.add_parameter('__requirements__.min_dev', 'min <> preferred', NodeParameterType.INT, 0) \
                             .set_value_limits(value_min=0)
                         ui.add_parameter('__requirements__.pref_dev', None, NodeParameterType.INT, 0) \
                             .set_value_limits(value_min=0)
                     self.__res_block_helper(ui, '__requirements__.dev.', min_res_label='min')
-                ui.parameter(f'__requirements__.dev').set_hidden(True)
 
     def __check_set(self, param_name: str, value):
         # NOTE: no context here, expressions are NOT expected (must be forbidden) in these parameters

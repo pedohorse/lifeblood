@@ -325,6 +325,8 @@ class WorkerModel(QAbstractItemModel):
         if col_name == 'last_address':
             return worker.last_address
         if col_name == 'groups':
+            if index.parent().isValid():  # do not display hw groups on children since it's all the same
+                return
             return ', '.join(worker.groups)
         if col_name == 'last_seen':
             if role == self.SORT_ROLE:  # for sorting
@@ -337,6 +339,8 @@ class WorkerModel(QAbstractItemModel):
 
         raw_data = 'none'
         if col_name in self.__worker_resources_names:
+            if index.parent().isValid():  # do not display hw resources on children since it's all the same
+                return
             i = self.__worker_resources_names.index(col_name)
             if not (worker_resources := self.__worker_hw_resources.get(worker.hwid)):
                 return 'internal error'
@@ -345,6 +349,8 @@ class WorkerModel(QAbstractItemModel):
             else:
                 raw_data = f'{format_display(col_name, worker_resources[i].value)}/{format_display(col_name, worker_resources[i].total)}'
         if col_name == 'devices':
+            if index.parent().isValid():  # do not display hw devices on children since it's all the same
+                return
             if not (worker_resources := self.__worker_hw_resources.get(worker.hwid)):
                 return 'internal error'
             dev_info_parts = []
