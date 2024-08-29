@@ -127,7 +127,6 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             spawnlines = ''
 
         script = \
-            gpu_device_env_common_code() + \
             f'import os\n' \
             f'import hou\n' \
             f'import lifeblood_connection\n'
