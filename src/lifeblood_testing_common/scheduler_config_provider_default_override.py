@@ -3,7 +3,7 @@ from lifeblood.nethelpers import all_interfaces
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from lifeblood.worker_resource_definition import WorkerResourceDefinition
+from lifeblood.worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 
 
 class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
@@ -20,6 +20,7 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
             node_per_node_config: Optional[Dict[str, Dict[str, Any]]] = None,
             node_global_config: Optional[Dict[str, Dict[str, Any]]] = None,
             resource_definitions: Optional[Tuple[WorkerResourceDefinition, ...]] = None,
+            device_type_definitions: Optional[Tuple[WorkerDeviceTypeDefinition, ...]] = None,
     ):
         super().__init__()
         self.__main_db_location_override = main_db_location
@@ -33,6 +34,7 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
         self.__node_per_node_config = node_per_node_config or {}
         self.__node_global_config = node_global_config or {}
         self.__resource_definitions = resource_definitions
+        self.__device_type_definitions = device_type_definitions
 
     def main_database_location(self) -> str:
         return self.__main_db_location_override or super().main_database_location()
@@ -47,7 +49,7 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
         return self.__broadcast_interval_override if self.__broadcast_interval_override is not None else super()._config_broadcast_interval()
 
     def scheduler_helpers_minimal(self) -> int:
-        return self.__minimal_idle_helpers or super().scheduler_helpers_minimal()
+        return self.__minimal_idle_helpers if self.__minimal_idle_helpers is not None else super().scheduler_helpers_minimal()
 
     def legacy_server_address(self) -> Optional[Tuple[str, int]]:
         return self.__legacy_address or super().legacy_server_address()
@@ -82,3 +84,6 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
 
     def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
         return self.__resource_definitions or super().hardware_resource_definitions()
+
+    def hardware_device_type_definitions(self) -> Tuple[WorkerDeviceTypeDefinition, ...]:
+        return self.__device_type_definitions or super().hardware_device_type_definitions()

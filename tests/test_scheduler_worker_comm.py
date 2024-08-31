@@ -8,7 +8,7 @@ import sqlite3
 import logging
 
 from lifeblood.worker import Worker
-from lifeblood.invocationjob import InvocationJob
+from lifeblood.invocationjob import Invocation, InvocationJob, InvocationResources
 from lifeblood.taskspawn import NewTask
 from lifeblood.enums import WorkerType, WorkerState, SpawnStatus, InvocationState, InvocationMessageResult
 from lifeblood.db_misc import sql_init_script
@@ -64,11 +64,14 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 spawn_patch.side_effect = lambda *args, **kwargs: print(f'spawn_tasks_called with {args}, {kwargs}') \
                                                                   or (SpawnStatus.SUCCEEDED, 2346)
 
-                ij = InvocationJob(
+                ij = Invocation(
+                    InvocationJob(
                         ['python', tmp_script_path],
-                        invocation_id=1234,
-                    )
-                ij._set_task_id(2345)
+                    ),
+                    invocation_id=1234,
+                    task_id=2345,
+                    resources_to_use=InvocationResources({}, {}),
+                )
                 await workers[0].run_task(
                     ij,
                     scheduler.server_message_addresses()[0]
@@ -90,11 +93,14 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             with mock.patch('lifeblood.scheduler.scheduler.Scheduler.update_task_attributes') as attr_patch:
                 attr_patch.side_effect = lambda *args, **kwargs: print(f'update attrs with {args}, {kwargs}')
 
-                ij = InvocationJob(
+                ij = Invocation(
+                    InvocationJob(
                         ['python', tmp_script_path],
-                        invocation_id=1234,
-                    )
-                ij._set_task_id(2345)
+                    ),
+                    invocation_id=1234,
+                    task_id=2345,
+                    resources_to_use=InvocationResources({}, {})
+                )
                 await workers[0].run_task(
                     ij,
                     scheduler.server_message_addresses()[0]
@@ -253,21 +259,26 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                         80085: AddressChain('127.2.3.4:567'),  # BAD address
                     }.get(inv_id)
 
-                ij1 = InvocationJob(
+                ij1 = Invocation(
+                    InvocationJob(
                         ['python', '-c',
-                            i1_script
+                         i1_script
                          ],
-                        invocation_id=11234,
-                    )
-                ij1._set_task_id(3456)
-
-                ij2 = InvocationJob(
-                    ['python', '-c',
-                        i2_script
-                     ],
-                    invocation_id=11235,
+                    ),
+                    invocation_id=11234,
+                    task_id=3456,
+                    resources_to_use=InvocationResources({}, {}),
                 )
-                ij2._set_task_id(3457)
+                ij2 = Invocation(
+                    InvocationJob(
+                        ['python', '-c',
+                         i2_script
+                         ]
+                    ),
+                    invocation_id=11235,
+                    task_id=3457,
+                    resources_to_use=InvocationResources({}, {}),
+                )
 
                 await workers[0].run_task(
                     ij1,
@@ -310,7 +321,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             tasks_to_complete = tasks_to_complete or worker_count
             side_effect_was_good = True
             with mock.patch('lifeblood.scheduler.scheduler.Scheduler.task_done_reported') as td_patch:
-                def _side_effect(task: InvocationJob, stdout: str, stderr: str):
+                def _side_effect(task: Invocation, stdout: str, stderr: str):
                     nonlocal tasks_to_complete, side_effect_was_good
                     tasks_to_complete -= 1
                     print(f'finished {task.task_id()} out: {stdout}')

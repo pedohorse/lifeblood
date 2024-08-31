@@ -8,7 +8,7 @@ from threading import Lock
 from . import paths
 from .logging import get_logger
 
-from typing import Any, List, Tuple, Union, Callable, Set
+from typing import Any, List, Optional, Tuple, Union, Callable, Set
 
 
 _conf_cache = {}
@@ -71,9 +71,12 @@ class Config:
     class OverrideNotFound(RuntimeError):
         pass
 
-    def __init__(self, subname: str, base_name: str = 'config', overrides=None):
-        config_path = paths.config_path(f'{base_name}.toml', subname)
-        configd_path = paths.config_path(f'{base_name}.d', subname)
+    def __init__(self, subname: Optional[str] = None, base_name: str = 'config', overrides=None):
+        config_path = None
+        configd_path = None
+        if subname:
+            config_path = paths.config_path(f'{base_name}.toml', subname)
+            configd_path = paths.config_path(f'{base_name}.d', subname)
         self.__writable_config_path = config_path
         self.__conf_lock = Lock()
         self.__write_file_lock = Lock()
@@ -81,8 +84,10 @@ class Config:
         self.__sources: List["Path"] = []
         self.__broken_sources: Set["Path"] = set()
 
-        self.__config_paths_to_check = [config_path]
-        if configd_path.exists() and configd_path.is_dir():
+        self.__config_paths_to_check = []
+        if config_path:
+            self.__config_paths_to_check.append(config_path)
+        if configd_path and configd_path.exists() and configd_path.is_dir():
             self.__config_paths_to_check.extend(sorted(filepath for filepath in configd_path.iterdir() if filepath.suffix == '.toml'))
 
         self.__stuff = {}
@@ -102,14 +107,20 @@ class Config:
             main[key] = value
 
     def reload(self, keep_overrides=True) -> None:
+        with self.__conf_lock, self.__write_file_lock:
+            self.__reload_no_lock(keep_overrides=keep_overrides)
+
+    def __reload_no_lock(self, keep_overrides=True) -> None:
         self.__stuff = {}
         if not keep_overrides:
             self.__overrides = {}
+        self.__sources = []
+        self.__broken_sources = set()
 
         paths_to_check = self.__config_paths_to_check
         # append writable path only for the reload time
         # we don't want to mix paths added to the list from legal sources and this user overridable one
-        if self.__writable_config_path not in paths_to_check:
+        if self.__writable_config_path and self.__writable_config_path not in paths_to_check:
             paths_to_check.append(self.__writable_config_path)
 
         for config_path in paths_to_check:
@@ -124,7 +135,29 @@ class Config:
             else:
                 self.__sources.append(config_path)
 
-    def writeable_file(self) -> "Path":
+    def save_as_copy(self, path: Path, collapse_overrides: bool = False):
+        """
+        collapses current config and all overrides and saves the result to a given location.
+        this DOES NOT MODIFY self.
+        current config remains unchanged
+
+        :param path: file path where to save config
+        :param collapse_overrides: if True - overrides will be saved as values. if False - overrides are ignored
+        """
+        self.__write_config_noasync_to(path, collapse_overrides=collapse_overrides)
+
+    def save_as(self, path: Path, collapse_overrides: bool = False):
+        """
+        collapses current config and all overrides and saves the result to a given location.
+        after that config is reloaded from given location
+        """
+        self.save_as_copy(path, collapse_overrides)
+        with self.__conf_lock, self.__write_file_lock:
+            self.__writable_config_path = path
+            self.__config_paths_to_check = [self.__writable_config_path]
+            self.__reload_no_lock(keep_overrides=not collapse_overrides)
+
+    def writeable_file(self) -> Optional[Path]:
         """
         Get the path to the file chis config changes will be saved into.
         The file might not yet exist
@@ -223,7 +256,6 @@ class Config:
             raise ValueError(f'"{option_name}" is not a valid option_name')
         return tuple(names)
 
-
     def get_option_noasync(self, option_name: str, default_val: Any = None) -> Any:
         try:
             return self._get_option_in_overrides(option_name)
@@ -250,7 +282,8 @@ class Config:
                 clevel[name] = value
                 break
             clevel = clevel[name]
-        self.write_config_noasync()
+        if self.writeable_file():
+            self.write_config_noasync()
 
     def set_option_noasync(self, option_name: str, value: Any) -> None:
         with self.__conf_lock:
@@ -262,12 +295,53 @@ class Config:
     def set_toml_encoder_generator(self, generator: Callable):
         self.__encoder_generator = generator
 
-    def write_config_noasync(self):
+    def __write_config_noasync_to(self, path: Path, collapse_overrides: bool = False):
         with self.__write_file_lock:
-            if not os.path.exists(self.__writable_config_path):
-                os.makedirs(os.path.dirname(self.__writable_config_path), exist_ok=True)
-            with open(self.__writable_config_path, 'w') as f:
-                toml.dump(self.__stuff, f, encoder=self.__encoder_generator() if self.__encoder_generator is not None else None)
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            if collapse_overrides:
+                final_config = copy.deepcopy(self.__stuff)
+                self.__update_dicts(final_config, self.__overrides)
+            else:
+                final_config = self.__stuff
+            with open(path, 'w') as f:
+                toml.dump(final_config, f, encoder=self.__encoder_generator() if self.__encoder_generator is not None else None)
+
+    def write_config_noasync(self):
+        if not self.__writable_config_path:
+            raise RuntimeError('cannot write config: no config file set')
+        self.__write_config_noasync_to(self.__writable_config_path)
 
     async def write_config(self):
         return await asyncio.get_event_loop().run_in_executor(None, self.write_config_noasync)
+
+    def is_same_as(self, other: "Config") -> bool:
+        """
+        compares 2 configs.
+        returns True if both configs provide the same information.
+        Unlike __eq__, this only takes into account final information, and does not care if
+        a value came from main config or from an override, and it does not care about source file paths
+        """
+        if not isinstance(other, Config):
+            return False
+        final_config1 = copy.deepcopy(self.__stuff)
+        self.__update_dicts(final_config1, self.__overrides)
+        final_config2 = copy.deepcopy(other.__stuff)
+        self.__update_dicts(final_config2, other.__overrides)
+
+        return final_config1 == final_config2
+
+    def __eq__(self, other):
+        if not isinstance(other, Config):
+            return False
+        return all((
+            self.__stuff == other.__stuff,
+            self.__overrides == other.__overrides,
+            self.__writable_config_path == other.__writable_config_path,
+            self.__config_paths_to_check == other.__config_paths_to_check,
+            self.__sources == other.__sources,
+            self.__broken_sources == other.__broken_sources,
+        ))
+
+    def __repr__(self):
+        return f'<Config, loaded from {self.__config_paths_to_check}, write to {self.__writable_config_path}>'

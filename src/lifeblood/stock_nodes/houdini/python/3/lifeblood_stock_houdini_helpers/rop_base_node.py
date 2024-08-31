@@ -3,6 +3,7 @@ from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
+from .common import gpu_device_env_common_code
 
 from typing import Iterable, Optional
 
@@ -212,8 +213,14 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
         script += \
             f'print("all done!")\n'
 
-        inv = InvocationJob(['hython', ':/work_to_do.py'], env=env)
+        launch_wrapper_code = (
+                gpu_device_env_common_code() +
+                'import sys, subprocess\n'
+                'sys.exit(subprocess.Popen(sys.argv[1:]).wait())')
+
+        inv = InvocationJob(['python', ':/launch_wrapper.py', 'hython', ':/work_to_do.py'], env=env)
         inv.set_extra_file('work_to_do.py', script)
+        inv.set_extra_file('launch_wrapper.py', launch_wrapper_code)
         res = ProcessingResult(job=inv)
         return res
 

@@ -2,6 +2,7 @@ from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
+from lifeblood_stock_houdini_helpers.common import gpu_device_env_common_code
 
 from typing import Iterable
 
@@ -40,6 +41,7 @@ class Karma(BaseNodeWithTaskRequirements):
         ui = self.get_ui()
         with ui.initializing_interface_lock():
             ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
+            ui.add_parameter('renderer', 'engine', NodeParameterType.STRING, 'cpu').add_menu((('CPU', 'cpu'), ('XPU', 'xpu')))
             ui.add_parameter('usd path', 'usd file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('image path', 'output image file path', NodeParameterType.STRING, "`task['outimage']`")
             ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
@@ -51,28 +53,36 @@ class Karma(BaseNodeWithTaskRequirements):
         args = context.task_attributes()
 
         env = InvocationEnvironment()
+        delegates_map = {
+            'cpu': 'BRAY_HdKarma',
+            'xpu': 'BRAY_HdKarmaXPU',
+        }
+        default_delegate = 'BRAY_HdKarma'
 
-        if context.param_value('skip if exists'):
-            script = 'import os\n' \
-                     'if not os.path.exists({imgpath}):\n' \
-                     '    import sys\n' \
-                     '    from subprocess import Popen\n' \
-                     "    sys.exit(Popen(['husk', '-V', '2a', '--make-output-path',{doframe} '-o', {imgpath}, {usdpath}]).wait())\n" \
-                     "else:\n" \
-                     "    print('image file already exists, skipping work')\n" \
-                    .format(imgpath=repr(context.param_value('image path')),
-                            usdpath=repr(context.param_value('usd path')),
-                            doframe=f" '-f', {repr(str(args['frames'][0]))}," if 'frames' in args else '',
-                            )
+        do_skip_exists = context.param_value('skip if exists')
+        script = gpu_device_env_common_code() + \
+            'import os\n' \
+            'if not {do_skip_exists} or not os.path.exists({imgpath}):\n' \
+            '    import sys\n' \
+            '    from subprocess import Popen\n' \
+            "    sys.exit(Popen(['husk', '-R', {delegate}, '-V', '2a', '--make-output-path',{doframe} '-o', {imgpath}, {usdpath}]).wait())\n" \
+            "else:\n" \
+            "    print('image file already exists, skipping work')\n" \
+            .format(imgpath=repr(context.param_value('image path')),
+                    usdpath=repr(context.param_value('usd path')),
+                    delegate=repr(delegates_map.get(context.param_value('renderer'), default_delegate)),
+                    doframe=f" '-f', {repr(str(args['frames'][0]))}," if 'frames' in args else '',
+                    do_skip_exists=repr(do_skip_exists),
+                    )
 
-            invoc = InvocationJob(['python', ':/karmacall.py'])
-            invoc.set_extra_file('karmacall.py', script)
-        else:  # TODO: -f there is testing, if succ - make a parameter out of it on the node or smth
-            invoc = InvocationJob(['husk', '-V', '2a',
-                                   '--make-output-path'] +
-                                  (['-f', str(args['frames'][0])] if 'frames' in args else []) +
-                                  ['-o', context.param_value('image path'), context.param_value('usd path')],
-                                  env=env)
+        invoc = InvocationJob(['python', ':/karmacall.py'])
+        invoc.set_extra_file('karmacall.py', script)
+        # else:  # TODO: -f there is testing, if succ - make a parameter out of it on the node or smth
+        #     invoc = InvocationJob(['husk', '-R', delegates_map.get(context.param_value('renderer'), default_delegate), '-V', '2a',
+        #                            '--make-output-path'] +
+        #                           (['-f', str(args['frames'][0])] if 'frames' in args else []) +
+        #                           ['-o', context.param_value('image path'), context.param_value('usd path')],
+        #                           env=env)
         res = ProcessingResult(invoc)
         return res
 

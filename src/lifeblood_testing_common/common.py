@@ -1,7 +1,7 @@
 from pathlib import Path
 import lifeblood
 from lifeblood.scheduler.scheduler import Scheduler
-from lifeblood.worker_resource_definition import WorkerResourceDefinition
+from lifeblood.worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 from lifeblood.basenode_serializer_v2 import NodeSerializerV2
 from lifeblood.pluginloader import PluginNodeDataProvider  # TODO: this must be replaced by a testing mocker
 from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
@@ -25,6 +25,7 @@ def create_default_scheduler(
         node_per_node_config: Optional[Dict[str, Dict[str, Any]]] = None,
         node_global_config: Optional[Dict[str, Dict[str, Any]]] = None,
         resource_definitions: Optional[Tuple[WorkerResourceDefinition, ...]] = None,
+        device_type_definitions: Optional[Tuple[WorkerDeviceTypeDefinition, ...]] = None,
 ) -> Scheduler:
     legacy_addr = None
     message_addr = None
@@ -42,6 +43,7 @@ def create_default_scheduler(
         node_per_node_config=node_per_node_config,
         node_global_config=node_global_config,
         resource_definitions=resource_definitions,
+        device_type_definitions=device_type_definitions,
     )
     return Scheduler(
         scheduler_config_provider=config,

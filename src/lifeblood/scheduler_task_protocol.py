@@ -55,40 +55,6 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             await reader.readexactly(1)
             writer.write(b'\2')
 
-        async def comm_done():  # elif command == b'done':
-            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-            task = await reader.readexactly(tasksize)
-            task = await invocationjob.InvocationJob.deserialize_async(task)
-            stdout = await read_string()
-            stderr = await read_string()
-            await self.__scheduler.task_done_reported(task, stdout, stderr)
-            writer.write(b'\1')
-
-        async def comm_dropped():  # elif command == b'dropped':
-            tasksize = struct.unpack('>Q', await reader.readexactly(8))[0]
-            task = await reader.readexactly(tasksize)
-            task = await invocationjob.InvocationJob.deserialize_async(task)
-            stdout = await read_string()
-            stderr = await read_string()
-            await self.__scheduler.task_cancel_reported(task, stdout, stderr)
-            writer.write(b'\1')
-
-        async def comm_hello():  # elif command == b'hello':
-            # worker reports for duty
-            addr = await read_string()
-            workertype: WorkerType = WorkerType(struct.unpack('>I', await reader.readexactly(4))[0])
-            reslength = struct.unpack('>Q', await reader.readexactly(8))[0]
-            worker_hardware: HardwareResources = HardwareResources.deserialize(await reader.readexactly(reslength))
-            metadata = WorkerMetadata(await read_string())
-            await self.__scheduler.add_worker(addr, workertype, worker_hardware, assume_active=True, worker_metadata=metadata)
-            writer.write(struct.pack('>Q', self.__scheduler.db_uid()))
-
-        async def comm_bye():  # elif command == b'bye':
-            # worker reports he's quitting
-            addr = await read_string()
-            await self.__scheduler.worker_stopped(addr)
-            writer.write(b'\1')
-
         #
         # commands used mostly by lifeblood_connection
         #
@@ -135,10 +101,6 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
         commands = {'ping': comm_ping,
                     'pulse': comm_pulse,
                     '_pulse3way_': comm__pulse3way_,  # WARNING: this is for tests only!
-                    'done': comm_done,
-                    'dropped': comm_dropped,
-                    'hello': comm_hello,
-                    'bye': comm_bye,
                     'spawn': comm_spawn,
                     'nodenametoid': comm_node_name_to_id,
                     'tupdateattribs': comm_update_task_attributes,
@@ -231,32 +193,6 @@ class SchedulerTaskClient:
         self.__reader, self.__writer = await self.__conn_task
         self.__writer.write(b'\0\0\0\0')
 
-    async def report_task_done(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
-        await self._ensure_conn_open()
-        self.write_string('done')
-        taskserialized = await task.serialize_async()
-        self.__writer.write(struct.pack('>Q', len(taskserialized)))
-        self.__writer.write(taskserialized)
-        for std_file in (stdout_file, stderr_file):
-            async with aiofiles.open(std_file, 'r') as f:
-                self.write_string(await f.read())
-        await self.__writer.drain()
-        # we DO need a reply to ensure proper sequence of events
-        assert await self.__reader.readexactly(1) == b'\1'
-
-    async def report_task_canceled(self, task: invocationjob.InvocationJob, stdout_file: str, stderr_file: str):
-        await self._ensure_conn_open()
-        self.write_string('dropped')
-        taskserialized = await task.serialize_async()
-        self.__writer.write(struct.pack('>Q', len(taskserialized)))
-        self.__writer.write(taskserialized)
-        for std_file in (stdout_file, stderr_file):
-            async with aiofiles.open(std_file, 'r') as f:
-                self.write_string(await f.read())
-        await self.__writer.drain()
-        # we DO need a reply to ensure proper sequence of events
-        assert await self.__reader.readexactly(1) == b'\1'
-
     async def ping(self, my_address: str) -> WorkerState:
         """
         remind scheduler about worker's existence and get back what he thinks of us
@@ -303,28 +239,6 @@ class SchedulerTaskClient:
         self.__writer.write(b'\1')
         await self.__writer.drain()
         await self.__reader.readexactly(1)
-
-    async def say_hello(self, address_to_advertise: str, worker_type: WorkerType, worker_resources: HardwareResources, metadata: WorkerMetadata):
-        await self._ensure_conn_open()
-        self.write_string('hello')
-        self.write_string(address_to_advertise)
-        self.__writer.write(struct.pack('>I', worker_type.value))
-        resdata = worker_resources.serialize()
-        self.__writer.write(struct.pack('>Q', len(resdata)))
-        self.__writer.write(resdata)
-
-        self.write_string(metadata.hostname)
-        await self.__writer.drain()
-        # as return we get the database's unique id to distinguish it from others
-        return struct.unpack('>Q', await self.__reader.readexactly(8))[0]
-
-    async def say_bye(self, address_of_worker: str):
-        await self._ensure_conn_open()
-        self.write_string('bye')
-        self.write_string(address_of_worker)
-        await self.__writer.drain()
-        # we DO need a reply to ensure proper sequence of events
-        assert await self.__reader.readexactly(1) == b'\1'
 
     async def spawn(self, taskspawn: TaskSpawn) -> Tuple[SpawnStatus, Optional[int]]:
         await self._ensure_conn_open()

@@ -27,7 +27,7 @@ class TestInvocationExitCodes(FullIntegrationTestCase):
         ]
         return tasks
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         async with self.scheduler.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
             async with con.execute('SELECT "work_data_invocation_attempt" FROM tasks WHERE "id" == ?', (self.__task_that_should_retry,)) as cur:

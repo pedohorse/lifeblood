@@ -1,10 +1,11 @@
 import asyncio
 import json
+import os.path
 import signal
 from . import logging
 from .nethelpers import get_default_addr
 from .broadcasting import await_broadcast
-from .config import get_config, create_default_user_config_file
+from .config import get_config, create_default_user_config_file, Config
 from .enums import WorkerType, ProcessPriorityAdjustment
 from .net_messages.address import AddressChain
 from .worker import Worker
@@ -21,18 +22,31 @@ listen_to_broadcast = true
 # name = TrivialEnvironmentResolver
 # arguments = [ "project_name", "or", "config_name", "idunno", "maybe rez packages requirements?", [1,4,11] ]
 
-[resources]
+# [resources]
 ## here you can override resources that this machine has
 ## if you don't specify anything - resources will be detected automatically
-## NOTE: automatic detection DOES NOT WORK FOR GPU yet, you have to specify it manually
 # cpu_count = 32    # by default treated as the number of cores 
 # cpu_mem = "128G"  # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ... 
-# gpu_count = 1     # by default treated as the number devices
-# gpu_mem = "8G"    # you can either specify int amount of bytes, or use string ending with one of "K" "M" "G" "T" "P" meaning Kilo, Mega, Giga, ...
+
+## If you want lifeblood to control GPU as device resource - you need to uncomment section below
+##  adjust values according to your actual hardware
+##  don't forget to uncomment device definition section in scheduler's config too.
+##  tags are arbitrary key-value pairs available at runtime, some nodes, such as houdini nodes
+##  expect certain tags to understand how this device maps to whatever they consider a usable device
+##  refer to specific node manual to read about tags they use and their meaning 
+# [devices.gpu.gpu1.resources]  # you can name it however you want instead of gpu1
+# # be sure to override these values below with actual ones!
+# mem = "4G"
+# opencl_ver = 3.0
+# cuda_cc = 5.0
+# [devices.gpu.gpu1.tags]
+# houdini_ocl = "GPU::0"
+# karma_dev = "0/1"
 '''
 
 
-async def main_async(worker_type=WorkerType.STANDARD,
+async def main_async(config: Config,
+                     worker_type=WorkerType.STANDARD,
                      child_priority_adjustment: ProcessPriorityAdjustment = ProcessPriorityAdjustment.NO_CHANGE,
                      singleshot: bool = False, worker_id: Optional[int] = None, pool_address=None, noloop=False):
     """
@@ -79,7 +93,6 @@ async def main_async(worker_type=WorkerType.STANDARD,
         signal.signal(signal.SIGBREAK, noasync_windows_graceful_closer_event)
         win_signal_waiting_task = asyncio.create_task(windows_graceful_closer())
 
-    config = get_config('worker')
     logger = logging.get_logger('worker')
     if await config.get_option('worker.listen_to_broadcast', True):
         stop_task = asyncio.create_task(stop_event.wait())
@@ -100,7 +113,15 @@ async def main_async(worker_type=WorkerType.STANDARD,
                 continue
             addr = AddressChain(scheduler_info['message_address'])
             try:
-                worker = Worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = Worker(
+                    addr,
+                    child_priority_adjustment=child_priority_adjustment,
+                    worker_type=worker_type,
+                    config=config,
+                    singleshot=singleshot,
+                    worker_id=worker_id,
+                    pool_address=pool_address
+                )
                 await worker.start()  # note that server is already started at this point
             except Exception:
                 logger.exception('could not start the worker')
@@ -115,7 +136,15 @@ async def main_async(worker_type=WorkerType.STANDARD,
             addr = AddressChain(await config.get_option('worker.scheduler_address', get_default_addr()))
             logger.debug(f'using {addr}')
             try:
-                worker = Worker(addr, child_priority_adjustment=child_priority_adjustment, worker_type=worker_type, singleshot=singleshot, worker_id=worker_id, pool_address=pool_address)
+                worker = Worker(
+                    addr,
+                    child_priority_adjustment=child_priority_adjustment,
+                    worker_type=worker_type,
+                    config=config,
+                    singleshot=singleshot,
+                    worker_id=worker_id,
+                    pool_address=pool_address
+                )
                 await worker.start()  # note that server is already started at this point
             except ConnectionRefusedError as e:
                 logger.exception('Connection error', str(e))
@@ -155,11 +184,15 @@ def main(argv):
     parser.add_argument('--pool-address', help='if this worker is a part of a pool - pool address. currently pool can only be on the same host')
     parser.add_argument('--priority', choices=tuple(x.name for x in ProcessPriorityAdjustment), default=ProcessPriorityAdjustment.NO_CHANGE.name, help='adjust child process priority')
     parser.add_argument('--generate-config-only', action='store_true', help='just generate initial config and exit. Note that existing config will NOT be overriden')
+    parser.add_argument('--override-config-path', default=None, help='provide alternative worker config path')
 
     args = parser.parse_args(argv)
 
+    override_config_dir: Optional[str] = args.override_config_path
+    if override_config_dir and not os.path.isabs(override_config_dir):
+        override_config_dir = os.path.realpath(override_config_dir)
     # check and create default config if none
-    create_default_user_config_file('worker', default_config)
+    create_default_user_config_file(override_config_dir or 'worker', default_config)
 
     if args.generate_config_only:
         return
@@ -181,7 +214,7 @@ def main(argv):
     # check legality of the address
     paddr = AddressChain(args.pool_address)
 
-    config = get_config('worker')
+    config = get_config(override_config_dir or 'worker')
     if args.no_listen_broadcast:
         config.set_override('worker.listen_to_broadcast', False)
     if args.scheduler_address is not None:
@@ -189,7 +222,7 @@ def main(argv):
         saddr = AddressChain(args.scheduler_address)
         config.set_override('worker.scheduler_address', str(saddr))
     try:
-        asyncio.run(main_async(wtype, child_priority_adjustment=priority_adjustment, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
+        asyncio.run(main_async(config, wtype, child_priority_adjustment=priority_adjustment, singleshot=args.singleshot, worker_id=int(args.id) if args.id is not None else None, pool_address=paddr, noloop=args.no_loop))
     except KeyboardInterrupt:
         # if u see errors in pycharm around this area when running from scheduler -
         # it's because pycharm and most shells send SIGINTs to this child process on top of SIGINT that pool sends

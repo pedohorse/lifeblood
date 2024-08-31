@@ -11,7 +11,7 @@ from ..basenode_serialization import FailedToDeserialize
 from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
 from ..worker_messsage_processor import WorkerControlClient
-from ..invocationjob import InvocationJob, Requirements, InvocationRequirements
+from ..invocationjob import InvocationJob, InvocationRequirements, Invocation
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
@@ -22,7 +22,7 @@ from ..net_messages.address import AddressChain
 
 from .scheduler_component_base import SchedulerComponentBase
 
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler import Scheduler
@@ -46,6 +46,8 @@ class TaskProcessor(SchedulerComponentBase):
         self.awaiter_lock = asyncio.Lock()
         # task processing coroutimes
         self.awaiter_executor = ThreadPoolExecutor(thread_name_prefix='awaiter')  # TODO: max_workers= set from config
+
+        self.__known_device_type_names = set(x.name for x in self.scheduler.config_provider.hardware_device_type_definitions())
 
         self.__invocation_attempts = self.scheduler.config_provider.invocation_attempts()
         self.__housekeeping_interval = self.scheduler.config_provider.task_processor_housekeeping_interval()
@@ -293,18 +295,16 @@ class TaskProcessor(SchedulerComponentBase):
 
         task_id = task_row['id']
         ui_task_delta = TaskDelta(task_id)  # for ui event
-        work_data = task_row['work_data']
-        assert work_data is not None
-        job: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
-        # empty job test will happen within transaction later
 
-        # so job.args() is not None
         async with self.scheduler.data_access.data_connection() as submit_transaction:
             submit_transaction.row_factory = aiosqlite.Row
 
-            # get task attributes before starting a transaction
-            async with submit_transaction.execute('SELECT attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
-                task_attributes_raw = ((await attcur.fetchone()) or ['{}'])[0]
+            # get invocation job and task attributes before starting a transaction
+            async with submit_transaction.execute('SELECT work_data, attributes FROM tasks WHERE "id" == ?', (task_id,)) as attcur:
+                work_data, task_attributes_raw = ((await attcur.fetchone()) or [None, '{}'])
+            assert work_data is not None
+            job: InvocationJob = await asyncio.get_event_loop().run_in_executor(None, InvocationJob.deserialize, work_data)
+            # empty job test will happen within transaction later
             task_attributes = await deserialize_attributes(task_attributes_raw)
             assert not submit_transaction.in_transaction, 'logic failed, something is wrong with submission logic'
             #
@@ -368,9 +368,10 @@ class TaskProcessor(SchedulerComponentBase):
             # worker and task are still in INVOKING state too
 
             # set some job attributes
-            job._set_invocation_id(invocation_id)
-            job._set_task_id(task_id)
-            job._set_task_attributes(task_attributes)
+            job._set_task_attributes(task_attributes)  # TODO: this is done here to optimize DB load a bit, but task_attributes must be part of invocationjob definition from it's generation
+            resources = await self.scheduler.data_access.get_invocation_resources_assigned_to(worker_row['id'])
+            assert resources is not None, f'logic failed, resources is None, it cannot be!'
+            invocation = Invocation(job, invocation_id, task_id, resources)
 
             # actually communicating submission to the worker
             self.__logger.debug(f'submitting task to {addr}')
@@ -379,7 +380,7 @@ class TaskProcessor(SchedulerComponentBase):
                 with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
                     # import random
                     # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
-                    reply, fail_class, reply_message = await client.give_task(job, self.scheduler.server_message_address(addr))
+                    reply, fail_class, reply_message = await client.give_task(invocation, self.scheduler.server_message_address(addr))
                     # TODO: introduce optional "worker cookie" - uid that one passes with some commands
                     #  like give_task to ensure that we are submitting here to the same worker task processing loop selected
                 self.__logger.debug(f'got reply {reply} ({fail_class}), ({reply_message})')
@@ -569,7 +570,7 @@ class TaskProcessor(SchedulerComponentBase):
                                            'ORDER BY {prio_sort} RANDOM()'.format(
                             prio_sort='tasks.priority DESC, ' if task_state == TaskState.READY else '',
                             attrs='attributes, environment_resolver_data, ' if task_state in (TaskState.WAITING, TaskState.POST_WAITING) else '',
-                            maybe_get_req_clause='tasks.work_data, tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, ' if task_state == TaskState.READY else '',
+                            maybe_get_req_clause='tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, ' if task_state == TaskState.READY else '',
                             ),
 
                                            (task_state.value,)) as cur:
@@ -810,14 +811,31 @@ class TaskProcessor(SchedulerComponentBase):
             try:
                 self.__logger.debug('submitter selecting worker')
                 # we get total for further optimizations
+                dev_join_clauses = []
+                join_where_clauses = []
+                for dev_type in requirements_clause.devices.device_types():
+                    if dev_type not in self.__known_device_type_names:
+                        raise ConfigurationError(f'unknown device type "{dev_type}"')
+                    dev_type_table_name = f'hardware_device_type__{dev_type}'
+                    for i in range(requirements_clause.devices[dev_type].min):
+                        dev_join_clauses.append(f'LEFT JOIN "{dev_type_table_name}" AS "{dev_type_table_name}__{i}" ON workers.hwid="{dev_type_table_name}__{i}".hwid')
+                        join_where_clauses.append(f'{dev_type_table_name}__{i}.available==1')
+                        if i > 0:
+                            join_where_clauses.append(f'"{dev_type_table_name}__{i-1}".dev_id<"{dev_type_table_name}__{i}".dev_id')
+
                 async with con.execute(f'SELECT COUNT(workers.id) as "total" from workers '
-                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                       f'WHERE state == ? AND ( {requirements_clause_sql} )', (WorkerState.IDLE.value,)) as worcur:
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid ' +
+                                       ' '.join(dev_join_clauses) +
+                                       f' WHERE state == ? AND ( {requirements_clause_sql} )' +
+                                       (f' AND ({" AND ".join(join_where_clauses)}) ' if join_where_clauses else ''),  # clause to ensure proper dev table join
+                                       (WorkerState.IDLE.value,)) as worcur:
                     potential_count = (await worcur.fetchone())['total']
                 # actual selecting workers
                 async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
-                                       f'INNER JOIN resources ON workers.hwid=resources.hwid '
-                                       f'WHERE state == ? AND ( {requirements_clause_sql} ) '
+                                       f'INNER JOIN resources ON workers.hwid=resources.hwid ' +
+                                       ' '.join(dev_join_clauses) +
+                                       f' WHERE state == ? AND ( {requirements_clause_sql} ) ' +
+                                       (f' AND ({" AND ".join(join_where_clauses)}) ' if join_where_clauses else '') +  # clause to ensure proper dev table join
                                        f'AND workers.hwid NOT IN ({",".join(str(x) for x in self.scheduler.data_access.get_suspended_hwids(task_row["id"]))}) '
                                        f'ORDER BY RANDOM() LIMIT 1', (WorkerState.IDLE.value,)) as worcur:
                     worker = await worcur.fetchone()
@@ -858,7 +876,7 @@ class TaskProcessor(SchedulerComponentBase):
             try:
                 await self.scheduler._update_worker_resouce_usage(worker['id'], resources=requirements_clause, hwid=worker['hwid'], connection=con)
             except NotEnoughResources:
-                self.__logger.error(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
+                self.__logger.exception(f'inconsistency in worker resource tracking! could not submit to worker {worker["id"]}')
                 continue
 
             await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',

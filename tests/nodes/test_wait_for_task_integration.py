@@ -27,7 +27,7 @@ class WaitForTaskIntegrationTest(FullIntegrationTestCase):
             0: {'conds': list(range(4, 83, 2))},  # note, here we rely on task id assignment specifics, not too good for future
         }
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         stat = await self.scheduler.data_access.invocations_statistics()
         self.assertEqual(41, stat.total)
         self.assertEqual(41, stat.finished_good)

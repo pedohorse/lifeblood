@@ -16,6 +16,7 @@ rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT
 rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python3.7libs
 rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python3.9libs
 rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python3.10libs
+rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python3.11libs
 
 pushd $OUT
 rm ../houdini.zip

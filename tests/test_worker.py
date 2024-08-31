@@ -6,7 +6,7 @@ from unittest import IsolatedAsyncioTestCase, mock
 from lifeblood.worker import Worker
 from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
-from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
+from lifeblood.invocationjob import Invocation, InvocationJob, InvocationEnvironment, InvocationResources
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.net_messages.address import AddressChain
 from lifeblood_testing_common.common import create_default_scheduler
@@ -53,7 +53,7 @@ class WorkerRunTest(RunningSchedulerTests):
         expected_env.set_variable('qwe', 'rty')
         expected_env.set_variable('asd', 'fgh')
         expected_args = ['arg0', '-1', 'ass']
-        job = InvocationJob(expected_args, env=expected_env, invocation_id=1123)
+        job = InvocationJob(expected_args, env=expected_env)
         job._set_envresolver_arguments(EnvironmentResolverArguments('TrivialEnvironmentResolver', {
             'wawawa': 1234,
             'rororo': 'flofloflo',
@@ -61,12 +61,18 @@ class WorkerRunTest(RunningSchedulerTests):
         job._set_task_attributes({'test1': 42, 'TesT2': 'food', '_bad': 2.3, '__bbad': 'no',
                                   'nolists1': [1, 2, 3], 'nolists2': [],
                                   'nodicts1': {'a': 'b'}, 'nodicts2': {}})
+        inv = Invocation(
+            job,
+            invocation_id=1123,
+            task_id=6492,
+            resources_to_use=InvocationResources({}, {})
+        )
         with mock.patch('lifeblood.environment_resolver.create_process') as m, \
                 mock.patch('shutil.which') as sw:
             sw.return_value = os.path.join(os.getcwd(), 'arg0')
             m.side_effect = Moxecption('expected exception')
             try:
-                await worker.run_task(job, AddressChain(''))
+                await worker.run_task(inv, AddressChain(''))
             except Moxecption:
                 pass
             m.assert_called()
@@ -100,12 +106,18 @@ class WorkerRunTest(RunningSchedulerTests):
     async def test_run_task_report(self):
         worker = Worker(AddressChain('127.0.0.1:12345'))
         # NOTE: we are testing on non-started worker...
-        job = InvocationJob(['echo', 'task run'], invocation_id=1123)
+        job = InvocationJob(['echo', 'task run'])
+        inv = Invocation(
+            job,
+            invocation_id=1123,
+            task_id=6492,
+            resources_to_use=InvocationResources({}, {})
+        )
         with mock.patch('lifeblood.worker.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
             cm = mock.AsyncMock()
             m.return_value = cm
             cm.__enter__.return_value = cm
-            await worker.run_task(job, AddressChain('127.1.2.3:1234'))
+            await worker.run_task(inv, AddressChain('127.1.2.3:1234'))
             for i in range(15):  # reasonable timeout
                 await asyncio.sleep(1)
                 if not worker.is_task_running():

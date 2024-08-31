@@ -17,7 +17,7 @@ from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.scheduler import Scheduler
 from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.worker import Worker
-from lifeblood.invocationjob import InvocationJob, Environment
+from lifeblood.invocationjob import Invocation, InvocationJob, InvocationResources, Environment
 from lifeblood.scheduler.pinger import Pinger
 from lifeblood.pluginloader import PluginNodeDataProvider
 from lifeblood.processingcontext import ProcessingContext
@@ -47,7 +47,7 @@ class FakeResolver(BaseSimpleProcessSpawnEnvironmentResolver):
         super().__init__()
         self.__bin_path = Path(path_to_bin)
 
-    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> Environment:
         return Environment({**os.environ,
                             'PATH': os.pathsep.join((str(self.__bin_path), os.environ.get('PATH', ''))),
                             'PYTHONUNBUFFERED': '1'})
@@ -254,7 +254,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 tasks_to_complete = tasks_to_complete or worker_count
                 side_effect_was_good = True
                 with mock.patch('lifeblood.scheduler.scheduler.Scheduler.task_done_reported') as td_patch:
-                    def _side_effect(task: InvocationJob, stdout: str, stderr: str):
+                    def _side_effect(task: Invocation, stdout: str, stderr: str):
                         nonlocal tasks_to_complete, side_effect_was_good
                         tasks_to_complete -= 1
                         print(f'finished {task.task_id()} out: {stdout}')
@@ -351,12 +351,16 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                                 ij.args().insert(0, str(Path(__file__).parent / Path(bin_rel_path) / command))
                                 ij.args().insert(0, 'python')
 
-                        ij._set_task_id(2345)
-                        ij._set_invocation_id(1234)
+                        invoc = Invocation(
+                            ij,
+                            invocation_id=1234,
+                            task_id=2345,
+                            resources_to_use=InvocationResources({}, {}),
+                        )
                         the_worker = workers[0]
 
                         await workers[0].run_task(
-                            ij,
+                            invoc,
                             scheduler.server_message_addresses()[0]
                         )
 
@@ -384,7 +388,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
                 return _logic
 
-            def _task_done_logic(task: InvocationJob):
+            def _task_done_logic(task: Invocation):
                 self.assertEqual(100.0, the_worker.task_status())
 
             for skip_exist, pre_exist in ((False, False), (True, False), (True, True)):
@@ -456,12 +460,17 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                             ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
                             ij.args().insert(0, 'python')
 
-                ij._set_task_id(2345)
-                ij._set_invocation_id(1234)
+                invoc = Invocation(
+                    ij,
+                    invocation_id=1234,
+                    task_id=2345,
+                    resources_to_use=InvocationResources({}, {}),
+                )
+
                 the_worker = workers[0]
 
                 await workers[0].run_task(
-                    ij,
+                    invoc,
                     scheduler.server_message_addresses()[0]
                 )
 

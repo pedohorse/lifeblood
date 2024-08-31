@@ -11,9 +11,10 @@ from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
 from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, TasksChanged
 from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
-    NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta
+    NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta, \
+    WorkerDevice, WorkerDeviceResource
 from .scheduler_component_base import SchedulerComponentBase
-from ..worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
+from ..worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType, WorkerDeviceTypeDefinition
 
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
@@ -417,18 +418,17 @@ class UIStateAccessor(SchedulerComponentBase):
     async def get_workers_ui_state(self) -> WorkerBatchData:
         self.__logger.debug('workers update')
         resource_definitions = self.scheduler.config_provider.hardware_resource_definitions()
+        device_type_definitions = self.scheduler.config_provider.hardware_device_type_definitions()
         async with self.__data_access.data_connection() as con, \
                 aperformance_measurer(threshold_to_report=0.005, name='get_workers_ui_state'):
             con.row_factory = aiosqlite.Row
-            async with con.execute('SELECT workers."id", ' +
-                                   ''.join(f'{rd.name}, total_{rd.name}, ' for rd in resource_definitions) +
+            async with con.execute('SELECT workers."id", '
                                    'workers."hwid", '
                                    'last_address, workers."state", worker_type, invocations.node_id, invocations.task_id, invocations."id" as invoc_id, '
                                    'GROUP_CONCAT(worker_groups."group") as groups '
                                    'FROM workers '
                                    'LEFT JOIN invocations ON workers."id" == invocations.worker_id AND invocations."state" == 0 '
                                    'LEFT JOIN worker_groups ON workers."hwid" == worker_groups.worker_hwid '
-                                   'LEFT JOIN resources ON workers.hwid == resources.hwid '
                                    'GROUP BY workers."id"') as cur:
                 all_workers = {x['id']: x for x in ({**dict(x),
                                                      'last_seen': self.__data_access.mem_cache_workers_state[x['id']]['last_seen'],
@@ -438,7 +438,21 @@ class UIStateAccessor(SchedulerComponentBase):
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
 
-        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers, resource_definitions)
+            async with con.execute(
+                    'SELECT ' +
+                    ''.join(f'"{rd.name}", "total_{rd.name}", ' for rd in resource_definitions) +
+                    'hwid '
+                    'FROM resources') as cur:
+                all_resources = {x['hwid']: x for x in await cur.fetchall()}
+
+            all_devices = {}
+            for dev_def in device_type_definitions:
+                dev_type_table_name = f'hardware_device_type__{dev_def.name}'
+                async with con.execute(
+                        f'SELECT * FROM "{dev_type_table_name}"') as cur:
+                    all_devices = ((x['hwid'], dev_def.name, x) for x in await cur.fetchall())
+
+        return await asyncio.get_event_loop().run_in_executor(None, _pack_workers_from_raw, self.__data_access.db_uid, all_workers, all_resources, all_devices, resource_definitions, device_type_definitions)
 
     #
     # task group mapping related crap
@@ -632,13 +646,22 @@ class UIStateAccessor(SchedulerComponentBase):
 # scheduler helpers
 
 
-def _pack_workers_from_raw(db_uid: int, ui_workers: dict, resource_definitions: Tuple[WorkerResourceDefinition, ...]) -> "WorkerBatchData":
+def _pack_workers_from_raw(db_uid: int, ui_workers: dict, ui_resources: dict, ui_devices: Iterable,
+                           resource_definitions: Tuple[WorkerResourceDefinition, ...], device_type_definitions: Tuple[WorkerDeviceTypeDefinition, ...]) -> "WorkerBatchData":
     """
     this is scheduler helper function, it's incoming data format is dictated purely by scheduler
     """
+    device_type_to_definition: Dict[str, WorkerDeviceTypeDefinition] = {x.name: x for x in device_type_definitions}
     workers = {}
     for worker_id, worker_raw in ui_workers.items():
         assert worker_id == worker_raw['id']
+        workers[worker_id] = WorkerData(worker_id, worker_raw['hwid'], worker_raw['last_address'], worker_raw['last_seen'],
+                                        WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
+                                        worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
+                                        worker_raw['groups'], worker_raw['metadata'])
+    worker_resources: Dict[int, List[WorkerResource]] = {}
+    worker_devices: Dict[int, List[WorkerDevice]] = {}
+    for hwid, res_vals in ui_resources.items():
         ress = []
         for res_def in resource_definitions:
             if res_def.type in (WorkerResourceDataType.GENERIC_INT, WorkerResourceDataType.MEMORY_BYTES):
@@ -650,19 +673,37 @@ def _pack_workers_from_raw(db_uid: int, ui_workers: dict, resource_definitions: 
             else:
                 raise NotImplementedError(f'unhandled worker resource definition type: {res_def.type}')
             ress.append(WorkerResource(
-                convert_to_data_type(worker_raw[res_def.name]),
-                convert_to_data_type(worker_raw[f'total_{res_def.name}']),
+                convert_to_data_type(res_vals[res_def.name]),
+                convert_to_data_type(res_vals[f'total_{res_def.name}']),
                 res_type,
                 res_def.name,
             ))
+        worker_resources[hwid] = ress
+    for hwid, dev_type, dev_vals in ui_devices:
+        ress = []
+        for res_def in device_type_to_definition[dev_type].resources:
+            if res_def.type in (WorkerResourceDataType.GENERIC_INT, WorkerResourceDataType.MEMORY_BYTES):
+                res_type = WorkerResourceType.INT
+                convert_to_data_type = int
+            elif res_def.type in (WorkerResourceDataType.GENERIC_FLOAT, WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT):
+                res_type = WorkerResourceType.FLOAT
+                convert_to_data_type = float
+            else:
+                raise NotImplementedError(f'unhandled worker resource definition type: {res_def.type}')
+            ress.append(WorkerDeviceResource(
+                convert_to_data_type(dev_vals[f'res__{res_def.name}']),
+                res_type,
+                res_def.name,
+            ))
+        worker_devices.setdefault(hwid, []).append(WorkerDevice(
+            dev_type,
+            dev_vals['hw_dev_name'],
+            dev_vals['available'],
+            ress,
+        ))
 
-        res = WorkerResources(ress)
-        workers[worker_id] = WorkerData(worker_id, res, str(worker_raw['hwid']), worker_raw['last_address'], worker_raw['last_seen'],
-                                        WorkerState(worker_raw['state']), WorkerType(worker_raw['worker_type']),
-                                        worker_raw['node_id'], worker_raw['task_id'], worker_raw['invoc_id'], worker_raw['progress'],
-                                        worker_raw['groups'], worker_raw['metadata'])
-
-    return WorkerBatchData(db_uid, workers)
+    hwid_to_resources = {hwid: WorkerResources(res_list, worker_devices.get(hwid, [])) for hwid, res_list in worker_resources.items()}
+    return WorkerBatchData(db_uid, workers, hwid_to_resources)
 
 
 def _pack_nodes_connections_data(db_uid: int, ui_nodes, ui_connections) -> "NodeGraphStructureData":

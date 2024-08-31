@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from typing import Union
+from typing import Dict, Union, Set, Tuple
 
 
 class WorkerResourceDataType(Enum):
@@ -22,3 +22,9 @@ class WorkerResourceDefinition:
     description: str
     label: str  # nicer looking user facing name
     default: Union[float, int] = 0
+
+
+@dataclass
+class WorkerDeviceTypeDefinition:
+    name: str
+    resources: Tuple[WorkerResourceDefinition, ...]

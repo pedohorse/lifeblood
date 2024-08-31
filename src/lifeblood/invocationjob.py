@@ -8,7 +8,7 @@ from types import MappingProxyType
 from .enums import WorkerType
 from dataclasses import dataclass, field
 
-from typing import Optional, Iterable, Union, Dict, List, Set, Tuple, TYPE_CHECKING
+from typing import Optional, Iterable, Mapping, Union, Dict, List, Set, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .environment_resolver import EnvironmentResolverArguments
 
@@ -25,8 +25,12 @@ class BadProgressRegexp(RuntimeError):
 
 
 class Environment(dict):
-    def __init__(self, *args, **kwargs):
-        super(Environment, self).__init__(*args, **kwargs)
+    def __init__(self, init: Optional[Mapping] = None):
+        if init is not None:
+            init_dict = {key: str(val) for key, val in init.items()}
+        else:
+            init_dict = {}
+        super(Environment, self).__init__(init_dict)
         self.__expandre = re.compile(r'\$(?:(\w+)|{(\w+)})')
         self.__extra_expand_dict = {}
 
@@ -68,14 +72,25 @@ class Environment(dict):
 
 
 class InvocationEnvironment:
-    def __init__(self, *args, **kwargs):
-        super(InvocationEnvironment, self).__init__(*args, **kwargs)
+    def __init__(self):
         self.__action_queue = []
 
     def set_variable(self, key: str, value):
         if not isinstance(value, str):
             value = str(value)
         self.__action_queue.append(('__setitem__', key, value))
+
+    def __setitem__(self, key, value):
+        return self.set_variable(key, value)
+
+    def extend(self, other: Union["InvocationEnvironment", Environment]):
+        if isinstance(other, InvocationEnvironment):
+            self.__action_queue.extend(other.__action_queue)
+        elif isinstance(other, Environment):
+            for key, value in other.items():
+                self.set_variable(key, value)
+        else:
+            raise ValueError(f'argument must be of InvocationEnvironment or Environment type')
 
     def resolve(self, base_env: Optional[Environment] = None, additional_environment_to_expand_with: Optional[Environment] = None) -> Environment:
         """
@@ -102,11 +117,21 @@ class InvocationEnvironment:
     def append(self, key: str, value):
         self._enqueue_kv_method('append', key, value)
 
+    def __eq__(self, other):
+        if not isinstance(other, InvocationEnvironment):
+            return False
+        return (
+            self.__action_queue == other.__action_queue
+        )
+
 
 @dataclass
 class ResourceRequirement:
     min: Number = 0
     pref: Number = 0
+
+    def __repr__(self):
+        return f'<Requirement: min={self.min},pref={self.pref}>'
 
 
 class ResourceRequirements:
@@ -137,29 +162,102 @@ class ResourceRequirements:
     def items(self):
         return self.__res.items()
 
+    def __eq__(self, other):
+        if not isinstance(other, ResourceRequirements):
+            return False
+        return self.__res == other.__res
+
+    def __repr__(self):
+        return f'<ResourceRequirements: {repr(self.__res)}>'
+
+
+@dataclass
+class DeviceRequirement:
+    resources: ResourceRequirements = field(default_factory=ResourceRequirements)
+    min: int = 1
+    pref: int = 0
+
+    def __repr__(self):
+        return f'<DeviceRequirement: min={self.min},pref={self.pref},res={self.resources}>'
+
+
+class DeviceRequirements:
+    """
+    requirements for only devices
+    """
+    def __init__(self, data: Optional[Dict[str, DeviceRequirement]] = None):
+        if data:
+            self.__dev: Dict[str, DeviceRequirement] = data
+        else:
+            self.__dev: Dict[str, DeviceRequirement] = {}
+
+    def get(self, name: str, default_val=None):
+        return self.__dev.get(name, default_val)
+
+    def __getitem__(self, device_type: str) -> DeviceRequirement:
+        """
+        get requirements for device type "device_type"
+        """
+        return self.__dev[device_type]
+
+    def __setitem__(self, name: str, value: DeviceRequirement):
+        self.__dev[name] = value
+
+    def __contains__(self, name):
+        return name in self.__dev
+
+    def device_types(self) -> Tuple[str, ...]:
+        return tuple(self.__dev.keys())
+
+    def items(self):
+        return self.__dev.items()
+
+    def __eq__(self, other):
+        if not isinstance(other, DeviceRequirements):
+            return False
+        return self.__dev == other.__dev
+
+    def __repr__(self):
+        return f'<DeviceRequirements: {repr(self.__dev)}>'
 
 @dataclass
 class Requirements:
     resources: ResourceRequirements = field(default_factory=ResourceRequirements)
-    # devices:   TO ADD LATER
+    devices: DeviceRequirements = field(default_factory=DeviceRequirements)
 
     def serialize_to_string(self):
         """
         compact string representation
         """
         return json.dumps({
-            'r': {name: {'m': val.min, 'p': val.pref} for name, val in self.resources.items()}
+            'r': {name: {'m': val.min, 'p': val.pref} for name, val in self.resources.items()},
+            'd': {
+                dev_type: {
+                    'r': {name: {'m': val.min, 'p': val.pref} for name, val in dev.resources.items()},
+                    'm': dev.min,
+                    'p': dev.pref,
+                } for dev_type, dev in self.devices.items()
+            }
         })
 
     @classmethod
     def deserialize_from_string(cls, text: str) -> "Requirements":
         """
-        reverse from serializa_to_stirng
+        reverse from serialize_to_string
         """
         data = json.loads(text)
         return Requirements(
             resources=ResourceRequirements({
                 name: ResourceRequirement(val['m'], val['p']) for name, val in data['r'].items()
+            }),
+            devices=DeviceRequirements({
+                name: DeviceRequirement(
+                    resources=ResourceRequirements({
+                       name: ResourceRequirement(val['m'], val['p']) for name, val in dev['r'].items()
+                    }),
+                    min=dev['m'],
+                    pref=dev['p'],
+                ) for name, dev in data['d'].items()
             })
         )
 
@@ -183,7 +281,7 @@ class InvocationRequirements:
         self.__groups = set(groups) if groups is not None else set()
         self.__worker_type = worker_type
 
-        self.__res_req: Requirements = Requirements()  # Dict[str, ResourceRequirement] = {}
+        self.__res_req: Requirements = Requirements()
         for arg_name, arg_val in resources.items():
             if '_' not in arg_name:
                 raise RuntimeError(f'provided resource {arg_name} must start with either "min_", or "pref_"')
@@ -216,6 +314,9 @@ class InvocationRequirements:
             return 0
         return self.__res_req.resources[resource_name].pref
 
+    def requested_devices(self) -> DeviceRequirements:
+        return self.__res_req.devices
+
     # setters
 
     def set_groups(self, groups):
@@ -226,6 +327,9 @@ class InvocationRequirements:
 
     def add_group(self, group: str):
         self.__groups.add(group)
+
+    def set_device_requirement(self, dev_type: str, min_count: int, pref_count: int, resources: ResourceRequirements):
+        self.__res_req.devices[dev_type] = DeviceRequirement(resources, min_count, pref_count)
 
     def set_min_resource(self, resource_name: str, value: Union[float, int]):
         if resource_name not in self.__res_req.resources:
@@ -244,6 +348,15 @@ class InvocationRequirements:
         conds = [f'("worker_type" = {self.__worker_type.value})']
         for res_name, res_req in self.__res_req.resources.items():
             conds.append(f'("{res_name}" >= {res_req.min - 1e-8 if isinstance(res_req.min, float) else res_req.min})')  # to ensure sql compare will work
+        for dev_type, dev_reqs in self.__res_req.devices.items():
+            if dev_reqs.min == 0:
+                continue
+            dev_type_table_name = f'hardware_device_type__{dev_type}'
+            for dev_i in range(dev_reqs.min):
+                for res_name, res_req in dev_reqs.resources.items():
+                    # expecting join sql clause to join device tables with __i prefix
+                    # TODO: all this SQL expecting something, and here... this implementation-specific logic must be moved to data_access
+                    conds.append(f'("{dev_type_table_name}__{dev_i}"."res__{res_name}" >= {res_req.min - 1e-8 if isinstance(res_req.min, float) else res_req.min})')
         if len(self.__groups) > 0:
             esc = '\\'
 
@@ -272,11 +385,30 @@ class InvocationRequirements:
         requirements_clause_sql = packed_string[:splitpos]
         return requirements_clause_sql, requirements_clause
 
+    def __eq__(self, other):
+        if not isinstance(other, InvocationRequirements):
+            return False
+        return (
+            self.__groups == other.__groups and
+            self.__worker_type == other.__worker_type and
+            self.__res_req == other.__res_req
+        )
+
+
+@dataclass
+class InvocationResources:
+    """
+    the resources assigned by the scheduler to be used for an invocation
+    """
+    resources: Dict[str, Union[float, int]]  # resource name to quantity
+    devices: Dict[str, List[str]]  # device type to name list
+
+
 class InvocationJob:
     """
     serializable data about launching something
     """
-    def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None, invocation_id=None,
+    def __init__(self, args: List[str], *, env: Optional[InvocationEnvironment] = None,
                  requirements: Optional[InvocationRequirements] = None,
                  # environment_wrapper_arguments: Optional[EnvironmentResolverArguments] = None,
                  good_exitcodes: Optional[Iterable[int]] = None,
@@ -285,7 +417,6 @@ class InvocationJob:
 
         :param args: list of args passed to exec
         :param env: extra special environment variables to be set. in most cases you don't need that
-        :param invocation_id: invocation ID in scheduler's DB this invocation is connected to
         :param requirements: requirements for the worker to satisfy in order to be able to pick up this invocation job
         # :param environment_wrapper_arguments: environment wrapper and arguments to pass to it. if None - worker's configured default wrapper will be invoked
         :param good_exitcodes: set of process exit codes to consider as success. default would be just 0
@@ -295,8 +426,6 @@ class InvocationJob:
         """
         self.__args = [str(arg) for arg in args]
         self.__env = env or InvocationEnvironment()
-        self.__invocation_id = invocation_id
-        self.__task_id = None
 
         self.__out_progress_regex = re.compile(rb'ALF_PROGRESS\s+(\d+)%')
         self.__err_progress_regex = None
@@ -305,8 +434,6 @@ class InvocationJob:
         self.__priority = 0.0
         self.__envres_args = None  # environment_wrapper_arguments
 
-        self.__exitcode = None
-        self.__running_time = None
         self.__good_exitcodes = set(good_exitcodes or [0])
         self.__retry_exitcodes = set(retry_exitcodes or [])
 
@@ -428,7 +555,81 @@ class InvocationJob:
         return self.__args
 
     def env(self):
+        # TODO: ensure this is never modified by mistake
         return self.__env
+
+    def exit_code_means_error(self, exit_code: int):
+        return exit_code not in self.__good_exitcodes
+
+    def exit_code_means_retry(self, exit_code: int):
+        return exit_code in self.__retry_exitcodes
+
+    def serialize(self) -> bytes:
+        return pickle.dumps(self)
+
+    async def serialize_async(self) -> bytes:
+        return await asyncio.get_event_loop().run_in_executor(None, self.serialize)
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> "InvocationJob":
+        return pickle.loads(data)
+
+    @classmethod
+    async def deserialize_async(cls, data: bytes) -> "InvocationJob":
+        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
+
+    #
+    # methods for scheduler
+    def _set_task_attributes(self, attr_dict):
+        self.__attrs = deepcopy(attr_dict)
+
+    def _set_envresolver_arguments(self, args: "EnvironmentResolverArguments"):
+        self.__envres_args = args
+
+    def __repr__(self):
+        # TODO: be careful with displaying process env until we design a way to deal with secrets
+        return f'<InvocationJob: {repr(self.__args)}>'
+
+    def __eq__(self, other):
+        if not isinstance(other, InvocationJob):
+            return False
+        return (
+            self.__args == other.__args and
+            self.__env == other.__env and
+            self.__out_progress_regex == other.__out_progress_regex and
+            self.__err_progress_regex == other.__err_progress_regex and
+            self.__requirements == other.__requirements and
+            self.__priority == other.__priority and
+            self.__envres_args == other.__envres_args and
+            self.__good_exitcodes == other.__good_exitcodes and
+            self.__retry_exitcodes == other.__retry_exitcodes and
+            self.__attrs == other.__attrs and
+            self.__extra_files == other.__extra_files
+        )
+
+
+class Invocation:
+    """
+    where InvocationJob is a definition of what needs to be done,
+    Invocation class represents the invocation - attempt to run an invocationjob
+    so this contains things like invocation id, exit code, running time and so on
+    """
+    def __init__(self, job: InvocationJob, invocation_id: int, task_id: int, resources_to_use: InvocationResources, *,
+                 exit_code: Optional[int] = None,
+                 running_time: Optional[float] = None):
+        self.__invocation_job = job
+        self.__invocation_id = invocation_id
+        self.__task_id = task_id
+        self.__resources_to_use = resources_to_use
+
+        self.__exitcode: Optional[int] = exit_code
+        self.__running_time: Optional[float] = running_time
+
+    def resources_to_use(self) -> InvocationResources:
+        return self.__resources_to_use
+
+    def job_definition(self) -> InvocationJob:
+        return self.__invocation_job
 
     def invocation_id(self) -> int:
         return self.__invocation_id
@@ -456,38 +657,48 @@ class InvocationJob:
     def finished_with_error(self):
         if self.__exitcode is None:
             raise InvocationNotFinished()
-        return self.__exitcode not in self.__good_exitcodes
+        return self.__invocation_job.exit_code_means_error(self.__exitcode)
 
     def finished_needs_retry(self):
         if self.__exitcode is None:
             raise InvocationNotFinished()
-        return self.__exitcode in self.__retry_exitcodes
+        return self.__invocation_job.exit_code_means_retry(self.__exitcode)
 
-    async def serialize_async(self) -> bytes:
-        return await asyncio.get_event_loop().run_in_executor(None, pickle.dumps, self)
+    # serde
 
-    #
-    # methods for scheduler
-    def _set_invocation_id(self, invocation_id):
-        self.__invocation_id = invocation_id
+    def serialize_to_data(self) -> dict:
+        return {
+            'invoc_def': self.__invocation_job.serialize().decode('latin1'),
+            'invoc_id': self.__invocation_id,
+            'task_id': self.__task_id,
+            'exitcode': self.__exitcode,
+            'runtime': self.__running_time,
+            'res': self.__resources_to_use.resources,
+            'dev': self.__resources_to_use.devices,
+        }
 
-    def _set_task_id(self, task_id):
-        self.__task_id = task_id
-
-    def _set_task_attributes(self, attr_dict):
-        self.__attrs = deepcopy(attr_dict)
-
-    def _set_envresolver_arguments(self, args: "EnvironmentResolverArguments"):
-        self.__envres_args = args
+    @classmethod
+    def deserialize_from_data(cls, data: dict):
+        return Invocation(
+            InvocationJob.deserialize(data['invoc_def'].encode('latin1')),
+            data['invoc_id'],
+            data['task_id'],
+            InvocationResources(data['res'], data['dev']),
+            exit_code=data['exitcode'],
+            running_time=data['runtime'],
+        )
 
     def __repr__(self):
-        # TODO: be careful with displaying process env until we design a way to deal with secrets
-        return f'<InvocationJob: {self.__invocation_id}, {repr(self.__args)}>'
+        return f'<Invocation: invoc_id:{self.__invocation_id} task_id:{self.__task_id} def:{repr(self.__invocation_job)}>'
 
-    @classmethod
-    def deserialize(cls, data: bytes) -> "InvocationJob":
-        return pickle.loads(data)
-
-    @classmethod
-    async def deserialize_async(cls, data: bytes) -> "InvocationJob":
-        return await asyncio.get_event_loop().run_in_executor(None, cls.deserialize, data)
+    def __eq__(self, other):
+        if not isinstance(other, Invocation):
+            return False
+        return (
+                self.__invocation_id == other.__invocation_id and
+                self.__task_id == other.__task_id and
+                self.__invocation_job == other.__invocation_job and
+                self.__exitcode == other.__exitcode and
+                self.__running_time == other.__running_time and
+                self.__resources_to_use == other.__resources_to_use
+        )

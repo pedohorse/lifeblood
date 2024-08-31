@@ -26,7 +26,7 @@ class TestInstantTaskFinishDone(FullIntegrationTestCase):
         ]
         return tasks
 
-    async def _additional_checks_on_finish(self):
+    async def _additional_checks_on_finish(self, task_attributes):
         stat = await self.scheduler.data_access.invocations_statistics()
         self.assertEqual(40, self.scheduler.task_done_reported.call_count)
         cancels = self.scheduler.task_cancel_reported.call_count

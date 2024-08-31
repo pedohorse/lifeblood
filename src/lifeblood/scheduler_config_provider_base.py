@@ -1,4 +1,4 @@
-from .worker_resource_definition import WorkerResourceDefinition
+from .worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 from pathlib import Path
 
 from typing import Optional, Tuple
@@ -39,6 +39,12 @@ class SchedulerConfigProviderBase:
     def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
         """
         get definitions of generic resources that workers can have
+        """
+        raise NotImplementedError()
+
+    def hardware_device_type_definitions(self) -> Tuple[WorkerDeviceTypeDefinition, ...]:
+        """
+        get definitions of hardware devices
         """
         raise NotImplementedError()
 

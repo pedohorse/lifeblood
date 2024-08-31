@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from .scheduler_config_provider_base import SchedulerConfigProviderBase
-from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType
+from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType, WorkerDeviceTypeDefinition
 from . import defaults
 from .nethelpers import all_interfaces
 
@@ -33,14 +33,15 @@ class SchedulerConfigProviderDefaults(SchedulerConfigProviderBase):
                                      WorkerResourceDataType.MEMORY_BYTES,
                                      'RAM amount in bytes',
                                      'CPU ram (GB)'),
-            WorkerResourceDefinition('gpu_count',
-                                     WorkerResourceDataType.SHARABLE_COMPUTATIONAL_UNIT,
-                                     'number of GPUs',
-                                     'GPU count'),  # TODO: get rid of these in defaults when devices are implemented
-            WorkerResourceDefinition('gpu_mem',
-                                     WorkerResourceDataType.MEMORY_BYTES,
-                                     'combined GPU memory in bytes',
-                                     'GPU ram (GB)'),
+        )
+
+    def hardware_device_type_definitions(self) -> Tuple[WorkerDeviceTypeDefinition, ...]:
+        return (
+            WorkerDeviceTypeDefinition('gpu', (
+                WorkerResourceDefinition('mem', WorkerResourceDataType.MEMORY_BYTES, 'gpu device memory (VRAM)', 'Gpu Memory (GB)'),
+                WorkerResourceDefinition('opencl_ver', WorkerResourceDataType.GENERIC_FLOAT, 'OpenCL version required', 'OpenCL version', 1.2),
+                WorkerResourceDefinition('cuda_cc', WorkerResourceDataType.GENERIC_FLOAT, 'CUDA Compute Capability required', 'CUDA CC', 0.0),
+            )),
         )
 
     def hardware_ban_timeout(self) -> float:

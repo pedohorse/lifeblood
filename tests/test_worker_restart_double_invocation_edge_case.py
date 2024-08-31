@@ -7,7 +7,7 @@ from lifeblood_testing_common.common import chain
 from lifeblood_testing_common.scheduler_config_provider_default_override import SchedulerConfigProviderOverrides
 from unittest import mock
 from lifeblood.enums import TaskState, WorkerState, WorkerPingState, TaskScheduleStatus, InvocationState
-from lifeblood.invocationjob import InvocationJob
+from lifeblood.invocationjob import InvocationJob, InvocationResources
 from lifeblood.scheduler.data_access import DataAccess, TaskSpawnData
 from lifeblood.scheduler.task_processor import TaskProcessor
 from lifeblood.scheduler.scheduler import Scheduler
@@ -31,6 +31,10 @@ def get_worker_control_client_mock(*args, **kwargs) -> "WorkerControlClient":
     m = mock.MagicMock()
     m.give_task = foowait
     yield m
+
+
+async def get_invocation_resources_assigned_to_mock(*args, **kwargs) -> InvocationResources:
+    return InvocationResources({}, {})
 
 
 class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
@@ -150,11 +154,16 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
         async with sched.data_access.data_connection() as con:
             await con.execute('INSERT INTO workers ("id", "state", "ping_state", hwid, last_address) VALUES (?, ?, ?, ?, ?)',
                               (1, WorkerState.INVOKING.value, WorkerPingState.WORKING.value, fake_worker_row['hwid'], fake_worker_row['last_address']))
+            for fake_task_row in fake_task_rows:
+                await con.execute('UPDATE tasks SET work_data=? WHERE "id"==?',
+                                  (fake_task_row['work_data'], fake_task_row['id']))
             await con.commit()
 
         with mock.patch('lifeblood.scheduler.Scheduler._update_worker_resouce_usage'), \
                 mock.patch('lifeblood.scheduler.Scheduler.server_message_address'), \
+                mock.patch('lifeblood.scheduler.data_access.DataAccess.get_invocation_resources_assigned_to') as res_mock, \
                 mock.patch('lifeblood.worker_messsage_processor.WorkerControlClient.get_worker_control_client') as get_client_mock:
+            res_mock.side_effect = get_invocation_resources_assigned_to_mock
             get_client_mock.side_effect = get_worker_control_client_mock
             if delays:
                 await asyncio.gather(*[

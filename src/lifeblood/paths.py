@@ -15,11 +15,21 @@ def config_path(config_name: str, subname: Optional[str] = None) -> Path:
 
 
 def config_unexpanded_path(config_name: str, subname: Optional[str] = None) -> Path:
+    """
+    returns path to the config_name provided
+
+    :param config_name: name of the file or dir of the config
+    :param subname: optional name of the subconfig, OR absolute path to the config
+    """
+    if subname is None:
+        subname = 'common'
+    elif os.path.isabs(subname):
+        # if subname is abs path - we treat it as base path
+        return Path(subname) / config_name
+
     if config_env_var_name in os.environ:
         return Path(os.environ[config_env_var_name])/subname/config_name
     base = Path.home()
-    if subname is None:
-        subname = 'common'
     if '.' in subname:
         subname = Path(*subname.split('.'))
     if sys.platform.startswith('linux'):

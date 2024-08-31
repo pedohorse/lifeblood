@@ -21,14 +21,15 @@ import shutil
 from copy import deepcopy
 from semantic_version import Version, SimpleSpec
 from types import MappingProxyType
-from . import invocationjob, paths, logging
+from . import logging
 from .config import get_config
 from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
 from .toml_coders import TomlFlatConfigEncoder
 from .process_utils import create_process, oh_no_its_windows
 from .exceptions import ProcessInitializationError
+from .invocationjob import Environment, InvocationEnvironment, InvocationResources
 
-from typing import Dict,  Iterable, List, Mapping, Optional, Type
+from typing import Dict,  Iterable, List, Mapping, Optional, Type, Union
 
 
 _resolvers: Dict[str, Type["BaseEnvironmentResolver"]] = {}  # this should be loaded from plugins
@@ -95,7 +96,7 @@ class EnvironmentResolverArguments:
     def get_resolver(self):
         return get_resolver(self.__resolver_name)
 
-    async def get_environment(self) -> "invocationjob.Environment":
+    async def get_environment(self) -> "Environment":
         return await get_resolver(self.name()).get_environment(self.arguments())
 
     def serialize(self) -> bytes:
@@ -121,33 +122,38 @@ class EnvironmentResolverArguments:
 
 
 class BaseEnvironmentResolver:
-    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> "Environment":
         """
         this is the main reason for environment wrapper's existance.
         give it your specific arguments
 
-        :param additional_env:
         :param arguments:
         :return:
         """
         raise NotImplementedError()
 
-    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
+    async def create_process(self, arguments: Mapping, call_args: List[str], *,
+                             extra_env: Union[InvocationEnvironment, Environment, None] = None,
+                             cwd: Optional[str] = None,
+                             resources_to_use: Optional[InvocationResources] = None) -> asyncio.subprocess.Process:
         """
         this should create process, maybe in a special way
 
         :param arguments: EnvironmentResolverArguments for the resolver
         :param call_args: what to call: process and arguments
-        :param env: optional environment to launch process in. If None - get_environment should be called
+        :param extra_env: optional extra environment add to launch process in.
         :param cwd: current working directory for the process
+        :param resources_to_use: resources that resolver should give to the process and enforce
         """
         raise NotImplementedError()
 
 
 class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
-    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
-        if env is None:
-            env = await self.get_environment(arguments)
+    async def create_process(self, arguments: Mapping, call_args: List[str], *,
+                             extra_env: Union[InvocationEnvironment, Environment, None] = None,
+                             cwd: Optional[str] = None,
+                             resources_to_use: Optional[InvocationResources] = None) -> asyncio.subprocess.Process:
+        env = await self._resolve_environment_for_process_creation(arguments, extra_env)
 
         if os.path.isabs(call_args[0]):
             bin_path = call_args[0]
@@ -159,7 +165,27 @@ class BaseSimpleProcessSpawnEnvironmentResolver(BaseEnvironmentResolver):
         if cwd is None:
             cwd = os.path.dirname(bin_path)
 
+        logger = logging.get_logger('environment resolver')
+        if resources_to_use is None:
+            logger.info('no resource restriction requested')
+        else:
+            logger.info(
+                'requested resources:\n' +
+                '\n'.join(f'\t{rname}={repr(rval)}' for rname, rval in resources_to_use.resources.items()) +
+                '\nrequested devices:\n' +
+                '\n'.join(f'\t{dev_type}:{repr(dev_names_list)}' for dev_type, dev_names_list in resources_to_use.devices.items()) +
+                '\nbut standard environment resolver has no means of enforcing these limitations'
+            )
+
         return await create_process(call_args, env, cwd)
+
+    async def _resolve_environment_for_process_creation(self,
+                             arguments: Mapping,
+                             extra_env: Union[InvocationEnvironment, Environment, None] = None) -> Environment:
+        env = await self.get_environment(arguments)
+        if extra_env:
+            env = extra_env.resolve(base_env=env)
+        return env
 
 
 class BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(BaseSimpleProcessSpawnEnvironmentResolver):
@@ -167,24 +193,29 @@ class BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat(BaseSimpleProcess
     #  python to be available in run environment. User might want to have multiple versions of packaged python.
     #  However, simple one user artist might not care, and would just want python code to work without any packages setup.
     #  So to simplify the life of smaller setup users, this hack was introduced.
-    async def create_process(self, arguments: Mapping, call_args: List[str], *, env: Optional[invocationjob.Environment] = None, cwd: Optional[str] = None) -> asyncio.subprocess.Process:
+    async def create_process(self, arguments: Mapping, call_args: List[str], *,
+                             extra_env: Union[InvocationEnvironment, Environment, None] = None,
+                             cwd: Optional[str] = None,
+                             resources_to_use: Optional[InvocationResources] = None) -> asyncio.subprocess.Process:
         """
         This introduces path to sys.executable if no python is found in PATH, yet `python` is first arg in call_args
         """
-        if env is None:
-            env = await self.get_environment(arguments)
-        if call_args[0] in ('python', 'python.exe') and shutil.which(call_args[0], path=env.get('PATH', '')) is None:
-            env.append('PATH', os.path.dirname(sys.executable))
+        env = await self._resolve_environment_for_process_creation(arguments, extra_env)
 
-        return await super().create_process(arguments, call_args, env=env, cwd=cwd)
+        if call_args[0] in ('python', 'python.exe') and shutil.which(call_args[0], path=env.get('PATH', '')) is None:
+            if extra_env is None:
+                extra_env = InvocationEnvironment()
+            extra_env.append('PATH', os.path.dirname(sys.executable))
+
+        return await super().create_process(arguments, call_args, extra_env=extra_env, cwd=cwd, resources_to_use=resources_to_use)
 
 
 class TrivialEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithPythonCheat):
     """
     trivial environment wrapper does nothing
     """
-    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
-        env = invocationjob.Environment(os.environ)
+    async def get_environment(self, arguments: Mapping) -> "Environment":
+        env = Environment(os.environ)
         for key, value in arguments.items():
             env[key] = value
         return env
@@ -208,7 +239,11 @@ class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithP
     """
     logger = logging.get_logger('environment resolver')
 
-    def __init__(self):
+    def __init__(self, base_environment: Optional[Mapping] = None):
+        if base_environment is None:
+            base_environment = dict(os.environ)
+        self.__base_environment = base_environment
+
         # attempt to locate config and autocreate if not found
         config = get_config('standard_environment_resolver')
         if len(config.loaded_files()) + len(config.broken_files()) == 0:
@@ -224,7 +259,7 @@ class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithP
             self.logger.error('environment resolver configs found, but all have errors! Aborting!')
             raise RuntimeError('all resolver configs are broken')
 
-    async def get_environment(self, arguments: Mapping) -> "invocationjob.Environment":
+    async def get_environment(self, arguments: Mapping) -> "Environment":
         """
 
         :param arguments: are expected to be in format of package_name: version_specification
@@ -249,7 +284,7 @@ class StandardEnvironmentResolver(BaseSimpleProcessSpawnEnvironmentResolverWithP
             if resolved_versions[package] is None:
                 raise ResolutionImpossibleError(f'could not satisfy version requirements {spec_str} for package {package}')
 
-        env = invocationjob.Environment(os.environ)
+        env = Environment(self.__base_environment)
         for package, version in sorted(resolved_versions.items(), key=lambda x: available_software[x[0]][x[1]].get('priority', 50)):
             actions = available_software[package][version]
             for env_name, env_action in actions.get('env', {}).items():
