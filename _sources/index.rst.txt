@@ -13,6 +13,11 @@ where tasks that travel from node to node and may produce workload to be execute
 
 .. toctree::
     :maxdepth: 2
+
+    news/index
+
+.. toctree::
+    :maxdepth: 2
     :caption: Contents:
 
     components/index
@@ -20,6 +25,7 @@ where tasks that travel from node to node and may produce workload to be execute
     concepts
     installation
     usage
+    resource_control
     network_config
     tutorials
     nodes

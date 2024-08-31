@@ -1,0 +1,894 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="" data-theme="dark">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>New Device concept, and how to use your GPUs to the max &#8212; Lifeblood 1.0.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "dark";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'news/post_01/index';</script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Components" href="../../components/index.html" />
+    <link rel="prev" title="News" href="../index.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="dark">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="../../_static/lifeblood.svg" class="logo__image only-dark" alt="Lifeblood 1.0.0 documentation - Home"/>
+    <script>document.write(`<img src="../../_static/lifeblood.svg" class="logo__image only-light" alt="Lifeblood 1.0.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../installation.html">
+    Installation
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../nodes.html">
+    Nodes
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../installation.html">
+    Installation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../nodes.html">
+    Nodes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">News</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">New Device concept, and how to use your GPUs to the max</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">News</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">New Device...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="new-device-concept-and-how-to-use-your-gpus-to-the-max">
+<span id="news-post-01"></span><h1>New Device concept, and how to use your GPUs to the max<a class="headerlink" href="#new-device-concept-and-how-to-use-your-gpus-to-the-max" title="Permalink to this heading">#</a></h1>
+<p>A new concept is introduced to Lifeblood - <a class="reference internal" href="../../resource_control.html#device-resources"><span class="std std-ref">Device Resources</span></a></p>
+<p>Familiar <a class="reference internal" href="../../resource_control.html#numerical-resources"><span class="std std-ref">numeric resources</span></a> are defined only by quantity, by a number,
+so that 1.5 CPU cores are exactly same as other 1.5 CPU cores, 2GB of RAM is the same as any other 2GB of RAM.</p>
+<p>Devices - are unique resources, that’s it. This is an abstract concept, it’s not directly tied to any hardware,
+again - it is just a unique resource.</p>
+<p>Device has a type, a name and it’s own set of numeric resources. The set of numeric resources a device can have is defined by it’s type.</p>
+<section id="abstract-example">
+<h2>Abstract example<a class="headerlink" href="#abstract-example" title="Permalink to this heading">#</a></h2>
+<p>Let’s start with an abstract example first, so that you don’t assume device can only be one particular thing, such as GPU.</p>
+<p>Let’s say all our render machines have combustion engines, and we want to use them.</p>
+<ul>
+<li><p>First, we need to define “engine” device type in scheduler’s config</p>
+<p>We will define engine to have the following attributes:</p>
+<ul class="simple">
+<li><p>horsepower (float)</p></li>
+<li><p>number of cylinders (int)</p></li>
+</ul>
+</li>
+</ul>
+<p>Now every machine can declare an “engine” device.</p>
+<p>For example, let’s say</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">machine1</span></code> has a worker pool running, and in it’s worker config it defines that it has a device of type “engine” called “mighty engine” with</p>
+<ul class="simple">
+<li><p>1000 horsepowers</p></li>
+<li><p>8 cylinders</p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">machineB</span></code> also has a worker pool running, and in it’s worker config it defines that it has 2 devices of type “engine”</p>
+<p>one called “hefty engine” with</p>
+<ul class="simple">
+<li><p>400 horsepowers</p></li>
+<li><p>4 cylinders</p></li>
+</ul>
+<p>one “smow emgime” with</p>
+<ul class="simple">
+<li><p>200 horsepowers</p></li>
+<li><p>2 cylinders</p></li>
+</ul>
+</li>
+</ul>
+<p>As you see, <code class="docutils literal notranslate"><span class="pre">machineB</span></code> has 2 devices of the same type, but each of them is unique. Even if they had the same resource values - they would still be treated
+as unique: a job cannot just take 1 “engine” as it would take 1 CPU core - it would need to take either specifically first “engine” device, or specifically second.</p>
+<p>An Invocation Job may request some number of devices of each type. For example, let’s say an invocation requests 1 “engine” device with at least 300 horsepowers
+and any number of cylinders.
+Scheduler may assign this job to <code class="docutils literal notranslate"><span class="pre">machine1</span></code> and give it the only device, or it may assign this job to <code class="docutils literal notranslate"><span class="pre">machineB</span></code> and give the job the first “engine”
+device, as the second device is not fitting the requirements: it has only 200 horsepowers, but 300 were requested.</p>
+<p>Note that the device is given to the job as a whole. Even though <code class="docutils literal notranslate"><span class="pre">machine1</span></code>’s engine has 800 horsepowers, but only 300 were requested -
+the whole engine is given to the job and it’s not available any more for any other jobs, until the job it was given to is finished.</p>
+<section id="how-does-a-job-know-what-devices-it-was-given">
+<h3>How does a job know what devices it was given?<a class="headerlink" href="#how-does-a-job-know-what-devices-it-was-given" title="Permalink to this heading">#</a></h3>
+<p>Now that we can assign unique resources to jobs - we should also make that information available to the job itself.</p>
+<p>There are 2 major ways of approaching this:</p>
+<ul>
+<li><p>Make a complicated <a class="reference internal" href="../../concepts.html#environment-resolver-concept"><span class="std std-ref">Environment Resolver</span></a>.</p>
+<p>The component inside the worker that is responsible for actually running payload jobs is environment resolver.
+It is responsible for making sure that you run proper version of softwares and with all the proper plugins.
+For that the resolver is given a set of parameters defined at initial task creation time (at submission time).
+Also the environment resolver is given the resource requirements that the job needs, and it’s resolver’s job
+to ensure that the job it runs is not allocating more resources than it’s given.</p>
+<p>Because of that, environment resolvers are highly platform-dependent, as mechanisms to enforce resource usages are
+very different on, say, windows and linux.</p>
+<p>But theoretically one could implement such an environment resolver that would launch the process in a carefully crafter
+sandbox where only given resources and devices are exposed.</p>
+<p>In such case the payload does not have to be aware of the resources given to it - because the environment resolver has already
+taken care of everything, and payload only “sees” what it is allowed to use.</p>
+</li>
+<li><p>Make different payloads aware of resources provided to it, but in a generic way.</p>
+<p>This is the default approach taken by Lifeblood.</p>
+<p>A payload has access to one special python module called <code class="docutils literal notranslate"><span class="pre">lifeblood_connection</span></code>, through that it can do all sorts of stuff:
+create new tasks, communicate to other invocations through invocation messages (described in earlier posts), and query resources
+assigned to itself.</p>
+</li>
+</ul>
+<p>The first option is relatively complicated, it can be implemented to one particular case, but it’s really a lot of work to make it generic.
+We will concentrate on how to make the second option work.</p>
+<p>So, a payload process can access to resources and devices assigned to it.
+Obviously, getting something like a name “hefty engine” is not really helpful, as payload that is supposed to use it has no idea what to do with this name.
+Another problem is that different types of payload may use different libraries to work with engines, and may identify them in a completely different way:
+one may internally address the same physical engine by some id, like 0, while another library may address the same physical engine by it’s internal code or smth,
+like “ID:FFB3”</p>
+<p>Therefore device tags were introduced.</p>
+<section id="tags">
+<h4>Tags<a class="headerlink" href="#tags" title="Permalink to this heading">#</a></h4>
+<p>Worker can assign any number of tags to any of devices it declares. Scheduler does not know about those tags, so they don’t have to adhere to any schemas and
+definitions.</p>
+<p>Tags are just arbitrary key-value pairs.</p>
+<p>Tags for devices can be queried by the payloads through <code class="docutils literal notranslate"><span class="pre">lifeblood_connection</span></code> api.</p>
+<p>For example, in our engines, <code class="docutils literal notranslate"><span class="pre">machineB</span></code> can give the following tags to it’s “engine” devices:</p>
+<ul class="simple">
+<li><p>“hefty engine” with</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">library_one=0</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">library_neo=ID:FFB3</span></code></p></li>
+</ul>
+</li>
+<li><p>“smow emgime”</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">library_one=1</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">library_neo=ID:BEEF</span></code></p></li>
+</ul>
+</li>
+</ul>
+<p>Now one payload may query “engine” device tags and see that it was given 1 “engine” device.
+Since this payload uses library_one - it checks if <code class="docutils literal notranslate"><span class="pre">library_one</span></code> tag is set on this device, and it is equal to 1.
+Now the payload can easily initialize the library it uses knowing the identification of the engine that that particular library uses.</p>
+<p>While another payload that uses, say, library_neo to work with engines, can query for tag named <code class="docutils literal notranslate"><span class="pre">library_neo</span></code> and it will be able to use
+that device now properly.</p>
+<p>With this approach, obviously, Lifeblood nodes that produce payloads that use certain libraries to work with physical hardware
+that a particula device type represents (it can actually not represent any hardware at all), have to declare somewhere in it’s manual that
+they expect “engine” device type to have “library_something” tag that represents this and this.
+And as we switch to a concrete example, see how <a class="reference internal" href="../../nodes/stock/houdini/karma.html#nodes-stock-houdini-karma"><span class="std std-ref">karma node</span></a> declares that it expects “gpu” device with tag <code class="docutils literal notranslate"><span class="pre">karma_dev</span></code>,
+while other <a class="reference internal" href="../../nodes/stock/houdini/hip_driver_renderer.html#nodes-stock-houdini-hip-driver-renderer"><span class="std std-ref">houdini nodes</span></a> expect “gpu” device with tag <code class="docutils literal notranslate"><span class="pre">opencl_dev</span></code> to properly initialize houdini processes to use the physical GPUs that
+those devices represent.</p>
+</section>
+</section>
+</section>
+<section id="concrete-example">
+<h2>Concrete example<a class="headerlink" href="#concrete-example" title="Permalink to this heading">#</a></h2>
+<p>Now in reality we usually don’t have combustion engines attached to our computers, and even if we do - houdini, karma, arnold, redshift and other softwares
+we commonly use do not yet support combustion engines.</p>
+<p>But what they do support are GPUs.</p>
+<p>By default Lifeblood has a definition for a device type called “gpu”, which aims to represent the physical GPU device on a worker machine.</p>
+<p>The default definition for a gpu device comes with 3 numerical resources:</p>
+<ul class="simple">
+<li><p>Memory amount</p></li>
+<li><p>CUDA Compute Capability (as a float)</p></li>
+<li><p>OpenCL maximum version supported (also as a float, this will be changed in the future)</p></li>
+</ul>
+<p>You can see those requirements on any node:</p>
+<img alt="../../_images/params.png" src="../../_images/params.png" />
+<p>Though scheduler defines “gpu” type device, no worker will have any devices by default,
+you will need to add them manually to use them with Lifeblood</p>
+<section id="how-to-enable-gpu-devices-for-your-workers">
+<span id="how-to-enable-gpu-devices"></span><h3>How to enable GPU devices for your workers<a class="headerlink" href="#how-to-enable-gpu-devices-for-your-workers" title="Permalink to this heading">#</a></h3>
+<p>the following you will have to do on each computer that will run Lifeblood Workers.</p>
+<p>First of all, locate your worker <a class="reference internal" href="../../usage.html#config-dir"><span class="std std-ref">config location</span></a>,
+you will have to modify the config file located at relative path <code class="docutils literal notranslate"><span class="pre">worker/config.toml</span></code></p>
+<p>If you have just installed Lifeblood - you will find a commented section like this in the config:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="c1"># [devices.gpu.gpu1.resources]  # you can name it however you want instead of gpu1</span>
+<span class="c1"># # be sure to override these values below with actual ones!</span>
+<span class="c1"># mem = &quot;4G&quot;</span>
+<span class="c1"># opencl_ver = 3.0</span>
+<span class="c1"># cuda_cc = 5.0</span>
+<span class="c1"># [devices.gpu.gpu1.tags]</span>
+<span class="c1"># houdini_ocl = &quot;GPU::0&quot;</span>
+<span class="c1"># karma_dev = &quot;0/1&quot;</span>
+</pre></div>
+</div>
+<p>This section hints you how to add your own device.</p>
+<p>Let’s uncomment it and see what’s going on:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[devices.gpu.gpu1.resources]</span>
+<span class="n">mem</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;4G&quot;</span>
+<span class="n">opencl_ver</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">3.0</span>
+<span class="n">cuda_cc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">5.0</span>
+
+<span class="k">[devices.gpu.gpu1.tags]</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU::0&quot;</span>
+<span class="n">karma_dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0/1&quot;</span>
+</pre></div>
+</div>
+<p>line <code class="docutils literal notranslate"><span class="pre">[devices.gpu.gpu1.resources]</span></code> defines device type <code class="docutils literal notranslate"><span class="pre">gpu</span></code> with name <code class="docutils literal notranslate"><span class="pre">gpu1</span></code></p>
+<p>You can use ANY name you like, as long as it’s a unique name.</p>
+<p>In this <code class="docutils literal notranslate"><span class="pre">resources</span></code> subsection we must define resources according to the gpu device schema.</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">mem</span></code> is just GPU memory. you can specify it in bytes, or, much more conveniently,
+as a string like “12G” meaning 12 GB of memory</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">opencl_ver</span></code> is the maximum opencl version supported by the device/drivers.</p>
+<p>The easiest way to obtain this number is to check you GPU’s specification.
+Assuming you have the latest device drivers - that is what your device will support.</p>
+<p>on linux machines you can also run <code class="docutils literal notranslate"><span class="pre">clinfo</span></code> and check the line <code class="docutils literal notranslate"><span class="pre">Device</span> <span class="pre">Version</span></code> or <code class="docutils literal notranslate"><span class="pre">Platform</span> <span class="pre">Version</span></code>.
+You will see something like <code class="docutils literal notranslate"><span class="pre">Device</span> <span class="pre">Version</span>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160; <span class="pre">OpenCL</span> <span class="pre">3.0</span> <span class="pre">CUDA</span></code>
+which means you need to put <code class="docutils literal notranslate"><span class="pre">opencl_ver</span> <span class="pre">=</span> <span class="pre">3.0</span></code> in the config</p>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cuda_cc</span></code> is  the CUDA Compute Capability supported by your device.
+It is easies to obtain it from Nvidia device specification page.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>on linux you will have to use proprietary Nvidia drivers to be able to use CUDA</p>
+</div>
+</li>
+</ul>
+<p>Next is the Tags section. line <code class="docutils literal notranslate"><span class="pre">[devices.gpu.gpu1.tags]</span></code> starts <code class="docutils literal notranslate"><span class="pre">tags</span></code> section for
+device named <code class="docutils literal notranslate"><span class="pre">gpu1</span></code> of type <code class="docutils literal notranslate"><span class="pre">gpu</span></code></p>
+<p>Use the same device name you used to in the resources declaration section above.</p>
+<p>these tags contain some specific information that help identify this particular device
+for different DCCs and libraries.</p>
+<p>Even within houdini there are 2 independent ways a device needs to be identified for different components:
+main houdini’s OpenCL-based computation engine uses vendor name and device number to identify GPU, while
+karma uses optix device number to identify GPU.</p>
+<p>You can find descriptions for the tags used by nodes in their manuals
+<a class="reference internal" href="../../nodes/stock/houdini/karma.html#nodes-stock-houdini-karma"><span class="std std-ref">karma node</span></a> and <a class="reference internal" href="../../nodes/stock/houdini/hip_driver_renderer.html#nodes-stock-houdini-hip-driver-renderer"><span class="std std-ref">houdini nodes</span></a></p>
+<p>So, tag <code class="docutils literal notranslate"><span class="pre">houdini_ocl</span></code> is used by all houdini-related nodes, and tag <code class="docutils literal notranslate"><span class="pre">karma_dev</span></code> is used by karma</p>
+<section id="opencl-device-for-simulations">
+<h4>OpenCL device for simulations<a class="headerlink" href="#opencl-device-for-simulations" title="Permalink to this heading">#</a></h4>
+<p>As you could see in the node manual, <code class="docutils literal notranslate"><span class="pre">houdini_ocl</span></code> tag consists of 3 parts separated by <code class="docutils literal notranslate"><span class="pre">:</span></code> sign.</p>
+<p>those are <code class="docutils literal notranslate"><span class="pre">&lt;TYPE&gt;:&lt;VENDOR&gt;:&lt;NUMBER&gt;</span></code></p>
+<p>Any one part may be empty, in that case you are leaving it up to houdini to pick a value, which is <strong>NOT</strong> what you want
+if the value is ambiguous</p>
+<p>To get the values you can run <code class="docutils literal notranslate"><span class="pre">hgpuinfo</span> <span class="pre">-cl</span></code>. This will list all OpenCL devices usable by Houdini.
+the <code class="docutils literal notranslate"><span class="pre">OpenCL</span> <span class="pre">Type</span></code> corresponds to <code class="docutils literal notranslate"><span class="pre">&lt;TYPE&gt;</span></code>, and <code class="docutils literal notranslate"><span class="pre">Platform</span> <span class="pre">Vendor</span></code> corresponds to <code class="docutils literal notranslate"><span class="pre">&lt;VENDOR&gt;</span></code>.
+Unfortunately there is no clear field that corresponds to <code class="docutils literal notranslate"><span class="pre">&lt;NUMBER&gt;</span></code>.</p>
+<section id="different-devices-from-different-gpu-vendors">
+<h5>Different devices from different GPU vendors<a class="headerlink" href="#different-devices-from-different-gpu-vendors" title="Permalink to this heading">#</a></h5>
+<p>If you have GPUs from different vendors - it is not a problem, as you can leave the <code class="docutils literal notranslate"><span class="pre">&lt;NUMBER&gt;</span></code> blank and
+there will not be any ambiguity, for example,</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[devices.gpu.gpu1.tags]</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU:NVIDIA Corporation&quot;</span>
+
+<span class="k">[devices.gpu.gpu2.tags]</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU:Intel(R) Corporation&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="different-devices-from-same-gpu-vendor">
+<h5>Different devices from same GPU vendor<a class="headerlink" href="#different-devices-from-same-gpu-vendor" title="Permalink to this heading">#</a></h5>
+<p>If you have 2 different GPUs from the same vendor - you might be able to tell them apart by the output of <code class="docutils literal notranslate"><span class="pre">hgpuinfo</span> <span class="pre">-cl</span></code>,
+and additionaly provide <code class="docutils literal notranslate"><span class="pre">&lt;NUMBER&gt;</span></code> based on the ordering of the output, grouped by <strong>type</strong>, for example:</p>
+<ul class="simple">
+<li><p>OpenCL Type: CPU</p></li>
+<li><p>OpenCL Type: GPU, Vendor: AMD</p></li>
+<li><p>OpenCL Type: GPU, Vendor: Nvidia (has <code class="docutils literal notranslate"><span class="pre">&lt;NUMBER&gt;</span></code> <strong>0</strong>)</p></li>
+<li><p>OpenCL Type: GPU, Vendor: Nvidia (has <code class="docutils literal notranslate"><span class="pre">&lt;NUMBER&gt;</span></code> <strong>1</strong>)</p></li>
+</ul>
+</section>
+<section id="identical-devices-from-same-gpu-vendor">
+<h5>Identical devices from same GPU vendor<a class="headerlink" href="#identical-devices-from-same-gpu-vendor" title="Permalink to this heading">#</a></h5>
+<p>If you have 2 (or more) identical GPUs from the same vendor - there is no way of telling which device from <code class="docutils literal notranslate"><span class="pre">hgpuinfo</span> <span class="pre">-cl</span></code>
+output corresponds to which physical device.</p>
+<p>The only way to determine which physical GPU device corresponds to which houdini ocl device is to set it up, run some load
+and check which GPU is being loaded in some 3rd party monitoring tool.</p>
+<p>For example, if you have 2 Nvidia GTX 4090 - you can open up a terminal and set up environment variables like this:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">HOUDINI_OCL_DEVICETYPE</span><span class="o">=</span>GPU
+<span class="nb">export</span><span class="w"> </span><span class="nv">HOUDINI_OCL_VENDOR</span><span class="o">=</span><span class="s2">&quot;NVIDIA Corporation&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">HOUDINI_OCL_DEVICENUMBER</span><span class="o">=</span><span class="m">0</span>
+
+houdini<span class="w"> </span>-foreground
+</pre></div>
+</div>
+<p>Now you will have to run some vellum simulation, or pyro minimal solver, or anything else that puts some load on the OpenCL device
+and check with some monitoring tools which GPU is being loaded.</p>
+<p>After that you can replace <code class="docutils literal notranslate"><span class="pre">HOUDINI_OCL_DEVICENUMBER=0</span></code> with <code class="docutils literal notranslate"><span class="pre">HOUDINI_OCL_DEVICENUMBER=1</span></code> in the snippet above and perform the same
+test to check what device number 1 corresponds to.</p>
+<p>This is very tedious, yes, but unfortunately SideFX does not provide any better tools for this.</p>
+</section>
+</section>
+<section id="karma-optix-device-for-rendering">
+<h4>Karma Optix device for rendering<a class="headerlink" href="#karma-optix-device-for-rendering" title="Permalink to this heading">#</a></h4>
+<p>If you are planning to render with Karma XPU and manage GPU devices with Lifeblood - you have to provide <code class="docutils literal notranslate"><span class="pre">karma_dev</span></code> tag for your gpu devices.</p>
+<p>Unfortunately, SideFX did not provide any tools for detecting what optix device corresponds to what physical GPU.</p>
+<p>Therefore the only way to determine that is to disable one Optix device at a time and checking (with karma or external monitoring tools) which
+GPU device stopped rendering.</p>
+<p>To do that - you need to open up a terminal and set up additional environment before starting houdini</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">KARMA_XPU_DISABLE_DEVICE_0</span><span class="o">=</span><span class="m">1</span>
+
+houdini<span class="w"> </span>-foreground
+</pre></div>
+</div>
+<p>This will disable optix device 0 - you will need to set up some test XPU render to determine which Optix device is not being loaded with work.</p>
+<p>To test another device you need to close houdini and restart it with setting <code class="docutils literal notranslate"><span class="pre">KARMA_XPU_DISABLE_DEVICE_1</span></code> instead of <code class="docutils literal notranslate"><span class="pre">KARMA_XPU_DISABLE_DEVICE_0</span></code> (and so on)</p>
+<p>When you get what number corresponds to what GPU on your machine - you can add that information to gpu tags, like</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[devices.gpu.gpu1.tags]</span>
+<span class="n">karma_dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;1/2&quot;</span>
+
+<span class="k">[devices.gpu.gpu2.tags]</span>
+<span class="n">karma_dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0/2&quot;</span>
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">&quot;1/2&quot;</span></code> means Optix device number 1 out of 2 GPU Optix devices in total.</p>
+</section>
+<section id="example-config-look">
+<h4>Example config look<a class="headerlink" href="#example-config-look" title="Permalink to this heading">#</a></h4>
+<p>After all the values were determined, your config would look something like this, in case you have, for example,
+3 GPUs: 2 identical from Nvidia, and one from Intel</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[devices.gpu.arc_thingie.tags]</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU:Intel(R) Corporation&quot;</span>
+
+<span class="k">[devices.gpu.nvidia_4090_1.tags]</span>
+<span class="n">karma_dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0/2&quot;</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU:NVIDIA Corporation:1&quot;</span>
+
+<span class="k">[devices.gpu.nvidia_4090_2.tags]</span>
+<span class="n">karma_dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;1/2&quot;</span>
+<span class="n">houdini_ocl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GPU:NVIDIA Corporation:0&quot;</span>
+</pre></div>
+</div>
+<p>Note, here we assume that Karma did not detect intel GPU as a valid optix device, therefore it does not have a <code class="docutils literal notranslate"><span class="pre">karma_dev</span></code> tag</p>
+</section>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">News</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../../components/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Components</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#abstract-example">Abstract example</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#how-does-a-job-know-what-devices-it-was-given">How does a job know what devices it was given?</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#tags">Tags</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#concrete-example">Concrete example</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#how-to-enable-gpu-devices-for-your-workers">How to enable GPU devices for your workers</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#opencl-device-for-simulations">OpenCL device for simulations</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#different-devices-from-different-gpu-vendors">Different devices from different GPU vendors</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#different-devices-from-same-gpu-vendor">Different devices from same GPU vendor</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#identical-devices-from-same-gpu-vendor">Identical devices from same GPU vendor</a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#karma-optix-device-for-rendering">Karma Optix device for rendering</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-config-look">Example config look</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../../_sources/news/post_01/index.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 10132 BC - 2029 AD, XAPKOHHEH.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.4.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

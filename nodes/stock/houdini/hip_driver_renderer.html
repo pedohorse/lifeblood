@@ -1,0 +1,694 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="" data-theme="dark">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Hip Driver Renderer &#8212; Lifeblood 1.0.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "dark";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <script src="../../../_static/sphinx_highlight.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'nodes/stock/houdini/hip_driver_renderer';</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="Karma" href="karma.html" />
+    <link rel="prev" title="Wedge Attributes" href="../../core/wedge.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="dark">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="../../../_static/lifeblood.svg" class="logo__image only-dark" alt="Lifeblood 1.0.0 documentation - Home"/>
+    <script>document.write(`<img src="../../../_static/lifeblood.svg" class="logo__image only-light" alt="Lifeblood 1.0.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../news/index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../installation.html">
+    Installation
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class=" current active">
+  <a class="nav-link dropdown-item nav-internal" href="../../../nodes.html">
+    Nodes
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../news/index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../installation.html">
+    Installation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../../../nodes.html">
+    Nodes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Core Nodes:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../core/attribute_splitter.html">Attribute Splitter</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/delete_attrib.html">Delete Attributes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/environment_resolver_arguments_setter.html">Modify Environment Resolver Arguments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/killer.html">Killer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/mod_attrib.html">Modify Attributes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/null.html">Null</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/parent_children_waiter.html">Parent-Children Waiter</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/python.html">Python</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/rename_attrib.html">Rename Attributes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/set_attrib.html">Set Attributes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/spawn_children.html">Spawn Children</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/split_waiter.html">Split Waiter</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/switch.html">Switch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/wait_for_task_value.html">Wait For Task Value</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../core/wedge.html">Wedge Attributes</a></li>
+</ul>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Stock Nodes:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Hip Driver Renderer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="karma.html">Karma</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mantra.html">Mantra</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../matrixnotifier.html">Matrix Notifier</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../telegram_client/telegram_notifier.html">Telegram Notifier</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../../nodes.html" class="nav-link">Nodes</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Hip Driver Renderer</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="hip-driver-renderer">
+<span id="nodes-stock-houdini-hip-driver-renderer"></span><h1>Hip Driver Renderer<a class="headerlink" href="#hip-driver-renderer" title="Permalink to this heading">#</a></h1>
+<p>Given a hip file and path to a ROP node inside it - this node will render that ROP node for the frame range defined by <code class="docutils literal notranslate"><span class="pre">frames</span></code> attribute.</p>
+<p>For each frame it will produce a child task if second input is connected at the time of the processing.</p>
+<section id="parameters">
+<h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading">#</a></h2>
+<dl class="field-list">
+<dt class="field-odd">Hip Path<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to the hip file to render</p>
+</dd>
+<dt class="field-even">Mask As Different Hip<span class="colon">:</span></dt>
+<dd class="field-even"><p>It is possible to open one hip, but make it look for all expressions inside like it’s a different hip file.</p>
+<p>This can be useful if actual hip file is relocated, but it’s contents expects it to be in a different place,
+for example when a hip file is copied when submitted to a farm manager.</p>
+</dd>
+<dt class="field-odd">mask hip path<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hip file path to mask as. This path does not have to exist</p>
+</dd>
+<dt class="field-even">Rop Node Path<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path to the ROP(driver) node to render inside the hip file</p>
+</dd>
+<dt class="field-odd">ignore rop inputs<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If True - inputs plugged into the givern Rop Node will be ignored. This is usually the desirable behaviour</p>
+</dd>
+<dt class="field-even">Set These Attribs As Context<span class="colon">:</span></dt>
+<dd class="field-even"><p>Task attributes that match this mask will be set as Context Attributes in houdini session</p>
+</dd>
+<dt class="field-odd">Render Whole Range (needed for alembics)<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Instead of rendering frame by frame, the whole frame range will be rendered with a single .render() call.
+Alembics require this to be set.</p>
+</dd>
+<dt class="field-even">Skip If Result Already Exists<span class="colon">:</span></dt>
+<dd class="field-even"><p>Skip rendering if expected output already exists</p>
+</dd>
+<dt class="field-odd">Generate Children For Skipped<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If set, children tasks will still be generated for skipped frames. This is usually the desired behaviour</p>
+</dd>
+<dt class="field-even">Override Output Path<span class="colon">:</span></dt>
+<dd class="field-even"><p>If set - allows overriding output path for the rop node.</p>
+</dd>
+<dt class="field-odd">Use Specific Parameter Name For Output<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If set - allows overriding the name of the parameter on houdini node that contains output path.</p>
+</dd>
+<dt class="field-even">Attributes To Copy To Children<span class="colon">:</span></dt>
+<dd class="field-even"><p>Task attributes that match this mask will be copied to children tasks</p>
+</dd>
+<dt class="field-odd">Detail Attributes To Extract<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Geometry detail attributes that match this mask will be copied back to the Lifeblood task</p>
+</dd>
+<dt class="field-even">Detail Intrinsics To Extract<span class="colon">:</span></dt>
+<dd class="field-even"><p>Geometry detail intrinsic attributes that match this mask will be copied back to the Lifeblood task</p>
+</dd>
+</dl>
+</section>
+<section id="attributes-set">
+<h2>Attributes Set<a class="headerlink" href="#attributes-set" title="Permalink to this heading">#</a></h2>
+<p>These attributes are set on <strong>children</strong> tasks</p>
+<dl class="field-list simple">
+<dt class="field-odd">hipfile<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Is set to the hip file path that was processed</p>
+</dd>
+<dt class="field-even">file<span class="colon">:</span></dt>
+<dd class="field-even"><p>Is set to Rop Node’s output path for the generated file</p>
+</dd>
+</dl>
+</section>
+<section id="devices">
+<h2>Devices<a class="headerlink" href="#devices" title="Permalink to this heading">#</a></h2>
+<p>This node understands the following device types:</p>
+<dl class="field-list">
+<dt class="field-odd">gpu<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Treated as GPU OpenCL device</p>
+<p>tags used:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">opencl_dev</span></code> - has format <code class="docutils literal notranslate"><span class="pre">&lt;device</span> <span class="pre">type&gt;:&lt;device</span> <span class="pre">vendor&gt;:&lt;device</span> <span class="pre">number&gt;</span></code></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;device</span> <span class="pre">type&gt;</span></code> - value identifying this device through houdini’s <code class="docutils literal notranslate"><span class="pre">HOUDINI_OCL_DEVICETYPE</span></code> variable</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;device</span> <span class="pre">vendor&gt;</span></code> - value identifying this device through houdini’s <code class="docutils literal notranslate"><span class="pre">HOUDINI_OCL_VENDOR</span></code> variable</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;device</span> <span class="pre">number&gt;</span></code> - value identifying this device through houdini’s <code class="docutils literal notranslate"><span class="pre">HOUDINI_OCL_DEVICENUMBER</span></code> variable</p></li>
+</ul>
+<p>Each value can be empty, in that case corresponding houdini’s environment variable is not set, it’s up to the user to
+configure this value correctly.</p>
+<p>Example values: <code class="docutils literal notranslate"><span class="pre">&quot;GPU::0&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;GPU:Intel(R)</span> <span class="pre">Corporation&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">GPU:NVIDIA</span> <span class="pre">Corporation:0</span></code></p>
+</li>
+</ul>
+</dd>
+</dl>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../../core/wedge.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Wedge Attributes</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="karma.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Karma</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parameters">Parameters</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#attributes-set">Attributes Set</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#devices">Devices</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../../../_sources/nodes/stock/houdini/hip_driver_renderer.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 10132 BC - 2029 AD, XAPKOHHEH.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.4.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
