@@ -38,6 +38,8 @@ There are 2 fundamental types of machine resources:
 * numerical resources
 * device resources
 
+.. _numerical_resources:
+
 Numerical Resources
 -------------------
 
@@ -89,6 +91,8 @@ then the second worker won't be able to take any jobs that require more than 16 
     The invocation that was assigned 16 GB of ram may end up actually taking 1 GB, or 100 GB of ram,
     there are no **default** instruments to impose resource limits on working invocations as it is very system-dependent,
     however there is a mechanism to implement such enforcement.
+
+.. _device_resources:
 
 Device Resources
 ----------------
