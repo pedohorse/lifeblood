@@ -46,15 +46,24 @@ class Wedge(BaseNode):
         if wedges_count <= 0:
             return ProcessingResult()
         wedge_ranges = []
+        attribute_names = set()  # to check for duplication
         for i in range(wedges_count):
             wtype = context.param_value(f'wtype_{i}')
+            attr_name = context.param_value(f'attr_{i}')
+            attr_name = attr_name.strip()
+            if not attr_name:
+                raise ProcessingError('wedged attribute must not be empty.')
+            if attr_name in attribute_names:
+                raise ProcessingError(f'Each attribute must only appear once in the list. Attribute named "{attr_name}" is duplicated')
+            attribute_names.add(attr_name)
+
             if wtype == 0:
                 count = context.param_value(f'count_{i}')
                 if count <= 0:
                     raise ProcessingError('count cannot be less or equal to zero')
-                wedge_ranges.append((0, context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'to_{i}'), count))
+                wedge_ranges.append((0, attr_name, context.param_value(f'from_{i}'), context.param_value(f'to_{i}'), count))
             elif wtype == 1:
-                wedge_ranges.append((1, context.param_value(f'attr_{i}'), context.param_value(f'from_{i}'), context.param_value(f'max_{i}'), context.param_value(f'inc_{i}')))
+                wedge_ranges.append((1, attr_name, context.param_value(f'from_{i}'), context.param_value(f'max_{i}'), context.param_value(f'inc_{i}')))
             else:
                 raise ProcessingError('bad wedge type')
 
@@ -100,12 +109,16 @@ class Wedge(BaseNode):
                 if inc == 0:
                     raise ProcessingError('increment cannot be zero')
                 elif inc > 0:
+                    if to < fr:
+                        raise ProcessingError('max value is less than min, while inc is greater than zero')
                     while fr <= to:
                         new_vals = cur_vals.copy()
                         new_vals[attr] = fr
                         _do_iter(new_vals, level+1)
                         fr += inc
-                else:
+                else:  # inc < 0
+                    if to > fr:
+                        raise ProcessingError('max value is greater than min, while inc is less than zero')
                     while fr >= to:
                         new_vals = cur_vals.copy()
                         new_vals[attr] = fr
