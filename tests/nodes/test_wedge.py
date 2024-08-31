@@ -148,3 +148,191 @@ class TestWedge(TestCaseBase):
         await self._helper_test_node_with_arg_update(
             _logic
         )
+
+    async def test_incorrect_count(self):
+        """
+        Ensure error is generated when input parameters are invalid
+        """
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            for mode, invalid_val, invalid_max, invalid_inc, valid in (
+                    (0, -10, 10, 1, False),
+                    (0, -1, 10, 1, False),
+                    (0, 0, 10, 1, False),
+                    (0, 1, 10, 1, True),
+                    (0, -10, -10, 1, False),
+                    (0, -1, -10, 1, False),
+                    (0, 0, -10, 1, False),
+                    (0, 1, -10, 1, True),
+                    (0, -10, 10, -1, False),
+                    (0, -1, 10, -1, False),
+                    (0, 0, 10, -1, False),
+                    (0, 1, 10, -1, True),
+                    (1, -10, 10, 1, True),
+                    (1, -1, 10, 1, True),
+                    (1, 0, 10, 1, True),
+                    (1, 1, 10, 1, True),
+                    (1, -10, -10, 1, False),
+                    (1, -1, -10, 1, False),
+                    (1, 0, -10, 1, False),
+                    (1, 1, -10, 1, False),
+                    (1, -10, 10, -1, False),
+                    (1, -1, 10, -1, False),
+                    (1, 0, 10, -1, False),
+                    (1, 1, 10, -1, False),
+                    (1, -10, -10, -1, True),
+                    (1, -1, -10, -1, True),
+                    (1, 0, -10, -1, True),
+                    (1, 1, -10, -1, True),
+            ):
+                # invalid_max, invalid_inc should NOT affect anything
+                task = context.create_pseudo_task_with_attrs({})
+
+                node = context.create_node('wedge', 'footest')
+                node.set_param_value('wedge count', 2)
+
+                node.set_param_value('wtype_0', mode)  # by count or by inc
+                node.set_param_value('attr_0', 'foo')
+                node.set_param_value('from_0', 1)
+                node.set_param_value('to_0', 10)
+                node.set_param_value('count_0', invalid_val)
+                node.set_param_value('max_0', invalid_max)
+                node.set_param_value('inc_0', invalid_inc)
+
+                # second one to ensure no empty wedge set is triggered
+                node.set_param_value('wtype_1', 0)  # by count or by inc
+                node.set_param_value('attr_1', 'bar')
+                node.set_param_value('from_1', 1)
+                node.set_param_value('to_1', 2)
+                node.set_param_value('count_1', 2)
+                node.set_param_value('max_1', 2)
+                node.set_param_value('inc_1', 1)
+
+                if valid:
+                    context.process_task(node, task)  # all good
+                else:
+                    print(f'try mode = {mode}, count = {invalid_val}, max = {invalid_max}, inc = {invalid_inc}, should be valid = {valid}')
+                    self.assertRaises(ProcessingError, context.process_task, node, task)
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
+
+    async def test_attribute_names(self):
+        """
+        Ensure that leading and trailing spaces are removed from attribute names
+        this decision is driven only to prevent user confusion as trailing spaces can easily be overlooked
+        """
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            task = context.create_pseudo_task_with_attrs({})
+
+            node = context.create_node('wedge', 'footest')
+            node.set_param_value('wedge count', 3)
+
+            node.set_param_value('wtype_0', 0)  # by count or by inc
+            node.set_param_value('attr_0', '  foo')
+            node.set_param_value('from_0', 1)
+            node.set_param_value('to_0', 10)
+            node.set_param_value('count_0', 10)
+            node.set_param_value('max_0', 10)
+            node.set_param_value('inc_0', 1)
+
+            node.set_param_value('wtype_1', 0)  # by count or by inc
+            node.set_param_value('attr_1', 'bar  ')
+            node.set_param_value('from_1', 1)
+            node.set_param_value('to_1', 10)
+            node.set_param_value('count_1', 10)
+            node.set_param_value('max_1', 10)
+            node.set_param_value('inc_1', 1)
+
+            node.set_param_value('wtype_2', 0)  # by count or by inc
+            node.set_param_value('attr_2', ' cat ')
+            node.set_param_value('from_2', 1)
+            node.set_param_value('to_2', 10)
+            node.set_param_value('count_2', 10)
+            node.set_param_value('max_2', 10)
+            node.set_param_value('inc_2', 1)
+
+            res = context.process_task(node, task)
+
+            self.assertIsNotNone(res)
+            for attrdict in res._split_attribs:
+                self.assertSetEqual({'foo', 'bar', 'cat'}, set(attrdict.keys()))
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
+
+    async def test_empty_attribute_names(self):
+        """
+        Ensure that leading and trailing spaces are removed from attribute names
+        this decision is driven only to prevent user confusion as trailing spaces can easily be overlooked
+        """
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            for attrs in [[''], ['foo', ''], [' '], [' ', 'fqfq'], ['qqwe', '   ', 'gggrg']]:
+                task = context.create_pseudo_task_with_attrs({})
+
+                node = context.create_node('wedge', 'footest')
+                node.set_param_value('wedge count', len(attrs))
+
+                for i, attr_name in enumerate(attrs):
+                    node.set_param_value(f'wtype_{i}', 0)  # by count or by inc
+                    node.set_param_value(f'attr_{i}', attr_name)
+                    node.set_param_value(f'from_{i}', 1)
+                    node.set_param_value(f'to_{i}', 3)
+                    node.set_param_value(f'count_{i}', 3)
+                    node.set_param_value(f'max_{i}', 3)
+                    node.set_param_value(f'inc_{i}', 1)
+
+                self.assertRaises(ProcessingError, context.process_task, node, task)
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
+
+    async def test_attribute_names_duplications(self):
+        """
+        Ensure error is generated when one attribute name is duplicated in the list
+        """
+        async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
+            task = context.create_pseudo_task_with_attrs({})
+
+            node = context.create_node('wedge', 'footest')
+            node.set_param_value('wedge count', 4)
+
+            node.set_param_value('wtype_0', 0)  # by count or by inc
+            node.set_param_value('attr_0', 'name one')
+            node.set_param_value('from_0', 1)
+            node.set_param_value('to_0', 3)
+            node.set_param_value('count_0', 3)
+            node.set_param_value('max_0', 3)
+            node.set_param_value('inc_0', 1)
+
+            node.set_param_value('wtype_1', 0)  # by count or by inc
+            node.set_param_value('attr_1', 'two')
+            node.set_param_value('from_1', 1)
+            node.set_param_value('to_1', 3)
+            node.set_param_value('count_1', 3)
+            node.set_param_value('max_1', 3)
+            node.set_param_value('inc_1', 1)
+
+            node.set_param_value('wtype_2', 0)  # by count or by inc
+            node.set_param_value('attr_2', ' fooooo')
+            node.set_param_value('from_2', 1)
+            node.set_param_value('to_2', 3)
+            node.set_param_value('count_2', 3)
+            node.set_param_value('max_2', 3)
+            node.set_param_value('inc_2', 1)
+
+            node.set_param_value('wtype_3', 0)  # by count or by inc
+            node.set_param_value('attr_3', 'two')
+            node.set_param_value('from_3', 1)
+            node.set_param_value('to_3', 3)
+            node.set_param_value('count_3', 3)
+            node.set_param_value('max_3', 3)
+            node.set_param_value('inc_3', 1)
+
+            self.assertRaises(ProcessingError, context.process_task, node, task)
+
+        await self._helper_test_node_with_arg_update(
+            _logic
+        )
