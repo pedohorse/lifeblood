@@ -15,6 +15,7 @@ jobs:
     steps:
       - name: "install dependencies"
         run: |
+          apt update
           apt install -y zip rsync bash
       - uses: actions/checkout@v4
       - name: "build houdini plugin"
