@@ -53,6 +53,8 @@ class HipScript(BaseNodeWithTaskRequirements):
         script = 'import os, hou\n'
 
         source_hip = context.param_value('hip path')
+        if not source_hip:
+            raise ProcessingError('hip path is empty')
         dest_hip = source_hip
         if context.param_value('save different hip'):
             dest_hip = context.param_value('save hip path')
@@ -69,7 +71,12 @@ class HipScript(BaseNodeWithTaskRequirements):
                       'hou.hipFile.addEventCallback(__fix_hip_env__)\n'
 
         script += 'def __main_body__():\n'
-        script += '\n'.join(f'    {line}' for line in context.param_value('script').splitlines())
+
+        code_lines = '\n'.join(f'    {line}' for line in context.param_value('script').splitlines())
+        if code_lines.strip() == '':
+            script += '    pass'
+        else:
+            script += code_lines
 
         script += '\n\n' \
                  f'hou.hipFile.load({repr(source_hip)}, ignore_load_warnings=True)\n' \
