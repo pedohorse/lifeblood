@@ -8,7 +8,7 @@ from lifeblood_testing_common.nodes_common import TestCaseBase, PseudoContext
 from typing import List
 
 
-class TestWedge(TestCaseBase):
+class TestRenameAttrib(TestCaseBase):
     async def test_noop(self):
         async def _logic(sched: Scheduler, workers: List[Worker], done_waiter: Event, context: PseudoContext):
             task = context.create_pseudo_task_with_attrs({'foo': 123, 'bar': 'wow'})
