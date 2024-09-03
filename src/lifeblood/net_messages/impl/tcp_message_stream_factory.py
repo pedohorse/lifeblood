@@ -3,7 +3,7 @@ import struct
 import logging
 from lifeblood.logging import get_logger
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ..exceptions import MessageTransferError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 from ..stream_wrappers import MessageSendStream, MessageSendStreamBase
@@ -30,6 +30,7 @@ class ConnectionPoolEntry:
     writer: asyncio.StreamWriter
     last_used: datetime
     users_count: int
+    last_ping_time: datetime = field(default_factory=lambda: datetime.now())
     close_when_user_count_zero: bool = False
     bad: bool = False
 
@@ -100,6 +101,8 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         self.__open_connection_calls_count = 0
         self.__pool_closed = asyncio.Event()
         self.__timeout = timeout
+        # below is some arbitrary heuristics
+        self.__minimal_reping_interval = max(1, int(timeout/2))
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
@@ -173,7 +176,12 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
                                                stream_timeout=self.__timeout,
                                                confirmation_timeout=self.__timeout)
             try:
-                await stream.send_ping()
+                # this is a heuristics base on connection "freshness"
+                # "fresh" connections will most likely work, so extra ping will only slow things down
+                ping_now = datetime.now()
+                if (ping_now - entry.last_ping_time).total_seconds() > self.__minimal_reping_interval:
+                    await stream.send_ping()
+                    entry.last_ping_time = ping_now
             except MessageTransferError as e:
                 self._logger.debug('ping failed due to %s', e)
                 entry.bad = True
@@ -187,7 +195,8 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
             entry = ConnectionPoolEntry(reader,
                                         writer,
                                         datetime.now(),
-                                        0)
+                                        0,
+                                        datetime.now())
             self.__pool.setdefault(key, []).append(entry)
         assert entry is not None
 
