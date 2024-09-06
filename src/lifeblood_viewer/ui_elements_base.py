@@ -15,6 +15,7 @@ class ImguiWindow(ImguiElement):
     __unique_nums: Dict[str, int] = {}
 
     def __init__(self, title: str = '', closable: bool = True):
+        super().__init__()
         self.__opened = False
         self.__just_opened = False
         # wanted to use uuid.uuid4().hex below, but that would bloat imgui's internal db after multiple launches
@@ -47,6 +48,18 @@ class ImguiWindow(ImguiElement):
         call ONLY from draw_window_elements instead of imgui.close_current_popup()
         """
         self.__opened = False
+
+    def on_first_opened(self):
+        """
+        override this to react to fist opened event
+        """
+        pass
+
+    def on_closed(self):
+        """
+        override this to react to closed event
+        """
+        pass
 
     def _was_just_opened(self) -> bool:
         """
@@ -85,11 +98,13 @@ class ImguiWindow(ImguiElement):
 
         (expanded, opened) = imgui.begin(self._imgui_window_name(), closable=self.__closable)
         if not opened:
+            self.on_closed()
             imgui.end()
             self._close()
             return
         try:
             self.__focused_last_draw = imgui.is_window_focused()
+            self.on_first_opened()
             self.draw_window_elements()
         finally:
             imgui.end()
