@@ -91,7 +91,7 @@ class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
                             if len(frames) == 1:
                                 imgui.text(str(frames[0]))
                             else:
-                                imgui.text(f'{frames[0]}-{frames[1]}')
+                                imgui.text(f'{frames[0]}-{frames[-1]}')
                         else:
                             imgui.text('')
                         imgui.table_next_column()
