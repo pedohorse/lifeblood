@@ -5,7 +5,7 @@ from enum import Enum
 from math import sqrt
 from types import MappingProxyType
 from datetime import timedelta
-from .code_editor.editor import StringParameterEditor
+from ..code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
 from .network_item import NetworkItemWithUI, NetworkItem
 from .network_item_watchers import NetworkItemWatcher, WatchableNetworkItem, WatchableNetworkItemProxy
@@ -29,10 +29,10 @@ import imgui
 
 from typing import FrozenSet, TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
-from . import nodeeditor
-from .editor_scene_integration import fetch_and_open_log_viewer
+from .. import nodeeditor  # TODO: break dep loop
+from ..editor_scene_integration import fetch_and_open_log_viewer
 if TYPE_CHECKING:
-    from .graphics_scene import QGraphicsImguiScene
+    from ..graphics_scene import QGraphicsImguiScene
 
 logger = logging.get_logger('viewer')
 
