@@ -49,11 +49,12 @@ def length2(v: QPointF):
 
 
 class TaskAnimation(QAbstractAnimation):
-    def __init__(self, task: "Task",  node2: "Node", pos2: "QPointF", duration: int, parent):
+    def __init__(self, task: "Task", node1: "Node", pos1: "QPointF",  node2: "Node", pos2: "QPointF", duration: int, parent):
         super(TaskAnimation, self).__init__(parent)
         self.__task = task
 
-        self.__node1, self.__pos1 = task.final_location()
+        self.__node1 = node1
+        self.__pos1 = pos1
         self.__node2 = node2
         self.__pos2 = pos2
         self.__duration = max(duration, 1)
@@ -279,7 +280,7 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
 
         for i, task in enumerate(self.__tasks):
-            task._set_node_animated(self, *self.get_task_pos(task, i))
+            self.__make_task_child_with_position(task, *self.get_task_pos(task, i), animate=True)
 
     def input_snap_points(self):
         # TODO: cache snap points, don't recalc them every time
@@ -506,6 +507,23 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         return self.mapToScene(-0.5 * self.__width + (idx + 1) * self.__width/(cnt + 1) - self.__pivot_x,
                                0.5 * self.__height - self.__pivot_y)
 
+    def __make_task_child_with_position(self, task: "Task", pos: QPointF, layer: int, *, animate: bool = False):
+        """
+        helper function that actually changes parent of a task and initializes animations if needed
+        """
+        if animate:
+            task.append_task_move_animation(self, pos, layer)
+        else:
+            task.set_task_position(self, pos, layer)
+
+        need_ui_update = self != task.node()
+        if task.node() and task.node() != self:
+            task.node().remove_task(task)
+        task._set_parent_node(self)
+
+        if need_ui_update:
+            task.item_updated(redraw=False, ui=True)
+
     def add_task(self, task: "Task", animated=True):
         if task in self.__tasks:
             return
@@ -513,9 +531,9 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
         pos_id = len(self.__tasks)
         if task.node() is None or not animated:
-            task._set_node(self, *self.get_task_pos(task, pos_id))
+            self.__make_task_child_with_position(task, *self.get_task_pos(task, pos_id))
         else:
-            task._set_node_animated(self, *self.get_task_pos(task, pos_id))
+            self.__make_task_child_with_position(task, *self.get_task_pos(task, pos_id), animate=True)
 
         insert_at = self._find_insert_index_for_task(task, prefer_back=True)
 
@@ -525,10 +543,9 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         self.__tasks.append(None)  # temporary placeholder, it'll be eliminated either in the loop, or after if task is last
         for i in reversed(range(insert_at + 1, len(self.__tasks))):
             self.__tasks[i] = self.__tasks[i-1]  # TODO: animated param should affect below!
-            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__make_task_child_with_position(self.__tasks[i], *self.get_task_pos(self.__tasks[i], i), animate=True)
         self.__tasks[insert_at] = task
-        self.__tasks[insert_at]._set_node_animated(self, *self.get_task_pos(task, insert_at))
-        task._Task__node = self
+        self.__make_task_child_with_position(self.__tasks[insert_at], *self.get_task_pos(task, insert_at), animate=True)
 
         if len(self.item_watchers()) > 0:
             task.add_item_watcher(self)
@@ -541,10 +558,9 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         logger.debug(f"removeing task {[x.get_id() for x in tasks_to_remove]} from node {self.get_id()}")
         tasks_to_remove = set(tasks_to_remove)
         for task in tasks_to_remove:
-            task._Task__node = None
+            task._set_parent_node(None)
             if len(self.item_watchers()) > 0:
                 task.remove_item_watcher(self)
-            #task.set_node(None)  # no, currently causes bad recursion
 
         # invalidate sorted cache
         self.__tasks_sorted_cached = None
@@ -559,24 +575,23 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
                     off += 1
                 else:
                     self.__tasks[i - off] = self.__tasks[i]
-                    self.__tasks[i - off]._set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
+                    self.__make_task_child_with_position(self.__tasks[i - off], *self.get_task_pos(self.__tasks[i - off], i - off), animate=True)
             self.__tasks = self.__tasks[:-off]
             for x in tasks_to_remove:
                 assert x not in self.__tasks
         self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
 
     def remove_task(self, task_to_remove: "Task"):
-        logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
+        logger.debug(f"removing task {task_to_remove.get_id()} from node {self.get_id()}")
         task_pid = self.__tasks.index(task_to_remove)
-        #task_to_remove.set_node(None)  # no, currently causes bad recursion
 
         # invalidate sorted cache
         self.__tasks_sorted_cached = None
 
-        task_to_remove._Task__node = None
+        task_to_remove._set_parent_node(None)
         for i in range(task_pid, len(self.__tasks) - 1):
             self.__tasks[i] = self.__tasks[i + 1]
-            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__make_task_child_with_position(self.__tasks[i], *self.get_task_pos(self.__tasks[i], i), animate=True)
         self.__tasks = self.__tasks[:-1]
         assert task_to_remove not in self.__tasks
         self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
@@ -596,7 +611,7 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
             return (x for x in self.__tasks)
         return self._sorted_tasks(order)
 
-    def get_task_pos(self, task: "Task", pos_id: int) -> (QPointF, int):
+    def get_task_pos(self, task: "Task", pos_id: int) -> Tuple[QPointF, int]:
         #assert task in self.__tasks
         rect = self._get_bodyshape().boundingRect()
         x, y = rect.topLeft().toTuple()
@@ -649,9 +664,9 @@ class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
         # place where it has to be
         for i in reversed(range(append_at + 1, idx+1)):
             self.__tasks[i] = self.__tasks[i-1]
-            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__make_task_child_with_position(self.__tasks[i], *self.get_task_pos(self.__tasks[i], i), animate=True)
         self.__tasks[append_at] = task
-        self.__tasks[append_at]._set_node_animated(self, *self.get_task_pos(task, append_at))
+        self.__make_task_child_with_position(self.__tasks[append_at], *self.get_task_pos(task, append_at), animate=True)
 
     #
     # interface
@@ -1509,7 +1524,7 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
     def in_group(self, group_name):
         return group_name in self.__raw_data.groups
 
-    def node(self):
+    def node(self) -> Optional[Node]:
         return self.__node
 
     def draw_size(self):
@@ -1560,7 +1575,7 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
         if task_delta.name is not DataNotSet:
             self.set_name(task_delta.name)
         if task_delta.node_id is not DataNotSet:
-            node = self.scene().get_node(task_delta.node_id)
+            node: Optional[Node] = self.scene().get_node(task_delta.node_id)
             if node is not None:
                 node.add_task(self, animated)
         if task_delta.work_data_invocation_attempt is not DataNotSet:
@@ -1709,34 +1724,31 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
     def environment_attributes(self) -> Optional[EnvironmentResolverArguments]:
         return self.__ui_env_res_attributes
 
-    def _set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
+    def set_task_position(self, node: Node, pos: QPointF, layer: int):
         """
-        helper to be called by Node
+        set task position to given node and give pos/layer inside that node
+        also cancels any active move animation
         """
-        need_ui_update = node != self.__node
-
-        if self.__node and self.__node != node:
-            self.__node.remove_task(self)
         if self.__animation_group is not None:
             self.__animation_group.stop()
             self.__animation_group.deleteLater()
             self.__animation_group = None
-        self.__node = node
-        self.setParentItem(self.__node)
+
+        self.setParentItem(node)
         if pos is not None:
             self.setPos(pos)
         if layer is not None:
             self.set_layer(layer)
-        if need_ui_update:
-            self.item_updated(redraw=False, ui=True)
 
-    def _set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
+    def append_task_move_animation(self, node: Node, pos: QPointF, layer: int):
         """
-        helper to be called by Node
+        set task position to given node and give pos/layer inside that node,
+        but do it with animation
         """
-        # first try to optimize, if we move on the same node to invisible layer - dont animate
+        # first try to optimize, if we move on the same node to invisible layer - don't animate
         if node == self.__node and layer >= self.__visible_layers_count and self.__animation_group is None:
-            return self._set_node(node, pos, layer)
+            return self.set_task_position(node, pos, layer)
+
         #
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
@@ -1745,8 +1757,9 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
         if animgroup is None:
             animgroup = QSequentialAnimationGroup(self.scene())
             animgroup.finished.connect(self._clear_animation_group)
-        anim_speed = max(1.0, animgroup.animationCount()-2)  # -2 to start speedup only after a couple anims in queue
-        new_animation = TaskAnimation(self, node, pos, duration=max(1, int(ldist / anim_speed)), parent=animgroup)
+        anim_speed = max(1.0, animgroup.animationCount() - 2)  # -2 to start speedup only after a couple anims in queue
+        start_node, start_pos = self.final_location()
+        new_animation = TaskAnimation(self, start_node, start_pos, node, pos, duration=max(1, int(ldist / anim_speed)), parent=animgroup)
         if self.__animation_group is None:
             self.setParentItem(None)
             self.__animation_group = animgroup
@@ -1757,12 +1770,12 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
         # self.__animation_group.addAnimation(new_animation)
         if self.__animation_group.state() != QAbstractAnimation.Running:
             self.__animation_group.start()
-        if self.__node and self.__node != node:
-            self.__node.remove_task(self)
-        need_ui_update = node != self.__node
+
+    def _set_parent_node(self, node: Optional[Node]):
+        """
+        only to be called by Node class
+        """
         self.__node = node
-        if need_ui_update:
-            self.item_updated(redraw=False, ui=True)
 
     def final_location(self) -> (Node, QPointF):
         if self.__animation_group is not None:
