@@ -256,6 +256,7 @@ class TaskProcessor(SchedulerComponentBase):
             # splits
             if process_result._split_attribs is not None:
                 split_count = len(process_result._split_attribs)
+                ui_task_delta.state = TaskState.SPLITTED  # note that split_task ALSO adds a task delta event with state update
                 for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
                     async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                         split_task_dict = await cur.fetchone()

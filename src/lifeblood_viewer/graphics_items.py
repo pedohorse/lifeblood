@@ -7,6 +7,8 @@ from types import MappingProxyType
 from datetime import timedelta
 from .code_editor.editor import StringParameterEditor
 from .node_extra_items import ImplicitSplitVisualizer
+from .network_item import NetworkItemWithUI, NetworkItem
+from .network_item_watchers import NetworkItemWatcher, WatchableNetworkItem, WatchableNetworkItemProxy
 
 from lifeblood.config import get_config
 from lifeblood.uidata import NodeUi, Parameter, ParameterExpressionError, ParametersLayoutBase, OneLineParametersLayout, CollapsableVerticalGroup, Separator, MultiGroupLayout
@@ -25,7 +27,7 @@ from PySide2.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroke
 
 import imgui
 
-from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
+from typing import FrozenSet, TYPE_CHECKING, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
 from . import nodeeditor
 from .editor_scene_integration import fetch_and_open_log_viewer
@@ -44,28 +46,6 @@ def call_later(callable, *args, **kwargs):  #TODO: this repeats here and in node
 
 def length2(v: QPointF):
     return QPointF.dotProduct(v, v)
-
-
-class NetworkItem(QGraphicsItem):
-    def __init__(self, id):
-        super().__init__()
-        self.__id = id
-
-    def get_id(self):
-        return self.__id
-
-
-class NetworkItemWithUI(NetworkItem):
-    def update_ui(self):
-        self.update()  # currently contents and UI are drawn always together, so this will do
-        # but in future TODO: invalidate only UI layer
-
-    def draw_imgui_elements(self, drawing_widget):
-        """
-        this should only be called from active opengl context!
-        :return:
-        """
-        pass
 
 
 class TaskAnimation(QAbstractAnimation):
@@ -106,7 +86,7 @@ class TaskAnimation(QAbstractAnimation):
         self.__task.setPos(pos)
 
 
-class Node(NetworkItemWithUI):
+class Node(NetworkItemWithUI, WatchableNetworkItemProxy):
     class TaskSortOrder(Enum):
         ID = 0
 
@@ -218,8 +198,7 @@ class Node(NetworkItemWithUI):
         if new_name == self.__name:
             return
         self.__name = new_name
-        self.update()
-        self.update_ui()
+        self.item_updated(redraw=True, ui=True)
 
     def set_selected(self, selected: bool, *, unselect_others=False):
         scene: QGraphicsImguiScene = self.scene()
@@ -279,8 +258,7 @@ class Node(NetworkItemWithUI):
             self.__header_brush = QBrush(gradient)
         else:
             self.__header_brush = QBrush(QColor(*(x * 255 for x in css.main_color()), 192))
-        self.update()  # cuz input count affects visualization in the graph
-        self.update_ui()
+        self.item_updated(redraw=True, ui=True)  # cuz input count affects visualization in the graph
 
     def get_nodeui(self) -> Optional[NodeUi]:
         return self.__nodeui
@@ -301,7 +279,7 @@ class Node(NetworkItemWithUI):
         self.__vismark.setPos(QPointF(0, self._get_nodeshape().boundingRect().height() * 0.5))
 
         for i, task in enumerate(self.__tasks):
-            task.set_node_animated(self, *self.get_task_pos(task, i))
+            task._set_node_animated(self, *self.get_task_pos(task, i))
 
     def input_snap_points(self):
         # TODO: cache snap points, don't recalc them every time
@@ -368,6 +346,18 @@ class Node(NetworkItemWithUI):
         for con_name in con_names:
             nodes.update(con.input()[0] for con in self.output_connections(con_name))
         return nodes
+
+    def add_item_watcher(self, watcher: "NetworkItemWatcher"):
+        super().add_item_watcher(watcher)
+        if len(self.item_watchers()) == 1:  # first watcher
+            for task in self.__tasks:
+                task.add_item_watcher(self)
+
+    def remove_item_watcher(self, watcher: "NetworkItemWatcher"):
+        super().remove_item_watcher(watcher)
+        if len(self.item_watchers()) == 0:  # removed last watcher
+            for task in self.__tasks:
+                task.remove_item_watcher(self)
 
     def boundingRect(self) -> QRectF:
         if self.__cached_bounds is None:
@@ -520,12 +510,12 @@ class Node(NetworkItemWithUI):
         if task in self.__tasks:
             return
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
-        self.update()  # cuz node displays task number - we should redraw
+        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
         pos_id = len(self.__tasks)
         if task.node() is None or not animated:
-            task.set_node(self, *self.get_task_pos(task, pos_id))
+            task._set_node(self, *self.get_task_pos(task, pos_id))
         else:
-            task.set_node_animated(self, *self.get_task_pos(task, pos_id))
+            task._set_node_animated(self, *self.get_task_pos(task, pos_id))
 
         insert_at = self._find_insert_index_for_task(task, prefer_back=True)
 
@@ -535,10 +525,13 @@ class Node(NetworkItemWithUI):
         self.__tasks.append(None)  # temporary placeholder, it'll be eliminated either in the loop, or after if task is last
         for i in reversed(range(insert_at + 1, len(self.__tasks))):
             self.__tasks[i] = self.__tasks[i-1]  # TODO: animated param should affect below!
-            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks[insert_at] = task
-        self.__tasks[insert_at].set_node_animated(self, *self.get_task_pos(task, insert_at))
+        self.__tasks[insert_at]._set_node_animated(self, *self.get_task_pos(task, insert_at))
         task._Task__node = self
+
+        if len(self.item_watchers()) > 0:
+            task.add_item_watcher(self)
 
     def remove_tasks(self, tasks_to_remove: Iterable["Task"]):
         """
@@ -549,6 +542,8 @@ class Node(NetworkItemWithUI):
         tasks_to_remove = set(tasks_to_remove)
         for task in tasks_to_remove:
             task._Task__node = None
+            if len(self.item_watchers()) > 0:
+                task.remove_item_watcher(self)
             #task.set_node(None)  # no, currently causes bad recursion
 
         # invalidate sorted cache
@@ -564,11 +559,11 @@ class Node(NetworkItemWithUI):
                     off += 1
                 else:
                     self.__tasks[i - off] = self.__tasks[i]
-                    self.__tasks[i - off].set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
+                    self.__tasks[i - off]._set_node_animated(self, *self.get_task_pos(self.__tasks[i - off], i - off))
             self.__tasks = self.__tasks[:-off]
             for x in tasks_to_remove:
                 assert x not in self.__tasks
-        self.update()  # cuz node displays task number - we should redraw
+        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
 
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removeing task {task_to_remove.get_id()} from node {self.get_id()}")
@@ -581,10 +576,10 @@ class Node(NetworkItemWithUI):
         task_to_remove._Task__node = None
         for i in range(task_pid, len(self.__tasks) - 1):
             self.__tasks[i] = self.__tasks[i + 1]
-            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks = self.__tasks[:-1]
         assert task_to_remove not in self.__tasks
-        self.update()  # cuz node displays task number - we should redraw
+        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
 
     def _sorted_tasks(self, order: TaskSortOrder) -> List["Task"]:
         if self.__tasks_sorted_cached is None:
@@ -654,9 +649,9 @@ class Node(NetworkItemWithUI):
         # place where it has to be
         for i in reversed(range(append_at + 1, idx+1)):
             self.__tasks[i] = self.__tasks[i-1]
-            self.__tasks[i].set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
+            self.__tasks[i]._set_node_animated(self, *self.get_task_pos(self.__tasks[i], i))
         self.__tasks[append_at] = task
-        self.__tasks[append_at].set_node_animated(self, *self.get_task_pos(task, append_at))
+        self.__tasks[append_at]._set_node_animated(self, *self.get_task_pos(task, append_at))
 
     #
     # interface
@@ -1317,7 +1312,7 @@ class NodeConnection(NetworkItem):
         return super(NodeConnection, self).itemChange(change, value)
 
 
-class Task(NetworkItemWithUI):
+class Task(NetworkItemWithUI, WatchableNetworkItem):
     __brushes = None
     __borderpen = None
     __paused_pen = None
@@ -1341,6 +1336,7 @@ class Task(NetworkItemWithUI):
         # self.__groups = set() if groups is None else set(groups)
         self.__log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]] = {}
         self.__inv_log: Optional[List[Tuple[int, int, Union[IncompleteInvocationLogData, InvocationLogData]]]] = None  # for presentation - inv_id -> (node_id, log)
+        self.__inv_stat_total_time: Optional[Tuple[float, float]] = None
         self.__ui_attributes: dict = {}
         self.__ui_env_res_attributes: Optional[EnvironmentResolverArguments] = None
         self.__requested_invocs_while_selected = set()
@@ -1484,6 +1480,7 @@ class Task(NetworkItemWithUI):
             return
         self.__raw_data.name = name
         self.refresh_ui()
+        self.item_updated(redraw=False, ui=True)
 
     def state(self) -> TaskState:
         return self.__raw_data.state
@@ -1504,6 +1501,7 @@ class Task(NetworkItemWithUI):
             return
         self.__raw_data.groups = groups
         self.refresh_ui()
+        self.item_updated(redraw=False, ui=True)
 
     def attributes(self):
         return MappingProxyType(self.__ui_attributes)
@@ -1530,6 +1528,7 @@ class Task(NetworkItemWithUI):
             return
         self.__raw_data.state_details = state_details
         self.__state_details_cached = None
+        self.item_updated(redraw=False, ui=True)
 
     def set_state(self, state: Optional[TaskState], paused: Optional[bool]):
         if (state is None or state == self.__raw_data.state) and (paused is None or self.__raw_data.paused == paused):
@@ -1543,8 +1542,7 @@ class Task(NetworkItemWithUI):
             self.__raw_data.paused = paused
         if self.__node:
             self.__node.task_state_changed(self)
-        self.update()
-        self.refresh_ui()
+        self.item_updated(redraw=True, ui=True)
 
     def set_task_data(self, raw_data: TaskData):
         self.__state_details_cached = None
@@ -1552,8 +1550,7 @@ class Task(NetworkItemWithUI):
         self.__raw_data = raw_data
         if state_changed and self.__node:
             self.__node.task_state_changed(self)
-            self.update()
-            self.refresh_ui()
+            self.item_updated(redraw=True, ui=True)
 
     def apply_task_delta(self, task_delta: TaskDelta, animated=True):
         if task_delta.paused is not DataNotSet:
@@ -1592,17 +1589,30 @@ class Task(NetworkItemWithUI):
             self.__raw_data.parent_id = task_delta.parent_id
         if task_delta.state_details is not DataNotSet:
             self.set_state_details(task_delta.state_details)
-        self.update()
-        self.update_ui()
+        self.item_updated(redraw=True, ui=True)
 
     def set_progress(self, progress: float):
         self.__raw_data.progress = progress
         # logger.debug('progress %d', progress)
-        self.update()
-        self.update_ui()
+        self.item_updated(redraw=True, ui=True)
 
     def get_progress(self) -> Optional[float]:
         return self.__raw_data.progress if self.__raw_data else None
+
+    def add_item_watcher(self, watcher: "NetworkItemWatcher"):
+        super().add_item_watcher(watcher)
+        # additionally refresh ui if we are not being watched
+        if len(self.item_watchers()) == 1:  # it's a first watcher
+            self.refresh_ui()
+
+    def item_updated(self, *, redraw: bool = False, ui: bool = False):
+        super().item_updated(redraw=redraw, ui=ui)
+        for watcher in self.item_watchers():
+            watcher.item_was_updated(self)
+
+    def __reset_cached_invocation_data(self):
+        self.__inv_log = None
+        self.__inv_stat_total_time = None
 
     def update_log(self, alllog: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], full_update: bool):
         """
@@ -1636,9 +1646,9 @@ class Task(NetworkItemWithUI):
                         invocs.pop(inv_id)
 
         # clear cached inverted dict, it will be rebuilt on next access
-        self.__inv_log = None
+        self.__reset_cached_invocation_data()
 
-        self.update_ui()
+        self.item_updated(redraw=False, ui=True)
 
     def remove_invocations_log(self, invocation_ids: List[int]):
         logger.debug('removing invocations for %s', invocation_ids)
@@ -1648,9 +1658,33 @@ class Task(NetworkItemWithUI):
                     invocs.pop(invocation_id)
 
         # clear cached inverted dict, it will be rebuilt on next access
-        self.__inv_log = None
+        self.__reset_cached_invocation_data()
 
-        self.update_ui()
+        self.item_updated(redraw=False, ui=True)
+
+    def invocations_total_time(self, only_last_per_node: bool = True) -> float:
+        """
+        calculate and get statistics on all invocations belonging to this task
+        :return: if only_last_per_node - returns runtime sum of only last invocations per node
+                 otherwise returns sum of ALL invocation times, including errors and re-runs.
+        """
+        if self.__inv_stat_total_time is None:
+            total_time = 0.0
+            max_inv_logs = {}
+            for inv_id, node_id, log in self.invocation_logs():
+                if log.invocation_runtime is None:
+                    continue
+                if node_id not in max_inv_logs or max_inv_logs[node_id][0] < inv_id: # looking for invocation with biggest inv_id, as it will be the latest
+                    max_inv_logs[node_id] = (inv_id, log)
+                total_time += log.invocation_runtime
+
+            total_latest_time = sum(x.invocation_runtime for _, x in max_inv_logs.values())
+            self.__inv_stat_total_time = (total_latest_time, total_time)
+
+        if only_last_per_node:
+            return self.__inv_stat_total_time[0]
+        else:
+            return self.__inv_stat_total_time[1]
 
     def invocation_logs(self) -> List[Tuple[int, int, Union[IncompleteInvocationLogData, InvocationLogData]]]:
         """
@@ -1666,17 +1700,18 @@ class Task(NetworkItemWithUI):
     def update_attributes(self, attributes: dict):
         logger.debug('attrs updated with %s', attributes)
         self.__ui_attributes = attributes
-        self.update_ui()
+        self.item_updated(redraw=False, ui=True)
 
     def set_environment_attributes(self, env_attrs: Optional[EnvironmentResolverArguments]):
         self.__ui_env_res_attributes = env_attrs
-        self.update_ui()
+        self.item_updated(redraw=False, ui=True)
 
     def environment_attributes(self) -> Optional[EnvironmentResolverArguments]:
         return self.__ui_env_res_attributes
 
-    def set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
+    def _set_node(self, node: Optional[Node], pos: Optional[QPointF] = None, layer: Optional[int] = None):
         """
+        helper to be called by Node
         """
         need_ui_update = node != self.__node
 
@@ -1693,12 +1728,15 @@ class Task(NetworkItemWithUI):
         if layer is not None:
             self.set_layer(layer)
         if need_ui_update:
-            self.refresh_ui()
+            self.item_updated(redraw=False, ui=True)
 
-    def set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
+    def _set_node_animated(self, node: Optional[Node], pos: QPointF, layer: int):
+        """
+        helper to be called by Node
+        """
         # first try to optimize, if we move on the same node to invisible layer - dont animate
         if node == self.__node and layer >= self.__visible_layers_count and self.__animation_group is None:
-            return self.set_node(node, pos, layer)
+            return self._set_node(node, pos, layer)
         #
         dist = ((pos if node is None else node.mapToScene(pos)) - self.final_scene_position())
         ldist = sqrt(QPointF.dotProduct(dist, dist))
@@ -1724,7 +1762,7 @@ class Task(NetworkItemWithUI):
         need_ui_update = node != self.__node
         self.__node = node
         if need_ui_update:
-            self.refresh_ui()
+            self.item_updated(redraw=False, ui=True)
 
     def final_location(self) -> (Node, QPointF):
         if self.__animation_group is not None:
@@ -1756,7 +1794,7 @@ class Task(NetworkItemWithUI):
 
     def setParentItem(self, item):
         """
-        use set_node if you want to set node
+        use node.add_task if you want to set node for this task
         :param item:
         :return:
         """
@@ -1765,10 +1803,10 @@ class Task(NetworkItemWithUI):
     def refresh_ui(self):
         """
         unlike update - this method actually queries new task ui status
-        if task is not selected - does nothing
+        if task is not selected or not watched- does nothing
         :return:
         """
-        if not self.isSelected():
+        if not self.isSelected() and len(self.item_watchers()) == 0:
             return
         self.scene().request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
         self.scene().request_attributes(self.get_id())
@@ -1780,16 +1818,6 @@ class Task(NetworkItemWithUI):
                 if (isinstance(invoc_dict, IncompleteInvocationLogData)
                         or invoc_dict.invocation_state != InvocationState.FINISHED) and invoc_id in self.__requested_invocs_while_selected:
                     self.__requested_invocs_while_selected.remove(invoc_id)
-
-        # # if task is in progress - we find that invocation of it that is not finished and null it to force update
-        # if self.__state == TaskState.IN_PROGRESS \
-        #         and self.__node.get_id() in self.__log \
-        #         and self.__log[self.__node.get_id()] is not None:
-        #     for invoc_id, invoc in self.__log[self.__node.get_id()].items():
-        #         if (invoc is None or
-        #             invoc['state'] != InvocationState.FINISHED.value) \
-        #                 and invoc_id in self.__requested_invocs_while_selected:
-        #             self.__requested_invocs_while_selected.remove(invoc_id)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:

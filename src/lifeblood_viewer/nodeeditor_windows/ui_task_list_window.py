@@ -1,23 +1,35 @@
 import imgui
+from datetime import timedelta
 
 from lifeblood.enums import TaskState
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
-from ..graphics_items import Node
+from ..graphics_items import Node, Task
+from ..network_item_watchers import NetworkItemWatcher
 from PySide2.QtCore import QPoint
 from PySide2.QtGui import QCursor
 
 from typing import Optional
 
-class TaskListWindow(ImguiViewWindow):
+
+class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
     def __init__(self, editor_widget: NodeEditor):
         super().__init__(editor_widget, 'Task List')
         self.__displayed_node: Optional[Node] = None
         self.__pinned = False
 
-    def set_display_node(self, display_node: Node):
+    def set_display_node(self, display_node: Optional[Node]):
+        if display_node == self.__displayed_node:
+            return
+        if self.__displayed_node:
+            self.__displayed_node.remove_item_watcher(self)
         self.__displayed_node = display_node
+        if self.__displayed_node:
+            self.__displayed_node.add_item_watcher(self)
         self._update_title()
+
+    def on_closed(self):
+        self.set_display_node(None)
 
     def pin(self, pin: bool = True):
         self.__pinned = pin
@@ -35,13 +47,15 @@ class TaskListWindow(ImguiViewWindow):
         if self.__displayed_node is not None:
             imgui.text(f'node: {self.__displayed_node.node_name()}')
             base_name = f'table_{self._imgui_key_name()}'
-            with imgui.begin_table(f'tasks##{base_name}', 4, imgui.TABLE_SIZING_STRETCH_PROP |
+            with imgui.begin_table(f'tasks##{base_name}', 6, imgui.TABLE_SIZING_STRETCH_PROP |
                                                              imgui.TABLE_BORDERS_INNER_VERTICAL |
                                                              imgui.TABLE_ROW_BACKGROUND
                                    ) as table:
                 if table.opened:
                     imgui.table_setup_column('ID', imgui.TABLE_COLUMN_DEFAULT_SORT)
+                    imgui.table_setup_column('frame(s)')
                     imgui.table_setup_column('name')
+                    imgui.table_setup_column('total runtime')
                     imgui.table_setup_column('paused', imgui.TABLE_COLUMN_WIDTH_FIXED, 64)
                     imgui.table_setup_column('state', imgui.TABLE_COLUMN_WIDTH_FIXED, 128.0)
                     imgui.table_headers_row()
@@ -73,7 +87,19 @@ class TaskListWindow(ImguiViewWindow):
 
                         imgui.table_next_column()
 
+                        if frames := task.attributes().get('frames'):
+                            if len(frames) == 1:
+                                imgui.text(str(frames[0]))
+                            else:
+                                imgui.text(f'{frames[0]}-{frames[-1]}')
+                        else:
+                            imgui.text('')
+                        imgui.table_next_column()
+
                         imgui.text(str(task.name()))
+                        imgui.table_next_column()
+
+                        imgui.text(str(timedelta(seconds=int(task.invocations_total_time(only_last_per_node=True)))))
                         imgui.table_next_column()
 
                         if task.paused():
