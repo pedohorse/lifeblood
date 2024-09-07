@@ -1663,6 +1663,11 @@ class Task(NetworkItemWithUI, WatchableNetworkItem):
         self.item_updated(redraw=False, ui=True)
 
     def invocations_total_time(self, only_last_per_node: bool = True) -> float:
+        """
+        calculate and get statistics on all invocations belonging to this task
+        :return: if only_last_per_node - returns runtime sum of only last invocations per node
+                 otherwise returns sum of ALL invocation times, including errors and re-runs.
+        """
         if self.__inv_stat_total_time is None:
             total_time = 0.0
             max_inv_logs = {}
