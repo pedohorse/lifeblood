@@ -4,7 +4,7 @@ from typing import FrozenSet, Set
 
 
 class NetworkItemWatcher:
-    def task_was_updated(self, item: NetworkItem):
+    def item_was_updated(self, item: NetworkItem):
         pass
 
 
@@ -28,3 +28,12 @@ class WatchableNetworkItem:
 
     def has_item_watcher(self, watcher: "NetworkItemWatcher") -> bool:
         return watcher in self.__task_watchers
+
+
+class WatchableNetworkItemProxy(WatchableNetworkItem, NetworkItemWatcher):
+    """
+    is NOT being watched itself, but propagates the watch to it's own watchable items
+    """
+    def item_was_updated(self, item: NetworkItem):
+        for watcher in self.item_watchers():
+            watcher.item_was_updated(item)
