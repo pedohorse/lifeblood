@@ -37,6 +37,7 @@ class ImplicitSplitVisualizer(QGraphicsItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None) -> None:
         for name in self.__parent_node.output_names():
             if len(self.__parent_node.output_connections(name)) > 1:
+                # TODO: review this
                 shift = QPointF(self.__parent_node.mapFromScene(self.__parent_node.get_output_position(name)).x(), 0)
                 painter.fillPath(self._arc_path.translated(shift), self.__brush)
                 painter.setPen(self._text_pen)

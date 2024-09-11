@@ -4,12 +4,15 @@ import grandalf.graphs
 import grandalf.layouts
 
 from types import MappingProxyType
-from .graphics_items import Task, Node, NodeConnection
+from .graphics_scene_container import GraphicsSceneWithNodesAndTasks
+from .graphics_items import Task, Node, NodeConnection  #
 from .db_misc import sql_init_script_nodes
 from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 from .connection_worker import SchedulerConnectionWorker
 from .undo_stack import UndoStack, UndoableOperation, OperationCompletionDetails
 from .ui_snippets import UiNodeSnippetData
+from .scene_item_factory_base import SceneItemFactoryBase
+from .scene_data_controller import SceneDataController
 from .scene_ops import (
     CompoundAsyncSceneOperation,
     CreateNodeOp, CreateNodesOp,
@@ -40,7 +43,7 @@ from typing import Callable, Generator, Optional, List, Mapping, Tuple, Dict, Se
 logger = logging.get_logger('viewer')
 
 
-class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
+class QGraphicsImguiScene(GraphicsSceneWithNodesAndTasks, LongOperationProcessor, SceneDataController):
     # these are private signals to invoke shit on worker in another thread. QMetaObject's invokemethod is broken in pyside2
     _signal_log_has_been_requested = Signal(int, object)
     _signal_log_meta_has_been_requested = Signal(int, object)
@@ -96,13 +99,11 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     operation_progress_updated = Signal(int, str, float)  # operation id, name, progress 0.0 - 1.0
     operation_finished = Signal(int)  # operation id
 
-    def __init__(self, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
+    def __init__(self, scene_item_factory: SceneItemFactoryBase, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiScene, self).__init__(parent=parent)
         # to debug fuching bsp # self.setItemIndexMethod(QGraphicsScene.NoIndex)
         self.__config = get_config('viewer')
-        self.__task_dict: Dict[int, Task] = {}
-        self.__node_dict: Dict[int, Node] = {}
-        self.__node_connections_dict: Dict[int, NodeConnection] = {}
+        self.__scene_item_factory: SceneItemFactoryBase = scene_item_factory
         self.__db_path = db_path
         self.__nodes_table_name = None
         self.__cached_nodetypes: Dict[str, NodeTypeMetadata] = {}
@@ -115,14 +116,8 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self.__undo_stack: UndoStack = UndoStack()
         self.reset_undo_stack()
 
-        self.__session_node_id_mapping = {}  # for consistent redo-undo involving node creation/deletion, as node_id will change on repetition
-        self.__session_node_id_mapping_rev = {}
-        self.__next_session_node_id = -1
         self.__node_snapshots = {}  # for undo/redo
         self.__selection_happening = False
-
-        # settings:
-        self.__node_snapping_enabled = True
 
         if worker is None:
             self.__ui_connection_thread = QThread(self)  # SchedulerConnectionThread(self)
@@ -205,9 +200,6 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self._signal_poke_graph_and_tasks_update.connect(self.__ui_connection_worker.poke_graph_and_tasks_update)
         self._signal_poke_task_groups_update.connect(self.__ui_connection_worker.poke_task_groups_update)
         self._signal_poke_workers_update.connect(self.__ui_connection_worker.poke_workers_update)
-
-    def reset_undo_stack(self):
-        self.__undo_stack = UndoStack(max_undos=self.__config.get_option_noasync('viewer.max_undo_history_size', 100))
 
     def request_log(self, invocation_id: int, operation_data: Optional["LongOperationData"] = None):
         self._signal_log_has_been_requested.emit(invocation_id, operation_data)
@@ -358,60 +350,33 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         self._signal_poke_workers_update.emit()
 
     #
+    # Higher-level request functions:
+
+    def regenerate_all_ready_tasks_for_node(self, node_id: int):
+        """
+        all currently displayed tasks that are in states BEFORE invoking/in-progress, will be set to WAITING
+        """
+        self._change_all_task_states_for_node(node_id, (TaskState.READY, TaskState.WAITING_BLOCKED), TaskState.WAITING)
+
+    def retry_all_error_tasks_for_node(self, node_id: int):
+        """
+        all currently displayed task that are in ERROR state will be reset to WAITING
+        """
+        self._change_all_task_states_for_node(node_id, (TaskState.ERROR,), TaskState.WAITING)
+
+    def _change_all_task_states_for_node(self, node_id: int, from_states: Tuple[TaskState, ...], to_state: TaskState):
+        node = self.get_node(node_id)
+        self.set_task_state(
+            [x.get_id() for x in node.tasks_iter() if x.state() in from_states],
+            to_state
+        )
+
     #
     #
+    #
 
-    def _session_node_id_to_id(self, session_id: int) -> Optional[int]:
-        """
-        the whole idea of session id is to have it consistent through undo-redos
-        """
-        node_id = self.__session_node_id_mapping.get(session_id)
-        if node_id is not None and self.get_node(node_id) is None:
-            self.__session_node_id_mapping.pop(session_id)
-            self.__session_node_id_mapping_rev.pop(node_id)
-            node_id = None
-        return node_id
-
-    def _session_node_update_id(self, session_id: int, new_node_id: int):
-        prev_node_id = self.__session_node_id_mapping.get(session_id)
-        self.__session_node_id_mapping[session_id] = new_node_id
-        if prev_node_id is not None:
-            self.__session_node_id_mapping_rev.pop(prev_node_id)
-        self.__session_node_id_mapping_rev[new_node_id] = session_id
-        # TODO: self.__session_node_id_mapping should be cleared when undo stack is truncated, but so far it's a little "memory leak"
-
-    def _session_node_update_session_id(self, new_session_id: int, node_id: int):
-        if new_session_id in self.__session_node_id_mapping:
-            raise RuntimeError(f'given session id {new_session_id} is already assigned')
-        old_session_id = self.__session_node_id_mapping_rev.get(node_id)
-        self.__session_node_id_mapping_rev[node_id] = new_session_id
-        if old_session_id is not None:
-            self.__session_node_id_mapping.pop(old_session_id)
-        self.__session_node_id_mapping[new_session_id] = node_id
-
-    def _session_node_id_from_id(self, node_id: int):
-        if node_id not in self.__session_node_id_mapping_rev:
-            while self._session_node_id_to_id(self.__next_session_node_id) is not None:  # they may be taken by pasted nodes
-                self.__next_session_node_id -= 1
-            self._session_node_update_id(self.__next_session_node_id, node_id)
-            self.__next_session_node_id -= 1
-        return self.__session_node_id_mapping_rev[node_id]
-
-    def _node_selected(self, node: Node):
-        """
-        node should inform scene when it's selected
-        I guess logically it should be the other way around, but so far
-         it seems that this is the way qt is doing this
-        """
-        self.request_node_ui(node.get_id())
-
-    def _task_selected(self, task: Task):
-        """
-        task should inform scene when it's selected
-        I guess logically it should be the other way around, but so far
-         it seems that this is the way qt is doing this
-        """
-        pass
+    def reset_undo_stack(self):
+        self.__undo_stack = UndoStack(max_undos=self.__config.get_option_noasync('viewer.max_undo_history_size', 100))
 
     #
     #
@@ -424,14 +389,6 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
     def skip_archived_groups(self) -> bool:
         return self.__ui_connection_worker.skip_archived_groups()  # should be fine and thread-safe in eyes of python
-
-    # settings
-
-    def node_snapping_enabled(self):
-        return self.__node_snapping_enabled
-
-    def set_node_snapping_enabled(self, enabled: bool):
-        self.__node_snapping_enabled = enabled
 
     #
 
@@ -657,6 +614,9 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                     to_del.append(item)
                     continue
                 existing_conn_ids[item.get_id()] = item
+        print('---')
+        print(existing_node_ids)
+        print('---')
 
         # delete things
         for item in to_del:
@@ -675,7 +635,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             if id in existing_node_ids:
                 existing_node_ids[id].set_name(new_node_data.name)
                 continue
-            new_node = Node(id, new_node_data.type, new_node_data.name or f'node #{id}')
+            new_node = self.__scene_item_factory.make_node(self, id, new_node_data.type, new_node_data.name or f'node #{id}')
             try:
                 new_node.setPos(*self.node_position(id))
             except ValueError:
@@ -708,14 +668,22 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                     existing_conn_ids[id].set_output(existing_node_ids[new_conn_data.out_id], new_conn_data.out_name)
                     existing_conn_ids[id].update()
                 continue
-            new_conn = NodeConnection(id, existing_node_ids[new_conn_data.out_id],
-                                      existing_node_ids[new_conn_data.in_id],
-                                      new_conn_data.out_name, new_conn_data.in_name)
+            new_conn = self.__scene_item_factory.make_node_connection(
+                self,
+                id,
+                existing_node_ids[new_conn_data.out_id],
+                existing_node_ids[new_conn_data.in_id],
+                new_conn_data.out_name, new_conn_data.in_name
+            )
             existing_conn_ids[id] = new_conn
             self.addItem(new_conn)
 
         if nodes_to_layout:
             self.layout_nodes(nodes_to_layout)
+
+        print('+++')
+        print(self.items())
+        print(self.nodes())
 
     @timeit(0.05)
     @Slot(object, bool)
@@ -737,7 +705,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             elif isinstance(event, TasksUpdated):
                 self.tasks_update(event.task_data)
             elif isinstance(event, TasksChanged):
-                self.tasks_deltas_apply(event.task_deltas, animated=not first_time_getting_events)
+                self.tasks_deltas_apply(event.task_deltas)  #, animated=not first_time_getting_events)
             elif isinstance(event, TasksRemoved):
                 existing_tasks = dict(self.tasks_dict())
                 for task_id in event.task_ids:
@@ -745,7 +713,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                         self.removeItem(existing_tasks[task_id])
                         existing_tasks.pop(task_id)
 
-    def tasks_deltas_apply(self, task_deltas: List[TaskDelta], animated: bool = True):
+    def tasks_deltas_apply(self, task_deltas: List[TaskDelta]):
         for task_delta in task_deltas:
             task_id = task_delta.id
             task = self.get_task(task_id)
@@ -757,7 +725,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                 if node is None:
                     logger.warning('node not found during task delta processing, this will probably be fixed during next update')
                     self.__tasks_to_try_reparent_during_node_update[task_id] = task_delta.node_id
-            task.apply_task_delta(task_delta, animated=animated)
+            task.apply_task_delta(task_delta, self.get_node)
 
     @timeit(0.05)
     @Slot(object)
@@ -809,7 +777,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
         for id, new_task_data in tasks_data.tasks.items():
             if id not in existing_tasks:
-                new_task = Task(new_task_data)
+                new_task = self.__scene_item_factory.make_task(self, new_task_data)
                 existing_tasks[id] = new_task
                 if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_tasks:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
                     origin_task = existing_tasks[new_task_data.split_origin_task_id]
@@ -826,161 +794,165 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
                 self.__tasks_to_try_reparent_during_node_update[id] = new_task_data.node_id
             task.set_task_data(new_task_data)
 
-    @timeit(0.05)
-    @Slot(object)
-    def full_update(self, uidata: UiData):
-        raise DeprecationWarning('no use')
-        # logger.debug('full_update')
-
-        if self.__db_uid is not None and self.__db_uid != uidata.db_uid:
-            logger.info('scheduler\'s database changed. resetting the view...')
-            self.save_node_layout()
-            self.clear()
-            self.__db_uid = None
-            self.__nodes_table_name = None
-            # this means we probably reconnected to another scheduler, so existing nodes need to be dropped
-
-        if self.__db_uid is None:
-            self.__db_uid = uidata.db_uid
-            self.__nodes_table_name = f'nodes_{self.__db_uid}'
-            with sqlite3.connect(self.__db_path) as con:
-                con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
-
-        to_del = []
-        to_del_tasks = {}
-        existing_node_ids: Dict[int, Node] = {}
-        existing_conn_ids: Dict[int, NodeConnection] = {}
-        existing_task_ids: Dict[int, Task] = {}
-        _perf_total = 0.0
-        graph_data = uidata.graph_data
-        with performance_measurer() as pm:
-            for item in self.items():
-                if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
-                    if item.get_id() not in graph_data.nodes or item.node_type() != graph_data.nodes[item.get_id()].type:
-                        to_del.append(item)
-                        continue
-                    existing_node_ids[item.get_id()] = item
-                    # TODO: update all kind of attribs here, for now we just don't have any
-                elif isinstance(item, NodeConnection):
-                    if item.get_id() not in graph_data.connections:
-                        to_del.append(item)
-                        continue
-                    existing_conn_ids[item.get_id()] = item
-                    # TODO: update all kind of attribs here, for now we just don't have any
-                elif isinstance(item, Task):
-                    if item.get_id() not in uidata.tasks.tasks:
-                        to_del.append(item)
-                        if item.node() is not None:
-                            if not item.node() in to_del_tasks:
-                                to_del_tasks[item.node()] = []
-                            to_del_tasks[item.node()].append(item)
-                        continue
-                    existing_task_ids[item.get_id()] = item
-        _perf_item_classify = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
-        with performance_measurer() as pm:
-            for node, tasks in to_del_tasks.items():
-                node.remove_tasks(tasks)
-        _perf_remove_tasks = pm.elapsed()
-        _perf_total += pm.elapsed()
-        with performance_measurer() as pm:
-            for item in to_del:
-                self.removeItem(item)
-        _perf_remove_items = pm.elapsed()
-        _perf_total += pm.elapsed()
-        # removing items might cascade things, like removing node will remove connections to that node
-        # so now we need to recheck existing items validity
-        # though not consistent scene states should not come in uidata at all
-        with performance_measurer() as pm:
-            for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
-                for item_id, item in tuple(existings.items()):
-                    if item.scene() != self:
-                        del existings[item_id]
-        _perf_revalidate = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        nodes_to_layout = []
-        with performance_measurer() as pm:
-            for id, new_node_data in graph_data.nodes.items():
-                if id in existing_node_ids:
-                    existing_node_ids[id].set_name(new_node_data.name)
-                    continue
-                new_node = Node(id, new_node_data.type, new_node_data.name or f'node #{id}')
-                try:
-                    new_node.setPos(*self.node_position(id))
-                except ValueError:
-                    nodes_to_layout.append(new_node)
-                existing_node_ids[id] = new_node
-                self.addItem(new_node)
-        _perf_create_nodes = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        with performance_measurer() as pm:
-            for id, new_conn_data in graph_data.connections.items():
-                if id in existing_conn_ids:
-                    # ensure connections
-                    innode, inname = existing_conn_ids[id].input()
-                    outnode, outname = existing_conn_ids[id].output()
-                    if innode.get_id() != new_conn_data.in_id or inname != new_conn_data.in_name:
-                        existing_conn_ids[id].set_input(existing_node_ids[new_conn_data.in_id], new_conn_data.in_name)
-                        existing_conn_ids[id].update()
-                    if outnode.get_id() != new_conn_data.out_id or outname != new_conn_data.out_name:
-                        existing_conn_ids[id].set_output(existing_node_ids[new_conn_data.out_id], new_conn_data.out_name)
-                        existing_conn_ids[id].update()
-                    continue
-                new_conn = NodeConnection(id, existing_node_ids[new_conn_data.out_id],
-                                          existing_node_ids[new_conn_data.in_id],
-                                          new_conn_data.out_name, new_conn_data.in_name)
-                existing_conn_ids[id] = new_conn
-                self.addItem(new_conn)
-        _perf_create_connections = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        with performance_measurer() as pm:
-            for id, new_task_data in uidata.tasks.tasks.items():
-                if id not in existing_task_ids:
-                    new_task = Task(new_task_data)
-                    existing_task_ids[id] = new_task
-                    if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
-                        origin_task = existing_task_ids[new_task_data.split_origin_task_id]
-                        new_task.setPos(origin_task.scenePos())
-                    elif new_task_data.parent_id is not None and new_task_data.parent_id in existing_task_ids:
-                        origin_task = existing_task_ids[new_task_data.parent_id]
-                        new_task.setPos(origin_task.scenePos())
-                    self.addItem(new_task)
-                task = existing_task_ids[id]
-                existing_node_ids[new_task_data.node_id].add_task(task)
-                task.set_task_data(new_task_data)
-        _perf_create_tasks = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        # now layout nodes that need it
-        with performance_measurer() as pm:
-            if nodes_to_layout:
-                self.layout_nodes(nodes_to_layout)
-        _perf_layout = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        with performance_measurer() as pm:
-            if self.__all_task_groups != uidata.task_groups:
-                self.__all_task_groups = uidata.task_groups
-                self.task_groups_updated.emit(uidata.task_groups)
-        _perf_task_groups_update = pm.elapsed()
-        _perf_total += pm.elapsed()
-
-        if _perf_total > 0.04:  # arbitrary threshold ~ 1/25 of a sec
-            logger.debug(f'update performed:\n'
-                         f'{_perf_item_classify:.04f}:\tclassify\n'
-                         f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
-                         f'{_perf_remove_items:.04f}:\tremove items\n'
-                         f'{_perf_revalidate:.04f}:\trevalidate\n'
-                         f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
-                         f'{_perf_create_connections:.04f}:\tcreate connections\n'
-                         f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
-                         f'{_perf_layout:.04f}:\tlayout\n'
-                         f'{_perf_task_groups_update:.04f}:\ttask group update')
+    # @timeit(0.05)
+    # @Slot(object)
+    # def full_update(self, uidata: UiData):
+    #     raise DeprecationWarning('no use')
+    #     # logger.debug('full_update')
+    #
+    #     if self.__db_uid is not None and self.__db_uid != uidata.db_uid:
+    #         logger.info('scheduler\'s database changed. resetting the view...')
+    #         self.save_node_layout()
+    #         self.clear()
+    #         self.__db_uid = None
+    #         self.__nodes_table_name = None
+    #         # this means we probably reconnected to another scheduler, so existing nodes need to be dropped
+    #
+    #     if self.__db_uid is None:
+    #         self.__db_uid = uidata.db_uid
+    #         self.__nodes_table_name = f'nodes_{self.__db_uid}'
+    #         with sqlite3.connect(self.__db_path) as con:
+    #             con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
+    #
+    #     to_del = []
+    #     to_del_tasks = {}
+    #     existing_node_ids: Dict[int, Node] = {}
+    #     existing_conn_ids: Dict[int, NodeConnection] = {}
+    #     existing_task_ids: Dict[int, Task] = {}
+    #     _perf_total = 0.0
+    #     graph_data = uidata.graph_data
+    #     with performance_measurer() as pm:
+    #         for item in self.items():
+    #             if isinstance(item, Node):  # TODO: unify this repeating code and move the setting attribs to after all elements are created
+    #                 if item.get_id() not in graph_data.nodes or item.node_type() != graph_data.nodes[item.get_id()].type:
+    #                     to_del.append(item)
+    #                     continue
+    #                 existing_node_ids[item.get_id()] = item
+    #                 # TODO: update all kind of attribs here, for now we just don't have any
+    #             elif isinstance(item, NodeConnection):
+    #                 if item.get_id() not in graph_data.connections:
+    #                     to_del.append(item)
+    #                     continue
+    #                 existing_conn_ids[item.get_id()] = item
+    #                 # TODO: update all kind of attribs here, for now we just don't have any
+    #             elif isinstance(item, Task):
+    #                 if item.get_id() not in uidata.tasks.tasks:
+    #                     to_del.append(item)
+    #                     if item.node() is not None:
+    #                         if not item.node() in to_del_tasks:
+    #                             to_del_tasks[item.node()] = []
+    #                         to_del_tasks[item.node()].append(item)
+    #                     continue
+    #                 existing_task_ids[item.get_id()] = item
+    #     _perf_item_classify = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     # before we delete everything - we'll remove tasks from nodes to avoid deleting tasks one by one triggering tonns of animation
+    #     with performance_measurer() as pm:
+    #         for node, tasks in to_del_tasks.items():
+    #             node.remove_tasks(tasks)
+    #     _perf_remove_tasks = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #     with performance_measurer() as pm:
+    #         for item in to_del:
+    #             self.removeItem(item)
+    #     _perf_remove_items = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #     # removing items might cascade things, like removing node will remove connections to that node
+    #     # so now we need to recheck existing items validity
+    #     # though not consistent scene states should not come in uidata at all
+    #     with performance_measurer() as pm:
+    #         for existings in (existing_node_ids, existing_task_ids, existing_conn_ids):
+    #             for item_id, item in tuple(existings.items()):
+    #                 if item.scene() != self:
+    #                     del existings[item_id]
+    #     _perf_revalidate = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     nodes_to_layout = []
+    #     with performance_measurer() as pm:
+    #         for id, new_node_data in graph_data.nodes.items():
+    #             if id in existing_node_ids:
+    #                 existing_node_ids[id].set_name(new_node_data.name)
+    #                 continue
+    #             new_node = self.__scene_item_factory.make_node(self, id, new_node_data.type, new_node_data.name or f'node #{id}')
+    #             try:
+    #                 new_node.setPos(*self.node_position(id))
+    #             except ValueError:
+    #                 nodes_to_layout.append(new_node)
+    #             existing_node_ids[id] = new_node
+    #             self.addItem(new_node)
+    #     _perf_create_nodes = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     with performance_measurer() as pm:
+    #         for id, new_conn_data in graph_data.connections.items():
+    #             if id in existing_conn_ids:
+    #                 # ensure connections
+    #                 innode, inname = existing_conn_ids[id].input()
+    #                 outnode, outname = existing_conn_ids[id].output()
+    #                 if innode.get_id() != new_conn_data.in_id or inname != new_conn_data.in_name:
+    #                     existing_conn_ids[id].set_input(existing_node_ids[new_conn_data.in_id], new_conn_data.in_name)
+    #                     existing_conn_ids[id].update()
+    #                 if outnode.get_id() != new_conn_data.out_id or outname != new_conn_data.out_name:
+    #                     existing_conn_ids[id].set_output(existing_node_ids[new_conn_data.out_id], new_conn_data.out_name)
+    #                     existing_conn_ids[id].update()
+    #                 continue
+    #             new_conn = self.__scene_item_factory.make_node_connection(
+    #                 self,
+    #                 id,
+    #                 existing_node_ids[new_conn_data.out_id],
+    #                 existing_node_ids[new_conn_data.in_id],
+    #                 new_conn_data.out_name, new_conn_data.in_name
+    #             )
+    #             existing_conn_ids[id] = new_conn
+    #             self.addItem(new_conn)
+    #     _perf_create_connections = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     with performance_measurer() as pm:
+    #         for id, new_task_data in uidata.tasks.tasks.items():
+    #             if id not in existing_task_ids:
+    #                 new_task = self.__scene_item_factory.make_task(self, new_task_data)
+    #                 existing_task_ids[id] = new_task
+    #                 if new_task_data.split_origin_task_id is not None and new_task_data.split_origin_task_id in existing_task_ids:  # TODO: bug: this and below will only work if parent/original tasks were created during previous updates
+    #                     origin_task = existing_task_ids[new_task_data.split_origin_task_id]
+    #                     new_task.setPos(origin_task.scenePos())
+    #                 elif new_task_data.parent_id is not None and new_task_data.parent_id in existing_task_ids:
+    #                     origin_task = existing_task_ids[new_task_data.parent_id]
+    #                     new_task.setPos(origin_task.scenePos())
+    #                 self.addItem(new_task)
+    #             task = existing_task_ids[id]
+    #             existing_node_ids[new_task_data.node_id].add_task(task)
+    #             task.set_task_data(new_task_data)
+    #     _perf_create_tasks = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     # now layout nodes that need it
+    #     with performance_measurer() as pm:
+    #         if nodes_to_layout:
+    #             self.layout_nodes(nodes_to_layout)
+    #     _perf_layout = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     with performance_measurer() as pm:
+    #         if self.__all_task_groups != uidata.task_groups:
+    #             self.__all_task_groups = uidata.task_groups
+    #             self.task_groups_updated.emit(uidata.task_groups)
+    #     _perf_task_groups_update = pm.elapsed()
+    #     _perf_total += pm.elapsed()
+    #
+    #     if _perf_total > 0.04:  # arbitrary threshold ~ 1/25 of a sec
+    #         logger.debug(f'update performed:\n'
+    #                      f'{_perf_item_classify:.04f}:\tclassify\n'
+    #                      f'{_perf_remove_tasks:.04f}:\tremove tasks\n'
+    #                      f'{_perf_remove_items:.04f}:\tremove items\n'
+    #                      f'{_perf_revalidate:.04f}:\trevalidate\n'
+    #                      f'{_perf_create_nodes:.04f}:\tcreate nodes\n'
+    #                      f'{_perf_create_connections:.04f}:\tcreate connections\n'
+    #                      f'{_perf_create_tasks:.04f}:\tcreate tasks\n'
+    #                      f'{_perf_layout:.04f}:\tlayout\n'
+    #                      f'{_perf_task_groups_update:.04f}:\ttask group update')
 
     @Slot(object, object, bool, object)
     def log_fetched(self, task_id: int, log: Dict[int, Dict[int, Union[IncompleteInvocationLogData, InvocationLogData]]], full_update, data: Optional["LongOperationData"] = None):
@@ -1073,7 +1045,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
 
     @Slot(int, str, str, object, object)
     def _node_created(self, node_id, node_type, node_name, pos, data: Optional["LongOperationData"] = None):
-        node = Node(node_id, node_type, node_name)
+        node = self.__scene_item_factory.make_node(self, node_id, node_type, node_name)
         node.setPos(pos)
         self.addItem(node)
         if data is not None:
@@ -1124,7 +1096,7 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
             innode = self.get_node(innode_id)
             if outnode is None or innode is None:
                 return
-            new_conn = NodeConnection(new_id, outnode, innode, outname, inname)
+            new_conn = self.__scene_item_factory.make_node_connection(self, new_id, outnode, innode, outname, inname)
             self.addItem(new_conn)
         if data is not None:
             data.data = ([x[0] for x in cons],)
@@ -1166,41 +1138,6 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         if data is not None:
             data.data = (package, preset, snippet)
             self.process_operation(data)
-
-    def addItem(self, item):
-        logger.debug('adding item %s', item)
-        super(QGraphicsImguiScene, self).addItem(item)
-        if isinstance(item, Task):
-            self.__task_dict[item.get_id()] = item
-        elif isinstance(item, Node):
-            self.__node_dict[item.get_id()] = item
-        elif isinstance(item, NodeConnection):
-            self.__node_connections_dict[item.get_id()] = item
-        logger.debug('added item')
-
-    def removeItem(self, item):
-        logger.debug('removing item %s', item)
-        if item.scene() != self:
-            logger.debug('item was already removed, just removing ids from internal caches')
-        else:
-            super(QGraphicsImguiScene, self).removeItem(item)
-        if isinstance(item, Task):
-            assert item.get_id() in self.__task_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
-            del self.__task_dict[item.get_id()]
-        elif isinstance(item, Node):
-            assert item.get_id() in self.__node_dict, 'inconsistency in internal caches. maybe item was doubleremoved?'
-            del self.__node_dict[item.get_id()]
-        elif isinstance(item, NodeConnection):
-            assert item.get_id() in self.__node_connections_dict
-            self.__node_connections_dict.pop(item.get_id())
-        logger.debug('item removed')
-
-    def clear(self):
-        logger.debug('clearing the scene...')
-        super(QGraphicsImguiScene, self).clear()
-        self.__task_dict = {}
-        self.__node_dict = {}
-        logger.debug('scene cleared')
 
     @Slot(NodeSnippetData, QPointF)
     def nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
@@ -1333,37 +1270,11 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
     # query
     #
 
-    def get_task(self, task_id) -> Optional[Task]:
-        return self.__task_dict.get(task_id, None)
-
-    def get_node(self, node_id) -> Optional[Node]:
-        return self.__node_dict.get(node_id, None)
-
     def get_node_by_session_id(self, node_session_id) -> Optional[Node]:
         node_id = self._session_node_id_to_id(node_session_id)
         if node_id is None:
             return None
-        return self.__node_dict.get(node_id, None)
-
-    def get_node_connection(self, con_id) -> Optional[NodeConnection]:
-        return self.__node_connections_dict.get(con_id, None)
-
-    def get_node_connection_from_ends(self, out_id, out_name, in_id, in_name) -> Optional[NodeConnection]:
-        for con in self.__node_connections_dict.values():
-            onode, oname = con.output()
-            inode, iname = con.input()
-            if (onode.get_id(), oname) == (out_id, out_name) \
-                    and (inode.get_id(), iname) == (in_id, in_name):
-                return con
-
-    def nodes(self) -> Tuple[Node, ...]:
-        return tuple(self.__node_dict.values())
-
-    def tasks(self) -> Tuple[Task, ...]:
-        return tuple(self.__task_dict.values())
-
-    def tasks_dict(self) -> Mapping[int, Task]:
-        return MappingProxyType(self.__task_dict)
+        return self.get_node(node_id, None)
 
     def find_nodes_by_name(self, name: str, match_partly=False) -> Set[Node]:
         if match_partly:
@@ -1371,22 +1282,11 @@ class QGraphicsImguiScene(QGraphicsScene, LongOperationProcessor):
         else:
             match_fn = lambda x, y: x == y
         matched = set()
-        for node in self.__node_dict.values():
+        for node in self.nodes():
             if match_fn(name, node.node_name()):
                 matched.add(node)
 
         return matched
-
-    def get_inspected_item(self) -> Optional[QGraphicsItem]:
-        """
-        returns item that needs to be inspected.
-        It's parameters should be displayed
-        generally, it's the first selected item
-        """
-        sel = self.selectedItems()
-        if len(sel) == 0:
-            return None
-        return sel[0]
 
     #
     #
