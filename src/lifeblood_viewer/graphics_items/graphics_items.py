@@ -3,8 +3,8 @@ import json
 from enum import Enum
 from types import MappingProxyType
 
-from .network_item import NetworkItemWithUI, NetworkItem
 from .network_item_watchers import NetworkItemWatcher, WatchableNetworkItem, WatchableNetworkItemProxy
+from .scene_network_item import SceneNetworkItem, SceneNetworkItemWithUI
 from ..graphics_scene_base import GraphicsSceneBase
 
 from lifeblood.uidata import NodeUi
@@ -20,36 +20,6 @@ from typing import FrozenSet, Optional, List, Tuple, Dict, Set, Callable, Iterab
 
 
 logger = logging.get_logger('viewer')
-
-
-class SceneNetworkItem(NetworkItem):
-    def __init__(self, scene: GraphicsSceneBase, id: int):
-        super().__init__(id)
-        self.__scene = scene
-
-    def graphics_scene(self) -> GraphicsSceneBase:
-        return self.__scene
-
-    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
-        if change == QGraphicsItem.ItemSceneChange:  # just before scene change
-            if self.scene() is not None and value is not None:
-                raise RuntimeError('changing scenes is not supported')
-        return super().itemChange(change, value)
-
-
-class SceneNetworkItemWithUI(NetworkItemWithUI):
-    def __init__(self, scene: GraphicsSceneBase, id: int):
-        super().__init__(id)
-        self.__scene = scene
-
-    def graphics_scene(self) -> GraphicsSceneBase:
-        return self.__scene
-
-    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
-        if change == QGraphicsItem.ItemSceneChange:  # just before scene change
-            if self.scene() is not None and value is not None:
-                raise RuntimeError('changing scenes is not supported')
-        return super().itemChange(change, value)
 
 
 class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
@@ -295,7 +265,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
                     connection.scene().removeItem(connection)
             assert len(self.__connections) == 0
 
-        return super(Node, self).itemChange(change, value)
+        return super().itemChange(change, value)
 
 
 class NodeConnection(SceneNetworkItem):

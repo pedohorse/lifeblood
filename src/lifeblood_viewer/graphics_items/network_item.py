@@ -1,16 +1,7 @@
-from PySide2.QtWidgets import QGraphicsItem
 
-
-class NetworkItem(QGraphicsItem):
+class NetworkItem:
     def __init__(self, id):
         super().__init__()
-
-        # cheat cuz Shiboken.Object does not respect mro
-        mro = self.__class__.mro()
-        cur_mro_i = mro.index(NetworkItem)
-        if len(mro) > cur_mro_i + 2:
-            super(mro[cur_mro_i+2], self).__init__()
-
         self.__id = id
 
     def get_id(self):

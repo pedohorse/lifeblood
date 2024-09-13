@@ -61,7 +61,7 @@ class CreateNodeOp(AsyncSceneOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'create node')
-        self.__scene._request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
+        self.__scene.request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
         node_id, node_type, node_name = yield
         self.__node_sid = self.__scene._session_node_id_from_id(node_id)
 
@@ -97,7 +97,7 @@ class CreateNodesOp(AsyncSceneOperation):
         print(node_ids)
         if not node_ids:
             return
-        self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
+        self.__scene.request_remove_nodes(node_ids, LongOperationData(longop))
         yield
 
     def __str__(self):
@@ -119,7 +119,7 @@ class RemoveNodesOp(AsyncSceneOperation):
         if any(n is None for n in nodes):
             raise OperationError('some nodes disappeared before operation was done')
         self.__restoration_snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
-        self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
+        self.__scene.request_remove_nodes(node_ids, LongOperationData(longop))
         removed_ids, failed_ids_with_reasons = yield
         # now filter snippet to remove nodes that scheduler failed to remove
         #not_removed = set(node_ids) - set(removed_ids)
@@ -172,7 +172,7 @@ class RenameNodeOp(AsyncSceneOperation):
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
         self.__old_name = node.node_name()
-        self.__scene._request_set_node_name(node_id, self.__new_name, LongOperationData(longop))
+        self.__scene.request_set_node_name(node_id, self.__new_name, LongOperationData(longop))
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
@@ -181,7 +181,7 @@ class RenameNodeOp(AsyncSceneOperation):
         node = self.__scene.get_node(node_id)
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
-        self.__scene._request_set_node_name(node_id, self.__old_name, LongOperationData(longop))
+        self.__scene.request_set_node_name(node_id, self.__old_name, LongOperationData(longop))
         yield
 
     def __str__(self):
@@ -236,7 +236,7 @@ class AddConnectionOp(AsyncSceneOperation):
           or self.__scene.get_node(in_id) is None:
             logger.warning(f'could not perform op: nodes not found {out_id}, {in_id}')
             return
-        self.__scene._request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
+        self.__scene.request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
@@ -252,7 +252,7 @@ class AddConnectionOp(AsyncSceneOperation):
         if con is None:
             logger.warning('could not perform undo: added connection not found')
             return
-        self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
+        self.__scene.request_node_connection_remove(con.get_id(), LongOperationData(longop))
         yield  # TODO: check for errors
 
     def __str__(self):
@@ -281,7 +281,7 @@ class RemoveConnectionOp(AsyncSceneOperation):
         if con is None:
             logger.warning(f'could not perform op: added connection not found for {out_id}, {self.__out_name}, {in_id}, {self.__in_name}')
             return
-        self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
+        self.__scene.request_node_connection_remove(con.get_id(), LongOperationData(longop))
         _, failed_ids_with_reasons = yield
         reasons = '\n'.join(f'- {reason}' for _, reason in failed_ids_with_reasons)
         op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
@@ -299,7 +299,7 @@ class RemoveConnectionOp(AsyncSceneOperation):
           or self.__scene.get_node(in_id) is None:
             logger.warning('could not perform undo: added connection not found')
             return
-        self.__scene._request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
+        self.__scene.request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
         yield
 
     def __str__(self):
@@ -343,7 +343,7 @@ class ParameterChangeOp(AsyncSceneOperation):
             self._set_result(OperationCompletionDetails(OperationCompletionStatus.NotPerformed, 'parameter is read only'))
             return
         # TODO: currently possible errors on scheduler side are ignored, not good
-        self.__scene._send_node_parameters_change(node_id, [param], LongOperationData(longop))
+        self.__scene.request_node_parameters_change(node_id, [param], LongOperationData(longop))
         node = self.__scene.get_node(node_id)
         if node:
             node.item_updated(ui=True)
@@ -357,12 +357,12 @@ class ParameterChangeOp(AsyncSceneOperation):
             param.set_value(self.__old_value)
         if self.__old_expression is not ...:
             param.set_expression(self.__old_expression)
-        self.__scene._send_node_parameters_change(node_id, [param], LongOperationData(longop))
+        self.__scene.request_node_parameters_change(node_id, [param], LongOperationData(longop))
         yield
         # update node ui, just in case
         node = self.__scene.get_node(node_id)
         if node:
-            node.node.item_updated(ui=True)
+            node.item_updated(ui=True)
 
     def __str__(self):
         return f'Param Changed {self.__param_name} @ {self.__node_sid}'

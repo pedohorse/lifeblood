@@ -11,13 +11,13 @@ from typing import Any, Callable, Iterable, List, Optional, Set, Union
 
 
 class SceneDataController:
-    def request_log(self, invocation_id: int, operation_data: Optional["LongOperationData"] = None):
+    def request_log(self, invocation_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_log_meta(self, task_id: int, operation_data: Optional["LongOperationData"] = None):
+    def request_log_meta(self, task_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_attributes(self, task_id: int, operation_data: Optional["LongOperationData"] = None):
+    def request_attributes(self, task_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
     def request_invocation_job(self, task_id: int):
@@ -26,25 +26,25 @@ class SceneDataController:
     def request_node_ui(self, node_id: int):
         raise NotImplementedError()
 
-    def query_node_has_parameter(self, node_id: int, param_name: str, operation_data: Optional["LongOperationData"] = None):
+    def query_node_has_parameter(self, node_id: int, param_name: str, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def send_node_parameter_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
+    def request_node_parameter_change(self, node_id: int, param: Parameter, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def send_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional["LongOperationData"] = None):
+    def request_node_parameter_expression_change(self, node_id: int, param: Parameter, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def _send_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional["LongOperationData"] = None):
+    def request_node_parameters_change(self, node_id: int, params: Iterable[Parameter], operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional["LongOperationData"] = None):
+    def request_apply_node_settings(self, node_id: int, settings_name: str, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_save_custom_settings(self, node_type_name: str, settings_name: str, settings: dict, operation_data: Optional["LongOperationData"] = None):
+    def request_save_custom_settings(self, node_type_name: str, settings_name: str, settings: dict, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_set_settings_default(self, node_type_name: str, settings_name: Optional[str], operation_data: Optional["LongOperationData"] = None):
+    def request_set_settings_default(self, node_type_name: str, settings_name: Optional[str], operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
     def request_node_types_update(self):
@@ -53,28 +53,28 @@ class SceneDataController:
     def request_node_presets_update(self):
         raise NotImplementedError()
 
-    def request_node_preset(self, packagename: str, presetname: str, operation_data: Optional["LongOperationData"] = None):
+    def request_node_preset(self, packagename: str, presetname: str, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def _request_set_node_name(self, node_id: int, name: str, operation_data: Optional["LongOperationData"] = None):
+    def request_set_node_name(self, node_id: int, name: str, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
     def request_node_connection_change(self, connection_id: int, outnode_id: Optional[int] = None, outname: Optional[str] = None, innode_id: Optional[int] = None, inname: Optional[str] = None):
         raise NotImplementedError()
 
-    def _request_node_connection_remove(self, connection_id: int, operation_data: Optional["LongOperationData"] = None):
+    def request_node_connection_remove(self, connection_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def _request_node_connection_add(self, outnode_id: int, outname: str, innode_id: int, inname: str, operation_data: Optional["LongOperationData"] = None):
+    def request_node_connection_add(self, outnode_id: int, outname: str, innode_id: int, inname: str, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def _request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional["LongOperationData"] = None):
+    def request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def request_remove_node(self, node_id: int, operation_data: Optional["LongOperationData"] = None):
+    def request_remove_node(self, node_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
-    def _request_remove_nodes(self, node_ids: List[int], operation_data: Optional["LongOperationData"] = None):
+    def request_remove_nodes(self, node_ids: List[int], operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
     def request_wipe_node(self, node_id: int):
@@ -145,20 +145,23 @@ class SceneDataController:
         """
         raise NotImplementedError()
 
-    def add_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str, *, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
+    def add_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str, *, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         raise NotImplementedError()
 
-    def cut_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str, *, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
+    def cut_connection(self, outnode_id: int, outname: str, innode_id: int, inname: str, *, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
+        raise NotImplementedError()
+
+    def cut_connection_by_id(self, con_id, *, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         raise NotImplementedError()
 
     def change_connection_by_id(self, con_id, *,
                                 to_outnode_id: Optional[int] = None, to_outname: Optional[str] = None,
                                 to_innode_id: Optional[int] = None, to_inname: Optional[str] = None,
-                                callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
+                                callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         raise NotImplementedError()
 
     def change_node_parameter(self, node_id: int, item: Parameter, value: Any = ..., expression=...,
-                              *, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
+                              *, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         """
 
         :param node_id:
