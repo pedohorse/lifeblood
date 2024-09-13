@@ -12,6 +12,12 @@ class SceneItemCommon(QGraphicsItemExtended):
                 raise RuntimeError('changing scenes is not supported')
         return super().itemChange(change, value)
 
+    def item_updated(self):
+        """
+        should be called when item's state is changed
+        """
+        self.update()
+
 
 class SceneNetworkItem(NetworkItem, SceneItemCommon):
     def __init__(self, scene: GraphicsSceneBase, id: int):

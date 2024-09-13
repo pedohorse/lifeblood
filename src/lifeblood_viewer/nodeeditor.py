@@ -662,7 +662,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             for state in TaskState:
                 if state in (TaskState.GENERATING, TaskState.INVOKING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
                     continue
-                state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
+                state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state_=state: self.__scene.set_task_state([x], state_))
 
         if pos is None:
             pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))

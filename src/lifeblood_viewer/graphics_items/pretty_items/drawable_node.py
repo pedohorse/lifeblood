@@ -100,7 +100,7 @@ class DrawableNode(Node):
 
         for i, task in enumerate(self.tasks()):
             self.__make_task_child_with_position(task, *self.get_task_pos(task, i), animate=True)
-        self.item_updated(redraw=True)
+        self.item_updated()
 
     def get_input_position(self, name: str = 'main', *, local: bool = False) -> QPointF:
         if not self.input_names():
@@ -236,7 +236,7 @@ class DrawableNode(Node):
             self.__make_task_child_with_position(self.__visual_tasks[i], *self.get_task_pos(self.__visual_tasks[i], i), animate=True)
         self.__visual_tasks = self.__visual_tasks[:-1]
         assert task_to_remove not in self.__visual_tasks
-        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
+        self.item_updated()
 
     def _find_insert_index_for_task(self, task, prefer_back=False):
         if task.state() == TaskState.IN_PROGRESS and not prefer_back:
@@ -349,7 +349,7 @@ class DrawableNode(Node):
             self.__header_brush = QBrush(gradient)
         else:
             self.__header_brush = QBrush(QColor(*(x * 255 for x in css.main_color()), 192))
-        self.item_updated(redraw=True, ui=True)  # cuz input count affects visualization in the graph
+        self.item_updated()
 
     def prepareGeometryChange(self):
         super().prepareGeometryChange()

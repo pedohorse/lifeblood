@@ -15,7 +15,7 @@ class DecoratedNode(DrawableNode):
         for decorator in self.__decorators:
             decorator.setParentItem(self)
 
-    def item_updated(self, *, redraw: bool = False, ui: bool = False):
-        super().item_updated(redraw=redraw, ui=ui)
+    def item_updated(self):
+        super().item_updated()
         for decorator in self.__decorators:
             decorator.node_updated()

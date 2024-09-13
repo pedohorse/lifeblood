@@ -344,9 +344,6 @@ class ParameterChangeOp(AsyncSceneOperation):
             return
         # TODO: currently possible errors on scheduler side are ignored, not good
         self.__scene.request_node_parameters_change(node_id, [param], LongOperationData(longop))
-        node = self.__scene.get_node(node_id)
-        if node:
-            node.item_updated(ui=True)
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
@@ -359,10 +356,6 @@ class ParameterChangeOp(AsyncSceneOperation):
             param.set_expression(self.__old_expression)
         self.__scene.request_node_parameters_change(node_id, [param], LongOperationData(longop))
         yield
-        # update node ui, just in case
-        node = self.__scene.get_node(node_id)
-        if node:
-            node.item_updated(ui=True)
 
     def __str__(self):
         return f'Param Changed {self.__param_name} @ {self.__node_sid}'

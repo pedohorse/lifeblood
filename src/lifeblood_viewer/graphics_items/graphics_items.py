@@ -74,7 +74,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         if new_name == self.__name:
             return
         self.__name = new_name
-        self.item_updated(redraw=True, ui=True)
+        self.item_updated()
 
     def set_selected(self, selected: bool, *, unselect_others=False):
         scene: QGraphicsScene = self.graphics_scene()
@@ -90,7 +90,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
     def reanalyze_nodeui(self):
         Node._node_inputs_outputs_cached[self.__node_type] = (list(self.__nodeui.inputs_names()), list(self.__nodeui.outputs_names()))
         self.__inputs, self.__outputs = Node._node_inputs_outputs_cached[self.__node_type]
-        self.item_updated(redraw=True, ui=True)  # cuz input count affects visualization in the graph
+        self.item_updated()
 
     def get_nodeui(self) -> Optional[NodeUi]:
         return self.__nodeui
@@ -162,15 +162,13 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         if task in self.__tasks:
             return
         logger.debug(f"adding task {task.get_id()} to node {self.get_id()}")
-        need_ui_update = self != task.node()
+
         if task.node() and task.node() != self:
             task.node().remove_task(task)
         task._set_parent_node(self)
         self.__tasks.add(task)
-        if need_ui_update:
-            task.item_updated(redraw=False, ui=True)
 
-        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
+        self.item_updated()
 
         if len(self.item_watchers()) > 0:
             task.add_item_watcher(self)
@@ -192,7 +190,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         # invalidate sorted cache
         self.__tasks_sorted_cached = None
 
-        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
+        self.item_updated()
 
     def remove_task(self, task_to_remove: "Task"):
         logger.debug(f"removing task {task_to_remove.get_id()} from node {self.get_id()}")
@@ -204,7 +202,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         self.__tasks_sorted_cached = None
 
         self.__tasks.remove(task_to_remove)
-        self.item_updated(redraw=True, ui=False)  # cuz node displays task number - we should redraw
+        self.item_updated()
 
     def _sorted_tasks(self, order: TaskSortOrder) -> List["Task"]:
         if self.__tasks_sorted_cached is None:
@@ -216,7 +214,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
                 raise NotImplementedError(f'sort order {order} is not implemented')
         return self.__tasks_sorted_cached[order]
 
-    def tasks_iter(self, *, order: Optional[TaskSortOrder] = None):
+    def tasks_iter(self, *, order: Optional[TaskSortOrder] = None) -> Iterable["Task"]:
         if order is None:
             return (x for x in self.__tasks)
         return self._sorted_tasks(order)
@@ -369,7 +367,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         if name == self.__raw_data.name:
             return
         self.__raw_data.name = name
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def state(self) -> TaskState:
         return self.__raw_data.state
@@ -389,7 +387,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         if self.__raw_data.groups == groups:
             return
         self.__raw_data.groups = groups
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def attributes(self):
         return MappingProxyType(self.__ui_attributes)
@@ -405,7 +403,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
             return
         self.__raw_data.state_details = state_details
         self.__state_details_cached = None
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def set_state(self, state: Optional[TaskState], paused: Optional[bool]):
         if (state is None or state == self.__raw_data.state) and (paused is None or self.__raw_data.paused == paused):
@@ -419,7 +417,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
             self.__raw_data.paused = paused
         if self.__node:
             self.__node.task_state_changed(self)
-        self.item_updated(redraw=True, ui=True)
+        self.item_updated()
 
     def set_task_data(self, raw_data: TaskData):
         self.__state_details_cached = None
@@ -427,7 +425,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         self.__raw_data = raw_data
         if state_changed and self.__node:
             self.__node.task_state_changed(self)
-            self.item_updated(redraw=True, ui=True)
+            self.item_updated()
 
     def apply_task_delta(self, task_delta: TaskDelta, get_node: Callable[[int], Node]):
         if task_delta.paused is not DataNotSet:
@@ -466,18 +464,18 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
             self.__raw_data.parent_id = task_delta.parent_id
         if task_delta.state_details is not DataNotSet:
             self.set_state_details(task_delta.state_details)
-        self.item_updated(redraw=True, ui=True)
+        self.item_updated()
 
     def set_progress(self, progress: float):
         self.__raw_data.progress = progress
         # logger.debug('progress %d', progress)
-        self.item_updated(redraw=True, ui=True)
+        self.item_updated()
 
     def get_progress(self) -> Optional[float]:
         return self.__raw_data.progress if self.__raw_data else None
 
-    def item_updated(self, *, redraw: bool = False, ui: bool = False):
-        super().item_updated(redraw=redraw, ui=ui)
+    def item_updated(self):
+        super().item_updated()
         for watcher in self.item_watchers():
             watcher.item_was_updated(self)
 
@@ -519,7 +517,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         # clear cached inverted dict, it will be rebuilt on next access
         self.__reset_cached_invocation_data()
 
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def remove_invocations_log(self, invocation_ids: List[int]):
         logger.debug('removing invocations for %s', invocation_ids)
@@ -531,7 +529,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         # clear cached inverted dict, it will be rebuilt on next access
         self.__reset_cached_invocation_data()
 
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def invocations_total_time(self, only_last_per_node: bool = True) -> float:
         """
@@ -575,11 +573,11 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
     def update_attributes(self, attributes: dict):
         logger.debug('attrs updated with %s', attributes)
         self.__ui_attributes = attributes
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def set_environment_attributes(self, env_attrs: Optional[EnvironmentResolverArguments]):
         self.__ui_env_res_attributes = env_attrs
-        self.item_updated(redraw=False, ui=True)
+        self.item_updated()
 
     def environment_attributes(self) -> Optional[EnvironmentResolverArguments]:
         return self.__ui_env_res_attributes
