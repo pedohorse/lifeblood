@@ -4,8 +4,8 @@ from lifeblood.enums import TaskState
 from lifeblood.ui_protocol_data import TaskData
 from .task_animation import TaskAnimation
 from ..graphics_items import Node, Task
+from ..graphics_scene_container import GraphicsSceneWithNodesAndTasks
 
-from lifeblood_viewer.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 
 from PySide2.QtCore import QAbstractAnimation, Slot, QPointF, QRectF, QSizeF, QSequentialAnimationGroup
 from PySide2.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen

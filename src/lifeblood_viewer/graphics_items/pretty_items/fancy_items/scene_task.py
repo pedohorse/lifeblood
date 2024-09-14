@@ -6,13 +6,13 @@ from lifeblood.ui_protocol_data import TaskData, IncompleteInvocationLogData, In
 from .scene_task_preview import SceneTaskPreview
 from ..drawable_task import DrawableTask
 from ...graphics_items import Node
+from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from ...network_item_watchers import NetworkItemWatcher
 
 from ...utils import call_later
 
 from lifeblood_viewer.editor_scene_integration import fetch_and_open_log_viewer
 from lifeblood_viewer.scene_data_controller import SceneDataController
-from lifeblood_viewer.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 
 from PySide2.QtCore import Qt, QPointF

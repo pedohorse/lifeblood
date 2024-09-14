@@ -1,10 +1,10 @@
 from lifeblood import logging
 from lifeblood.enums import TaskState
 from ..graphics_items import Node, Task
+from ..graphics_scene_base import GraphicsSceneBase
 from ..node_connection_snap_point import NodeConnSnapPoint
 from .drawable_task import DrawableTask
 
-from lifeblood_viewer.graphics_scene_base import GraphicsSceneBase
 
 from PySide2.QtCore import Qt, QPointF, QRectF
 from PySide2.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen

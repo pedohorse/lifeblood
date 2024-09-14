@@ -1,4 +1,4 @@
-from .graphics_items.network_item import NetworkItem
+from .network_item import NetworkItem
 
 from PySide2.QtWidgets import QGraphicsScene, QWidget
 

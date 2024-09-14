@@ -3,7 +3,7 @@ from lifeblood.logging import get_logger
 from lifeblood.ui_protocol_data import InvocationLogData
 from lifeblood_viewer.code_editor.editor import StringParameterEditor
 from lifeblood_viewer.long_op import LongOperation, LongOperationData
-from lifeblood_viewer.graphics_scene import QGraphicsImguiScene
+from lifeblood_viewer.graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from lifeblood_viewer.graphics_items import Task
 from lifeblood.enums import InvocationState
 
@@ -19,7 +19,7 @@ from .overlay_base import NodeEditorOverlayBase
 class TaskHistoryOverlay(NodeEditorOverlayBase):
     logger = get_logger('viewer.task_history_overlay')
 
-    def __init__(self, scene: QGraphicsImguiScene):
+    def __init__(self, scene: QGraphicsImguiSceneWithDataController):
         super().__init__(scene)
         self.__scene = scene
         self.__pen_line = QPen(QColor(192, 192, 192, 96), 3)

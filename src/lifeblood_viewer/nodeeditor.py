@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NetworkItem
-from .graphics_scene import QGraphicsImguiScene
+from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from .long_op import LongOperation
 from .widgets.flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
@@ -197,7 +197,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
         # TODO: refactor this
         item_producer = FancySceneItemFactory(None)  # TODO: split data controller from scene
-        self.__scene = QGraphicsImguiScene(item_producer, db_path, worker)
+        self.__scene = QGraphicsImguiSceneWithDataController(item_producer, db_path, worker)
         item_producer.set_data_controller(self.__scene)
 
         self.setScene(self.__scene)
@@ -1148,7 +1148,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         self.__ui_focused_item = None
         return True
 
-    def scene(self) -> QGraphicsImguiScene:  # this function is here just for typing
+    def scene(self) -> QGraphicsImguiSceneWithDataController:  # this function is here just for typing
         return super().scene()
 
     def mouseDoubleClickEvent(self, event: PySide2.QtGui.QMouseEvent):

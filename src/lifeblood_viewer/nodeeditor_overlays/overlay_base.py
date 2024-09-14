@@ -1,19 +1,19 @@
 import re
-from lifeblood_viewer.graphics_scene import QGraphicsImguiScene
+from lifeblood_viewer.graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from PySide2.QtCore import Qt, Slot, Signal, QRectF, QPointF
 from PySide2.QtWidgets import QWidget, QGraphicsView
 from PySide2.QtGui import QPainter, QMouseEvent
 
 
 class NodeEditorOverlayBase:
-    def __init__(self, scene: QGraphicsImguiScene):
+    def __init__(self, scene: QGraphicsImguiSceneWithDataController):
         self.__scene = scene
         self.__enabled = True
 
     def name(self) -> str:
         return re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', self.__class__.__name__)
 
-    def scene(self) -> QGraphicsImguiScene:
+    def scene(self) -> QGraphicsImguiSceneWithDataController:
         return self.__scene
 
     def enabled(self) -> bool:

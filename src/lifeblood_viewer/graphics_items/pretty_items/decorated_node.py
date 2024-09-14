@@ -1,7 +1,7 @@
 from .node_decorator_base import NodeDecorator, NodeDecoratorFactoryBase
 from .drawable_node import DrawableNode
 
-from lifeblood_viewer.graphics_scene_base import GraphicsSceneBase
+from ..graphics_scene_base import GraphicsSceneBase
 
 from typing import Iterable, List, Optional, Tuple
 

@@ -7,11 +7,11 @@ from lifeblood_viewer.graphics_items import Node
 from ...utils import call_later
 from ..decorated_node import DecoratedNode
 from ..node_connection_create_preview import NodeConnectionCreatePreview
+from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from ...node_connection_snap_point import NodeConnSnapPoint
 
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.code_editor.editor import StringParameterEditor
-from lifeblood_viewer.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 from ..node_decorator_base import NodeDecoratorFactoryBase
 

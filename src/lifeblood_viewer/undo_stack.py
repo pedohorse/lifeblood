@@ -76,7 +76,7 @@ class StackAwareOperation(UndoableOperation):
     def __init__(self, undo_stack: "UndoStack"):
         self.__stack = undo_stack
 
-    def _undo_stack(self):
+    def undo_stack(self):
         return self.__stack
 
     def do(self, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None) -> bool:
@@ -176,7 +176,7 @@ class AsyncOperation(StackAwareOperation):
             finally:
                 op_result = self._my_do_result()
                 assert op_result is not None
-                self._undo_stack()._operation_finalized(op=self, add_to_stack=op_result.status != OperationCompletionStatus.NotPerformed, success=success)
+                self.undo_stack()._operation_finalized(op=self, add_to_stack=op_result.status != OperationCompletionStatus.NotPerformed, success=success)
 
             if success and callback:
                 callback(self, op_result)
@@ -196,7 +196,7 @@ class AsyncOperation(StackAwareOperation):
                 logger.exception(f'exception happened during do operation "{self}"')
                 success = False
             finally:
-                self._undo_stack()._operation_finalized(self, False, success)
+                self.undo_stack()._operation_finalized(self, False, success)
 
             if success and callback:
                 callback(self)

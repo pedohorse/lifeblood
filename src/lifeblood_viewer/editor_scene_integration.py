@@ -6,10 +6,10 @@ from lifeblood.ui_protocol_data import InvocationLogData
 
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
-    from .graphics_scene import QGraphicsImguiScene
+    from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 
 
-def fetch_and_open_log_viewer(scene: "QGraphicsImguiScene", invoc_id: int, parent_widget: QWidget, *, update_interval: Optional[float] = None):
+def fetch_and_open_log_viewer(scene: "QGraphicsImguiSceneWithDataController", invoc_id: int, parent_widget: QWidget, *, update_interval: Optional[float] = None):
     if update_interval is None:
         scene.fetch_log_run_callback(invoc_id, _open_log_viewer, parent_widget)
     else:

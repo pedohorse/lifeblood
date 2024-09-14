@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 from .network_item_watchers import NetworkItemWatcher, WatchableNetworkItem, WatchableNetworkItemProxy
 from .scene_network_item import SceneNetworkItem, SceneNetworkItemWithUI
-from ..graphics_scene_base import GraphicsSceneBase
+from .graphics_scene_base import GraphicsSceneBase
 
 from lifeblood.uidata import NodeUi
 from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData

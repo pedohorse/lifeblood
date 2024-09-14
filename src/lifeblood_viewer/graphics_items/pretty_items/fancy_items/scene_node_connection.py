@@ -1,12 +1,12 @@
 from math import sqrt
 from lifeblood import logging
-from lifeblood_viewer.graphics_items import Node, NodeConnection
+from ...graphics_items import Node, NodeConnection
 from ...utils import call_later, length2
 from ..node_connection_create_preview import NodeConnectionCreatePreview
+from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from ...node_connection_snap_point import NodeConnSnapPoint
 
 from lifeblood_viewer.scene_data_controller import SceneDataController
-from lifeblood_viewer.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 
 from PySide2.QtCore import Qt, Slot, QPointF, QRectF

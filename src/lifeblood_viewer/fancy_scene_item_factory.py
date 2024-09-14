@@ -1,5 +1,4 @@
-from .graphics_items import Node, Task, NodeConnection
-from .graphics_scene_base import GraphicsSceneBase
+from .graphics_items import Node, Task, NodeConnection, GraphicsSceneBase
 from lifeblood.ui_protocol_data import TaskData
 
 from .scene_data_controller import SceneDataController

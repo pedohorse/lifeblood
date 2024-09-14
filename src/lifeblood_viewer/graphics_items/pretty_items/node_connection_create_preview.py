@@ -1,4 +1,4 @@
-from lifeblood_viewer.graphics_items import Node
+from ..graphics_items import Node
 from ..utils import length2
 from ..node_connection_snap_point import NodeConnSnapPoint
 

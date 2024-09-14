@@ -1,6 +1,6 @@
 from .network_item import NetworkItemWithUI, NetworkItem
 from .qextended_graphics_item import QGraphicsItemExtended
-from ..graphics_scene_base import GraphicsSceneBase
+from .graphics_scene_base import GraphicsSceneBase
 
 from PySide2.QtWidgets import QGraphicsItem
 

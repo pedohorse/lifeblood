@@ -1,5 +1,6 @@
 from .undo_stack import UndoableOperation, OperationCompletionDetails
-from .long_op import LongOperationData
+from .long_op import LongOperation, LongOperationData
+from .ui_snippets import NodeSnippetData
 from lifeblood.uidata import Parameter
 from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.enums import TaskState, TaskGroupArchivedState
@@ -71,6 +72,9 @@ class SceneDataController:
     def request_create_node(self, typename: str, nodename: str, pos: QPointF, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
+    def request_create_nodes_from_snippet(self, snippet: NodeSnippetData, pos: QPointF, containing_long_op: Optional[LongOperation] = None):
+        raise NotImplementedError()
+
     def request_remove_node(self, node_id: int, operation_data: Optional[LongOperationData] = None):
         raise NotImplementedError()
 
@@ -114,6 +118,7 @@ class SceneDataController:
         raise NotImplementedError()
 
     def set_skip_dead(self, do_skip: bool) -> None:
+        # should not be here
         raise NotImplementedError()
 
     def set_skip_archived_groups(self, do_skip: bool) -> None:
