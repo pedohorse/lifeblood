@@ -2,7 +2,7 @@ from lifeblood import logging
 from lifeblood.config import get_config
 from .graphics_items.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from .long_op import LongOperation, LongOperationData, LongOperationProcessor
-from .undo_stack import UndoStack, UndoableOperation, OperationCompletionDetails
+from .undo_stack import UndoStack, UndoableOperation
 from PySide2.QtCore import Slot
 
 from typing import Callable, Dict, Generator, List, Optional, Tuple

@@ -118,7 +118,6 @@ class SceneDataController:
         raise NotImplementedError()
 
     def set_skip_dead(self, do_skip: bool) -> None:
-        # should not be here
         raise NotImplementedError()
 
     def set_skip_archived_groups(self, do_skip: bool) -> None:

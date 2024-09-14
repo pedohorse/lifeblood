@@ -62,7 +62,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         session id is local id that should be preserved within a session even after undo/redo operations,
         unlike simple id, that will change on undo/redo
         """
-        return self.graphics_scene()._session_node_id_from_id(self.get_id())
+        return self.graphics_scene().session_node_id_from_id(self.get_id())
 
     def node_type(self) -> str:
         return self.__node_type

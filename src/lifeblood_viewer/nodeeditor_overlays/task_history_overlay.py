@@ -66,10 +66,10 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
         self.__buttons = {}
 
         for i, (inv_id, node_id, log_meta) in enumerate(reversed(task.invocation_logs())):
+            bbox = self.__scene.get_node(node_id).boundingRect()
             if node_id not in already_visited_nodes:
                 already_visited_nodes.add(node_id)
                 pos = self.__scene.get_node(node_id).scenePos()
-                bbox = self.__scene.get_node(node_id).boundingRect()
                 target_pos = pos + bbox.bottomLeft() + self.__node_offset
                 if not rect.contains(target_pos) and not rect.contains(path.currentPosition()):
                     path.moveTo(bbox.topLeft() + pos + self.__node_offset)

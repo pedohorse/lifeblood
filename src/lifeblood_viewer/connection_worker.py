@@ -39,7 +39,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     db_uid_update = Signal(object)
     graph_full_update = Signal(object)
     tasks_full_update = Signal(object)
-    tasks_events_arrived = Signal(object, bool)
+    tasks_events_arrived = Signal(object)
     groups_full_update = Signal(object)
     workers_full_update = Signal(object)
     scheduler_connection_lost = Signal()
@@ -400,7 +400,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if len(task_events) > 0:
                 first_time_getting_events = self.__last_known_event_id < 0
                 self.__last_known_event_id = task_events[-1].event_id
-                self.tasks_events_arrived.emit(task_events, first_time_getting_events)
+                self.tasks_events_arrived.emit(task_events)
         else:
             tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
             self.tasks_full_update.emit(tasks_state)

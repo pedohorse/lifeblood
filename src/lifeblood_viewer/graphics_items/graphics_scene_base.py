@@ -23,8 +23,7 @@ class GraphicsSceneBase(QGraphicsScene):
             return None
         return sel[0]
 
-    # TODO: rename this shit - it should not really be aware of "node" concept here
-    def _session_node_id_to_id(self, session_id: int) -> Optional[int]:
+    def session_node_id_to_id(self, session_id: int) -> Optional[int]:
         """
         the whole idea of session id is to have it consistent through undo-redos
         """
@@ -35,7 +34,7 @@ class GraphicsSceneBase(QGraphicsScene):
             node_id = None
         return node_id
 
-    def _session_node_update_id(self, session_id: int, new_node_id: int):
+    def __session_node_update_id(self, session_id: int, new_node_id: int):
         prev_node_id = self.__session_node_id_mapping.get(session_id)
         self.__session_node_id_mapping[session_id] = new_node_id
         if prev_node_id is not None:
@@ -52,10 +51,10 @@ class GraphicsSceneBase(QGraphicsScene):
             self.__session_node_id_mapping.pop(old_session_id)
         self.__session_node_id_mapping[new_session_id] = node_id
 
-    def _session_node_id_from_id(self, node_id: int):
+    def session_node_id_from_id(self, node_id: int):
         if node_id not in self.__session_node_id_mapping_rev:
-            while self._session_node_id_to_id(self.__next_session_node_id) is not None:  # they may be taken by pasted nodes
+            while self.session_node_id_to_id(self.__next_session_node_id) is not None:  # they may be taken by pasted nodes
                 self.__next_session_node_id -= 1
-            self._session_node_update_id(self.__next_session_node_id, node_id)
+            self.__session_node_update_id(self.__next_session_node_id, node_id)
             self.__next_session_node_id -= 1
         return self.__session_node_id_mapping_rev[node_id]

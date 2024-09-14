@@ -75,11 +75,11 @@ class CreateNodeOp(AsyncSceneOperationWithDataController):
         longop.set_op_status(None, 'create node')
         self.data_controller().request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
         node_id, node_type, node_name = yield
-        self.__node_sid = self.scene()._session_node_id_from_id(node_id)
+        self.__node_sid = self.scene().session_node_id_from_id(node_id)
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo create node')
-        node_id = self.scene()._session_node_id_to_id(self.__node_sid)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
         self.data_controller().request_remove_node(node_id, LongOperationData(longop))
         yield  # TODO: shouldn't we check for errors?
         self.__node_sid = None
@@ -99,12 +99,12 @@ class CreateNodesOp(AsyncSceneOperationWithDataController):
         longop.set_op_status(None, 'create nodes')
         self.data_controller().request_create_nodes_from_snippet(self.__creation_snippet, self.__pos, longop)
         created_ids = yield
-        self.__node_sids = set(self.scene()._session_node_id_from_id(nid) for nid in created_ids)
+        self.__node_sids = set(self.scene().session_node_id_from_id(nid) for nid in created_ids)
 
     def _my_undo_longop(self, longop: LongOperation):
         print(self.__node_sids)
         longop.set_op_status(None, 'undo create nodes')
-        node_ids = [x for x in (self.scene()._session_node_id_to_id(sid) for sid in self.__node_sids) if x is not None]
+        node_ids = [x for x in (self.scene().session_node_id_to_id(sid) for sid in self.__node_sids) if x is not None]
         print(node_ids)
         if not node_ids:
             return
@@ -124,7 +124,7 @@ class RemoveNodesOp(AsyncSceneOperationWithDataController):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'remove nodes')
-        node_ids = [self.scene()._session_node_id_to_id(sid) for sid in self.__node_sids]
+        node_ids = [self.scene().session_node_id_to_id(sid) for sid in self.__node_sids]
         nodes = [self.scene().get_node(nid) for nid in node_ids]
         if any(n is None for n in nodes):
             raise OperationError('some nodes disappeared before operation was done')
@@ -133,7 +133,7 @@ class RemoveNodesOp(AsyncSceneOperationWithDataController):
         removed_ids, failed_ids_with_reasons = yield
         # now filter snippet to remove nodes that scheduler failed to remove
         #not_removed = set(node_ids) - set(removed_ids)
-        not_removed_sids = set(self.scene()._session_node_id_from_id(nid) for nid, _ in failed_ids_with_reasons)
+        not_removed_sids = set(self.scene().session_node_id_from_id(nid) for nid, _ in failed_ids_with_reasons)
         reasons = '\n'.join(f'- {nid}: {reason}' for nid, reason in failed_ids_with_reasons)
         self.__node_sids = tuple(sid for sid in self.__node_sids if sid not in not_removed_sids)
         op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
@@ -158,7 +158,7 @@ class RemoveNodesOp(AsyncSceneOperationWithDataController):
         longop.set_op_status(None, 'undo remove nodes')
         self.data_controller().request_create_nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
         created_ids = yield
-        sids = set(self.scene()._session_node_id_from_id(nid) for nid in created_ids)
+        sids = set(self.scene().session_node_id_from_id(nid) for nid in created_ids)
         assert set(self.__node_sids) == sids, (sids, set(self.__node_sids))
 
     def __str__(self):
@@ -170,13 +170,13 @@ class RemoveNodesOp(AsyncSceneOperationWithDataController):
 class RenameNodeOp(AsyncSceneOperationWithDataController):
     def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, node: Node, new_name: str):
         super().__init__(scene, data_controller)
-        self.__node_sid = scene._session_node_id_from_id(node.get_id())
+        self.__node_sid = scene.session_node_id_from_id(node.get_id())
         self.__old_name = None
         self.__new_name = new_name
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'rename nodes')
-        node_id = self.scene()._session_node_id_to_id(self.__node_sid)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
         node = self.scene().get_node(node_id)
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
@@ -186,7 +186,7 @@ class RenameNodeOp(AsyncSceneOperationWithDataController):
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo rename nodes')
-        node_id = self.scene()._session_node_id_to_id(self.__node_sid)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
         node = self.scene().get_node(node_id)
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
@@ -201,11 +201,11 @@ class MoveNodesOp(SimpleUndoableOperation):
     def __init__(self, scene: GraphicsScene, info: Iterable[Tuple[Node, QPointF, Optional[QPointF]]]):
         super().__init__(scene.undo_stack(), self._doop, self._undoop)
         self.__scene = scene
-        self.__node_info = tuple((scene._session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
+        self.__node_info = tuple((scene.session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
 
     def _doop(self, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
-            node_id = self.__scene._session_node_id_to_id(node_sid)
+            node_id = self.__scene.session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
             if node is None:
                 raise OperationError(f'node with session id {node_sid} was not found')
@@ -215,7 +215,7 @@ class MoveNodesOp(SimpleUndoableOperation):
 
     def _undoop(self, callback: Optional[Callable[[UndoableOperation], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
-            node_id = self.__scene._session_node_id_to_id(node_sid)
+            node_id = self.__scene.session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
             if node is None:
                 raise OperationError(f'node with session id {node_sid} was not found')
@@ -237,8 +237,8 @@ class AddConnectionOp(AsyncSceneOperationWithDataController):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'add connection')
-        out_id = self.scene()._session_node_id_to_id(self.__out_sid)
-        in_id = self.scene()._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
           or self.scene().get_node(out_id) is None \
           or self.scene().get_node(in_id) is None:
@@ -249,8 +249,8 @@ class AddConnectionOp(AsyncSceneOperationWithDataController):
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo add connection')
-        out_id = self.scene()._session_node_id_to_id(self.__out_sid)
-        in_id = self.scene()._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
           or self.scene().get_node(out_id) is None \
           or self.scene().get_node(in_id) is None:
@@ -277,8 +277,8 @@ class RemoveConnectionOp(AsyncSceneOperationWithDataController):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'remove connection')
-        out_id = self.scene()._session_node_id_to_id(self.__out_sid)
-        in_id = self.scene()._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
                 or self.scene().get_node(out_id) is None \
                 or self.scene().get_node(in_id) is None:
@@ -299,8 +299,8 @@ class RemoveConnectionOp(AsyncSceneOperationWithDataController):
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo remove connection')
-        out_id = self.scene()._session_node_id_to_id(self.__out_sid)
-        in_id = self.scene()._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
           or self.scene().get_node(out_id) is None \
           or self.scene().get_node(in_id) is None:
@@ -326,7 +326,7 @@ class ParameterChangeOp(AsyncSceneOperationWithDataController):
         super().__init__(scene, data_controller)
         self.__param_name = parameter_name
         node_sid = node.get_session_id()
-        param = scene.get_node(scene._session_node_id_to_id(node_sid)).get_nodeui().parameter(parameter_name)
+        param = scene.get_node(scene.session_node_id_to_id(node_sid)).get_nodeui().parameter(parameter_name)
         self.__old_value = param.unexpanded_value() if new_value is not ... else ...
         self.__old_expression = param.expression() if new_expression is not ... else ...
         self.__new_value = new_value
@@ -335,7 +335,7 @@ class ParameterChangeOp(AsyncSceneOperationWithDataController):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'change parameter value')
-        node_id = self.scene()._session_node_id_to_id(self.__node_sid)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
         param = self.scene().get_node(node_id).get_nodeui().parameter(self.__param_name)
         try:
             if self.__new_value is not ...:
@@ -354,7 +354,7 @@ class ParameterChangeOp(AsyncSceneOperationWithDataController):
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo change parameter value')
-        node_id = self.scene()._session_node_id_to_id(self.__node_sid)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
         param = self.scene().get_node(node_id).get_nodeui().parameter(self.__param_name)
         if self.__old_value is not ...:
             param.set_value(self.__old_value)
