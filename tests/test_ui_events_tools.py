@@ -34,6 +34,23 @@ class TestUIEventsTools(TestCase):
             ),
         ])
 
+        self.assertRaises(RuntimeError, collapse_task_event_list, [
+            TasksRemoved(
+                12345, (1,)
+            )
+        ])
+
+        self.assertRaises(RuntimeError, collapse_task_event_list, [
+            TasksChanged(
+                12345, [
+                    TaskDelta(
+                        2,
+                        children_count=123,
+                    ),
+                ],
+            )
+        ])
+
     def test_collapse_task_event_list_common1(self):
         fullstate_init = TaskFullState(
             12345,
