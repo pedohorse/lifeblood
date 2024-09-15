@@ -1,29 +1,42 @@
 from lifeblood.logging import get_logger
-from .undo_stack import UndoableOperation, StackAwareOperation, SimpleUndoableOperation, OperationError, AsyncOperation, OperationCompletionDetails, OperationCompletionStatus
+from .undo_stack import UndoableOperation, SimpleUndoableOperation, OperationError, AsyncOperation, OperationCompletionDetails, OperationCompletionStatus
 from .long_op import LongOperation, LongOperationData
 from .ui_snippets import UiNodeSnippetData
-from .graphics_items import Node, NodeConnection
+from .graphics_items import Node
+from .graphics_scene import GraphicsScene
+from .scene_data_controller import SceneDataController
 from lifeblood.snippets import NodeSnippetData
 from lifeblood.uidata import ParameterLocked, ParameterReadonly
 from PySide2.QtCore import QPointF
 
-from typing import Callable, TYPE_CHECKING, Optional, List, Mapping, Tuple, Dict, Set, Iterable, Union, Any, Sequence
+from typing import Callable, Optional, Tuple, Iterable
 
-if TYPE_CHECKING:
-    from .graphics_scene import QGraphicsImguiScene
 
 logger = get_logger('scene_op')
-
-__all__ = ['CompoundAsyncSceneOperation', 'CreateNodeOp', 'CreateNodesOp', 'RemoveNodesOp', 'RenameNodeOp',
-           'MoveNodesOp', 'AddConnectionOp', 'RemoveConnectionOp', 'ParameterChangeOp']
 
 
 class AsyncSceneOperation(AsyncOperation):
     """
     base class for async operations on scene
     """
-    def __init__(self, scene: "QGraphicsImguiScene"):
-        super().__init__(scene._undo_stack(), scene)
+    def __init__(self, scene: GraphicsScene):
+        super().__init__(scene.undo_stack(), scene)
+        self.__scene = scene
+
+    def scene(self) -> GraphicsScene:
+        return self.__scene
+
+
+class AsyncSceneOperationWithDataController(AsyncSceneOperation):
+    """
+    base class for operations on scene through a data controller
+    """
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController):
+        super().__init__(scene)
+        self.__data_controller = data_controller
+
+    def data_controller(self) -> SceneDataController:
+        return self.__data_controller
 
 
 class CompoundAsyncSceneOperation(AsyncSceneOperation):
@@ -32,7 +45,7 @@ class CompoundAsyncSceneOperation(AsyncSceneOperation):
     it makes a number of sequentially performed operations looks like one single operation.
     provided operations are executed sequentially, and undone in the reversed order
     """
-    def __init__(self, scene: "QGraphicsImguiScene", operations: Iterable[AsyncSceneOperation]):
+    def __init__(self, scene: GraphicsScene, operations: Iterable[AsyncSceneOperationWithDataController]):
         super().__init__(scene)
         self.__ops = tuple(operations)
 
@@ -50,10 +63,9 @@ class CompoundAsyncSceneOperation(AsyncSceneOperation):
         return f'Compound Op with {len(self.__ops)} sub-operations'
 
 
-class CreateNodeOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", node_type: str, node_name: str, pos):
-        super().__init__(scene)
-        self.__scene: "QGraphicsImguiScene" = scene
+class CreateNodeOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, node_type: str, node_name: str, pos):
+        super().__init__(scene, data_controller)
         self.__node_sid = None
         self.__node_name = node_name
         self.__node_type = node_type
@@ -61,14 +73,14 @@ class CreateNodeOp(AsyncSceneOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'create node')
-        self.__scene._request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
+        self.data_controller().request_create_node(self.__node_type, self.__node_name, self.__node_pos, LongOperationData(longop))
         node_id, node_type, node_name = yield
-        self.__node_sid = self.__scene._session_node_id_from_id(node_id)
+        self.__node_sid = self.scene().session_node_id_from_id(node_id)
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo create node')
-        node_id = self.__scene._session_node_id_to_id(self.__node_sid)
-        self.__scene.request_remove_node(node_id, LongOperationData(longop))
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
+        self.data_controller().request_remove_node(node_id, LongOperationData(longop))
         yield  # TODO: shouldn't we check for errors?
         self.__node_sid = None
 
@@ -76,54 +88,52 @@ class CreateNodeOp(AsyncSceneOperation):
         return f'Create Node "{self.__node_name}"'
 
 
-class CreateNodesOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", creation_snippet: NodeSnippetData, pos: QPointF):
-        super().__init__(scene)
-        self.__scene: "QGraphicsImguiScene" = scene
+class CreateNodesOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, creation_snippet: NodeSnippetData, pos: QPointF):
+        super().__init__(scene, data_controller)
         self.__node_sids = None
         self.__creation_snippet = creation_snippet
         self.__pos = pos
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'create nodes')
-        self.__scene._request_create_nodes_from_snippet(self.__creation_snippet, self.__pos, longop)
+        self.data_controller().request_create_nodes_from_snippet(self.__creation_snippet, self.__pos, longop)
         created_ids = yield
-        self.__node_sids = set(self.__scene._session_node_id_from_id(nid) for nid in created_ids)
+        self.__node_sids = set(self.scene().session_node_id_from_id(nid) for nid in created_ids)
 
     def _my_undo_longop(self, longop: LongOperation):
         print(self.__node_sids)
         longop.set_op_status(None, 'undo create nodes')
-        node_ids = [x for x in (self.__scene._session_node_id_to_id(sid) for sid in self.__node_sids) if x is not None]
+        node_ids = [x for x in (self.scene().session_node_id_to_id(sid) for sid in self.__node_sids) if x is not None]
         print(node_ids)
         if not node_ids:
             return
-        self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
+        self.data_controller().request_remove_nodes(node_ids, LongOperationData(longop))
         yield
 
     def __str__(self):
         return f'Create Nodes "{self.__node_sids}"'
 
 
-class RemoveNodesOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", nodes: Iterable[Node]):
-        super().__init__(scene)
-        self.__scene = scene
+class RemoveNodesOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, nodes: Iterable[Node]):
+        super().__init__(scene, data_controller)
         self.__node_sids = tuple(node.get_session_id() for node in nodes)
         self.__restoration_snippet = None
         self.__is_a_noop = False
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'remove nodes')
-        node_ids = [self.__scene._session_node_id_to_id(sid) for sid in self.__node_sids]
-        nodes = [self.__scene.get_node(nid) for nid in node_ids]
+        node_ids = [self.scene().session_node_id_to_id(sid) for sid in self.__node_sids]
+        nodes = [self.scene().get_node(nid) for nid in node_ids]
         if any(n is None for n in nodes):
             raise OperationError('some nodes disappeared before operation was done')
         self.__restoration_snippet = UiNodeSnippetData.from_viewer_nodes(nodes, include_dangling_connections=True)
-        self.__scene._request_remove_nodes(node_ids, LongOperationData(longop))
+        self.data_controller().request_remove_nodes(node_ids, LongOperationData(longop))
         removed_ids, failed_ids_with_reasons = yield
         # now filter snippet to remove nodes that scheduler failed to remove
         #not_removed = set(node_ids) - set(removed_ids)
-        not_removed_sids = set(self.__scene.get_node(nid).get_session_id() for nid, _ in failed_ids_with_reasons)
+        not_removed_sids = set(self.scene().session_node_id_from_id(nid) for nid, _ in failed_ids_with_reasons)
         reasons = '\n'.join(f'- {nid}: {reason}' for nid, reason in failed_ids_with_reasons)
         self.__node_sids = tuple(sid for sid in self.__node_sids if sid not in not_removed_sids)
         op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
@@ -146,9 +156,9 @@ class RemoveNodesOp(AsyncSceneOperation):
         if self.__is_a_noop:
             return
         longop.set_op_status(None, 'undo remove nodes')
-        self.__scene._request_create_nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
+        self.data_controller().request_create_nodes_from_snippet(self.__restoration_snippet, QPointF(*self.__restoration_snippet.pos), longop)
         created_ids = yield
-        sids = set(self.__scene._session_node_id_from_id(nid) for nid in created_ids)
+        sids = set(self.scene().session_node_id_from_id(nid) for nid in created_ids)
         assert set(self.__node_sids) == sids, (sids, set(self.__node_sids))
 
     def __str__(self):
@@ -157,31 +167,30 @@ class RemoveNodesOp(AsyncSceneOperation):
         return f'Remove Nodes {",".join(str(x) for x in self.__node_sids)}'
 
 
-class RenameNodeOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", node: Node, new_name: str):
-        super().__init__(scene)
-        self.__scene = scene
-        self.__node_sid = scene._session_node_id_from_id(node.get_id())
+class RenameNodeOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, node: Node, new_name: str):
+        super().__init__(scene, data_controller)
+        self.__node_sid = scene.session_node_id_from_id(node.get_id())
         self.__old_name = None
         self.__new_name = new_name
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'rename nodes')
-        node_id = self.__scene._session_node_id_to_id(self.__node_sid)
-        node = self.__scene.get_node(node_id)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
+        node = self.scene().get_node(node_id)
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
         self.__old_name = node.node_name()
-        self.__scene._request_set_node_name(node_id, self.__new_name, LongOperationData(longop))
+        self.data_controller().request_set_node_name(node_id, self.__new_name, LongOperationData(longop))
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo rename nodes')
-        node_id = self.__scene._session_node_id_to_id(self.__node_sid)
-        node = self.__scene.get_node(node_id)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
+        node = self.scene().get_node(node_id)
         if node is None:
             raise OperationError(f'node with session id {self.__node_sid} was not found')
-        self.__scene._request_set_node_name(node_id, self.__old_name, LongOperationData(longop))
+        self.data_controller().request_set_node_name(node_id, self.__old_name, LongOperationData(longop))
         yield
 
     def __str__(self):
@@ -189,14 +198,14 @@ class RenameNodeOp(AsyncSceneOperation):
 
 
 class MoveNodesOp(SimpleUndoableOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", info: Iterable[Tuple[Node, QPointF, Optional[QPointF]]]):
-        super().__init__(scene._undo_stack(), self._doop, self._undoop)
+    def __init__(self, scene: GraphicsScene, info: Iterable[Tuple[Node, QPointF, Optional[QPointF]]]):
+        super().__init__(scene.undo_stack(), self._doop, self._undoop)
         self.__scene = scene
-        self.__node_info = tuple((scene._session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
+        self.__node_info = tuple((scene.session_node_id_from_id(node.get_id()), new_pos, old_pos) for node, new_pos, old_pos in info)
 
-    def _doop(self, callback: Optional[Callable[["UndoableOperation", OperationCompletionDetails], None]] = None):
+    def _doop(self, callback: Optional[Callable[[UndoableOperation, OperationCompletionDetails], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
-            node_id = self.__scene._session_node_id_to_id(node_sid)
+            node_id = self.__scene.session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
             if node is None:
                 raise OperationError(f'node with session id {node_sid} was not found')
@@ -204,9 +213,9 @@ class MoveNodesOp(SimpleUndoableOperation):
         if callback:
             callback(self, OperationCompletionDetails(OperationCompletionStatus.FullSuccess))
 
-    def _undoop(self, callback: Optional[Callable[["UndoableOperation"], None]] = None):
+    def _undoop(self, callback: Optional[Callable[[UndoableOperation], None]] = None):
         for node_sid, new_pos, old_pos in self.__node_info:
-            node_id = self.__scene._session_node_id_to_id(node_sid)
+            node_id = self.__scene.session_node_id_to_id(node_sid)
             node = self.__scene.get_node(node_id)
             if node is None:
                 raise OperationError(f'node with session id {node_sid} was not found')
@@ -218,10 +227,9 @@ class MoveNodesOp(SimpleUndoableOperation):
         return f'Move Node(s) {",".join(str(x) for x,_,_ in self.__node_info)}'
 
 
-class AddConnectionOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", out_node: Node, out_name: str, in_node: Node, in_name: str):
-        super().__init__(scene)
-        self.__scene = scene
+class AddConnectionOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, out_node: Node, out_name: str, in_node: Node, in_name: str):
+        super().__init__(scene, data_controller)
         self.__out_sid = out_node.get_session_id()
         self.__out_name = out_name
         self.__in_sid = in_node.get_session_id()
@@ -229,40 +237,39 @@ class AddConnectionOp(AsyncSceneOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'add connection')
-        out_id = self.__scene._session_node_id_to_id(self.__out_sid)
-        in_id = self.__scene._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
-          or self.__scene.get_node(out_id) is None \
-          or self.__scene.get_node(in_id) is None:
+          or self.scene().get_node(out_id) is None \
+          or self.scene().get_node(in_id) is None:
             logger.warning(f'could not perform op: nodes not found {out_id}, {in_id}')
             return
-        self.__scene._request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
+        self.data_controller().request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo add connection')
-        out_id = self.__scene._session_node_id_to_id(self.__out_sid)
-        in_id = self.__scene._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
-          or self.__scene.get_node(out_id) is None \
-          or self.__scene.get_node(in_id) is None:
+          or self.scene().get_node(out_id) is None \
+          or self.scene().get_node(in_id) is None:
             logger.warning(f'could not perform undo: added connection not found: {out_id} {in_id}')
             return
-        con = self.__scene.get_node_connection_from_ends(out_id, self.__out_name, in_id, self.__in_name)
+        con = self.scene().get_node_connection_from_ends(out_id, self.__out_name, in_id, self.__in_name)
         if con is None:
             logger.warning('could not perform undo: added connection not found')
             return
-        self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
+        self.data_controller().request_node_connection_remove(con.get_id(), LongOperationData(longop))
         yield  # TODO: check for errors
 
     def __str__(self):
         return f'Wire Add {self.__out_sid}:{self.__out_name}->{self.__in_sid}:{self.__in_name}'
 
 
-class RemoveConnectionOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", out_node: Node, out_name: str, in_node: Node, in_name: str):
-        super().__init__(scene)
-        self.__scene = scene
+class RemoveConnectionOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, out_node: Node, out_name: str, in_node: Node, in_name: str):
+        super().__init__(scene, data_controller)
         self.__out_sid = out_node.get_session_id()
         self.__out_name = out_name
         self.__in_sid = in_node.get_session_id()
@@ -270,18 +277,18 @@ class RemoveConnectionOp(AsyncSceneOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'remove connection')
-        out_id = self.__scene._session_node_id_to_id(self.__out_sid)
-        in_id = self.__scene._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
-                or self.__scene.get_node(out_id) is None \
-                or self.__scene.get_node(in_id) is None:
+                or self.scene().get_node(out_id) is None \
+                or self.scene().get_node(in_id) is None:
             logger.warning(f'could not perform op: added connection not found: {out_id} {in_id}')
             return
-        con = self.__scene.get_node_connection_from_ends(out_id, self.__out_name, in_id, self.__in_name)
+        con = self.scene().get_node_connection_from_ends(out_id, self.__out_name, in_id, self.__in_name)
         if con is None:
             logger.warning(f'could not perform op: added connection not found for {out_id}, {self.__out_name}, {in_id}, {self.__in_name}')
             return
-        self.__scene._request_node_connection_remove(con.get_id(), LongOperationData(longop))
+        self.data_controller().request_node_connection_remove(con.get_id(), LongOperationData(longop))
         _, failed_ids_with_reasons = yield
         reasons = '\n'.join(f'- {reason}' for _, reason in failed_ids_with_reasons)
         op_result = OperationCompletionDetails(OperationCompletionStatus.FullSuccess)
@@ -292,22 +299,22 @@ class RemoveConnectionOp(AsyncSceneOperation):
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo remove connection')
-        out_id = self.__scene._session_node_id_to_id(self.__out_sid)
-        in_id = self.__scene._session_node_id_to_id(self.__in_sid)
+        out_id = self.scene().session_node_id_to_id(self.__out_sid)
+        in_id = self.scene().session_node_id_to_id(self.__in_sid)
         if out_id is None or in_id is None \
-          or self.__scene.get_node(out_id) is None \
-          or self.__scene.get_node(in_id) is None:
+          or self.scene().get_node(out_id) is None \
+          or self.scene().get_node(in_id) is None:
             logger.warning('could not perform undo: added connection not found')
             return
-        self.__scene._request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
+        self.data_controller().request_node_connection_add(out_id, self.__out_name, in_id, self.__in_name, LongOperationData(longop))
         yield
 
     def __str__(self):
         return f'Wire Remove {self.__out_sid}:{self.__out_name}->{self.__in_sid}:{self.__in_name}'
 
 
-class ParameterChangeOp(AsyncSceneOperation):
-    def __init__(self, scene: "QGraphicsImguiScene", node: Node, parameter_name: str, new_value=..., new_expression=...):
+class ParameterChangeOp(AsyncSceneOperationWithDataController):
+    def __init__(self, scene: GraphicsScene, data_controller: SceneDataController, node: Node, parameter_name: str, new_value=..., new_expression=...):
         """
 
         :param scene:
@@ -316,11 +323,10 @@ class ParameterChangeOp(AsyncSceneOperation):
         :param new_value: ...(Ellipsis) means no change
         :param new_expression: ...(Ellipsis) means no change
         """
-        super().__init__(scene)
-        self.__scene = scene
+        super().__init__(scene, data_controller)
         self.__param_name = parameter_name
         node_sid = node.get_session_id()
-        param = scene.get_node(scene._session_node_id_to_id(node_sid)).get_nodeui().parameter(parameter_name)
+        param = scene.get_node(scene.session_node_id_to_id(node_sid)).get_nodeui().parameter(parameter_name)
         self.__old_value = param.unexpanded_value() if new_value is not ... else ...
         self.__old_expression = param.expression() if new_expression is not ... else ...
         self.__new_value = new_value
@@ -329,8 +335,8 @@ class ParameterChangeOp(AsyncSceneOperation):
 
     def _my_do_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'change parameter value')
-        node_id = self.__scene._session_node_id_to_id(self.__node_sid)
-        param = self.__scene.get_node(node_id).get_nodeui().parameter(self.__param_name)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
+        param = self.scene().get_node(node_id).get_nodeui().parameter(self.__param_name)
         try:
             if self.__new_value is not ...:
                 param.set_value(self.__new_value)
@@ -343,26 +349,19 @@ class ParameterChangeOp(AsyncSceneOperation):
             self._set_result(OperationCompletionDetails(OperationCompletionStatus.NotPerformed, 'parameter is read only'))
             return
         # TODO: currently possible errors on scheduler side are ignored, not good
-        self.__scene._send_node_parameters_change(node_id, [param], LongOperationData(longop))
-        node = self.__scene.get_node(node_id)
-        if node:
-            node.item_updated(ui=True)
+        self.data_controller().request_node_parameters_change(node_id, [param], LongOperationData(longop))
         yield
 
     def _my_undo_longop(self, longop: LongOperation):
         longop.set_op_status(None, 'undo change parameter value')
-        node_id = self.__scene._session_node_id_to_id(self.__node_sid)
-        param = self.__scene.get_node(node_id).get_nodeui().parameter(self.__param_name)
+        node_id = self.scene().session_node_id_to_id(self.__node_sid)
+        param = self.scene().get_node(node_id).get_nodeui().parameter(self.__param_name)
         if self.__old_value is not ...:
             param.set_value(self.__old_value)
         if self.__old_expression is not ...:
             param.set_expression(self.__old_expression)
-        self.__scene._send_node_parameters_change(node_id, [param], LongOperationData(longop))
+        self.data_controller().request_node_parameters_change(node_id, [param], LongOperationData(longop))
         yield
-        # update node ui, just in case
-        node = self.__scene.get_node(node_id)
-        if node:
-            node.node.item_updated(ui=True)
 
     def __str__(self):
         return f'Param Changed {self.__param_name} @ {self.__node_sid}'

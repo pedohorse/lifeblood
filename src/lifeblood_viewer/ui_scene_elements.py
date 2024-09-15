@@ -1,7 +1,7 @@
 import imgui
 from .ui_elements_base import ImguiWindow, ImguiPopup
 from .nodeeditor import NodeEditor
-from .graphics_scene import QGraphicsImguiScene
+from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 
 from typing import Optional, Tuple
 
@@ -14,7 +14,7 @@ class ImguiViewWindow(ImguiWindow):
     def editor_widget(self) -> NodeEditor:
         return self.__editor
 
-    def scene(self) -> QGraphicsImguiScene:
+    def scene(self) -> QGraphicsImguiSceneWithDataController:
         return self.__editor.scene()
 
     def popup(self):
@@ -34,7 +34,7 @@ class ImguiViewPopup(ImguiPopup):
     def editor_widget(self) -> NodeEditor:
         return self.__editor
 
-    def scene(self) -> QGraphicsImguiScene:
+    def scene(self) -> QGraphicsImguiSceneWithDataController:
         return self.__editor.scene()
 
     def popup(self):

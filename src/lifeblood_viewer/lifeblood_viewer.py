@@ -9,7 +9,7 @@ from lifeblood.enums import TaskGroupArchivedState
 from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
 from lifeblood import paths
 from .nodeeditor import NodeEditor
-from .graphics_scene import QGraphicsImguiScene
+from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from .connection_worker import SchedulerConnectionWorker
 from .ui_scene_elements import FindNodePopup
 from .menu_entry_base import MainMenuLocation
@@ -321,7 +321,7 @@ class LifebloodViewer(QMainWindow):
         # cOnNeC1
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
-        assert isinstance(scene, QGraphicsImguiScene)
+        assert isinstance(scene, QGraphicsImguiSceneWithDataController)
         self.__ui_connection_worker.groups_full_update.connect(self.update_groups)
         self.__ui_connection_worker.scheduler_connection_lost.connect(self._show_connection_message)
         self.__ui_connection_worker.scheduler_connection_established.connect(self._hide_connection_message)

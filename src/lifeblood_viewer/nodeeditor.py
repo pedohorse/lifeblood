@@ -6,13 +6,14 @@ from pathlib import Path
 from types import MappingProxyType
 from enum import Enum
 from .graphics_items import Task, Node, NetworkItem
-from .graphics_scene import QGraphicsImguiScene
+from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from .long_op import LongOperation
 from .widgets.flashy_label import FlashyLabel
 from .ui_snippets import UiNodeSnippetData
 from .ui_elements_base import ImguiWindow
 from .menu_entry_base import MainMenuLocation
 from .utils import BetterOrderedDict
+from .graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 from lifeblood.base import TypeMetadata
 from lifeblood.misc import timeit
 from lifeblood.enums import TaskState
@@ -36,6 +37,7 @@ from .create_task_dialog import CreateTaskDialog
 from .save_node_settings_dialog import SaveNodeSettingsDialog
 from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 from .undo_stack import OperationCompletionDetails, OperationCompletionStatus
+from .fancy_scene_item_factory import FancySceneItemFactory
 
 import imgui
 from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
@@ -171,7 +173,7 @@ class Shortcutable:
                 shortcut.setEnabled(True)
 
 
-class NodeEditor(QGraphicsView, Shortcutable):
+class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     def __init__(self, db_path: str = None, worker=None, parent=None):
         super(NodeEditor, self).__init__(parent=parent)
         # PySide's QWidget does not call super, so we call explicitly
@@ -193,7 +195,11 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
         self.__ui_focused_item = None
 
-        self.__scene = QGraphicsImguiScene(db_path, worker)
+        # TODO: refactor this
+        item_producer = FancySceneItemFactory(None)  # TODO: split data controller from scene
+        self.__scene = QGraphicsImguiSceneWithDataController(item_producer, db_path, worker)
+        item_producer.set_data_controller(self.__scene)
+
         self.setScene(self.__scene)
         #self.__update_timer = PySide2.QtCore.QTimer(self)
         #self.__update_timer.timeout.connect(lambda: self.__scene.invalidate(layers=QGraphicsScene.ForegroundLayer))
@@ -598,7 +604,13 @@ class NodeEditor(QGraphicsView, Shortcutable):
 
     #
     #
-    def show_task_menu(self, task, *, pos: Optional[QPoint] = None):
+    def item_requests_context_menu(self, item):
+        if isinstance(item, Task):
+            self.show_task_menu(item)
+        elif isinstance(item, Node):
+            self.show_node_menu(item)
+
+    def show_task_menu(self, task: Task, *, pos: Optional[QPoint] = None):
         menu = QMenu(self)
         menu.addAction(f'task {task.get_id()}').setEnabled(False)
         menu.addSeparator()
@@ -650,7 +662,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
             for state in TaskState:
                 if state in (TaskState.GENERATING, TaskState.INVOKING, TaskState.IN_PROGRESS, TaskState.POST_GENERATING):
                     continue
-                state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state=state: self.__scene.set_task_state([x], state))
+                state_submenu.addAction(state.name).triggered.connect(lambda checked=False, x=task.get_id(), state_=state: self.__scene.set_task_state([x], state_))
 
         if pos is None:
             pos = self.mapToGlobal(self.mapFromScene(task.scenePos()))
@@ -678,7 +690,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         settings_menu = menu.addMenu('apply settings >')
         settings_menu.setEnabled(len(settings_names) > 0)
         for name in settings_names:
-            settings_menu.addAction(name).triggered.connect(lambda checked=False, x=node, sett=name: x.apply_settings(sett))
+            settings_menu.addAction(name).triggered.connect(lambda checked=False, x=node.get_id(), sett=name: self.__scene.request_apply_node_settings(x, sett))
         settings_actions_menu = menu.addMenu('modify settings >')
         settings_actions_menu.addAction('save settings').triggered.connect(lambda checked=False, x=node: self._popup_save_settings_dialog(x))
         settings_defaults_menu = settings_actions_menu.addMenu('set defaults')
@@ -686,11 +698,15 @@ class NodeEditor(QGraphicsView, Shortcutable):
             settings_defaults_menu.addAction(name or '<unset>').triggered.connect(lambda checked=False, x=node, sett=name: self._popup_set_settings_default(node, sett))
 
         menu.addSeparator()
-        menu.addAction('pause all tasks').triggered.connect(node.pause_all_tasks)
-        menu.addAction('resume all tasks').triggered.connect(node.resume_all_tasks)
+        menu.addAction('pause all tasks').triggered.connect(lambda: self.__scene.set_tasks_paused([x.get_id() for x in node.tasks_iter()], True))
+        menu.addAction('resume all tasks').triggered.connect(lambda: self.__scene.set_tasks_paused([x.get_id() for x in node.tasks_iter()], False))
         menu.addSeparator()
-        menu.addAction('regenerate all ready tasks').triggered.connect(node.regenerate_all_ready_tasks)
-        menu.addAction('retry all error tasks').triggered.connect(node.retry_all_error_tasks)
+        menu.addAction('regenerate all ready tasks').triggered.connect(
+            lambda: self.__scene.regenerate_all_ready_tasks_for_node(node.get_id())
+        )
+        menu.addAction('retry all error tasks').triggered.connect(
+            lambda: self.__scene.retry_all_error_tasks_for_node(node.get_id())
+        )
         menu.addSeparator()
 
         if len(self.__scene.selectedItems()) > 0:
@@ -1132,7 +1148,7 @@ class NodeEditor(QGraphicsView, Shortcutable):
         self.__ui_focused_item = None
         return True
 
-    def scene(self) -> QGraphicsImguiScene:  # this function is here just for typing
+    def scene(self) -> QGraphicsImguiSceneWithDataController:  # this function is here just for typing
         return super().scene()
 
     def mouseDoubleClickEvent(self, event: PySide2.QtGui.QMouseEvent):
