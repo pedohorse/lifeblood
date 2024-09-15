@@ -1,34 +1,30 @@
 import asyncio
 import socket
-import struct
 import json
 import time
-import pickle
-from io import BytesIO
 
 from lifeblood.uidata import NodeUi
-from lifeblood.ui_protocol_data import UiData
 from lifeblood.invocationjob import InvocationJob
-from lifeblood.nethelpers import recv_exactly, address_to_ip_port, get_default_addr
+from lifeblood.nethelpers import address_to_ip_port, get_default_addr
 from lifeblood import logging
-from lifeblood.enums import NodeParameterType, TaskState, TaskGroupArchivedState
+from lifeblood.enums import TaskState, TaskGroupArchivedState
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
 from lifeblood.exceptions import UiClientOperationFailed
 from lifeblood.uidata import Parameter
-from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
-from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
+from lifeblood.snippets import NodeSnippetData
 from lifeblood.defaults import ui_port
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.scheduler_ui_protocol import UIProtocolSocketClient
 from lifeblood.ui_protocol_data import TaskBatchData
+from lifeblood.ui_events import TaskFullState
+from lifeblood.ui_events_tools import collapse_task_event_list
 
 import PySide2
 from PySide2.QtCore import Signal, Slot, QPointF, QThread
-#from PySide2.QtGui import QPoin
 
-from typing import Callable, Optional, Set, List, Union, Dict, Iterable
+from typing import Callable, Optional, Set, List, Union, Iterable
 
 
 logger = logging.get_logger('viewer')
@@ -398,8 +394,22 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 assert len(task_events) > 0  # on subscription there MUST be at least a single event
 
             if len(task_events) > 0:
-                first_time_getting_events = self.__last_known_event_id < 0
+                first_time_receiving_events_for_this_filter = self.__last_known_event_id < 0
                 self.__last_known_event_id = task_events[-1].event_id
+                if first_time_receiving_events_for_this_filter:
+                    try:
+                        collapsed_data = collapse_task_event_list(task_events)
+                    except RuntimeError:
+                        logger.warning("failed to collapse event list, event list malformed!")
+                    else:
+                        subst_event = TaskFullState(
+                            collapsed_data.db_uid,
+                            collapsed_data
+                        )
+                        subst_event.timestamp = task_events[-1].timestamp
+                        subst_event.event_id = task_events[-1].event_id
+                        task_events = [subst_event]
+
                 self.tasks_events_arrived.emit(task_events)
         else:
             tasks_state = self.__client.get_ui_tasks_state(self.__task_group_filter or [], not self.__skip_dead)
