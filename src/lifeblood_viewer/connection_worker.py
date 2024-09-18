@@ -397,11 +397,12 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                 first_time_receiving_events_for_this_filter = self.__last_known_event_id < 0
                 self.__last_known_event_id = task_events[-1].event_id
                 if first_time_receiving_events_for_this_filter:
+                    collapsed_data: Optional[TaskBatchData] = None
                     try:
                         collapsed_data = collapse_task_event_list(task_events)
                     except RuntimeError:
                         logger.warning("failed to collapse event list, event list malformed!")
-                    else:
+                    if collapsed_data is not None:
                         subst_event = TaskFullState(
                             collapsed_data.db_uid,
                             collapsed_data
