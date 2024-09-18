@@ -1,5 +1,7 @@
+import copy
+
 from .ui_events import TaskFullState, TasksChanged, TasksRemoved, TasksUpdated, TaskEvent
-from .ui_protocol_data import TaskBatchData, DataNotSet, TaskData
+from .ui_protocol_data import TaskBatchData, DataNotSet, TaskData, TaskDelta
 
 from typing import Dict, List, Optional
 
@@ -22,7 +24,7 @@ def collapse_task_event_list(event_list: List[TaskEvent]) -> Optional[TaskBatchD
         timestamp = max(timestamp, event.timestamp)
 
         if isinstance(event, TaskFullState):
-            collapsed_tasks = dict(event.task_data.tasks)
+            collapsed_tasks = {k: copy.copy(v) for k, v in event.task_data.tasks.items()}
         elif isinstance(event, TasksRemoved):
             for task_id in event.task_ids:
                 if task_id not in collapsed_tasks:
@@ -30,17 +32,17 @@ def collapse_task_event_list(event_list: List[TaskEvent]) -> Optional[TaskBatchD
                 collapsed_tasks.pop(task_id)
         elif isinstance(event, TasksUpdated):
             for task_id, task_data in event.task_data.tasks.items():
-                collapsed_tasks[task_id] = task_data
+                collapsed_tasks[task_id] = copy.copy(task_data)
         elif isinstance(event, TasksChanged):
             for task_delta in event.task_deltas:
                 task_id = task_delta.id
                 if task_id not in collapsed_tasks:
                     print(collapsed_tasks)
                     raise RuntimeError(f'event list inconsistency: task id {task_id} is not in tasks, cannot apply delta')
-                for field in ('parent_id', 'children_count', 'active_children_count', 'state', 'state_details', 'paused', 'node_id', 'node_input_name',
-                              'node_output_name', 'name', 'split_level', 'work_data_invocation_attempt', 'progress', 'split_origin_task_id', 'split_id',
-                              'invocation_id', 'groups'):
+                for field in TaskDelta.__annotations__.keys():
                     if (val := getattr(task_delta, field)) is not DataNotSet:
+                        if field == 'id':
+                            assert collapsed_tasks[task_id].id == val
                         setattr(collapsed_tasks[task_id], field, val)
         else:
             raise NotImplementedError(f'handling of event type "{type(event)}" is not implemented')

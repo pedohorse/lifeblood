@@ -1,3 +1,5 @@
+import copy
+import random
 from unittest import TestCase
 from lifeblood.ui_events_tools import collapse_task_event_list
 from lifeblood.ui_events import TaskFullState, TasksChanged, TasksRemoved, TasksUpdated
@@ -133,3 +135,89 @@ class TestUIEventsTools(TestCase):
             collapse_task_event_list(event_list)
         )
 
+    def test_ensure_source_unmodified(self):
+        update_event = TasksUpdated(
+            12345,
+            TaskBatchData(
+                12345,
+                {
+                    123: TaskData(123, 234, 444, 333, TaskState.GENERATING, 'nope', True, 345, 'floo', 'flee', 'nonde', 456, 567, 0.51423, 678, 789, 890, {'karrr'},),
+                }
+            )
+        )
+        full_event = TaskFullState(
+            12345,
+            TaskBatchData(
+                12345,
+                {
+                    123: TaskData(123, 234, 444, 333, TaskState.GENERATING, 'nope', True, 345, 'floo', 'flee', 'nonde', 456, 567, 0.51423, 678, 789, 890, {'karrr'}, ),
+                }
+            )
+        )
+        delta_event = TasksChanged(
+            12345,
+            [
+                TaskDelta(123, children_count=999, split_origin_task_id=888, name='foooooooo')
+            ]
+        )
+
+        update_event_control = copy.deepcopy(update_event)
+        full_event_control = copy.deepcopy(full_event)
+
+        collapsed_data = collapse_task_event_list([full_event, delta_event])
+        self.assertIsNotNone(collapsed_data)
+        collapsed_data = collapse_task_event_list([update_event, delta_event])
+        self.assertIsNotNone(collapsed_data)
+
+        self.assertEqual(update_event_control, update_event)
+        self.assertEqual(full_event_control, full_event)
+
+    def test_random_change(self):
+        rng = random.Random(1827361)
+        for _ in range(999):
+            fields = list(TaskDelta.__annotations__.keys())
+            rng.shuffle(fields)
+            delta = TaskDelta(123)
+            attrs_set = {}
+            for field in fields[:rng.randint(0, len(fields))]:
+                if field == 'id':
+                    continue
+                # NOTE: we ignore typing, which may cause test fails on correct implementations
+                val = random.randint(0, 99999)
+                setattr(delta, field, val)
+                attrs_set[field] = val
+
+            task_data_control = TaskData(123, 234, 444, 333, TaskState.GENERATING, 'nope', True, 345, 'floo', 'flee', 'nonde', 456, 567, 0.51423, 678, 789, 890, {'karrr'},)
+            task_data = TaskData(123, 234, 444, 333, TaskState.GENERATING, 'nope', True, 345, 'floo', 'flee', 'nonde', 456, 567, 0.51423, 678, 789, 890, {'karrr'},)
+            event_list = [
+                TasksUpdated(
+                    12345,
+                    TaskBatchData(
+                        12345,
+                        {
+                            123: task_data,
+                        }
+                    )
+                ),
+                TasksChanged(
+                    12345,
+                    [
+                        delta
+                    ]
+                )
+            ]
+
+            collapsed_data = collapse_task_event_list(event_list)
+            self.assertIsNotNone(collapsed_data)
+
+            # ensure that original event was not changed
+            self.assertEqual(task_data_control, task_data)
+
+            self.assertSetEqual({123}, set(collapsed_data.tasks.keys()))
+            for field in TaskDelta.__annotations__.keys():
+                if field in attrs_set:
+                    expected_val = attrs_set[field]
+                else:
+                    expected_val = getattr(task_data_control, field)
+
+                self.assertEqual(expected_val, getattr(collapsed_data.tasks[123], field), f'fail in "{field}" field')
