@@ -1591,7 +1591,7 @@ class Scheduler(NodeGraphHolderBase):
     async def apply_node_settings(self, node_id: int, settings_name: str):
         async with self.node_object_by_id_for_writing(node_id) as node_object:
             settings = self.__node_data_provider.node_settings(node_object.type_name(), settings_name)
-            async with self.node_object_by_id_for_writing(node_id) as node:
+            async with self.node_object_by_id_for_writing(node_id) as node:  # type: BaseNode
                 await asyncio.get_event_loop().run_in_executor(None, node.apply_settings, settings)
 
     async def remove_node(self, node_id: int):
