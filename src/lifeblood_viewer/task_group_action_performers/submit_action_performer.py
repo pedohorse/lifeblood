@@ -3,7 +3,7 @@ from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.long_op import LongOperationProcessor, LongOperationData, LongOperation
 from lifeblood_viewer.widgets.dialogs.value_input import MultiInputDialog, IntListInputWidget
 from lifeblood_viewer.task_group_actions_impl.submit_action import TaskGroupViewerSubmitAction
-from PySide2.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 
 
 class SubmitViewerActionPerformer(TaskGroupViewerActionPerformerBase):

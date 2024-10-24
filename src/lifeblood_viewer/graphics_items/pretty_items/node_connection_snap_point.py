@@ -1,5 +1,5 @@
 from .drawable_node import DrawableNode
-from PySide2.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 
 class SnapPoint:

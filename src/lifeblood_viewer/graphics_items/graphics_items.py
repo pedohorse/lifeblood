@@ -14,7 +14,7 @@ from lifeblood.enums import TaskState
 from lifeblood import logging
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
-from PySide2.QtWidgets import QGraphicsScene, QGraphicsItem
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
 
 from typing import FrozenSet, Optional, List, Tuple, Dict, Set, Callable, Iterable, Union
 
@@ -254,7 +254,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         self.__connections.remove(connection)
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.ItemSceneChange:  # just before scene change
+        if change == QGraphicsItem.GraphicsItemChange.ItemSceneChange:  # just before scene change
             conns = self.__connections.copy()
             if len(self.__tasks):
                 logger.warning(f'node {self.get_id()}({self.node_name()}) has tasks at the moment of deletion, orphaning the tasks')
@@ -312,7 +312,7 @@ class NodeConnection(SceneNetworkItem):
             self.__inname = input_name
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
-        if change == QGraphicsItem.ItemSceneChange:  # just before scene change
+        if change == QGraphicsItem.GraphicsItemChange.ItemSceneChange:  # just before scene change
             if value == self.__nodein.scene():
                 self.__nodein.add_connection(self)
             else:
@@ -345,7 +345,7 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         scene: QGraphicsScene = self.scene()
         scene.clearSelection()
         if selected:
-            self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+            self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setSelected(selected)
 
     def parent_task_id(self) -> Optional[int]:

@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import QLabel
-from PySide2.QtGui import QFont, QFontMetrics
-from PySide2.QtCore import QTimer, Qt
+from PySide6.QtWidgets import QLabel
+from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtCore import QTimer, Qt
 
 from typing import Tuple
 
@@ -11,7 +11,7 @@ class FlashyLabel(QLabel):
         self.__hide_timer = QTimer(self)
         self.__hide_timer.timeout.connect(self.__timeout)
         self.hide()
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.__font_size = 48
         self.__state = 2
         self.__time = 0
@@ -59,13 +59,13 @@ class FlashyLabel(QLabel):
         temp_font.setPixelSize(self.__font_size)
         font_metrics = QFontMetrics(temp_font)
         for line in lines:
-            max_length = max(max_length, int(self.parent().width()*19/20 / max(1, font_metrics.size(0, line).width() / max(1, len(line)))))
+            max_length = max(max_length, int(self.parent().width()*19/20 / max(1.0, font_metrics.size(0, line).width() / max(1, len(line)))))
         label = '\n'.join('\n'.join(self.__split_long(s, max_length)) for s in lines)
 
         self.__state = 0
         self.__time = time
         self.__fade_timer = time / 2
-        self.__hide_timer.setInterval(self.__time*1000 // 2)
+        self.__hide_timer.setInterval(int(self.__time*1000) // 2)
         self.__hide_timer.start()
 
         self.setText(label)

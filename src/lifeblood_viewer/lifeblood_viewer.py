@@ -1,9 +1,9 @@
 import os
 import pathlib
 from datetime import datetime, timezone, timedelta
-from PySide2.QtWidgets import *
-from PySide2.QtGui import *
-from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
+from PySide6.QtWidgets import *
+from PySide6.QtGui import *
+from PySide6.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
 from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
 from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
@@ -37,12 +37,12 @@ if mem_debug:
 
 
 def confirm_operation_gui(parent: QWidget, opname):
-    res = QMessageBox.warning(parent, 'confirm action', f'confirm {opname}', QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
-    return res == QMessageBox.Ok
+    res = QMessageBox.warning(parent, 'confirm action', f'confirm {opname}', QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+    return res == QMessageBox.StandardButton.Ok
 
 
 class GroupsModel(QAbstractItemModel):
-    SortRole = Qt.UserRole + 0
+    SortRole = Qt.ItemDataRole.UserRole + 0
 
     __set_group_priority_signal = Signal(str, float)
 
@@ -64,8 +64,8 @@ class GroupsModel(QAbstractItemModel):
         self.__items_order = []
         self.__connection_worker = connection_worker
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
-        if role != Qt.DisplayRole:
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole):
+        if role != Qt.ItemDataRole.DisplayRole:
             return
         if section == self.GROUP_NAME_COL:
             return 'group name'
@@ -95,8 +95,8 @@ class GroupsModel(QAbstractItemModel):
     def is_archived(self, index) -> bool:
         return self.__items[self.__items_order[index.row()]].state == TaskGroupArchivedState.ARCHIVED
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
-        if role == Qt.ForegroundRole:
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.ForegroundRole:
             archived = self.is_archived(index)
             if archived:
                 return QColor.fromRgbF(0.5, 0.5, 0.5)
@@ -111,12 +111,12 @@ class GroupsModel(QAbstractItemModel):
                 return QColor.fromRgbF(1.0, 0.6, 0.6)
             elif prog_count > 0:
                 return QColor.fromRgbF(1.0, 0.9, 0.65)
-        if role != Qt.DisplayRole and role != self.SortRole:
+        if role != Qt.ItemDataRole.DisplayRole and role != self.SortRole:
             return None
         if index.column() == self.GROUP_NAME_COL:  # name
             return self.__items_order[index.row()]
         elif index.column() == self.CREATION_TIME_COL:  # creation time
-            if role == Qt.DisplayRole:
+            if role == Qt.ItemDataRole.DisplayRole:
                 return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].creation_timestamp).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
                 return self.__items[self.__items_order[index.row()]].creation_timestamp
@@ -236,7 +236,7 @@ class GroupsView(QTreeView):
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
-        self.setSelectionMode(GroupsView.ExtendedSelection)
+        self.setSelectionMode(GroupsView.SelectionMode.ExtendedSelection)
         self.setSortingEnabled(True)
         self.__sorting_model = QSortFilterProxyModel(self)
         self.__stashed_selection = None
@@ -246,7 +246,7 @@ class GroupsView(QTreeView):
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
         if not self.__block_selection_signals:
-            self.selection_changed.emit(set(index.data(Qt.DisplayRole) for index in self.selectedIndexes() if index.column() == 0))
+            self.selection_changed.emit(set(index.data(Qt.ItemDataRole.DisplayRole) for index in self.selectedIndexes() if index.column() == 0))
 
     def contextMenuEvent(self, event):
         model: QSortFilterProxyModel = self.model()
@@ -257,9 +257,9 @@ class GroupsView(QTreeView):
             return
 
         if len(self.selectedIndexes()) == 0:
-            groups = [index.siblingAtColumn(0).data(Qt.DisplayRole)]
+            groups = [index.siblingAtColumn(0).data(Qt.ItemDataRole.DisplayRole)]
         else:
-            groups = list({x.siblingAtColumn(0).data(Qt.DisplayRole) for x in self.selectedIndexes()})
+            groups = list({x.siblingAtColumn(0).data(Qt.ItemDataRole.DisplayRole) for x in self.selectedIndexes()})
         event.accept()
         menu = QMenu(parent=self)
 
@@ -320,7 +320,7 @@ class GroupsView(QTreeView):
         self.__sorting_model.setSourceModel(model)
         self.__sorting_model.setSortRole(GroupsModel.SortRole)
         self.__sorting_model.setDynamicSortFilter(True)
-        self.sortByColumn(1, Qt.DescendingOrder)
+        self.sortByColumn(1, Qt.SortOrder.DescendingOrder)
         self.setModel(self.__sorting_model)
         model.modelAboutToBeReset.connect(self._pre_model_reset)
         model.modelReset.connect(self._post_model_reset)
@@ -360,7 +360,7 @@ class GroupsView(QTreeView):
 
     @Slot()
     def _pre_model_reset(self):
-        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
+        self.__stashed_selection = set(x.data(Qt.ItemDataRole.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
 
     @Slot()
     def _post_model_reset(self):
@@ -374,13 +374,13 @@ class GroupsView(QTreeView):
         try:
             for i in range(model.rowCount(QModelIndex())):
                 idx = model.index(i, GroupsModel.GROUP_NAME_COL)
-                if idx.data(Qt.DisplayRole) in self.__stashed_selection:
-                    selmodel.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                if idx.data(Qt.ItemDataRole.DisplayRole) in self.__stashed_selection:
+                    selmodel.select(idx, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
         finally:
             self.__block_selection_signals = _prev_blocked
 
         # emit signal IF sel changed
-        new_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
+        new_selection = set(x.data(Qt.ItemDataRole.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
         if self.__stashed_selection != new_selection:
             self.selection_changed.emit(new_selection)
 
@@ -411,11 +411,11 @@ class LifebloodViewer(QMainWindow):
         # interface
         self.__central_widget = QSplitter()
         self.setCentralWidget(self.__central_widget)
-        self.__workerview_splitter = QSplitter(Qt.Vertical)
+        self.__workerview_splitter = QSplitter(Qt.Orientation.Vertical)
         #self.__main_layout = QHBoxLayout(self.centralWidget())
         self.__node_editor = NodeEditor(db_path, self.__ui_connection_worker)
         self.__group_list = GroupsView()
-        self.__group_list.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.__group_list.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         self.__overlay_connection_message = QLabel(self)  # no layout for this one
         font = self.__overlay_connection_message.font()
         font.setPixelSize(18)
@@ -493,11 +493,11 @@ class LifebloodViewer(QMainWindow):
         self.__central_widget.setSizes([1, 999999])
         self.__workerview_splitter.setSizes([999999, 1])
 
-        self.__central_widget.setFocusPolicy(Qt.ClickFocus)
-        self.__workerview_splitter.setFocusPolicy(Qt.ClickFocus)
-        self.__group_list.setFocusPolicy(Qt.ClickFocus)
-        self.__node_editor.setFocusPolicy(Qt.ClickFocus)
-        self.__worker_list.setFocusPolicy(Qt.ClickFocus)
+        self.__central_widget.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.__workerview_splitter.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.__group_list.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.__node_editor.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.__worker_list.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()

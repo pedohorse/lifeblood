@@ -1,4 +1,4 @@
-from PySide2.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QHBoxLayout, QPushButton, QLineEdit
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QHBoxLayout, QPushButton, QLineEdit
 
 from typing import Iterable
 
@@ -48,7 +48,7 @@ class SaveNodeSettingsDialog(QDialog):
 
 def test():
     import sys
-    from PySide2.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     app = QApplication(sys.argv)
 
     wgt = SaveNodeSettingsDialog(('qwe', 'asd', 'zxc', 'ass', 'boobs'))

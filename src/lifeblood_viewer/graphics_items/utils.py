@@ -1,4 +1,4 @@
-from PySide2.QtCore import QPointF, QTimer
+from PySide6.QtCore import QPointF, QTimer
 
 
 def call_later(callable, *args, **kwargs):  #TODO: this repeats here and in nodeeditor

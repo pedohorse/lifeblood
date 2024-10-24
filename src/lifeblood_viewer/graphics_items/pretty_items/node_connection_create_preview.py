@@ -2,9 +2,9 @@ from ..utils import length2
 from .drawable_node import DrawableNode
 from .node_connection_snap_point import NodeConnSnapPoint
 
-from PySide2.QtCore import Qt, QPointF, QRectF
-from PySide2.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
+from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
 
 from typing import Callable, List, Optional
 
@@ -14,7 +14,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         super().__init__()
         assert nodeout is None and nodein is not None or \
                nodeout is not None and nodein is None
-        self.setFlags(QGraphicsItem.ItemSendsGeometryChanges)
+        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.setZValue(10)
         self.__nodeout = nodeout
         self.__nodein = nodein
@@ -36,7 +36,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         self.__do_cutting = do_cutting
         self.__cutpen = QPen(QColor(96, 32, 32, 192))
         self.__cutpen.setWidthF(3)
-        self.__cutpen.setStyle(Qt.DotLine)
+        self.__cutpen.setStyle(Qt.PenStyle.DotLine)
 
         self.__is_snapping = False
 
@@ -81,7 +81,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         # painter.drawRect(self.boundingRect())
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             event.ignore()
             return
         self.grabMouse()
@@ -126,7 +126,7 @@ class NodeConnectionCreatePreview(QGraphicsItem):
         return min(snappoints, key=lambda x: length2(x.pos() - pos))
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             event.ignore()
             return
         if self.__finished_callback is not None:

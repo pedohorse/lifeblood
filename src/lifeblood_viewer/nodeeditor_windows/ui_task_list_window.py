@@ -4,9 +4,9 @@ from datetime import timedelta
 from lifeblood.enums import TaskState
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
-from ..graphics_items import Node, NetworkItemWatcher
 from ..graphics_items.pretty_items.fancy_items.scene_task import SceneTask
-from PySide2.QtGui import QCursor
+from ..graphics_items import Node, Task, NetworkItemWatcher
+from PySide6.QtGui import QCursor
 
 from typing import Optional
 

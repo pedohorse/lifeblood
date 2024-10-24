@@ -35,9 +35,9 @@ from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.ui_events import TaskEvent, TasksRemoved, TasksUpdated, TasksChanged, TaskFullState
 
-from PySide2.QtWidgets import *
-from PySide2.QtCore import Slot, Signal, QThread, QRectF, QPointF
-from PySide2.QtGui import QKeyEvent
+from PySide6.QtWidgets import *
+from PySide6.QtCore import Slot, Signal, QThread, QRectF, QPointF, Qt
+from PySide6.QtGui import QKeyEvent
 
 from typing import Callable, Optional, List, Tuple, Dict, Set, Iterable, Union, Any, Sequence
 
@@ -126,7 +126,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
             self.__ui_connection_thread = None
             self.__ui_connection_worker = worker
 
-        self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update)
+        self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update, type=Qt.ConnectionType.BlockingQueuedConnection)
         self.__ui_connection_worker.tasks_full_update.connect(self.tasks_full_update)
         self.__ui_connection_worker.tasks_events_arrived.connect(self.tasks_process_events)
         self.__ui_connection_worker.db_uid_update.connect(self.db_uid_update)
@@ -578,7 +578,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
             self.reset_undo_stack()
 
-    @timeit(0.05)
     @Slot(object)
     def graph_full_update(self, graph_data: NodeGraphStructureData):
         if self.__db_uid != graph_data.db_uid:
@@ -664,8 +663,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         if nodes_to_layout:
             self.layout_nodes(nodes_to_layout)
 
-    @timeit(0.05)
-    @Slot(object, bool)
+    @Slot(object)
     def tasks_process_events(self, events: List[TaskEvent]):
         """
 
@@ -705,7 +703,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                     self.__tasks_to_try_reparent_during_node_update[task_id] = task_delta.node_id
             task.apply_task_delta(task_delta, self.get_node)
 
-    @timeit(0.05)
     @Slot(object)
     def tasks_full_update(self, tasks_data: TaskBatchData):
         if self.__db_uid != tasks_data.db_uid:

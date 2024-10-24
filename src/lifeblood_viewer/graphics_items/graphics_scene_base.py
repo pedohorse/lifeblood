@@ -1,6 +1,6 @@
 from .network_item import NetworkItem
 
-from PySide2.QtWidgets import QGraphicsScene, QWidget
+from PySide6.QtWidgets import QGraphicsScene, QWidget
 
 from typing import Optional
 

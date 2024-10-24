@@ -2,8 +2,8 @@ import sys
 import os
 import sqlite3
 
-from PySide2.QtWidgets import QApplication
-from PySide2.QtCore import QRectF, QFile, Qt
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QRectF, QFile, Qt
 
 from .lifeblood_viewer import LifebloodViewer
 from .db_misc import sql_init_script
@@ -23,11 +23,11 @@ def main(argv):  # TODO: parse cmdline (argv)
 def start_viewer(config_path=None):
     qapp = QApplication(sys.argv)
 
-    qapp.setAttribute(Qt.AA_CompressHighFrequencyEvents, False)  # fixes the bug of accumulating wheel events
+    qapp.setAttribute(Qt.ApplicationAttribute.AA_CompressHighFrequencyEvents, False)  # fixes the bug of accumulating wheel events
 
     # set stylesheet
     ssfile = QFile(":/dark.qss")
-    ssfile.open(QFile.ReadOnly | QFile.Text)
+    ssfile.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
     try:
         stylesheet = str(ssfile.readAll(), 'UTF-8')
     finally:

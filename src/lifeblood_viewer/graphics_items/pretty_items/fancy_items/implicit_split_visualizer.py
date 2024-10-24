@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import QWidget, QStyleOptionGraphicsItem
-from PySide2.QtCore import Qt, QRectF, QPointF
-from PySide2.QtGui import QPainterPath, QPainter, QBrush, QPen, QColor
+from PySide6.QtWidgets import QWidget, QStyleOptionGraphicsItem
+from PySide6.QtCore import Qt, Slot, QRectF, QPointF
+from PySide6.QtGui import QPainterPath, QPainter, QBrush, QPen, QColor
 from typing import Optional
 
 from ..node_decorator_base import NodeDecorator
@@ -58,7 +58,7 @@ class ImplicitSplitVisualizer(NodeDecorator):
                 continue
             painter.fillPath(self._arc_path.translated(pos), self.__brush)
             painter.setPen(self._text_pen)
-            painter.drawText(self.__text_bounds.translated(pos), Qt.AlignHCenter | Qt.AlignTop, 'split')
+            painter.drawText(self.__text_bounds.translated(pos), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, 'split')
 
     def node_updated(self):
         output_names = self.node().output_names()

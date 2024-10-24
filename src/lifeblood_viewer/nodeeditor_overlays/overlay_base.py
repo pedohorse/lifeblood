@@ -1,8 +1,8 @@
 import re
 from lifeblood_viewer.graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
-from PySide2.QtCore import QRectF
-from PySide2.QtWidgets import QGraphicsView
-from PySide2.QtGui import QPainter, QMouseEvent
+from PySide6.QtCore import Qt, Slot, Signal, QRectF, QPointF
+from PySide6.QtWidgets import QWidget, QGraphicsView
+from PySide6.QtGui import QPainter, QMouseEvent
 
 
 class NodeEditorOverlayBase:

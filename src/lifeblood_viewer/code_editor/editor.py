@@ -1,8 +1,8 @@
 import re
 from enum import Enum
-from PySide2.QtWidgets import *
-from PySide2.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor, QTextFormat, QTextDocument
-from PySide2.QtCore import Slot, Signal, Qt, QSize, QEvent
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPlainTextEdit, QStatusBar, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QKeyEvent, QTextCursor, QTextFormat, QTextDocument
+from PySide6.QtCore import Slot, Signal, Qt, QSize, QEvent
 
 from typing import List, Tuple, Pattern, Union, Callable
 
@@ -22,7 +22,7 @@ class PythonSyntaxHighlighter(StringParameterEditorSyntaxHighlighter):
 
         kw_format = QTextCharFormat()
         kw_format.setForeground(QColor('#CC7832'))
-        kw_format.setFontWeight(QFont.Bold)
+        kw_format.setFontWeight(QFont.Weight.Bold)
 
         fu_format = QTextCharFormat()
         fu_format.setForeground(QColor('#FFC66D'))
@@ -64,7 +64,7 @@ class LogSyntaxHighlighter(StringParameterEditorSyntaxHighlighter):
 
         err_format = QTextCharFormat()
         err_format.setForeground(QColor('#ff3b3b'))
-        err_format.setFontWeight(QFont.Bold)
+        err_format.setFontWeight(QFont.Weight.Bold)
 
         self.__highlights: List[Tuple[Pattern[str], QTextCharFormat]] = []
         self.__highlights.append((re.compile(r'\[SYS\].*$'), sys_format))
@@ -127,20 +127,20 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
             cur.setPosition(block.position())
             cur.insertText(self.__tab)
 
-        if event.key() == Qt.Key_Tab:  # tab means spaces!
+        if event.key() == Qt.Key.Key_Tab:  # tab means spaces!
             cur = self.textCursor()
             if cur.selectionStart() == cur.selectionEnd():
-                event = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.KeyboardModifiers(event.nativeModifiers()), self.__tab)
+                event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier(event.nativeModifiers()), self.__tab)
                 super().keyPressEvent(event)
             else:
                 _block_helper(_insert_indent)
-        elif event.key() == Qt.Key_Backtab:  # shift+tab
+        elif event.key() == Qt.Key.Key_Backtab:  # shift+tab
             _block_helper(_remove_indent)
-        elif event.key() == Qt.Key_Return:
+        elif event.key() == Qt.Key.Key_Return:
             # check indent of prev line
             cur = self.textCursor()
             m = self.__ident_re.match(cur.block().text())
-            event = QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.KeyboardModifiers())
+            event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
             super().keyPressEvent(event)
             cur.insertText(m.group(0))
         else:
@@ -151,12 +151,14 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
         if cur.blockNumber() == self.__last_highligh_block_num:
             return
         self.__last_highligh_block_num = cur.blockNumber()
-        linesel = QTextEdit.ExtraSelection()
-        linesel.format.setBackground(QColor('#2B2B2F'))
-        linesel.format.setProperty(QTextFormat.FullWidthSelection, True)
-        linesel.cursor = QTextCursor(cur)
-        linesel.cursor.clearSelection()
-        self.setExtraSelections([linesel])
+
+        ## TODO: this bug will be fixed in next PySide6 version
+        # linesel = QTextEdit.ExtraSelection()
+        # linesel.format.setBackground(QColor('#2B2B2F'))
+        # linesel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+        # linesel.cursor = QTextCursor(cur)
+        # linesel.cursor.clearSelection()
+        # self.setExtraSelections([linesel])
 
 
 class StringParameterEditor(QWidget):
@@ -168,14 +170,14 @@ class StringParameterEditor(QWidget):
         LOG = 2
 
     def __init__(self, syntax_highlight: Union[SyntaxHighlight, Callable[[QTextDocument], StringParameterEditorSyntaxHighlighter]] = SyntaxHighlight.NO_HIGHLIGHT, parent=None):
-        super(StringParameterEditor, self).__init__(parent, Qt.Dialog)
+        super(StringParameterEditor, self).__init__(parent, Qt.WindowType.Dialog)
         self.__closed = False
         self.__main_layout = QVBoxLayout(self)
         self.__textarea = QTextEditButTabsAreSpaces()
         font = QFont('monospace')
         font.setFixedPitch(True)
         self.__textarea.setFont(font)
-        self.__textarea.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.__textarea.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
         self.__bottom_layout = QHBoxLayout()
         self.__ok_button = QPushButton('Apply&Close')

@@ -17,9 +17,9 @@ from lifeblood_viewer.code_editor.editor import StringParameterEditor
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 from ..node_decorator_base import NodeDecoratorFactoryBase
 
-from PySide2.QtCore import Qt, Slot, QPointF
-from PySide2.QtGui import QDesktopServices, QPainter
-from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
+from PySide6.QtCore import Qt, Slot, QPointF
+from PySide6.QtGui import QDesktopServices, QPainter
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
 
 from typing import Iterable, Optional
 
@@ -37,7 +37,7 @@ class SceneNode(DecoratedNode):
         self.__data_controller: SceneDataController = data_controller
 
         # display
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
+        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable | QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
         self.__nodeui_menucache = {}
         self.__ui_selected_tab = 0
@@ -157,7 +157,7 @@ class SceneNode(DecoratedNode):
                                 if item.syntax_hint() == 'python':
                                     hl = StringParameterEditor.SyntaxHighlight.PYTHON
                                 wgt = StringParameterEditor(syntax_highlight=hl, parent=drawing_widget)
-                                wgt.setAttribute(Qt.WA_DeleteOnClose, True)
+                                wgt.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
                                 wgt.set_text(item.unexpanded_value())
                                 wgt.edit_done.connect(lambda x, sc=self.scene(), id=self.get_id(), it=item: sc.change_node_parameter(id, item, x))
                                 wgt.set_title(f'editing parameter "{param_name}"')
@@ -266,10 +266,10 @@ class SceneNode(DecoratedNode):
             imgui.text(self.__data_controller.node_types()[self.node_type()].description if self.node_type() in self.__data_controller.node_types() else 'error')
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.ItemSelectedHasChanged:
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
             if value and self.graphics_scene().get_inspected_item() == self:   # item was just selected, And is the first selected
                 self.__data_controller.request_node_ui(self.get_id())
-        elif change == QGraphicsItem.ItemPositionChange:
+        elif change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
             if self.__move_start_position is None:
                 self.__move_start_position = self.pos()
             for connection in self.all_connections():
@@ -278,7 +278,7 @@ class SceneNode(DecoratedNode):
         return super().itemChange(change, value)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-        if event.button() == Qt.LeftButton and self.__ui_interactor is None:
+        if event.button() == Qt.MouseButton.LeftButton and self.__ui_interactor is None:
             wgt = event.widget().parent()
             assert isinstance(wgt, GraphicsSceneViewingWidgetBase)
             pos = event.scenePos()
@@ -326,9 +326,9 @@ class SceneNode(DecoratedNode):
         self.__move_start_position = None
 
         # check for special picking: shift+move should move all upper connected nodes
-        if event.modifiers() & Qt.ShiftModifier or event.modifiers() & Qt.ControlModifier:
-            selecting_inputs = event.modifiers() & Qt.ShiftModifier
-            selecting_outputs = event.modifiers() & Qt.ControlModifier
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier or event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            selecting_inputs = event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+            selecting_outputs = event.modifiers() & Qt.KeyboardModifier.ControlModifier
             extra_selected_nodes = set()
             if selecting_inputs:
                 extra_selected_nodes.update(self.input_nodes())
@@ -351,7 +351,7 @@ class SceneNode(DecoratedNode):
                 self.__move_start_selection.add(item)
                 item.__move_start_position = None
 
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             # context menu time
             view = event.widget().parent()
             assert isinstance(view, GraphicsSceneViewingWidgetBase)

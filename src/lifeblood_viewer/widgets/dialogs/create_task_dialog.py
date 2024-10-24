@@ -1,6 +1,6 @@
 import shlex
-from PySide2.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QSpinBox, QPushButton
-from PySide2.QtCore import Slot, QSize
+from PySide6.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QSpinBox, QPushButton
+from PySide6.QtCore import Slot, QSize
 
 from typing import TYPE_CHECKING, Optional, Tuple, List
 if TYPE_CHECKING:
@@ -236,7 +236,7 @@ class CreateTaskDialog(QDialog):
 
 def test():
     import sys
-    from PySide2.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     app = QApplication(sys.argv)
 
     wgt = CreateTaskDialog()
