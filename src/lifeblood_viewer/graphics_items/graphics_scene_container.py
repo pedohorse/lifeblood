@@ -18,6 +18,13 @@ class GraphicsSceneWithNodesAndTasks(GraphicsSceneBase):
         # settings:
         self.__node_snapping_enabled = True
 
+    def session_node_id_to_id(self, session_id: int) -> Optional[int]:
+        node_id = super().session_node_id_to_id(session_id)
+        if node_id is not None and self.get_node(node_id) is None:
+            self._remove_session_id(session_id)
+            node_id = None
+        return node_id
+
     def get_task(self, task_id) -> Optional[Task]:
         return self.__task_dict.get(task_id, None)
 
