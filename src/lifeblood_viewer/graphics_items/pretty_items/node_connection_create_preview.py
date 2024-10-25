@@ -1,6 +1,6 @@
-from ..graphics_items import Node
 from ..utils import length2
-from ..node_connection_snap_point import NodeConnSnapPoint
+from .drawable_node import DrawableNode
+from .node_connection_snap_point import NodeConnSnapPoint
 
 from PySide2.QtCore import Qt, QPointF, QRectF
 from PySide2.QtGui import QColor, QPainter, QPainterPath, QPen
@@ -10,7 +10,7 @@ from typing import Callable, List, Optional
 
 
 class NodeConnectionCreatePreview(QGraphicsItem):
-    def __init__(self, nodeout: Optional[Node], nodein: Optional[Node], outname: str, inname: str, snap_points: List[NodeConnSnapPoint], snap_radius: float, report_done_here: Callable, do_cutting: bool = False):
+    def __init__(self, nodeout: Optional[DrawableNode], nodein: Optional[DrawableNode], outname: str, inname: str, snap_points: List[NodeConnSnapPoint], snap_radius: float, report_done_here: Callable, do_cutting: bool = False):
         super().__init__()
         assert nodeout is None and nodein is not None or \
                nodeout is not None and nodein is None

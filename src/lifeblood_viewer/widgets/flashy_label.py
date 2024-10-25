@@ -1,5 +1,5 @@
 from PySide2.QtWidgets import QLabel
-from PySide2.QtGui import QPalette, QColor, QFont, QFontMetrics
+from PySide2.QtGui import QFont, QFontMetrics
 from PySide2.QtCore import QTimer, Qt
 
 from typing import Tuple

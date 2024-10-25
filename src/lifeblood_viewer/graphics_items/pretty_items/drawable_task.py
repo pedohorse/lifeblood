@@ -6,7 +6,6 @@ from .task_animation import TaskAnimation
 from ..graphics_items import Node, Task
 from ..graphics_scene_container import GraphicsSceneWithNodesAndTasks
 
-
 from PySide2.QtCore import QAbstractAnimation, Slot, QPointF, QRectF, QSizeF, QSequentialAnimationGroup
 from PySide2.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget

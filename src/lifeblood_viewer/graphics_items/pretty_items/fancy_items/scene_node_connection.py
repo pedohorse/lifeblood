@@ -1,10 +1,11 @@
 from math import sqrt
 from lifeblood import logging
-from ...graphics_items import Node, NodeConnection
+from ...graphics_items import NodeConnection
 from ...utils import call_later, length2
 from ..node_connection_create_preview import NodeConnectionCreatePreview
+from ..node_connection_snap_point import NodeConnSnapPoint
+from ..drawable_node_with_snap_points import DrawableNodeWithSnapPoints
 from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
-from ...node_connection_snap_point import NodeConnSnapPoint
 
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
@@ -13,14 +14,13 @@ from PySide2.QtCore import Qt, Slot, QPointF, QRectF
 from PySide2.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
 from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
 
-from typing import  Optional
-
+from typing import Optional, Tuple
 
 logger = logging.get_logger('viewer')
 
 
 class SceneNodeConnection(NodeConnection):
-    def __init__(self, scene: GraphicsSceneWithNodesAndTasks, id: int, nodeout: Node, nodein: Node, outname: str, inname: str, data_controller: SceneDataController):
+    def __init__(self, scene: GraphicsSceneWithNodesAndTasks, id: int, nodeout: DrawableNodeWithSnapPoints, nodein: DrawableNodeWithSnapPoints, outname: str, inname: str, data_controller: SceneDataController):
         super().__init__(scene, id, nodeout, nodein, outname, inname)
         self.__scene_container = scene
         self.__data_controller: SceneDataController = data_controller
@@ -56,6 +56,16 @@ class SceneNodeConnection(NodeConnection):
 
         # to ensure correct interaction
         self.__ui_widget: Optional[GraphicsSceneViewingWidgetBase] = None
+
+    def output(self) -> Tuple[DrawableNodeWithSnapPoints, str]:
+        node, name = super().output()
+        assert isinstance(node, DrawableNodeWithSnapPoints)
+        return node, name
+
+    def input(self) -> Tuple[DrawableNodeWithSnapPoints, str]:
+        node, name = super().input()
+        assert isinstance(node, DrawableNodeWithSnapPoints)
+        return node, name
 
     def distance_to_point(self, pos: QPointF):
         """
@@ -202,9 +212,9 @@ class SceneNodeConnection(NodeConnection):
 
             output_picked = d02 < d12
             if output_picked:
-                snap_points = [y for x in self.__scene_container.nodes() if x != innode for y in x.output_snap_points()]
+                snap_points = [y for x in self.__scene_container.nodes() if x != innode and isinstance(x, DrawableNodeWithSnapPoints) for y in x.output_snap_points()]
             else:
-                snap_points = [y for x in self.__scene_container.nodes() if x != outnode for y in x.input_snap_points()]
+                snap_points = [y for x in self.__scene_container.nodes() if x != outnode and isinstance(x, DrawableNodeWithSnapPoints) for y in x.input_snap_points()]
             self.__ui_interactor = NodeConnectionCreatePreview(None if output_picked else outnode,
                                                                innode if output_picked else None,
                                                                outname, inname,

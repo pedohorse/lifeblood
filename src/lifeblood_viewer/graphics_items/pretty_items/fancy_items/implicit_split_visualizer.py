@@ -1,5 +1,5 @@
 from PySide2.QtWidgets import QWidget, QStyleOptionGraphicsItem
-from PySide2.QtCore import Qt, Slot, QRectF, QPointF
+from PySide2.QtCore import Qt, QRectF, QPointF
 from PySide2.QtGui import QPainterPath, QPainter, QBrush, QPen, QColor
 from typing import Optional
 

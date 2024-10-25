@@ -1,12 +1,12 @@
 from .node_decorator_base import NodeDecorator, NodeDecoratorFactoryBase
-from .drawable_node import DrawableNode
+from .drawable_node_with_snap_points import DrawableNodeWithSnapPoints
 
 from ..graphics_scene_base import GraphicsSceneBase
 
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List
 
 
-class DecoratedNode(DrawableNode):
+class DecoratedNode(DrawableNodeWithSnapPoints):
     def __init__(self, scene: GraphicsSceneBase, id: int, type: str, name: str, node_decorator_factories: Iterable[NodeDecoratorFactoryBase] = ()):
         super().__init__(scene, id, type, name)
 

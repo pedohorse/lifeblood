@@ -3,7 +3,7 @@ from .ui_elements_base import ImguiWindow, ImguiPopup
 from .nodeeditor import NodeEditor
 from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 
-from typing import Optional, Tuple
+from typing import Tuple
 
 
 class ImguiViewWindow(ImguiWindow):

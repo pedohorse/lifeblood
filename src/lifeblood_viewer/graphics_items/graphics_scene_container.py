@@ -1,9 +1,10 @@
 from lifeblood import logging
 from .graphics_scene_base import GraphicsSceneBase
 from .graphics_items import Node, Task, NodeConnection
+from PySide2.QtCore import QPointF
 
 from types import MappingProxyType
-from typing import Dict, Tuple, Mapping, Optional
+from typing import Dict, Tuple, Mapping, Optional, Sequence
 
 logger = logging.get_logger('viewer')
 
@@ -86,6 +87,15 @@ class GraphicsSceneWithNodesAndTasks(GraphicsSceneBase):
         self.__task_dict = {}
         self.__node_dict = {}
         logger.debug('scene cleared')
+
+    #
+
+    def move_nodes(self, nodes_datas: Sequence[Tuple[Node, QPointF]]):
+        """
+        move nodes
+        """
+        for node, pos in nodes_datas:
+            node.setPos(pos)
 
     # settings  # TODO: move to a dedicated settings provider
 
