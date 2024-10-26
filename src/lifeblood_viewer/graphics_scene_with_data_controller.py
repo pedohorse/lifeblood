@@ -374,9 +374,14 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         on top of actual moving -
         scene needs to create an undo entry for that
         """
-        op = MoveNodesOp(self,
-                         ((node, new_pos, node.pos()) for node, new_pos in nodes_datas)
-                         )
+        eps = 1e-4
+        op_data = [(node, new_pos, node.pos()) for node, new_pos in nodes_datas if (new_pos - node.pos()).manhattanLength() >= eps]
+        if len(op_data) == 0:
+            return
+        op = MoveNodesOp(
+            self,
+            op_data
+        )
         op.do()
 
     def node_position(self, node_id: int):
