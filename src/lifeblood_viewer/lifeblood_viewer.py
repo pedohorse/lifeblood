@@ -157,7 +157,10 @@ class GroupsView(QTreeView):
             menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.ARCHIVED))
         menu.popup(event.globalPos())
 
-    def setModel(self, model):
+    def set_current_index_from_main_model(self, index: QModelIndex):
+        self.setCurrentIndex(self.__sorting_model.mapFromSource(index))
+
+    def set_main_model(self, model: QAbstractItemModel):
         if self.model():
             self.model().modelAboutToBeReset.disconnect(self._pre_model_reset)
             self.model().modelReset.disconnect(self._post_model_reset)
@@ -165,7 +168,7 @@ class GroupsView(QTreeView):
         self.__sorting_model.setSortRole(GroupsModel.SortRole)
         self.__sorting_model.setDynamicSortFilter(True)
         self.sortByColumn(1, Qt.DescendingOrder)
-        super(GroupsView, self).setModel(self.__sorting_model)
+        self.setModel(self.__sorting_model)
         model.modelAboutToBeReset.connect(self._pre_model_reset)
         model.modelReset.connect(self._post_model_reset)
 
@@ -296,7 +299,7 @@ class LifebloodViewer(QMainWindow):
         act.toggled.connect(self.__node_editor.set_archived_groups_shown)
 
         self.__model_main = GroupsModel(self)
-        self.__group_list.setModel(self.__model_main)
+        self.__group_list.set_main_model(self.__model_main)
         self.__group_list.header().setStretchLastSection(True)
 
         self.__worker_list = WorkerListWidget(self.__ui_connection_worker, self)
@@ -370,7 +373,7 @@ class LifebloodViewer(QMainWindow):
         do_select = self.__model_main.rowCount() == 0
         self.__model_main.update_groups(groups)
         if do_select and self.__model_main.rowCount() > 0:
-            self.__group_list.setCurrentIndex(self.__model_main.index(0, 0))
+            self.__group_list.set_current_index_from_main_model(self.__model_main.index(0, 0))
 
     def setSceneRect(self, *args, **kwargs):
         return self.__node_editor.setSceneRect(*args, **kwargs)

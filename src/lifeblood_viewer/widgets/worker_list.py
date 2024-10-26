@@ -1,18 +1,18 @@
 from datetime import datetime
 from dataclasses import dataclass
-from lifeblood.ui_protocol_data import UiData, WorkerData, WorkerBatchData, WorkerResources, WorkerMetadata
+from lifeblood.ui_protocol_data import WorkerData, WorkerBatchData, WorkerResources, WorkerMetadata
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
-from lifeblood.misc import timeit, performance_measurer
+from lifeblood.misc import performance_measurer
 from lifeblood_viewer.connection_worker import SchedulerConnectionWorker
 from lifeblood_viewer.models.multiple_sort_model import MultipleFilterSortProxyModel
 
-from PySide2.QtWidgets import QWidget, QTableView, QTreeView, QHBoxLayout, QVBoxLayout, QHeaderView, QMenu, QLineEdit
-from PySide2.QtCore import Slot, Signal, Qt, QAbstractItemModel, QAbstractTableModel, QModelIndex, QSortFilterProxyModel, QAbstractProxyModel, QPoint, QObject
+from PySide2.QtWidgets import QWidget, QTreeView, QHBoxLayout, QVBoxLayout, QMenu, QLineEdit
+from PySide2.QtCore import Slot, Signal, Qt, QAbstractItemModel, QModelIndex, QPoint
 from PySide2.QtGui import QColor
 
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 
 _init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.hostname', 'last_address', 'last_seen', '__resources__', 'devices', 'groups', 'worker_type')

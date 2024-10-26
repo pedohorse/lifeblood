@@ -94,11 +94,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     task_invocation_job_fetched = Signal(int, InvocationJob)
     unhandled_error_happened = Signal(str)
 
-    #
-    operation_started = Signal(int)  # operation id
-    operation_progress_updated = Signal(int, str, float)  # operation id, name, progress 0.0 - 1.0
-    operation_finished = Signal(int)  # operation id
-
     def __init__(self, scene_item_factory: SceneItemFactoryBase, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiSceneWithDataController, self).__init__(parent=parent)
         # to debug fuching bsp # self.setItemIndexMethod(QGraphicsScene.NoIndex)
@@ -374,14 +369,13 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
 
     #
 
-    def _nodes_were_moved(self, nodes_datas: Sequence[Tuple[Node, QPointF]]):
+    def move_nodes(self, nodes_datas: Sequence[Tuple[Node, QPointF]]):
         """
-        item needs to notify the scene that move operation has happened,
+        on top of actual moving -
         scene needs to create an undo entry for that
         """
-
         op = MoveNodesOp(self,
-                         ((node, node.pos(), old_pos) for node, old_pos in nodes_datas)
+                         ((node, new_pos, node.pos()) for node, new_pos in nodes_datas)
                          )
         op.do()
 
@@ -515,11 +509,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     #
 
     def fetch_log_run_callback(self, invocation_id, callback: Callable[[InvocationLogData, Any], None], callback_data: Any = None):
-        """
-        fetch log for given invocation and run callback
-
-        callback is run only in case of success
-        """
         def _fetch_open_log_longop(longop: LongOperation):
             longop.set_op_status(None, f"fetching log for {invocation_id}")
             self.request_log(invocation_id, LongOperationData(longop))
@@ -655,7 +644,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         """
 
         :param events:
-        :param first_time_getting_events: True if it's a first event batch since filter change
         :return:
         """
         for event in events:
@@ -733,7 +721,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         unlike tasks_full_update - this ONLY applies updates, does not delete anything
 
         :param tasks_data:
-        :param existing_tasks:  optional already computed dict of existing tasks. if none - it will be computed
         :return:
         """
 
@@ -1025,7 +1012,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         node_id = self.session_node_id_to_id(node_session_id)
         if node_id is None:
             return None
-        return self.get_node(node_id, None)
+        return self.get_node(node_id)
 
     def find_nodes_by_name(self, name: str, match_partly=False) -> Set[Node]:
         if match_partly:

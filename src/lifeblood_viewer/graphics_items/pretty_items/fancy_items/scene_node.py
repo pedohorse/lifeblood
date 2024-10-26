@@ -6,9 +6,10 @@ from lifeblood.uidata import CollapsableVerticalGroup, OneLineParametersLayout, 
 from lifeblood_viewer.graphics_items import Node
 from ...utils import call_later
 from ..decorated_node import DecoratedNode
+from ..drawable_node_with_snap_points import DrawableNodeWithSnapPoints
 from ..node_connection_create_preview import NodeConnectionCreatePreview
+from ..node_connection_snap_point import NodeConnSnapPoint
 from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
-from ...node_connection_snap_point import NodeConnSnapPoint
 
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.code_editor.editor import StringParameterEditor
@@ -292,7 +293,7 @@ class SceneNode(DecoratedNode):
             for input in self.input_names():
                 inpos = self.get_input_position(input)
                 if QPointF.dotProduct(inpos - pos, inpos - pos) <= r2 and wgt.request_ui_focus(self):
-                    snap_points = [y for x in self.__scene_container.nodes() if x != self for y in x.output_snap_points()]
+                    snap_points = [y for x in self.__scene_container.nodes() if x != self and isinstance(x, DrawableNodeWithSnapPoints) for y in x.output_snap_points()]
                     displayer = NodeConnectionCreatePreview(None, self, '', input, snap_points, 15, self._ui_interactor_finished)
                     self.scene().addItem(displayer)
                     self.__ui_interactor = displayer
@@ -305,7 +306,7 @@ class SceneNode(DecoratedNode):
             for output in self.output_names():
                 outpos = self.get_output_position(output)
                 if QPointF.dotProduct(outpos - pos, outpos - pos) <= r2 and wgt.request_ui_focus(self):
-                    snap_points = [y for x in self.__scene_container.nodes() if x != self for y in x.input_snap_points()]
+                    snap_points = [y for x in self.__scene_container.nodes() if x != self and isinstance(x, DrawableNodeWithSnapPoints) for y in x.input_snap_points()]
                     displayer = NodeConnectionCreatePreview(self, None, output, '', snap_points, 15, self._ui_interactor_finished)
                     self.scene().addItem(displayer)
                     self.__ui_interactor = displayer
@@ -370,14 +371,21 @@ class SceneNode(DecoratedNode):
         #     return
         super().mouseReleaseEvent(event)
         if self.__move_start_position is not None:
-            if self.__scene_container.node_snapping_enabled():
-                for node in self.__move_start_selection:
-                    pos = node.pos()
+            # calc final pos if snapping is involved,
+            # then reset nodes to orig position and call scene's move_nodes so that proper op is generated
+            nodes_final_positions = []
+            for node in self.__move_start_selection:
+                pos = node.pos()
+                if self.__scene_container.node_snapping_enabled():
                     snapx = node.base_width / 4
                     snapy = node.base_height / 4
-                    node.setPos(round(pos.x() / snapx) * snapx,
-                                round(pos.y() / snapy) * snapy)
-            self.scene()._nodes_were_moved([(node, node.__move_start_position) for node in self.__move_start_selection])
+                    pos = QPointF(round(pos.x() / snapx) * snapx,
+                                  round(pos.y() / snapy) * snapy)
+                nodes_final_positions.append((node, pos))
+                node.setPos(node.__move_start_position)
+
+            self.__scene_container.move_nodes(nodes_final_positions)
+            #self.scene()._nodes_were_moved([(node, node.__move_start_position) for node in self.__move_start_selection])
             for node in self.__move_start_selection:
                 node.__move_start_position = None
 

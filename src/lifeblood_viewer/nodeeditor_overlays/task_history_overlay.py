@@ -1,15 +1,12 @@
 from datetime import timedelta
 from lifeblood.logging import get_logger
-from lifeblood.ui_protocol_data import InvocationLogData
-from lifeblood_viewer.code_editor.editor import StringParameterEditor
-from lifeblood_viewer.long_op import LongOperation, LongOperationData
 from lifeblood_viewer.graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from lifeblood_viewer.graphics_items import Task
 from lifeblood.enums import InvocationState
 
-from PySide2.QtCore import Qt, Slot, Signal, QRectF, QPointF
-from PySide2.QtWidgets import QWidget, QGraphicsView
-from PySide2.QtGui import QPainter, QPainterPath, QPen, QColor, QMouseEvent
+from PySide2.QtCore import Qt, QRectF, QPointF
+from PySide2.QtWidgets import QGraphicsView
+from PySide2.QtGui import QPainter, QPainterPath, QPen, QColor
 import imgui
 
 from ..editor_scene_integration import fetch_and_open_log_viewer

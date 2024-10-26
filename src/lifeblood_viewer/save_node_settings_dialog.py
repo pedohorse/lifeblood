@@ -1,5 +1,4 @@
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QHBoxLayout, QPushButton, QLineEdit
-from PySide2.QtCore import Slot, QSize
 
 from typing import Iterable
 

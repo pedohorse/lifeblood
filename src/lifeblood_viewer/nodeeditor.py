@@ -28,7 +28,7 @@ from lifeblood.environment_resolver import EnvironmentResolverArguments
 
 import PySide2.QtCore
 import PySide2.QtGui
-from PySide2.QtWidgets import *
+from PySide2.QtWidgets import QApplication, QDialog, QGraphicsView, QInputDialog, QLineEdit, QMenu, QMessageBox, QOpenGLWidget, QShortcut, QTextEdit, QVBoxLayout
 from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
 from PySide2.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard
 

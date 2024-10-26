@@ -3,7 +3,7 @@ from lifeblood.config import get_config
 from .graphics_items.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 from .undo_stack import UndoStack, UndoableOperation
-from PySide2.QtCore import Slot
+from PySide2.QtCore import Signal, Slot
 
 from typing import Callable, Dict, Generator, List, Optional, Tuple
 
@@ -11,6 +11,10 @@ logger = logging.get_logger('viewer')
 
 
 class GraphicsScene(GraphicsSceneWithNodesAndTasks, LongOperationProcessor):
+    operation_started = Signal(int)  # operation id
+    operation_progress_updated = Signal(int, str, float)  # operation id, name, progress 0.0 - 1.0
+    operation_finished = Signal(int)  # operation id
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.__config = get_config('viewer')

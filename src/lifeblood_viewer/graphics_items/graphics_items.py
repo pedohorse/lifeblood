@@ -35,7 +35,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
 
     class PseudoNode(BaseNode):
         def __init__(self, my_node: "Node"):
-            super(Node.PseudoNode, self).__init__('_noname_')
+            super().__init__('_noname_')
             self.__my_node = my_node
 
         def _ui_changed(self, definition_changed=False):
@@ -108,10 +108,10 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
             raise RuntimeError(f'nodetype {self.__node_type} does not have output {outname}')
         return {x for x in self.__connections if x.output() == (self, outname)}
 
-    def input_names(self) -> Tuple[str]:
+    def input_names(self) -> Tuple[str, ...]:
         return tuple(self.__inputs) if self.__inputs else ()
 
-    def output_names(self) -> tuple[str]:
+    def output_names(self) -> Tuple[str, ...]:
         return tuple(self.__outputs) if self.__outputs else ()
 
     def input_nodes(self, inname: Optional[str] = None) -> Set["Node"]:

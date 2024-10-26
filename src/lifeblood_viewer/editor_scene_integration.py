@@ -1,22 +1,21 @@
 from PySide2.QtCore import Qt, QTimer
 from PySide2.QtWidgets import QWidget
 from .code_editor.editor import StringParameterEditor
+from .scene_data_controller import SceneDataController
 from lifeblood.enums import InvocationState
 from lifeblood.ui_protocol_data import InvocationLogData
 
-from typing import Optional, TYPE_CHECKING
-if TYPE_CHECKING:
-    from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
+from typing import Optional, Tuple
 
 
-def fetch_and_open_log_viewer(scene: "QGraphicsImguiSceneWithDataController", invoc_id: int, parent_widget: QWidget, *, update_interval: Optional[float] = None):
+def fetch_and_open_log_viewer(scene_data_controller: SceneDataController, invoc_id: int, parent_widget: QWidget, *, update_interval: Optional[float] = None):
     if update_interval is None:
-        scene.fetch_log_run_callback(invoc_id, _open_log_viewer, parent_widget)
+        scene_data_controller.fetch_log_run_callback(invoc_id, _open_log_viewer, parent_widget)
     else:
-        scene.fetch_log_run_callback(invoc_id, _open_log_viewer_with_update, (parent_widget, update_interval, invoc_id, scene))
+        scene_data_controller.fetch_log_run_callback(invoc_id, _open_log_viewer_with_update, (parent_widget, update_interval, invoc_id, scene_data_controller))
 
 
-def _open_log_viewer(log, parent):
+def _open_log_viewer(log:  InvocationLogData, parent: QWidget):
     hl = StringParameterEditor.SyntaxHighlight.LOG
     wgt = StringParameterEditor(syntax_highlight=hl, parent=parent)
     wgt.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -26,8 +25,8 @@ def _open_log_viewer(log, parent):
     wgt.show()
 
 
-def _open_log_viewer_with_update(log, callback_data):
-    parent, update_interval, invoc_id, scene = callback_data
+def _open_log_viewer_with_update(log, callback_data: Tuple[QWidget, float, int, SceneDataController]):
+    parent, update_interval, invoc_id, scene_data_controller = callback_data
 
     hl = StringParameterEditor.SyntaxHighlight.LOG
     wgt = StringParameterEditor(syntax_highlight=hl, parent=parent)
@@ -50,7 +49,7 @@ def _open_log_viewer_with_update(log, callback_data):
             update_timer.start()  # restart timer
 
     update_timer.timeout.connect(
-        lambda: scene.fetch_log_run_callback(
+        lambda: scene_data_controller.fetch_log_run_callback(
             invoc_id,
             _on_log_fetched
         )

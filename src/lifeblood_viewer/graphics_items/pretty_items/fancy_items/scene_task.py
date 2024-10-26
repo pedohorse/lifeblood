@@ -54,7 +54,7 @@ class SceneTask(DrawableTask):
     def refresh_ui(self):
         """
         unlike update - this method actually queries new task ui status
-        if task is not selected or not watched- does nothing
+        if task is not selected or not watched - does nothing
         :return:
         """
         if not self.isSelected() and len(self.item_watchers()) == 0:
@@ -184,7 +184,7 @@ class SceneTask(DrawableTask):
                 else:
                     if invoc_log.stdout:
                         if imgui.button(f'open in viewer##{invoc_id}'):
-                            fetch_and_open_log_viewer(self.scene(), invoc_id, drawing_widget, update_interval=None if invoc_log.invocation_state == InvocationState.FINISHED else 5)
+                            fetch_and_open_log_viewer(self.__data_controller, invoc_id, drawing_widget, update_interval=None if invoc_log.invocation_state == InvocationState.FINISHED else 5)
 
                         imgui.text_unformatted(invoc_log.stdout or '...nothing here...')
                     if invoc_log.invocation_state == InvocationState.IN_PROGRESS:

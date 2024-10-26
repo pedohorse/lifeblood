@@ -28,11 +28,11 @@ class GraphicsSceneBase(QGraphicsScene):
         the whole idea of session id is to have it consistent through undo-redos
         """
         node_id = self.__session_node_id_mapping.get(session_id)
-        if node_id is not None and self.get_node(node_id) is None:
-            self.__session_node_id_mapping.pop(session_id)
-            self.__session_node_id_mapping_rev.pop(node_id)
-            node_id = None
         return node_id
+
+    def _remove_session_id(self, session_id: int):
+        node_id = self.__session_node_id_mapping.pop(session_id)
+        self.__session_node_id_mapping_rev.pop(node_id)
 
     def __session_node_update_id(self, session_id: int, new_node_id: int):
         prev_node_id = self.__session_node_id_mapping.get(session_id)

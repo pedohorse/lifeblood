@@ -2,7 +2,6 @@ from lifeblood import logging
 from lifeblood.enums import TaskState
 from ..graphics_items import Node, Task
 from ..graphics_scene_base import GraphicsSceneBase
-from ..node_connection_snap_point import NodeConnSnapPoint
 from .drawable_task import DrawableTask
 
 
@@ -23,7 +22,7 @@ class DrawableNode(Node):
     def __init__(self, scene: GraphicsSceneBase, id: int, type: str, name: str):
         super().__init__(scene, id, type, name)
 
-        self.__visual_tasks: List[Task] = []
+        self.__visual_tasks: List[DrawableTask] = []
 
         # display
         self.__hoverover_pos: Optional[QPointF] = None
@@ -98,7 +97,7 @@ class DrawableNode(Node):
             self.__pivot_y = 0
             # self.setPos(self.pos() - QPointF(0, 225 * 0.5))  # TODO: modify painterpath getters to avoid moving nodes on expand
 
-        for i, task in enumerate(self.tasks()):
+        for i, task in enumerate(self.drawable_tasks()):
             self.__make_task_child_with_position(task, *self.get_task_pos(task, i), animate=True)
         self.item_updated()
 
@@ -138,27 +137,9 @@ class DrawableNode(Node):
             local
         )
 
-    def input_snap_points(self) -> List[NodeConnSnapPoint]:
-        # TODO: cache snap points, don't recalc them every time
-        if self.get_nodeui() is None:
-            return []
-        inputs = []
-        for input_name in self.get_nodeui().inputs_names():
-            inputs.append(NodeConnSnapPoint(self, input_name, True))
-        return inputs
-
-    def output_snap_points(self) -> List[NodeConnSnapPoint]:
-        # TODO: cache snap points, don't recalc them every time
-        if self.get_nodeui() is None:
-            return []
-        outputs = []
-        for output_name in self.get_nodeui().outputs_names():
-            outputs.append(NodeConnSnapPoint(self, output_name, False))
-        return outputs
-
     # move animation
 
-    def get_task_pos(self, task: "Task", pos_id: int) -> Tuple[QPointF, int]:
+    def get_task_pos(self, task: DrawableTask, pos_id: int) -> Tuple[QPointF, int]:
         rect = self._get_bodyshape().boundingRect()
         x, y = rect.topLeft().toTuple()
         w, h = rect.size().toTuple()
@@ -183,6 +164,12 @@ class DrawableNode(Node):
             task.append_task_move_animation(self, pos, layer)
         else:
             task.set_task_position(self, pos, layer)
+
+    def drawable_tasks(self) -> Iterable[DrawableTask]:
+        for task in self.tasks():
+            if not isinstance(task, DrawableTask):
+                continue
+            yield task
 
     def add_task(self, task: Task):
         if not isinstance(task, DrawableTask):
@@ -215,7 +202,7 @@ class DrawableNode(Node):
         tasks_to_remove = set(tasks_to_remove)
         super().remove_tasks(tasks_to_remove)
 
-        self.__visual_tasks: List["Task"] = [None if x in tasks_to_remove else x for x in self.__visual_tasks]
+        self.__visual_tasks = [None if x in tasks_to_remove else x for x in self.__visual_tasks]
         off = 0
         for i, task in enumerate(self.__visual_tasks):
             if task is None:
@@ -229,6 +216,7 @@ class DrawableNode(Node):
 
     def remove_task(self, task_to_remove: "Task"):
         super().remove_task(task_to_remove)
+        assert isinstance(task_to_remove, DrawableTask)  # TODO: see TODO in add_task
         task_pid = self.__visual_tasks.index(task_to_remove)
 
         for i in range(task_pid, len(self.__visual_tasks) - 1):

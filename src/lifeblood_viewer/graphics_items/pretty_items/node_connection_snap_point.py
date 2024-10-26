@@ -1,4 +1,4 @@
-from .graphics_items import Node
+from .drawable_node import DrawableNode
 from PySide2.QtCore import QPointF
 
 
@@ -8,13 +8,13 @@ class SnapPoint:
 
 
 class NodeConnSnapPoint(SnapPoint):
-    def __init__(self, node: Node, connection_name: str, connection_is_input: bool):
+    def __init__(self, node: DrawableNode, connection_name: str, connection_is_input: bool):
         super().__init__()
         self.__node = node
         self.__conn_name = connection_name
         self.__isinput = connection_is_input
 
-    def node(self) -> Node:
+    def node(self) -> DrawableNode:
         return self.__node
 
     def connection_name(self) -> str:

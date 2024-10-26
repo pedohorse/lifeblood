@@ -1,6 +1,6 @@
 from PySide2.QtCore import QAbstractItemModel, QObject, QSortFilterProxyModel
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List
 
 
 class MultipleFilterSortProxyModel(QSortFilterProxyModel):

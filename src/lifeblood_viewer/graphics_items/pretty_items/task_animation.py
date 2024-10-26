@@ -4,7 +4,7 @@ from PySide2.QtCore import QAbstractAnimation, QPointF
 
 
 class TaskAnimation(QAbstractAnimation):
-    def __init__(self, task: "Task", node1: "Node", pos1: "QPointF",  node2: "Node", pos2: "QPointF", duration: int, parent):
+    def __init__(self, task: Task, node1: Node, pos1: QPointF,  node2: Node, pos2: QPointF, duration: int, parent):
         super().__init__(parent)
         self.__task = task
 

@@ -2,7 +2,7 @@ import shlex
 from PySide2.QtWidgets import QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QSpinBox, QPushButton
 from PySide2.QtCore import Slot, QSize
 
-from typing import TYPE_CHECKING, Optional, Tuple, List, Set
+from typing import TYPE_CHECKING, Optional, Tuple, List
 if TYPE_CHECKING:
     from .graphics_items import Task
 
