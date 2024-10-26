@@ -10,17 +10,21 @@
 Lifeblood is a task/job management software package  
 currently it aims for smaller teams, farms or even individual setups, but with scaling  always in mind.
 
-In terms of CG industry it's a mini render farm manager, but actually it's more than that,  
+In terms of CG industry Lifeblood is a mini render farm manager, but actually it's more than that,  
 It is a universal task automation tool.  
 Rendering, simulating, caching - are all just tasks that can be automated.
 
-it consists of **scheduler**, **workers** and **viewers**
+watch the teaser (youtube)
+
+[<img src="https://img.youtube.com/vi/ZYDpVIwP4Og/maxresdefault.jpg" width="50%">](https://youtu.be/ZYDpVIwP4Og)
+
+Lifeblood consists of **scheduler**, **workers** and **viewers**
 
 a scheduler manages multiple workers, giving them tasks to complete.  
 GUI tool is used to check on the state of scheduler and tasks and modify task
 processing graph.
 
-This system overview should be very familiar to anyone who saw at least one renderfarm.
+This system overview should be very familiar to anyone who interacted with at least one renderfarm.
 
 check [documentation here](https://pedohorse.github.io/lifeblood)  
 and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
@@ -30,15 +34,15 @@ and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
 ### Features:
 - instantly and easily deployable
 - easy scaling in mind
-- dynamic slots, worker resources management
+- dynamic worker resources management:
+  - multiple tasks may run on the same machine as long as it has free resources to run them
+  - dynamic GPU management: different tasks may run on different GPUs of the same machine
+  - arbitrary resources: want to define your own resources? it's easy!
 - support for environment wrappers (allow you to integrate with existing packaging systems like rez)
 
 ### Features To Be Done:
-- arbitrary resource requirements
 - arbitrary token counting (for license management for example)
-- worker capabilities (automatic versioned worker "groups")
-- rez environment resolver
-- cgroups environment resolver
+- rez environment resolver implementation
   
 ### Even Further Future Features
 - easy cloud deployment
