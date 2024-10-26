@@ -2,6 +2,7 @@ import struct
 import pickle
 import json
 import asyncio
+import time
 from asyncio.exceptions import IncompleteReadError
 from . import logging
 from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
@@ -326,55 +327,65 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             return_values: Dict[str, Tuple[bool, Optional[Tuple[NodeParameterType, Union[float, int, bool, str]]]]] = {}  # list of param_names to [set success?, final value]
             async with self.__scheduler.node_object_by_id_for_writing(node_id) as node:
                 node: BaseNode
-                cycle_start = None
-                something_was_set_last_loop = False
-                for param_name, param_type, value_is_expression, param_value in stuff_to_set:
-                    try:
-                        await asyncio.get_event_loop().run_in_executor(None, node.param, param_name)
-                    except ParameterNotFound:
-                        # some parameters may only be present after other parameters are set.
-                        #  for example - multigroup element will appear only after count is set
-                        #  so we postpone setting missing parameters
-                        #  and only consider it a failure if no more parameters can be found at all
-                        if cycle_start is None or cycle_start == param_name and something_was_set_last_loop:
-                            cycle_start = param_name
-                            something_was_set_last_loop = False
-                            stuff_to_set.append((param_name, param_type, value_is_expression, param_value))  # put back
-                        else:  # means we already checked all parameters since last successful set and set nothing new
-                            self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" - parameter not found')
-                            return_values[param_name] = (False, None)
-                        continue
-                    try:
-                        def _set_helper(node: "BaseNode", param_name: str, value_is_expression: bool, value: Union[float, int, bool, str]):
-                            param = node.param(param_name)
-                            if value_is_expression:
-                                param.set_expression(param_value)
-                            else:
-                                if param.has_expression():
-                                    param.set_expression(None)
-                                param.set_value(value)
 
-                        await asyncio.get_event_loop().run_in_executor(None, _set_helper, node, param_name, value_is_expression, param_value)
-                        something_was_set_last_loop = True
-                        value = node.param(param_name).unexpanded_value()
-                    except ParameterReadonly:
-                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
-                        return_values[param_name] = (False, None)
-                    except ParameterLocked:
-                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is LOCKED')
-                        return_values[param_name] = (False, None)
-                    except ParameterCannotHaveExpressions:
-                        self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" expression. parameter cannot have expressions')
-                        return_values[param_name] = (False, None)
-                    except Exception as e:
-                        err_val_prev = str(param_value)
-                        if len(err_val_prev) > 23:
-                            err_val_prev = err_val_prev[:20] + '...'
-                        self.__logger.warning(f'FAILED request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}) to {err_val_prev}')
-                        self.__logger.exception(e)
-                        return_values[param_name] = (False, None)
-                    else:  # all went well, parameter was set
-                        return_values[param_name] = (True, (param_type, value))
+                def _set_batch_helper(
+                        node: "BaseNode",
+                        stuff_to_set: List[Tuple[str, NodeParameterType, bool, Union[float, int, bool, str]]],
+                        return_values: Dict[str, Tuple[bool, Optional[Tuple[NodeParameterType, Union[float, int, bool, str]]]]],
+                ):
+                    cycle_start = None
+                    something_was_set_last_loop = False
+                    cycle_failed = False
+                    with node.get_ui().postpone_ui_callbacks():
+                        for param_name, param_type, value_is_expression, param_value in stuff_to_set:
+                            try:
+                                param = node.param(param_name)
+                                if value_is_expression:
+                                    param.set_expression(param_value)
+                                else:
+                                    if param.has_expression():
+                                        param.set_expression(None)
+                                    param.set_value(param_value)
+
+                                something_was_set_last_loop = True
+                                value = node.param(param_name).unexpanded_value()
+                            except ParameterNotFound:
+                                # some parameters may only be present after other parameters are set.
+                                #  for example - multigroup element will appear only after count is set,
+                                #  so we postpone setting missing parameters
+                                #  and only consider it a failure if no more parameters can be found at all
+                                if not cycle_failed and cycle_start == param_name and not something_was_set_last_loop:
+                                    cycle_failed = True
+                                elif cycle_start is None or cycle_start == param_name and something_was_set_last_loop:
+                                    cycle_start = param_name
+                                    something_was_set_last_loop = False
+
+                                if not cycle_failed:
+                                    stuff_to_set.append((param_name, param_type, value_is_expression, param_value))  # put back
+                                else:  # means we already checked all parameters since last successful set and set nothing new
+                                    self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" - parameter not found')
+                                    return_values[param_name] = (False, None)
+                                continue
+                            except ParameterReadonly:
+                                self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is READ ONLY')
+                                return_values[param_name] = (False, None)
+                            except ParameterLocked:
+                                self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}). parameter is LOCKED')
+                                return_values[param_name] = (False, None)
+                            except ParameterCannotHaveExpressions:
+                                self.__logger.warning(f'failed request to set node {node_id} parameter "{param_name}" expression. parameter cannot have expressions')
+                                return_values[param_name] = (False, None)
+                            except Exception as e:
+                                err_val_prev = str(param_value)
+                                if len(err_val_prev) > 23:
+                                    err_val_prev = err_val_prev[:20] + '...'
+                                self.__logger.warning(f'FAILED request to set node {node_id} parameter "{param_name}"({NodeParameterType(param_type).name}) to {err_val_prev}')
+                                self.__logger.exception(e)
+                                return_values[param_name] = (False, None)
+                            else:  # all went well, parameter was set
+                                return_values[param_name] = (True, (param_type, value))
+
+            await asyncio.get_event_loop().run_in_executor(None, _set_batch_helper, node, stuff_to_set, return_values)
 
             if not want_result:
                 writer.write(b'\1')
@@ -695,11 +706,16 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                 except IncompleteReadError:  # this means connection was closed
                     self.__logger.debug('UI disconnected: connection closed')
                     break
-                self.__logger.debug(f'got command {command}')
+                self.__logger.debug(f'got command %s', command)
                 # get full nodegraph state. only brings in where is which item, no other details
 
                 if command in commands:
-                    await commands[command]()
+                    if self.__logger.isEnabledFor(logging.DEBUG):
+                        benchmark_start = time.perf_counter()
+                        await commands[command]()
+                        self.__logger.debug('command %s took %.4f', command, time.perf_counter() - benchmark_start)
+                    else:
+                        await commands[command]()
                 #
                 # if conn is closed - result will be b'', but in mostl likely totally impossible case it can be unfinished command.
                 # so lets just catch all
