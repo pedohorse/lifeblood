@@ -19,7 +19,7 @@ from ..worker_resource_definition import WorkerResourceDefinition, WorkerResourc
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
-    from .scheduler import Scheduler
+    from .scheduler_core import SchedulerCore
 
 
 class QueueEventType(Enum):
@@ -38,7 +38,7 @@ class LogSubscription:
 
 
 class UIStateAccessor(SchedulerComponentBase):
-    def __init__(self, scheduler: "Scheduler"):
+    def __init__(self, scheduler: "SchedulerCore"):
         super().__init__(scheduler)
         self.__logger = get_logger('scheduler.ui_state_accessor')
         self.__data_access = scheduler.data_access

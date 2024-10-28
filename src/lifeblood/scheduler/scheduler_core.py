@@ -18,7 +18,7 @@ from ..hardware_resources import HardwareResources
 from ..invocationjob import Invocation, InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
-from ..simple_worker_pool import WorkerPool
+from ..simple_worker_pool import SimpleWorkerPool
 from ..nethelpers import get_broadcast_addr_for, all_interfaces
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
@@ -472,7 +472,7 @@ class SchedulerCore(NodeGraphHolderBase):
         self.__message_processor = self.__message_processor_factory(self, self.__message_processor_addresses)
         await self.__message_processor.start()
         worker_pool_message_proxy_address = (self.__message_processor_addresses[0].split(':', 1)[0], None)  # use same ip as scheduler's message processor, but default port
-        self.__worker_pool = WorkerPool(WorkerType.SCHEDULER_HELPER,
+        self.__worker_pool = SimpleWorkerPool(WorkerType.SCHEDULER_HELPER,
                                         minimal_idle_to_ensure=self.__worker_pool_helpers_minimal_idle_to_ensure,
                                         scheduler_address=self.server_message_address(DirectAddress(worker_pool_message_proxy_address[0])),
                                         message_proxy_address=worker_pool_message_proxy_address,

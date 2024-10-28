@@ -1,13 +1,13 @@
 import struct
 import pickle
-import json
 import asyncio
 import time
 from asyncio.exceptions import IncompleteReadError
 from . import logging
 from .attribute_serialization import serialize_attributes_core, deserialize_attributes_core
-from .uidata import NodeUi, Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
-from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, UiData, InvocationLogData, IncompleteInvocationLogData
+from .node_ui import NodeUi
+from .node_parameters import Parameter, ParameterLocked, ParameterReadonly, ParameterNotFound, ParameterCannotHaveExpressions
+from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, InvocationLogData, IncompleteInvocationLogData
 from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
 from .exceptions import NotSubscribedError, DataIntegrityError, UiClientOperationFailed
@@ -17,11 +17,11 @@ from .taskspawn import NewTask
 from .snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from .environment_resolver import EnvironmentResolverArguments
 from .buffered_connection import BufferedConnection
+from .basenode import BaseNode
+from .scheduler.scheduler_core import SchedulerCore
 
-from typing import Any, Dict, Iterable, TYPE_CHECKING, Optional, Tuple, List, Union
-if TYPE_CHECKING:
-    from .basenode import BaseNode
-    from .scheduler import Scheduler
+from typing import Any, Dict, Iterable, Optional, Tuple, List, Union
+
 
 
 def _serialize_attrib_dict(d: dict) -> bytes:
@@ -33,9 +33,9 @@ def _deserialize_attrib_dict(data: bytes) -> dict:
 
 
 class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
-    def __init__(self, scheduler):
+    def __init__(self, scheduler: SchedulerCore):
         self.__logger = logging.get_logger('scheduler.uiprotocol')
-        self.__scheduler: "Scheduler" = scheduler
+        self.__scheduler: SchedulerCore = scheduler
         self.__reader = asyncio.StreamReader()
         self.__timeout = 60.0
         self.__saved_references = []
