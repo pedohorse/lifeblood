@@ -97,7 +97,7 @@ class PseudoTask:
         self.__task_dict['node_input_name'] = self.__input_name
 
     def get_context_for(self, node: BaseNode) -> ProcessingContext:
-        return ProcessingContext(node, self.task_dict(), {})
+        return ProcessingContext(node.name(), node.label(), node.get_ui(), self.task_dict(), {})
 
     def task_dict(self) -> dict:
         return {**self.__task_dict, **{
@@ -233,8 +233,10 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
             workers = []
             for i in range(worker_count):
-                worker = Worker(sched.server_message_addresses()[0],
-                                scheduler_ping_interval=9001)
+                worker = Worker(
+                    sched.server_message_addresses()[0],
+                    scheduler_ping_interval=9001,
+                )
                 await worker.start()
                 workers.append(worker)
 
@@ -336,7 +338,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                             'outimage': out_exr_path,
                             'frames': [1, 2, 3]
                         }
-                        res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(start_attrs)}, {}))
+                        res = node.process_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core(start_attrs)}, {}))
 
                         ij = res.invocation_job
                         self.assertTrue(ij is not None)
@@ -367,7 +369,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         await asyncio.wait([done_waiter], timeout=30)
 
                         # now postprocess task
-                        res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
+                        res = node.postprocess_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core({
                             **start_attrs,
                             **updated_attrs
                         })}, {}))
@@ -440,7 +442,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     for param, val in params.items():
                         node.set_param_value(param, val)
 
-                res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(task_attrs)}, {}))
+                res = node.process_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core(task_attrs)}, {}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
@@ -477,7 +479,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 await asyncio.wait([done_waiter], timeout=30)
 
                 # now postprocess task
-                res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
+                res = node.postprocess_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core({
                     **task_attrs,
                     **updated_attrs
                 })}, {}))

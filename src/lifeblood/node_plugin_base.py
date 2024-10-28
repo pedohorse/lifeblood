@@ -10,7 +10,7 @@ from .processingcontext import ProcessingContext
 from .invocationjob import ResourceRequirement, ResourceRequirements
 from .nodethings import ProcessingResult, ProcessingError  # unused import - for easy reexport to plugins
 from .worker_resource_definition import WorkerResourceDefinition, WorkerResourceDataType, WorkerDeviceTypeDefinition
-from .uidata import NodeUi
+from .node_ui import NodeUi
 from .scheduler.scheduler import Scheduler
 
 from typing import Dict, Optional, Tuple, Union
@@ -142,7 +142,7 @@ class BaseNodeWithTaskRequirements(BaseNode):
 
     def __apply_requirements(self, task_dict: dict, node_config: dict, result: ProcessingResult):
         if result.invocation_job is not None:
-            context = ProcessingContext(self, task_dict, node_config)
+            context = ProcessingContext(self.name(), self.label(), self.get_ui(), task_dict, node_config)
             raw_groups = context.param_value('__requirements__.worker_groups').strip()
             reqs = result.invocation_job.requirements()
             if raw_groups != '':

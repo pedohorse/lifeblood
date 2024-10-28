@@ -4,7 +4,7 @@ from .common_serialization import AttribSerializer, AttribDeserializer
 from .basenode_serialization import NodeSerializerBase, IncompatibleDeserializationMethod, FailedToApplyNodeState, FailedToApplyParameters
 from .basenode import BaseNode
 from .enums import NodeParameterType
-from .uidata import ParameterFullValue
+from .node_parameters import ParameterFullValue
 
 from typing import Optional, Tuple, Union
 

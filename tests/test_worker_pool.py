@@ -9,7 +9,8 @@ import time
 import tracemalloc
 
 from lifeblood.logging import get_logger
-from lifeblood.simple_worker_pool import WorkerPool, create_worker_pool
+from lifeblood.simple_worker_pool import SimpleWorkerPool
+from lifeblood.simple_worker_pool_main import create_worker_pool
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.config import get_config
 from lifeblood.nethelpers import get_default_addr
@@ -52,11 +53,12 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
 
     def __init__(self, method='runTest'):
         super(WorkerPoolTests, self).__init__(method)
-        get_logger(WorkerPool.__name__.lower()).setLevel('DEBUG')
+        get_logger(SimpleWorkerPool.__name__.lower()).setLevel('DEBUG')
 
     async def _helper_test_basic(self, rnd):
         print('a')
         swp = await create_worker_pool(idle_timeout=30, scheduler_address=WorkerPoolTests.sched_addr)
+        await swp.start()
         print('b')
         await swp.add_worker()
         print('c')
@@ -107,6 +109,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
             minimal_idle_to_ensure=mini,
             worker_suspicious_lifetime=0,
             scheduler_address=WorkerPoolTests.sched_addr)
+        await swp.start()
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mint, len(workers))
@@ -138,6 +141,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
             housekeeping_interval=0.2,
             idle_timeout=0.3,
             scheduler_address=WorkerPoolTests.sched_addr)
+        await swp.start()
         await asyncio.sleep(rnd.uniform(0, 1))
         workers = swp.list_workers()
         self.assertEqual(mini*2, len(workers))
@@ -182,6 +186,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
     async def _helper_test_max1(self, rnd):
         maxt = 5
         swp = await create_worker_pool(scheduler_address=WorkerPoolTests.sched_addr)
+        await swp.start()
         swp.set_maximum_workers(maxt)
         for i in range(maxt+5):
             await swp.add_worker()
@@ -199,6 +204,7 @@ class WorkerPoolTests(IsolatedAsyncioTestCase):
 
     async def _helper_test_smth1(self, rnd):
         swp = await create_worker_pool(minimal_idle_to_ensure=1, scheduler_address=WorkerPoolTests.sched_addr)
+        await swp.start()
         await asyncio.sleep(2)
         swp.stop()
         await swp.wait_till_stops()

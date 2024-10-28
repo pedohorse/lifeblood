@@ -5,9 +5,8 @@ from math import sqrt, floor, ceil
 
 from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult, ProcessingError
-from lifeblood.uidata import NodeParameterType
+from lifeblood.enums import NodeParameterType
 from lifeblood.invocationjob import InvocationJob
-from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 
 from typing import Iterable
 
