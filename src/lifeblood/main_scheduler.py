@@ -5,7 +5,7 @@ import asyncio
 import signal
 from .config import get_config, create_default_user_config_file
 from .pluginloader import PluginNodeDataProvider
-from .scheduler import Scheduler
+from .scheduler.scheduler import Scheduler
 from .basenode_serializer_v1 import NodeSerializerV1
 from .basenode_serializer_v2 import NodeSerializerV2
 from .scheduler_config_provider_base import SchedulerConfigProviderBase

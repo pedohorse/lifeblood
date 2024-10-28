@@ -5,9 +5,7 @@ from pathlib import Path
 import sqlite3
 from lifeblood.enums import InvocationState, TaskState
 from lifeblood.db_misc import sql_init_script
-from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.scheduler.pinger import Pinger
-from lifeblood.scheduler_message_processor_client import SchedulerWorkerControlClient
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
 from lifeblood.net_messages.exceptions import MessageTransferError

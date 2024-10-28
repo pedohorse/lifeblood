@@ -14,7 +14,7 @@ from lifeblood.db_misc import sql_init_script
 from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.exceptions import NodeNotReadyToProcess
-from lifeblood.scheduler import Scheduler
+from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.worker import Worker
 from lifeblood.invocationjob import Invocation, InvocationJob, InvocationResources, Environment

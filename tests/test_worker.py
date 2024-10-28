@@ -4,7 +4,6 @@ import logging
 import tempfile
 from unittest import IsolatedAsyncioTestCase, mock
 from lifeblood.worker import Worker
-from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import Invocation, InvocationJob, InvocationEnvironment, InvocationResources
 from lifeblood.environment_resolver import EnvironmentResolverArguments

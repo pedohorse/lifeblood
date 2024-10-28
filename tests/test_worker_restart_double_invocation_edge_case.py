@@ -1,6 +1,5 @@
 import aiosqlite
 import asyncio
-import os
 from contextlib import contextmanager
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
 from lifeblood_testing_common.common import chain
@@ -9,7 +8,6 @@ from unittest import mock
 from lifeblood.enums import TaskState, WorkerState, WorkerPingState, TaskScheduleStatus, InvocationState
 from lifeblood.invocationjob import InvocationJob, InvocationResources
 from lifeblood.scheduler.data_access import DataAccess, TaskSpawnData
-from lifeblood.scheduler.task_processor import TaskProcessor
 from lifeblood.scheduler.scheduler import Scheduler
 
 from typing import List, Optional
