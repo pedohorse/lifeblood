@@ -161,8 +161,8 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
                                   (fake_task_row['work_data'], fake_task_row['id']))
             await con.commit()
 
-        with mock.patch('lifeblood.scheduler.Scheduler._update_worker_resouce_usage'), \
-                mock.patch('lifeblood.scheduler.Scheduler.server_message_address'), \
+        with mock.patch('lifeblood.scheduler.scheduler_core.SchedulerCore._update_worker_resouce_usage'), \
+                mock.patch('lifeblood.scheduler.scheduler_core.SchedulerCore.server_message_address'), \
                 mock.patch('lifeblood.scheduler.data_access.DataAccess.get_invocation_resources_assigned_to') as res_mock, \
                 mock.patch('lifeblood.worker_message_processor_client.WorkerControlClient.get_worker_control_client') as get_client_mock:
             res_mock.side_effect = get_invocation_resources_assigned_to_mock

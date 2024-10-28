@@ -183,7 +183,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
     async def test_get_invocation_workers(self):
         purge_db()
 
-        with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch:
+        with mock.patch('lifeblood.scheduler.scheduler_core.Pinger') as ppatch:
             ppatch.return_value = mock.AsyncMock(Pinger)
 
             sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)

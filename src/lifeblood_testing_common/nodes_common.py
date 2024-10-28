@@ -222,7 +222,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
         """
         purge_db()
-        with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch, \
+        with mock.patch('lifeblood.scheduler.scheduler_core.Pinger') as ppatch, \
              mock.patch('lifeblood.worker.Worker.scheduler_pinger') as wppatch:
 
             ppatch.return_value = mock.AsyncMock(Pinger)

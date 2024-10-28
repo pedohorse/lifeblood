@@ -112,7 +112,7 @@ class WorkerRunTest(RunningSchedulerTests):
             task_id=6492,
             resources_to_use=InvocationResources({}, {})
         )
-        with mock.patch('lifeblood.worker.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
+        with mock.patch('lifeblood.worker_core.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
             cm = mock.AsyncMock()
             m.return_value = cm
             cm.__enter__.return_value = cm

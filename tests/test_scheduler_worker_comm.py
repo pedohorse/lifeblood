@@ -401,7 +401,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
             if time.time() - sttime > 60:
                 raise AssertionError('timeout reached!')
             wrun = worker.is_task_running()
-            wlocked = worker._Worker__task_changing_state_lock.locked()
+            wlocked = worker._WorkerCore__task_changing_state_lock.locked()
             with sqlite3.connect(database='test_swc.db') as con:
                 cur = con.cursor()
                 cur.execute('SELECT "state" FROM workers WHERE "id" = 1')
