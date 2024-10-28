@@ -10,7 +10,7 @@ from .worker_metadata import WorkerMetadata
 from dataclasses import dataclass
 from enum import Enum
 
-from typing import Dict, List, Tuple, Type, Optional, Set, Union
+from typing import Dict, List, Type, Optional, Set, Union
 
 
 def _serialize_string(s: str, stream: BufferedIOBase) -> int:

@@ -12,7 +12,7 @@ from .scheduler_config_provider_base import SchedulerConfigProviderBase
 from .scheduler_config_provider_file import SchedulerConfigProviderFileOverrides
 from . import logging
 
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Iterable, List, Tuple, Union
 
 
 def __construct_plugin_paths(custom_plugins_path: Union[None, str, Path], plugin_search_locations: Iterable[Union[str, Path]]) -> List[Tuple[Path, str]]:

@@ -1,16 +1,11 @@
 import struct
 import asyncio
-import aiofiles
-from enum import Enum
 import pickle
 import json
 
 from . import logging
-from . import invocationjob
 from .taskspawn import TaskSpawn
-from .enums import WorkerType, SpawnStatus, WorkerState
-from .hardware_resources import HardwareResources
-from .worker_metadata import WorkerMetadata
+from .enums import SpawnStatus, WorkerState
 from .scheduler.scheduler_core import SchedulerCore
 
 from typing import Optional, Tuple

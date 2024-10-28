@@ -5,7 +5,7 @@ from .net_messages.address import AddressChain
 from .net_messages.message_processor import MessageProcessorBase
 from .net_messages.exceptions import MessageTransferError
 
-from typing import Tuple, Callable, Coroutine
+from typing import Callable, Coroutine
 
 
 class PulseChecker:

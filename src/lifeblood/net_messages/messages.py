@@ -1,10 +1,8 @@
-import asyncio
-import struct
 import uuid
 from .enums import MessageType
 from .address import AddressChain
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 
 class MessageInterface:
@@ -70,17 +68,5 @@ class Message(MessageInterface):
     def set_message_source(self, source: AddressChain):
         self.__source = source
 
-    def create_reply_message(self, data: bytes = b''):
-        if self.__message_type in (MessageType.SESSION_START, MessageType.SESSION_MESSAGE):
-            return_type = MessageType.SESSION_MESSAGE
-        elif self.__message_type == MessageType.SESSION_END:
-            raise RuntimeError('cannot reply to session end message')
-        elif self.__message_type == MessageType.DEFAULT_MESSAGE:
-            return_type = self.__message_type
-        else:
-            raise RuntimeError(f'unknown message type {self.__message_type}')
-        return Message(data, return_type, self.__destination, self.__source, self.__session)
-
     def message_type(self) -> MessageType:
         return self.__message_type
-

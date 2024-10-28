@@ -1,6 +1,6 @@
 import asyncio
 from .message_protocol import MessageProtocol, IProtocolInstanceCounter
-from ..interfaces import MessageReceiver, MessageStreamFactory
+from ..interfaces import MessageReceiver
 from ..messages import Message
 from ..address import DirectAddress
 from ..logging import get_logger

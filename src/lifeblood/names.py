@@ -1,5 +1,3 @@
-import re
-
 from lifeblood.logging import get_logger
 from typing import Iterable
 

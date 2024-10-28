@@ -3,11 +3,11 @@ from io import BufferedIOBase
 import struct
 from dataclasses import dataclass, field
 from .buffered_connection import BufferedReader
-from .ui_protocol_data import TaskData, TaskDelta, TaskBatchData, UiData
+from .ui_protocol_data import TaskDelta, TaskBatchData
 from .buffer_serializable import IBufferSerializable
 from .enums import UIEventType
 
-from typing import ClassVar, Dict, Iterable, List, Tuple, Type, Union
+from typing import ClassVar, Dict, Iterable, List, Tuple, Type
 
 
 @dataclass

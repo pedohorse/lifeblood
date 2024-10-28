@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..exceptions import MessageTransferError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 from ..stream_wrappers import MessageSendStream, MessageSendStreamBase
-from ..address import DirectAddress, AddressChain
+from ..address import DirectAddress
 from ..defaults import default_stream_timeout
 from ..messages import Message
 

@@ -1,7 +1,4 @@
 
-from typing import Tuple
-
-
 class NodeColorScheme:
     def __init__(self):
         self.__main_color = (0, 0, 0)

@@ -17,12 +17,13 @@ from ..nodethings import ProcessingResult
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
 from ..exceptions import *
 from .. import aiosqlite_overlay
-from ..ui_events import TaskData, TaskDelta
+from ..ui_events import TaskDelta
+from ..ui_protocol_data import TaskData
 from ..net_messages.address import AddressChain
 
 from .scheduler_component_base import SchedulerComponentBase
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler_core import SchedulerCore

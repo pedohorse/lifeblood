@@ -4,15 +4,12 @@ from typing import Dict, Optional, Any
 from logging import Logger
 from .nodethings import ProcessingResult
 from .node_ui import NodeUi
-from .node_parameters import  ParameterNotFound, Parameter
+from .node_parameters import ParameterNotFound, Parameter
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .plugin_info import PluginInfo, empty_plugin_info
 from .nodegraph_holder_base import NodeGraphHolderBase
 from .node_ui_callback_receiver_base import NodeUiCallbackReceiverBase
-
-# reexport
-from .nodethings import ProcessingError
 
 from typing import Iterable
 

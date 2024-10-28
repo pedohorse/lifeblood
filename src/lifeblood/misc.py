@@ -1,6 +1,5 @@
 import os
 import asyncio
-import random
 import uuid
 import time
 import psutil
@@ -8,7 +7,7 @@ from time import perf_counter
 from contextlib import contextmanager, asynccontextmanager
 from .logging import get_logger, logging
 
-from typing import List, Optional, Union
+from typing import Union
 
 
 class DummyLock:

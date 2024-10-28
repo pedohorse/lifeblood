@@ -1,14 +1,11 @@
 import asyncio
-import uuid
 import struct
 
 from ..logging import get_logger
 from ..stream_wrappers import MessageReceiveStream
 from ..messages import Message
-from ..queue import MessageQueue
 from ..address import DirectAddress
-from ..exceptions import MessageReceivingError, NoMessageError, MessageTransferError, MessageTransferTimeoutError
-from ..interfaces import MessageStreamFactory
+from ..exceptions import NoMessageError, MessageTransferError, MessageTransferTimeoutError
 
 from typing import Callable, Awaitable, Tuple
 

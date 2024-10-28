@@ -3,7 +3,7 @@ import asyncio
 import time
 from .. import logging
 from ..worker_message_processor_client import WorkerControlClient
-from ..enums import WorkerState, InvocationState, WorkerPingState, WorkerPingReply
+from ..enums import WorkerState, WorkerPingState, WorkerPingReply
 from .scheduler_component_base import SchedulerComponentBase
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
