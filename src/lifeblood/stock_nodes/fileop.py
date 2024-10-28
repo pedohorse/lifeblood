@@ -4,7 +4,7 @@ from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.processingcontext import ProcessingContext
-from lifeblood.uidata import NodeParameterType
+from lifeblood.enums import NodeParameterType
 
 from typing import Iterable
 

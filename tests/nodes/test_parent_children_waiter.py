@@ -1,7 +1,7 @@
 from asyncio import Event
 import json
 import random
-from lifeblood.scheduler import Scheduler
+from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.worker import Worker
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState

@@ -2,7 +2,8 @@ import imgui
 from lifeblood import logging
 from lifeblood.config import get_config
 from lifeblood.enums import NodeParameterType
-from lifeblood.uidata import CollapsableVerticalGroup, OneLineParametersLayout, Parameter, ParameterExpressionError, ParametersLayoutBase, Separator, NodeUi
+from lifeblood.node_parameters import CollapsableVerticalGroup, OneLineParametersLayout, Parameter, ParameterExpressionError, ParametersLayoutBase, Separator
+from lifeblood.node_ui import NodeUi
 from lifeblood_viewer.graphics_items import Node
 from ...utils import call_later
 from ..decorated_node import DecoratedNode

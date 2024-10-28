@@ -1,24 +1,18 @@
 import struct
 import asyncio
-import aiofiles
-from enum import Enum
 import pickle
 import json
 
 from . import logging
-from . import invocationjob
 from .taskspawn import TaskSpawn
-from .enums import WorkerType, SpawnStatus, WorkerState
-from .hardware_resources import HardwareResources
-from .worker_metadata import WorkerMetadata
+from .enums import SpawnStatus, WorkerState
+from .scheduler.scheduler_core import SchedulerCore
 
-from typing import TYPE_CHECKING, Optional, Tuple
-if TYPE_CHECKING:
-    from .scheduler import Scheduler
+from typing import Optional, Tuple
 
 
 class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
-    def __init__(self, scheduler: "Scheduler", limit=2**16):
+    def __init__(self, scheduler: SchedulerCore, limit=2**16):
         self.__logger = logging.get_logger('scheduler')
         self.__timeout = 300.0
         self.__reader = asyncio.StreamReader(limit=limit)

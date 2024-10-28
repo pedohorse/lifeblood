@@ -1,6 +1,5 @@
 import aiosqlite
 import asyncio
-import os
 from contextlib import contextmanager
 from lifeblood_testing_common.integration_common import IsolatedAsyncioTestCaseWithDb
 from lifeblood_testing_common.common import chain
@@ -9,7 +8,6 @@ from unittest import mock
 from lifeblood.enums import TaskState, WorkerState, WorkerPingState, TaskScheduleStatus, InvocationState
 from lifeblood.invocationjob import InvocationJob, InvocationResources
 from lifeblood.scheduler.data_access import DataAccess, TaskSpawnData
-from lifeblood.scheduler.task_processor import TaskProcessor
 from lifeblood.scheduler.scheduler import Scheduler
 
 from typing import List, Optional
@@ -130,7 +128,11 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
 
     async def _helper_test_multi_invoc(self, racing_tasks_count: int, num_empty_invocs: int = 0, delays: Optional[List[int]] = None):
         config = SchedulerConfigProviderOverrides(self.db_file, 60, do_broadcast=False)
-        sched = Scheduler(scheduler_config_provider=config, node_data_provider=None, node_serializers=[None])
+        sched = Scheduler(
+            scheduler_config_provider=config,
+            node_data_provider=None,
+            node_serializers=[None],
+        )
         data_access = DataAccess(config_provider=config)
         m = mock.MagicMock()
         m.data_access = data_access
@@ -159,10 +161,10 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
                                   (fake_task_row['work_data'], fake_task_row['id']))
             await con.commit()
 
-        with mock.patch('lifeblood.scheduler.Scheduler._update_worker_resouce_usage'), \
-                mock.patch('lifeblood.scheduler.Scheduler.server_message_address'), \
+        with mock.patch('lifeblood.scheduler.scheduler_core.SchedulerCore._update_worker_resouce_usage'), \
+                mock.patch('lifeblood.scheduler.scheduler_core.SchedulerCore.server_message_address'), \
                 mock.patch('lifeblood.scheduler.data_access.DataAccess.get_invocation_resources_assigned_to') as res_mock, \
-                mock.patch('lifeblood.worker_messsage_processor.WorkerControlClient.get_worker_control_client') as get_client_mock:
+                mock.patch('lifeblood.worker_message_processor_client.WorkerControlClient.get_worker_control_client') as get_client_mock:
             res_mock.side_effect = get_invocation_resources_assigned_to_mock
             get_client_mock.side_effect = get_worker_control_client_mock
             if delays:

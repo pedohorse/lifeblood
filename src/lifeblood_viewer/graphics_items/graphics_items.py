@@ -7,7 +7,7 @@ from .network_item_watchers import NetworkItemWatcher, WatchableNetworkItem, Wat
 from .scene_network_item import SceneNetworkItem, SceneNetworkItemWithUI
 from .graphics_scene_base import GraphicsSceneBase
 
-from lifeblood.uidata import NodeUi
+from lifeblood.node_ui import NodeUi
 from lifeblood.ui_protocol_data import TaskData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.basenode import BaseNode
 from lifeblood.enums import TaskState
@@ -84,7 +84,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
 
     def update_nodeui(self, nodeui: NodeUi):
         self.__nodeui = nodeui
-        self.__nodeui.attach_to_node(Node.PseudoNode(self))
+        self.__nodeui.set_ui_change_callback_receiver(Node.PseudoNode(self))
         self.reanalyze_nodeui()
 
     def reanalyze_nodeui(self):

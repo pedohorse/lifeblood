@@ -23,7 +23,8 @@ from .scene_ops import (
     ParameterChangeOp)
 
 from lifeblood.misc import timeit
-from lifeblood.uidata import NodeUi, Parameter
+from lifeblood.node_ui import NodeUi
+from lifeblood.node_parameters import Parameter
 from lifeblood.ui_protocol_data import TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
 from lifeblood.enums import TaskState, TaskGroupArchivedState
 from lifeblood import logging

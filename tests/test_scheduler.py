@@ -5,9 +5,7 @@ from pathlib import Path
 import sqlite3
 from lifeblood.enums import InvocationState, TaskState
 from lifeblood.db_misc import sql_init_script
-from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.scheduler.pinger import Pinger
-from lifeblood.scheduler_message_processor import SchedulerWorkerControlClient
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.net_messages.impl.tcp_simple_command_message_processor import TcpJsonMessageProcessor
 from lifeblood.net_messages.exceptions import MessageTransferError
@@ -185,7 +183,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
     async def test_get_invocation_workers(self):
         purge_db()
 
-        with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch:
+        with mock.patch('lifeblood.scheduler.scheduler_core.Pinger') as ppatch:
             ppatch.return_value = mock.AsyncMock(Pinger)
 
             sched = create_default_scheduler('test_swc1.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0)

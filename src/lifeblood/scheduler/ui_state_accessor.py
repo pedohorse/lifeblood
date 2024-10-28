@@ -5,12 +5,12 @@ from dataclasses import dataclass
 import time
 from enum import Enum
 from ..logging import get_logger
-from ..misc import atimeit, aperformance_measurer
+from ..misc import aperformance_measurer
 from ..enums import InvocationState, TaskState, TaskGroupArchivedState, WorkerState, WorkerType, UIEventType
 from ..exceptions import NotSubscribedError
 from ..scheduler_event_log import SchedulerEventLog
 from ..ui_events import TaskEvent, TaskFullState, TasksUpdated, TasksRemoved, TasksChanged
-from ..ui_protocol_data import TaskBatchData, UiData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
+from ..ui_protocol_data import TaskBatchData, TaskGroupData, TaskGroupBatchData, TaskGroupStatisticsData, \
     NodeGraphStructureData, WorkerBatchData, WorkerData, WorkerResource, WorkerResourceType, WorkerResources, NodeConnectionData, NodeData, TaskData, TaskDelta, \
     WorkerDevice, WorkerDeviceResource
 from .scheduler_component_base import SchedulerComponentBase
@@ -19,7 +19,7 @@ from ..worker_resource_definition import WorkerResourceDefinition, WorkerResourc
 from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING, Set, Union
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
-    from .scheduler import Scheduler
+    from .scheduler_core import SchedulerCore
 
 
 class QueueEventType(Enum):
@@ -38,7 +38,7 @@ class LogSubscription:
 
 
 class UIStateAccessor(SchedulerComponentBase):
-    def __init__(self, scheduler: "Scheduler"):
+    def __init__(self, scheduler: "SchedulerCore"):
         super().__init__(scheduler)
         self.__logger = get_logger('scheduler.ui_state_accessor')
         self.__data_access = scheduler.data_access

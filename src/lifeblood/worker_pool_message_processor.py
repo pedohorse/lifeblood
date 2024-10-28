@@ -1,19 +1,16 @@
-from contextlib import contextmanager
 from .enums import WorkerState
 from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMessageProcessor
 from .net_messages.impl.clients import CommandJsonMessageClient
-from .net_messages.address import AddressChain
+from .net_messages.address import DirectAddress
 from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
+from .simple_worker_pool import SimpleWorkerPool
 
-
-from typing import Iterable, Tuple, TYPE_CHECKING, Union
-if TYPE_CHECKING:
-    from .simple_worker_pool import WorkerPool
+from typing import Iterable, Tuple, Union
 
 
 class WorkerPoolMessageHandler(CommandMessageHandlerBase):
-    def __init__(self, worker_pool: "WorkerPool"):
+    def __init__(self, worker_pool: SimpleWorkerPool):
         super().__init__()
         self.__worker_pool = worker_pool
 
@@ -42,32 +39,15 @@ class WorkerPoolMessageHandler(CommandMessageHandlerBase):
 
 
 class WorkerPoolMessageProcessor(TcpCommandMessageProcessor):
-    def __init__(self, worker_pool: "WorkerPool", listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]]], *, backlog=4096, connection_pool_cache_time=300):
+    def __init__(
+            self,
+            worker_pool: SimpleWorkerPool,
+            listening_address_or_addresses: Union[Tuple[str, int], Iterable[Tuple[str, int]], DirectAddress, Iterable[DirectAddress]],
+            *,
+            backlog=4096,
+            connection_pool_cache_time=300
+    ):
         super().__init__(listening_address_or_addresses,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
                          message_handlers=(WorkerPoolMessageHandler(worker_pool),))
-
-
-#
-# Client
-#
-
-
-class WorkerPoolControlClient:
-    def __init__(self, client: CommandJsonMessageClient):
-        self.__client = client
-
-    @classmethod
-    @contextmanager
-    def get_worker_pool_control_client(cls, scheduler_address: AddressChain, processor: TcpCommandMessageProcessor) -> "WorkerPoolControlClient":
-        with processor.message_client(scheduler_address) as message_client:
-            yield WorkerPoolControlClient(message_client)
-
-    async def report_state(self, worker_id: int, state: WorkerState):
-        await self.__client.send_command('worker.state_report', {
-            'worker_id': worker_id,
-            'state': state.value
-        })
-        reply = await self.__client.receive_message()
-        assert (await reply.message_body_as_json()).get('ok', False), 'something is not ok'

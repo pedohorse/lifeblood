@@ -2,9 +2,10 @@ from unittest import TestCase
 import random
 from itertools import chain
 from lifeblood import basenode
-from lifeblood.uidata import NodeUi, NodeParameterType, ParameterNameCollisionError, ParameterNotFound, ParameterError, \
+from lifeblood.node_parameters import NodeParameterType, ParameterNameCollisionError, ParameterNotFound, ParameterError, \
     ParameterExpressionError, ParameterExpressionCastError, ParameterReadonly, ParameterLocked, LayoutError, \
-    ParameterDefinitionError, NodeUiDefinitionError, ParameterCannotHaveExpressions
+    ParameterDefinitionError, ParameterCannotHaveExpressions
+from lifeblood.node_ui import NodeUi, NodeUiDefinitionError
 
 from typing import Iterable
 

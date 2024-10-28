@@ -1,7 +1,7 @@
 import random
 import ast
 from asyncio import Event
-from lifeblood.scheduler import Scheduler
+from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.worker import Worker
 from lifeblood.nodethings import ProcessingError
 from lifeblood_testing_common.nodes_common import TestCaseBase, PseudoContext

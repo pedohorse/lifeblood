@@ -1,4 +1,3 @@
-import asyncio
 from ..message_processor import MessageProcessorBase
 from ..message_handler import MessageHandlerBase
 from ..messages import Message

@@ -6,7 +6,7 @@ from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.processingcontext import ProcessingContext
-from lifeblood.uidata import NodeParameterType
+from lifeblood.enums import NodeParameterType
 from lifeblood.enums import WorkerType
 from lifeblood.text import match_pattern
 

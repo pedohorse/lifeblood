@@ -7,7 +7,7 @@ from . import paths
 from .config import Config
 from .nethelpers import all_interfaces
 from .exceptions import SchedulerConfigurationError
-from .config import create_default_user_config_file, get_local_scratch_path
+from .config import get_local_scratch_path
 from .text import escape
 
 from typing import Dict, List, Mapping, Optional, Tuple

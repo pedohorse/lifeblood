@@ -3,11 +3,9 @@ import time
 from lifeblood.node_plugin_base import BaseNode
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.nodethings import ProcessingResult
-from lifeblood.uidata import NodeParameterType
+from lifeblood.enums import NodeParameterType
 
-from typing import TYPE_CHECKING, Iterable
-if TYPE_CHECKING:
-    from lifeblood.scheduler import Scheduler
+from typing import Iterable
 
 
 def node_class():

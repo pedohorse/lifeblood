@@ -4,7 +4,6 @@ import logging
 import tempfile
 from unittest import IsolatedAsyncioTestCase, mock
 from lifeblood.worker import Worker
-from lifeblood.scheduler import Scheduler
 from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import Invocation, InvocationJob, InvocationEnvironment, InvocationResources
 from lifeblood.environment_resolver import EnvironmentResolverArguments
@@ -113,7 +112,7 @@ class WorkerRunTest(RunningSchedulerTests):
             task_id=6492,
             resources_to_use=InvocationResources({}, {})
         )
-        with mock.patch('lifeblood.worker.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
+        with mock.patch('lifeblood.worker_core.SchedulerWorkerControlClient.get_scheduler_control_client') as m:
             cm = mock.AsyncMock()
             m.return_value = cm
             cm.__enter__.return_value = cm

@@ -2,7 +2,7 @@ import logging
 from .ui_events import SchedulerEvent
 from .enums import UIEventType
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 logger = logging.getLogger(__name__)

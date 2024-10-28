@@ -5,7 +5,6 @@ import logging
 from lifeblood.logging import set_default_loglevel
 from lifeblood.enums import TaskState
 from lifeblood.exceptions import NotSubscribedError
-from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood.taskspawn import NewTask
 from lifeblood.ui_events import TaskFullState, TasksChanged, TasksUpdated, TasksRemoved
 from lifeblood.ui_protocol_data import DataNotSet

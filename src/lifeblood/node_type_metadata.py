@@ -2,7 +2,7 @@ from .base import TypeMetadata
 from .node_dataprovider_base import NodeDataProvider
 from .plugin_info import PluginInfo
 
-from typing import Optional, TYPE_CHECKING, Tuple, Set
+from typing import Optional, Tuple, Set
 
 
 class NodeTypePluginMetadata:

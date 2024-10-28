@@ -1,7 +1,7 @@
 import sys
 import argparse
 
-from . import simple_worker_pool
+from . import simple_worker_pool_main
 
 
 def main(argv):
@@ -14,7 +14,7 @@ def main(argv):
     opts = parser.parse_args(argv[:1])
     remaining_args = argv[1:]
 
-    known_types = {'simple': simple_worker_pool}
+    known_types = {'simple': simple_worker_pool_main}
     if opts.list:
         print('known pool types:\n' + '\n'.join(f'\t{x}' for x in known_types))
         return

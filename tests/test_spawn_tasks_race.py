@@ -14,7 +14,11 @@ class TestSpawnTasksRace(IsolatedAsyncioTestCaseWithDb):
         and spawn called by message server for example.
         """
         config = SchedulerConfigProviderOverrides(main_db_location=self.db_file, do_broadcast=False)
-        sched = Scheduler(scheduler_config_provider=config, node_data_provider=None, node_serializers=[None])
+        sched = Scheduler(
+            scheduler_config_provider=config,
+            node_data_provider=None,
+            node_serializers=[None],
+        )
         async with sched.data_access.data_connection() as con:
             await con.execute('BEGIN IMMEDIATE')
             task1 = asyncio.create_task(sched.spawn_tasks([NewTask('foo1', 1, None, {})]))

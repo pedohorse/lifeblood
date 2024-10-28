@@ -1,14 +1,11 @@
 import asyncio
 import socket
-from string import ascii_letters
-import random
 import struct
-
 from . import logging
 from .nethelpers import get_localhost
 from .defaults import broadcast_port as default_broadcast_port
 
-from . import os_based_cheats
+from . import os_based_cheats  # import needed for windows
 
 from typing import Tuple, Union, Optional, Callable, Coroutine, Any
 

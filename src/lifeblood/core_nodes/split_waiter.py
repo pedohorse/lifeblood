@@ -1,18 +1,12 @@
 from dataclasses import dataclass
 from lifeblood.node_plugin_base import BaseNode
 from lifeblood.nodethings import ProcessingResult
-from lifeblood.taskspawn import TaskSpawn
 from lifeblood.exceptions import NodeNotReadyToProcess
 from lifeblood.enums import NodeParameterType
-from lifeblood.uidata import NodeUi
-from lifeblood.processingcontext import ProcessingContext
 
 from threading import Lock
 
-from typing import Dict, TypedDict, Set, Iterable, Optional, Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from lifeblood.scheduler import Scheduler
+from typing import Dict, Set, Iterable, Optional
 
 
 @dataclass

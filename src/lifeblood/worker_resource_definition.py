@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from typing import Dict, Union, Set, Tuple
+from typing import Union, Tuple
 
 
 class WorkerResourceDataType(Enum):

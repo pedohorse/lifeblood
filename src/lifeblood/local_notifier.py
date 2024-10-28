@@ -2,10 +2,9 @@ import asyncio
 import json
 import uuid
 from . import broadcasting
-from . import logging
 from .nethelpers import get_localhost
 
-from typing import Optional, Tuple, Callable, Coroutine, Any
+from typing import Optional, Tuple, Callable, Coroutine
 from .logging import get_logger
 
 

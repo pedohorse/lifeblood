@@ -3,7 +3,7 @@ import socket
 import json
 import time
 
-from lifeblood.uidata import NodeUi
+from lifeblood.node_ui import NodeUi
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.nethelpers import address_to_ip_port, get_default_addr
 from lifeblood import logging
@@ -11,7 +11,7 @@ from lifeblood.enums import TaskState, TaskGroupArchivedState
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
 from lifeblood.exceptions import UiClientOperationFailed
-from lifeblood.uidata import Parameter
+from lifeblood.node_parameters import Parameter
 from lifeblood.taskspawn import NewTask
 from lifeblood.snippets import NodeSnippetData
 from lifeblood.defaults import ui_port

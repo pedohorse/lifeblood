@@ -1,12 +1,11 @@
 import asyncio
 from .logging import get_logger
-#from .scheduler_task_protocol import SchedulerTaskClient
-from .scheduler_message_processor import SchedulerWorkerControlClient
+from .scheduler_message_processor_client import SchedulerWorkerControlClient
 from .net_messages.address import AddressChain
 from .net_messages.message_processor import MessageProcessorBase
 from .net_messages.exceptions import MessageTransferError
 
-from typing import Tuple, Callable, Coroutine
+from typing import Callable, Coroutine
 
 
 class PulseChecker:

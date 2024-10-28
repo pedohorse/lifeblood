@@ -9,9 +9,10 @@ from lifeblood.enums import TaskState
 from lifeblood.config import Config
 from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.nethelpers import get_default_addr
-from lifeblood.simple_worker_pool import WorkerPool
+from lifeblood.simple_worker_pool import SimpleWorkerPool
 from lifeblood.net_messages.address import AddressChain
 from lifeblood.taskspawn import NewTask
+from lifeblood.worker_pool_message_processor import WorkerPoolMessageProcessor
 from lifeblood.worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 from lifeblood.enums import SpawnStatus
 
@@ -63,21 +64,23 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             device_type_definitions=self._device_type_definitions(),
             helpers_minimal_idle_to_ensure=self._minimal_helper_idle_to_ensure(),
         )
-        self.worker_pool = WorkerPool(
+        self.worker_pool = SimpleWorkerPool(
             scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
             minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
             minimal_total_to_ensure=self._minimal_total_to_ensure(),
             maximum_total=self._maximum_total(),
-            config=self._worker_config()
+            config=self._worker_config(),
+            message_processor_factory=WorkerPoolMessageProcessor,
         )
         self.worker_pool2 = None
         if worker_config2 := self._worker_config2():
-            self.worker_pool2 = WorkerPool(
+            self.worker_pool2 = SimpleWorkerPool(
                 scheduler_address=AddressChain(f'{get_default_addr()}:{test_server_port2}'),
                 minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
                 minimal_total_to_ensure=self._minimal_total_to_ensure(),
                 maximum_total=self._maximum_total(),
-                config=worker_config2
+                config=worker_config2,
+                message_processor_factory=WorkerPoolMessageProcessor,
             )
 
         await self.scheduler.start()

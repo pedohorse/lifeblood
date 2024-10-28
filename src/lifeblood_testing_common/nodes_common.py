@@ -1,6 +1,4 @@
 import asyncio
-import time
-from dataclasses import dataclass
 import os
 import shutil
 import tempfile
@@ -14,10 +12,10 @@ from lifeblood.db_misc import sql_init_script
 from lifeblood.basenode import BaseNode
 from lifeblood.nodethings import ProcessingResult
 from lifeblood.exceptions import NodeNotReadyToProcess
-from lifeblood.scheduler import Scheduler
+from lifeblood.scheduler.scheduler import Scheduler
 from lifeblood_testing_common.common import create_default_scheduler
 from lifeblood.worker import Worker
-from lifeblood.invocationjob import Invocation, InvocationJob, InvocationResources, Environment
+from lifeblood.invocationjob import Invocation, InvocationResources, Environment
 from lifeblood.scheduler.pinger import Pinger
 from lifeblood.pluginloader import PluginNodeDataProvider
 from lifeblood.processingcontext import ProcessingContext
@@ -97,7 +95,7 @@ class PseudoTask:
         self.__task_dict['node_input_name'] = self.__input_name
 
     def get_context_for(self, node: BaseNode) -> ProcessingContext:
-        return ProcessingContext(node, self.task_dict(), {})
+        return ProcessingContext(node.name(), node.label(), node.get_ui(), self.task_dict(), {})
 
     def task_dict(self) -> dict:
         return {**self.__task_dict, **{
@@ -222,7 +220,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
         """
         purge_db()
-        with mock.patch('lifeblood.scheduler.scheduler.Pinger') as ppatch, \
+        with mock.patch('lifeblood.scheduler.scheduler_core.Pinger') as ppatch, \
              mock.patch('lifeblood.worker.Worker.scheduler_pinger') as wppatch:
 
             ppatch.return_value = mock.AsyncMock(Pinger)
@@ -233,8 +231,10 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
             workers = []
             for i in range(worker_count):
-                worker = Worker(sched.server_message_addresses()[0],
-                                scheduler_ping_interval=9001)
+                worker = Worker(
+                    sched.server_message_addresses()[0],
+                    scheduler_ping_interval=9001,
+                )
                 await worker.start()
                 workers.append(worker)
 
@@ -336,7 +336,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                             'outimage': out_exr_path,
                             'frames': [1, 2, 3]
                         }
-                        res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(start_attrs)}, {}))
+                        res = node.process_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core(start_attrs)}, {}))
 
                         ij = res.invocation_job
                         self.assertTrue(ij is not None)
@@ -367,7 +367,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         await asyncio.wait([done_waiter], timeout=30)
 
                         # now postprocess task
-                        res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
+                        res = node.postprocess_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core({
                             **start_attrs,
                             **updated_attrs
                         })}, {}))
@@ -440,7 +440,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     for param, val in params.items():
                         node.set_param_value(param, val)
 
-                res = node.process_task(ProcessingContext(node, {'attributes': serialize_attributes_core(task_attrs)}, {}))
+                res = node.process_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core(task_attrs)}, {}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
@@ -477,7 +477,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 await asyncio.wait([done_waiter], timeout=30)
 
                 # now postprocess task
-                res = node.postprocess_task(ProcessingContext(node, {'attributes': serialize_attributes_core({
+                res = node.postprocess_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core({
                     **task_attrs,
                     **updated_attrs
                 })}, {}))

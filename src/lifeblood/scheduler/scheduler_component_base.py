@@ -5,11 +5,11 @@ from ..enums import SchedulerMode
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
-    from .scheduler import Scheduler
+    from .scheduler_core import SchedulerCore
 
 
 class SchedulerComponentBase(ComponentBase):
-    def __init__(self, scheduler: "Scheduler"):
+    def __init__(self, scheduler: "SchedulerCore"):
         super().__init__()
         self.__stop_event = asyncio.Event()
         self.__main_task = None
@@ -18,7 +18,7 @@ class SchedulerComponentBase(ComponentBase):
         self.__mode = SchedulerMode.STANDARD
 
     @property
-    def scheduler(self) -> "Scheduler":
+    def scheduler(self) -> "SchedulerCore":
         return self.__scheduler
 
     @property

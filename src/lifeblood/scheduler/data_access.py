@@ -17,7 +17,7 @@ from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 from ..worker_resource_definition import WorkerResourceDataType
 from ..invocationjob import InvocationResources
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 SCHEDULER_DB_FORMAT_VERSION = 5
 

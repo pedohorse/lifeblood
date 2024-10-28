@@ -1,5 +1,3 @@
-import psutil
-import copy
 import re
 import json
 from .misc import get_unique_machine_id
@@ -128,11 +126,11 @@ class HardwareResources:
         parts = []
         for res_name, res in self.__resources.items():
             parts.append(f'{res_name}: {res.value}')
-        for dev_type, dev_res in self.__dev_resources.items():
+        for dev_type, dev_name, dev_res in self.__dev_resources:
             dev_parts = []
             for res_name, res in dev_res.items():
                 dev_parts.append(f'{res_name}: {res.value}')
-            parts.append(f'device({dev_type})[{", ".join(dev_parts)}]')
+            parts.append(f'device(type:"{dev_type}" name:"{dev_name}")[{", ".join(dev_parts)}]')
 
         return f'<hwid={self.hwid}, {", ".join(parts)}>'
 

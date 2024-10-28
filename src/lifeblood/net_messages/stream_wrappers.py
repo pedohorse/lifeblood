@@ -6,7 +6,7 @@ from .messages import MessageInterface, Message
 from .message_stream import MessageSendStreamBase, MessageReceiveStreamBase
 from .enums import MessageType
 from .address import AddressChain, DirectAddress
-from .exceptions import MessageReceivingError, MessageSendingError, MessageTransferTimeoutError, NoMessageError
+from .exceptions import MessageSendingError, MessageTransferTimeoutError, NoMessageError
 from .defaults import default_stream_timeout
 
 from typing import Optional, Tuple, Union

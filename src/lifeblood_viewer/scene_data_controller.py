@@ -1,7 +1,7 @@
 from .undo_stack import UndoableOperation, OperationCompletionDetails
 from .long_op import LongOperation, LongOperationData
 from .ui_snippets import NodeSnippetData
-from lifeblood.uidata import Parameter
+from lifeblood.node_parameters import Parameter
 from lifeblood.ui_protocol_data import InvocationLogData
 from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.enums import TaskState, TaskGroupArchivedState

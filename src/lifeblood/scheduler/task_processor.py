@@ -10,22 +10,23 @@ from .. import logging
 from ..basenode_serialization import FailedToDeserialize
 from ..enums import WorkerState, InvocationState, TaskState, TaskGroupArchivedState, TaskScheduleStatus
 from ..misc import atimeit
-from ..worker_messsage_processor import WorkerControlClient
+from ..worker_message_processor_client import WorkerControlClient
 from ..invocationjob import InvocationJob, InvocationRequirements, Invocation
 from ..environment_resolver import EnvironmentResolverArguments
 from ..nodethings import ProcessingResult
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
 from ..exceptions import *
 from .. import aiosqlite_overlay
-from ..ui_events import TaskData, TaskDelta
+from ..ui_events import TaskDelta
+from ..ui_protocol_data import TaskData
 from ..net_messages.address import AddressChain
 
 from .scheduler_component_base import SchedulerComponentBase
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
-    from .scheduler import Scheduler
+    from .scheduler_core import SchedulerCore
 
 
 # import tracemalloc
@@ -34,7 +35,7 @@ if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smt
 class TaskProcessor(SchedulerComponentBase):
     def __init__(
             self,
-            scheduler: "Scheduler",
+            scheduler: "SchedulerCore",
     ):
         super().__init__(scheduler)
         self.__logger = logging.get_logger('scheduler.task_processor')

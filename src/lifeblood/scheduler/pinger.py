@@ -2,8 +2,8 @@ import aiosqlite
 import asyncio
 import time
 from .. import logging
-from ..worker_messsage_processor import WorkerControlClient
-from ..enums import WorkerState, InvocationState, WorkerPingState, WorkerPingReply
+from ..worker_message_processor_client import WorkerControlClient
+from ..enums import WorkerState, WorkerPingState, WorkerPingReply
 from .scheduler_component_base import SchedulerComponentBase
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
@@ -11,13 +11,13 @@ from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeo
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
-    from .scheduler import Scheduler
+    from .scheduler_core import SchedulerCore
 
 
 class Pinger(SchedulerComponentBase):
     def __init__(
             self,
-            scheduler: "Scheduler",
+            scheduler: "SchedulerCore",
     ):
         super().__init__(scheduler)
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')

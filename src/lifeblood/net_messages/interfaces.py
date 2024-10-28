@@ -1,6 +1,6 @@
 from .messages import Message
-from .message_stream import MessageSendStreamBase, MessageReceiveStreamBase
-from .address import DirectAddress, AddressChain
+from .message_stream import MessageSendStreamBase
+from .address import DirectAddress
 
 from typing import Callable, Awaitable
 
