@@ -4,15 +4,14 @@ import struct
 from .attribute_serialization import deserialize_attributes
 from .enums import InvocationMessageResult
 from .exceptions import CouldNotNegotiateProtocolVersion, InvocationCancelled
-from .scheduler_message_processor import SchedulerExtraControlClient, SchedulerInvocationMessageClient
+from .scheduler_message_processor_client import SchedulerExtraControlClient, SchedulerInvocationMessageClient
 from .taskspawn import TaskSpawn
 from .net_messages.address_routing import RoutingImpossible
 from . import logging
+from .worker_core import WorkerCore
 
+from typing import Dict, Set, Sequence, Tuple
 
-from typing import Dict, Set, Sequence, Tuple, TYPE_CHECKING
-if TYPE_CHECKING:
-    from .worker import Worker
 
 
 async def read_string(reader) -> str:
@@ -37,7 +36,7 @@ class ProtocolHandler:
 
 
 class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
-    def __init__(self, worker: "Worker"):
+    def __init__(self, worker: WorkerCore):
         super().__init__()
         self.__worker = worker
         self.__logger = logging.get_logger(f'worker.invoc_protocol_v{".".join(str(i) for i in self.protocol_version())}')
@@ -124,7 +123,7 @@ class WorkerInvocationProtocolHandlerV10(ProtocolHandler):
 
 class WorkerInvocationServerProtocol(asyncio.StreamReaderProtocol):
 
-    def __init__(self, worker: "Worker", protocol_handlers: Sequence[ProtocolHandler], limit: int = 2 ** 16):
+    def __init__(self, worker: WorkerCore, protocol_handlers: Sequence[ProtocolHandler], limit: int = 2 ** 16):
         self.__logger = logging.get_logger('worker.invoc_protocol')
         self.__timeout = 300.0
         self.__reader = asyncio.StreamReader(limit=limit)
