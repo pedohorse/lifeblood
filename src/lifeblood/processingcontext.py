@@ -2,17 +2,17 @@ from types import MappingProxyType
 
 from .attribute_serialization import deserialize_attributes_core
 from .environment_resolver import EnvironmentResolverArguments
+from .node_ui import NodeUi
+from .node_parameters import Parameter
+from .expression_locals_provider_base import ExpressionLocalsProviderBase
 
-from typing import Dict, Optional, TYPE_CHECKING, Union
-
-if TYPE_CHECKING:
-    from .basenode import BaseNode
-    from .uidata import Parameter
+from typing import Any, Dict, Optional, Union
 
 
-class ProcessingContext:
+class ProcessingContext(ExpressionLocalsProviderBase):
     class TaskWrapper:
         def __init__(self, task_dict: dict):
+            super().__init__()
             self.__attributes = deserialize_attributes_core(task_dict.get('attributes', '{}'))
             self.__stuff = task_dict
 
@@ -28,9 +28,9 @@ class ProcessingContext:
             return self.__attributes.get(item, default)
 
     class NodeWrapper:
-        def __init__(self, node: "BaseNode", context: "ProcessingContext"):
-            self.__parameters: Dict[str, "Parameter"] = {x.name(): x for x in node.get_ui().parameters()}
-            self.__attrs = {'name': node.name(), 'label': node.label()}
+        def __init__(self, node_name: str, node_label: str, node_ui: NodeUi, context: "ProcessingContext"):
+            self.__parameters: Dict[str, Parameter] = {x.name(): x for x in node_ui.parameters()}
+            self.__attrs = {'name': node_name, 'label': node_label}
             self.__context = context
 
         def __getitem__(self, item):
@@ -51,7 +51,7 @@ class ProcessingContext:
         def __getitem__(self, item):
             return self.get(item)
 
-    def __init__(self, node: "BaseNode", task_dict: dict, node_config: Dict[str, Union[str, int, float, list, dict]]):
+    def __init__(self, node_name: str, node_label: str, node_ui: NodeUi, task_dict: dict, node_config: Dict[str, Union[str, int, float, list, dict]]):
         """
         All information node can access during processing.
         This is read-only.
@@ -63,15 +63,15 @@ class ProcessingContext:
         self.__task_attributes = deserialize_attributes_core(task_dict.get('attributes', '{}'))
         self.__task_dict = task_dict
         self.__task_wrapper = ProcessingContext.TaskWrapper(task_dict)
-        self.__node_wrapper = ProcessingContext.NodeWrapper(node, self)
+        self.__node_wrapper = ProcessingContext.NodeWrapper(node_name, node_label, node_ui, self)
         self.__env_args = EnvironmentResolverArguments.deserialize(task_dict.get('environment_resolver_data')) if task_dict.get('environment_resolver_data') is not None else None
         self.__conf_wrapper = ProcessingContext.ConfigWrapper(node_config)
-        self.__node = node
+        self.__node_ui = node_ui
 
     def param_value(self, param_name: str):
-        return self.__node.get_ui().parameter(param_name).value(self)
+        return self.__node_ui.parameter(param_name).value(self)
 
-    def locals(self):
+    def locals(self) -> Dict[str, Any]:
         """
         locals to be available during expression evaluation
         node - represents current node

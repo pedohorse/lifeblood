@@ -1,23 +1,23 @@
 import asyncio
 from copy import deepcopy
 from typing import Dict, Optional, Any
+from logging import Logger
 from .nodethings import ProcessingResult
-from .uidata import NodeUi, ParameterNotFound, Parameter
+from .node_ui import NodeUi
+from .node_parameters import  ParameterNotFound, Parameter
 from .processingcontext import ProcessingContext
 from .logging import get_logger
 from .plugin_info import PluginInfo, empty_plugin_info
 from .nodegraph_holder_base import NodeGraphHolderBase
+from .node_ui_callback_receiver_base import NodeUiCallbackReceiverBase
 
 # reexport
 from .nodethings import ProcessingError
 
-from typing import TYPE_CHECKING, Iterable
-
-if TYPE_CHECKING:
-    from logging import Logger
+from typing import Iterable
 
 
-class BaseNode:
+class BaseNode(NodeUiCallbackReceiverBase):
     _plugin_data = None  # To be set on module level by loader, set to empty_plugin_info by default
 
     @classmethod
@@ -37,6 +37,7 @@ class BaseNode:
         return 'this node type does not have a description'
 
     def __init__(self, name: str):
+        super().__init__()
         if BaseNode._plugin_data is None:
             BaseNode._plugin_data = empty_plugin_info
         self.__parent: NodeGraphHolderBase = None
@@ -172,7 +173,7 @@ class BaseNode:
         # with self.get_ui().lock_interface_readonly():  # TODO: this is bad, RETHINK!
         #  TODO: , in case threads do l1---r1    - release2 WILL leave lock in locked state forever, as it remembered it at l2
         #  TODO:                         l2---r2
-        return self.process_task(ProcessingContext(self, task_dict, node_config))
+        return self.process_task(ProcessingContext(self.name(), self.label(), self.get_ui(), task_dict, node_config))
 
     def process_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -185,7 +186,7 @@ class BaseNode:
 
     def _postprocess_task_wrapper(self, task_dict, node_config) -> ProcessingResult:
         # with self.get_ui().lock_interface_readonly():  #TODO: read comment for _process_task_wrapper
-        return self.postprocess_task(ProcessingContext(self, task_dict, node_config))
+        return self.postprocess_task(ProcessingContext(self.name(), self.label(), self.get_ui(), task_dict, node_config))
 
     def postprocess_task(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -199,7 +200,7 @@ class BaseNode:
     def copy_ui_to(self, to_node: "BaseNode"):
         newui = deepcopy(self._parameters)  # nodeUI redefines deepcopy to detach new copy from node
         to_node._parameters = newui
-        newui.attach_to_node(to_node)
+        newui.set_ui_change_callback_receiver(to_node)
 
     def apply_settings(self, settings: Dict[str, Dict[str, Any]]) -> None:
         with self.get_ui().postpone_ui_callbacks():
