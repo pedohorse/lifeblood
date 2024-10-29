@@ -101,7 +101,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
     _logger: Optional[logging.Logger] = None
 
     def __init__(self,
-                 pooled_connection_life: int = 0,
+                 pooled_connection_life: float = 0,
                  connection_open_function: Optional[Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]]] = None,
                  timeout: float = default_stream_timeout,
                  minimal_reping_interval: Optional[float] = None):
