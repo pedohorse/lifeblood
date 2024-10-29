@@ -34,6 +34,14 @@ class ConnectionPoolEntry:
     close_when_user_count_zero: bool = False
     bad: bool = False
 
+    def check_bad(self) -> bool:
+        """
+        check and update "bad" status of the entry, return updated bad value
+        """
+        if not self.bad and (self.reader.at_eof() or self.writer.is_closing()):
+            self.bad = True
+        return self.bad
+
 
 class ReusableMessageSendStream(MessageSendStream):
     """
@@ -60,7 +68,8 @@ class ReusableMessageSendStream(MessageSendStream):
     async def send_raw_message(self, message: Message, *, message_delivery_timeout_override: Optional[float] = ...):
         try:
             return await super().send_raw_message(message, message_delivery_timeout_override=message_delivery_timeout_override)
-        except MessageTransferTimeoutError:
+        except MessageTransferError:
+            # even for MessageTransferTimeoutError:
             # we cannot be sure some crap won't arrive after timeout,
             # in that case future uses of this connection will be at risk of getting it,
             # so it's safer to mark it for closure
@@ -94,7 +103,8 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
     def __init__(self,
                  pooled_connection_life: int = 0,
                  connection_open_function: Optional[Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]]] = None,
-                 timeout: float = default_stream_timeout):
+                 timeout: float = default_stream_timeout,
+                 minimal_reping_interval: Optional[float] = None):
         self.__pooled_connection_life = pooled_connection_life
         self.__pool: Dict[Tuple[str, int], List[ConnectionPoolEntry]] = {}
         self.__connection_open_func: Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]] = connection_open_function or _initialize_connection
@@ -102,7 +112,10 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         self.__pool_closed = asyncio.Event()
         self.__timeout = timeout
         # below is some arbitrary heuristics
-        self.__minimal_reping_interval = max(1, int(timeout/2))
+        if minimal_reping_interval is None:
+            self.__minimal_reping_interval = max(1, int(timeout/3))
+        else:
+            self.__minimal_reping_interval = minimal_reping_interval
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
@@ -118,7 +131,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         for key, entry_list in self.__pool.items():
             new_entries = []
             for entry in entry_list:
-                if not entry.bad \
+                if not entry.check_bad() \
                         and (entry.users_count > 0
                              or ((now - entry.last_used).total_seconds() < older_than_this_seconds
                                  and not entry.close_when_user_count_zero)
@@ -154,9 +167,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         for entry in entry_list:
             if entry.users_count > 0 or entry.close_when_user_count_zero:
                 continue
-            if entry.bad or entry.reader.at_eof() or entry.writer.is_closing():
-                # to_remove.append(entry)
-                entry.bad = True
+            if entry.check_bad():
                 continue
             selected = entry
         # for entry in to_remove:  # not the most optimal way......
