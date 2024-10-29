@@ -190,7 +190,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
                 # this is a heuristics base on connection "freshness"
                 # "fresh" connections will most likely work, so extra ping will only slow things down
                 ping_now = datetime.now()
-                if (ping_now - entry.last_ping_time).total_seconds() > self.__minimal_reping_interval:
+                if (ping_now - entry.last_ping_time).total_seconds() >= self.__minimal_reping_interval:
                     await stream.send_ping()
                     entry.last_ping_time = ping_now
             except MessageTransferError as e:
