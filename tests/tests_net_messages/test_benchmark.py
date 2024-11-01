@@ -56,7 +56,11 @@ class ThreadedFoo(threading.Thread, FooRunner):
         self.__server = server
 
     def run(self):
-        asyncio.run(self.async_run())
+        try:
+            asyncio.run(self.async_run())
+        except:
+            logger.exception("runner had an exception:")
+            raise
 
     def start(self):
         super().start()
@@ -140,7 +144,7 @@ class TestBenchmarkSendReceive(IsolatedAsyncioTestCase):
         data = ''.join(random.choice(string.ascii_letters) for _ in range(16000)).encode('latin1')
         server1 = NoopMessageServer((get_localhost(), 28385))
         server2 = NoopMessageServer((get_localhost(), 28386))
-        server1_runner = foo_factory(server1)
+        server1_runner = foo_factory(server1)  # TODO: server1 is created in one loop, passed to another, this may cause problems with events
         server1_runner.start()
         await server2.start()
         pure_send_time = 0.0
