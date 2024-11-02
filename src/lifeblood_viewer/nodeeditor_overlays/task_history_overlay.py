@@ -12,6 +12,8 @@ import imgui
 from ..editor_scene_integration import fetch_and_open_log_viewer
 from .overlay_base import NodeEditorOverlayBase
 
+from typing import Optional
+
 
 class TaskHistoryOverlay(NodeEditorOverlayBase):
     logger = get_logger('viewer.task_history_overlay')
@@ -31,7 +33,7 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
         self.__node_mark_offset_top = node_mark_offset + QPointF(0, node_mark_shrink)
         self.__node_mark_offset_bottom = node_mark_offset - QPointF(0, node_mark_shrink)
 
-        self.__highlighted_task = None
+        self.__highlighted_task: Optional[Task] = None
         self.__buttons = None
 
     def draw_scene_foreground(self, painter: QPainter, rect: QRectF):

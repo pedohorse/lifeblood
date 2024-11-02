@@ -5,6 +5,7 @@ from lifeblood.enums import TaskState
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
 from ..graphics_items import Node, NetworkItemWatcher
+from ..graphics_items.pretty_items.fancy_items.scene_task import SceneTask
 from PySide2.QtGui import QCursor
 
 from typing import Optional
@@ -65,6 +66,8 @@ class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
                     select_next_task = False
                     task_to_reselect = None
                     for task in self.__displayed_node.tasks_iter(order=self.__displayed_node.TaskSortOrder.ID):
+                        if isinstance(task, SceneTask):
+                            task.request_update_meta_if_needed()  # note that this is async, so this will just do request, old data will be drawn in this call
                         if task.isSelected():
                             imgui.table_set_background_color(imgui.TABLE_BACKGROUND_TARGET_ROW_BG1, 2155896928)
                             if imgui.is_window_focused():

@@ -1,7 +1,7 @@
 from datetime import timedelta
 import imgui
 from lifeblood import logging
-from lifeblood.enums import InvocationState
+from lifeblood.enums import InvocationState, TaskState
 from lifeblood.ui_protocol_data import TaskData, IncompleteInvocationLogData, InvocationLogData
 from .scene_task_preview import SceneTaskPreview
 from ..drawable_task import DrawableTask
@@ -29,6 +29,7 @@ class SceneTask(DrawableTask):
         super().__init__(scene, task_data)
         self.__scene_container = scene
         self.__data_controller = data_controller
+        self.__meta_needs_to_be_requested = False
         self.setAcceptHoverEvents(True)
         # self.setFlags(QGraphicsItem.ItemIsSelectable)
 
@@ -51,6 +52,18 @@ class SceneTask(DrawableTask):
         super().set_groups(groups)
         self.refresh_ui()
 
+    def set_state(self, state: Optional[TaskState], paused: Optional[bool]):
+        super().set_state(state, paused)
+        self.refresh_ui()
+
+    def set_state_details(self, state_details: Optional[str] = None):
+        super().set_state_details(state_details)
+        self.refresh_ui()
+
+    def set_progress(self, progress: float):
+        super().set_progress(progress)
+        self.refresh_ui()
+
     def refresh_ui(self):
         """
         unlike update - this method actually queries new task ui status
@@ -59,8 +72,7 @@ class SceneTask(DrawableTask):
         """
         if not self.isSelected() and len(self.item_watchers()) == 0:
             return
-        self.__data_controller.request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
-        self.__data_controller.request_attributes(self.get_id())
+        self.__meta_needs_to_be_requested = True  # actual request will happen when DRAWN
 
         for invoc_id, nid, invoc_dict in self.invocation_logs():
             if invoc_dict is None:
@@ -133,9 +145,21 @@ class SceneTask(DrawableTask):
             imgui.next_column()
         imgui.columns(1)
 
+    def request_update_meta_if_needed(self):
+        """
+        note, this is just a request, actual update will come later
+        """
+        if not self.__meta_needs_to_be_requested:
+            return
+        self.__meta_needs_to_be_requested = False
+        self.__data_controller.request_log_meta(self.get_id())  # update all task metadata: which nodes it ran on and invocation numbers only
+        self.__data_controller.request_attributes(self.get_id())
+
     #
     # interface
     def draw_imgui_elements(self, drawing_widget):
+        self.request_update_meta_if_needed()
+
         imgui.text(f'Task {self.get_id()} {self.name()}')
         imgui.text(f'state: {self.state().name}')
         imgui.text(f'groups: {", ".join(self.groups())}')
