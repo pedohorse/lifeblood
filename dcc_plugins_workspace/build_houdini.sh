@@ -7,7 +7,9 @@ pushd $(dirname $0)
 mkdir -p $OUT/otls
 
 # assume houdini environment is initialized
-hotl -l houdini/otls/Driver-lifeblood_submitter-1.0.0.hda $OUT/otls/Driver-lifeblood_submitter-1.0.0.hda
+for fname in houdini/otls/*.hda; do
+  hotl -l "${fname}" "$OUT/otls/${fname##*/}"
+done;
 
 rsync -arhv houdini/presets $OUT
 
