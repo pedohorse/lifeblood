@@ -20,7 +20,7 @@ def submit_btn_callback(node):
             return
     for tgtnode, tgttype, errmsg in (
         (simobj_node, 'flipobject', 'Sim Object must point to Flip Object node'),
-        (cache_node, 'filemerge', 'Cache Node must point to save_slices file merge node'),
+        (cache_node, 'rop_geometry', 'Cache Node must point to save_slices rop geometry node'),
         (simctl_node, 'null', 'Sim Control node must point to dop null with distribution control parameters node'),
     ):
         if tgtnode.type().nameComponents()[2] != tgttype:

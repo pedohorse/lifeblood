@@ -11,7 +11,7 @@ def submit_btn_callback(node):
             title='you forgot to select node to render'
         )
         return
-    if (rop_type_name := ropnode.type().nameComponents()[2]) != 'mantra':
+    if (rop_type_name := ropnode.type().nameComponents()[2]) != 'ifd':
         hou.ui.displayMessage(
             f'Specify a Mantra node to render. instead I see "{rop_type_name}"',
             severity=hou.severityType.Error,
