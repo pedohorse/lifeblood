@@ -1,0 +1,891 @@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY"
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename=".OPfallbacks"
+Content-Type: application/external-reference
+
+.OPfallbacks
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename=".OPdummydefs"
+Content-Type: application/external-reference
+
+.OPdummydefs
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="node_type"
+Content-Type: text/plain
+
+Driver
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot.init"
+Content-Type: text/plain
+
+type = lifeblood::lifeblood_distributed_flip_submitter::1.0
+matchesdef = 0
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot.def"
+Content-Type: text/plain
+
+comment ""
+position 2.77614 -2.57647
+connectornextid 0
+flags =  lock off model off template off footprint off xray off bypass off display off render off highlight off unload off savedata off compress on colordefault on exposed on
+outputsNamed3
+{
+}
+inputsNamed3
+{
+}
+inputs
+{
+}
+stat
+{
+  create -1
+  modify -1
+  author xapkohheh@localhost
+  access 0777
+}
+color UT_Color RGB 0.8 0.8 0.8 
+delscript ""
+exprlanguage hscript
+end
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot.userdata"
+Content-Type: text/plain
+
+{
+	"___Version___":{
+		"type":"string",
+		"value":""
+	}
+}
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot.inp"
+Content-Type: text/plain
+
+1
+0 0 6 2 0 __NO_OWNER_NETWORK_BOX__ "FROMOUTPUT"
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.init"
+Content-Type: text/plain
+
+type = lifeblood::lifeblood_submitter::1.0.0
+matchesdef = 1
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.def"
+Content-Type: text/plain
+
+comment ""
+position 0 5.2176
+connectornextid 0
+flags =  lock off model off template off footprint off xray off bypass off display on render on highlight off unload off savedata off compress on colordefault on exposed on
+outputsNamed3
+{
+}
+inputsNamed3
+{
+}
+inputs
+{
+}
+stat
+{
+  create -1
+  modify -1
+  author xapkohheh@localhost
+  access 0777
+}
+color UT_Color RGB 0.8 0.8 0.8 
+delscript ""
+exprlanguage hscript
+end
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.spareparmdef"
+Content-Type: text/plain
+
+    group {
+        name    "_hidden2"
+        label   "_hidden"
+        invisibletab
+
+        parm {
+            name    "execute"
+            baseparm
+            label   "Render"
+            joinnext
+            export  none
+        }
+        parm {
+            name    "renderdialog"
+            baseparm
+            label   "Controls..."
+            nolabel
+            export  none
+        }
+    }
+
+    parm {
+        name    "submit"
+        baseparm
+        label   "create task"
+        export  none
+    }
+    parm {
+        name    "sch_ip"
+        baseparm
+        label   "ip"
+        joinnext
+        export  none
+    }
+    parm {
+        name    "sch_port"
+        baseparm
+        label   "port"
+        nolabel
+        export  none
+    }
+    groupcollapsible {
+        name    "broadcast_parameters2"
+        label   "broadcast parameters"
+
+        parm {
+            name    "brd_ip"
+            baseparm
+            label   "broadcast ip"
+            joinnext
+            export  none
+        }
+        parm {
+            name    "brd_port"
+            baseparm
+            label   "port"
+            nolabel
+            export  none
+        }
+        parm {
+            name    "brd_timeout"
+            baseparm
+            label   "timeout (sec)"
+            export  none
+        }
+        parm {
+            name    "brd_identifier"
+            baseparm
+            label   "identifier"
+            export  none
+        }
+    }
+
+    parm {
+        name    "broadcast_listen"
+        baseparm
+        label   "Listen to Scheduler's broadcast to get ip and port"
+        export  none
+    }
+    parm {
+        name    "node_name"
+        baseparm
+        label   "node name"
+        export  none
+    }
+    parm {
+        name    "task_name"
+        baseparm
+        label   "task name"
+        export  none
+    }
+    parm {
+        name    "priority"
+        baseparm
+        label   "task group priority"
+        export  none
+    }
+    parm {
+        name    "netscratchpath"
+        label   "global scratch location"
+        type    float
+        invisible
+        default { "0" }
+        range   { 0 10 }
+    }
+    parm {
+        name    "sepparm"
+        label   "Separator"
+        type    separator
+        default { "" }
+    }
+    parm {
+        name    "f"
+        label   "Start/End/Inc"
+        type    integer
+        size    3
+        default { "$FSTART" "$FEND" "1" }
+        range   { -1 1 }
+        parmtag { "script_callback_language" "python" }
+    }
+    groupsimple {
+        name    "distribution_control"
+        label   "Distributed Sim Information"
+
+        parm {
+            name    "labelparm"
+            label   "Message"
+            type    label
+            default { "specify required nodes.\nYou may also use the button below to adjust houdini's stock setup" }
+            parmtag { "sidefx::look" "block" }
+        }
+        parm {
+            name    "distributed_object_node"
+            label   "Sim Object Node"
+            type    oppath
+            default { "" }
+            parmtag { "opfilter" "!!DOP!!" }
+            parmtag { "oprelative" "." }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "distributed_cache_node"
+            label   "Cache Node"
+            type    oppath
+            default { "" }
+            parmtag { "opfilter" "!!DOP!!" }
+            parmtag { "oprelative" "." }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "distributed_control_node"
+            label   "Sim Control Node"
+            type    oppath
+            default { "" }
+            parmtag { "opfilter" "!!DOP!!" }
+            parmtag { "oprelative" "." }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "control_push_parms"
+            label   "adjust default setup"
+            type    button
+            default { "0" }
+            help    "makes adjustments to default distribution setup so that it works with Lifeblood"
+            parmtag { "script_callback" "node=hou.pwd();exec(node.evalParm('control_push_parms_button_code'))" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "control_push_parms_button_code"
+            label   "control_push_parms_button_code"
+            type    string
+            invisible
+            default { "" }
+            parmtag { "editor" "1" }
+            parmtag { "editorlang" "python" }
+        }
+    }
+
+    group {
+        name    "resmanagement"
+        label   "Slice Resource Requirements"
+
+        parm {
+            name    "res_cpucount"
+            label   "Cpu cores (min/pref)"
+            type    vector2
+            size    2
+            default { "2" "4" }
+            range   { 0.1! 32 }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "res_cpumem"
+            label   "Cpu RAM GB (min/pref)"
+            type    vector2
+            size    2
+            default { "0.5" "0" }
+            range   { 0.1! 128 }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "res_gpucount"
+            label   "Gpu count (min/pref)"
+            type    vector2
+            invisible
+            size    2
+            default { "0" "0" }
+            range   { 0.1! 2 }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "res_gpumem"
+            label   "Gpu RAM GB (min/pref)"
+            type    vector2
+            invisible
+            size    2
+            default { "0" "0" }
+            range   { 0.1! 16 }
+            parmtag { "script_callback_language" "python" }
+        }
+    }
+
+    group {
+        name    "resmanagement_1"
+        label   "Attributes"
+
+        multiparm {
+            name    "attribs"
+            label    "attributes"
+            baseparm
+            default 1
+            parmtag { "multistartoffset" "0" }
+
+            parm {
+                name    "enable_#"
+                baseparm
+                label   "name"
+                joinnext
+                export  none
+            }
+            parm {
+                name    "attr_name_#"
+                baseparm
+                label   "name"
+                nolabel
+                joinnext
+                export  none
+            }
+            parm {
+                name    "attr_type_#"
+                baseparm
+                label   "type"
+                nolabel
+                joinnext
+                export  none
+            }
+            parm {
+                name    "val_int_#"
+                baseparm
+                label   "value"
+                nolabel
+                joinnext
+                export  none
+            }
+            parm {
+                name    "val_flt_#"
+                baseparm
+                label   "value"
+                nolabel
+                joinnext
+                export  none
+            }
+            parm {
+                name    "val_str_#"
+                baseparm
+                label   "value"
+                nolabel
+                export  none
+            }
+            parm {
+                name    "val_jsn_#"
+                baseparm
+                label   "value"
+                nolabel
+                export  none
+            }
+            parm {
+                name    "val_bln_#"
+                baseparm
+                label   "value"
+                nolabel
+                export  none
+            }
+            multiscroll {
+                name    "val_lst_#"
+                label    "list values count"
+                baseparm
+                hidewhen "{ attr_type_# != list }"
+                parmtag { "multistartoffset" "0" }
+
+                parm {
+                    name    "lst_attr_type_#_#"
+                    baseparm
+                    label   "type"
+                    nolabel
+                    joinnext
+                    export  none
+                }
+                parm {
+                    name    "lst_val_int_#_#"
+                    baseparm
+                    label   "value"
+                    nolabel
+                    joinnext
+                    export  none
+                }
+                parm {
+                    name    "lst_val_flt_#_#"
+                    baseparm
+                    label   "value"
+                    nolabel
+                    joinnext
+                    export  none
+                }
+                parm {
+                    name    "lst_val_str_#_#"
+                    baseparm
+                    label   "value"
+                    nolabel
+                    joinnext
+                    export  none
+                }
+                parm {
+                    name    "lst_val_bln_#_#"
+                    baseparm
+                    label   "value"
+                    nolabel
+                    export  none
+                }
+            }
+
+        }
+
+    }
+
+    group {
+        name    "resmanagement_2"
+        label   "Environment resolver"
+
+        parm {
+            name    "env_resolver_name"
+            baseparm
+            label   "Environment Resolver Name"
+            export  none
+        }
+        multiparm {
+            name    "env_resolver_args"
+            label    "environment resolver parameters"
+            baseparm
+            default 2
+            parmtag { "multistartoffset" "0" }
+
+            parm {
+                name    "env_arg_name_#"
+                baseparm
+                label   "name"
+                joinnext
+                export  none
+            }
+            parm {
+                name    "env_arg_val_#"
+                baseparm
+                label   "value"
+                export  none
+            }
+        }
+
+    }
+
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.chn"
+Content-Type: text/plain
+
+{
+    channel env_arg_name_0 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = \"user\" language = python }
+    }
+    channel env_arg_val_0 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "import getpass
+return getpass.getuser()" language = python }
+    }
+    channel env_arg_name_1 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "import sys
+return \"package.houdini.py%d_%d\" % (sys.version_info.major, sys.version_info.minor)" language = python }
+    }
+    channel env_arg_val_1 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "\"~=\" + hou.applicationVersionString()" language = python }
+    }
+    channel f1 {
+      lefttype = extend
+      righttype = extend
+      flags = 0
+      segment { length = 0 expr = ch(\"../f1\") }
+    }
+    channel f2 {
+      lefttype = extend
+      righttype = extend
+      flags = 0
+      segment { length = 0 expr = ch(\"../f2\") }
+    }
+    channel val_jsn_2 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "node = hou.pwd()
+
+start, end, inc = node.parmTuple('f').eval()
+if int(start) == start and int(end) == end and int(inc) == inc:
+    start, end, inc = int(start), int(end), int(inc)
+
+frames = []
+assert start <= end
+assert inc > 0
+
+while start <= end:
+    frames.append(start)
+    start += inc
+
+return repr(frames)" language = python }
+    }
+    channel val_int_1 {
+      lefttype = extend
+      righttype = extend
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "expr =\\
+'`dopcountslices('\\
+'opfullpath(chs(\"distributed_object_node\")+\"/..\"),'\\
+'chs(chs(\"distributed_object_node\")+\"/objname\"),'\\
+'\"Slice\"'\\
+')`'
+# this dirty trick is only to cause expression evaluation only at sim start frame
+node = hou.pwd()
+start_frame = node.parm('distributed_object_node').evalAsNode().dopNetNode().parm('startframe').eval()
+return int(hou.text.expandStringAtFrame(expr, start_frame))
+" language = python }
+    }
+    channel val_jsn_3 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "import json
+n = hou.pwd()
+return json.dumps({'cpu': {'min': n.evalParm('res_cpucountx'),
+                           'pref': n.evalParm('res_cpucounty')},
+                   'cmem': {'min': n.evalParm('res_cpumemx'),
+                            'pref': n.evalParm('res_cpumemy')}})
+" language = python }
+    }
+    channel sch_ip {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"127.0.0.1\"
+      flags = 0
+      segment { length = 0 expr = chs(\"../sch_ip\") }
+    }
+    channel sch_port {
+      lefttype = extend
+      righttype = extend
+      default = 1384
+      flags = 0
+      segment { length = 0 value = 1384 1384 expr = ch(\"../sch_port\") }
+    }
+    channel brd_ip {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"0.0.0.0\"
+      flags = 0
+      segment { length = 0 expr = chs(\"../brd_ip\") }
+    }
+    channel brd_port {
+      lefttype = extend
+      righttype = extend
+      default = 34305
+      flags = 0
+      segment { length = 0 value = 34305 34305 expr = ch(\"../brd_port\") }
+    }
+    channel brd_timeout {
+      lefttype = extend
+      righttype = extend
+      default = 15
+      flags = 0
+      segment { length = 0 value = 15 15 expr = ch(\"../brd_timeout\") }
+    }
+    channel brd_identifier {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"lifeblood_scheduler\"
+      flags = 0
+      segment { length = 0 expr = chs(\"../brd_identifier\") }
+    }
+    channel broadcast_listen {
+      lefttype = extend
+      righttype = extend
+      flags = 0
+      segment { length = 0 expr = ch(\"../broadcast_listen\") }
+    }
+    channel node_name {
+      lefttype = extend
+      righttype = extend
+      defaultString = "\"IN DISTRIBUTED SLICES\""
+      flags = 0
+      segment { length = 0 expr = chs(\"../node_name\") }
+    }
+    channel task_name {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"$OS\"
+      flags = 0
+      segment { length = 0 expr = chs(\"../task_name\") }
+    }
+    channel priority {
+      lefttype = extend
+      righttype = extend
+      default = 50
+      flags = 0
+      segment { length = 0 value = 50 50 expr = ch(\"../priority\") }
+    }
+    channel f3 {
+      lefttype = extend
+      righttype = extend
+      default = 1
+      flags = 0
+      segment { length = 0 value = 1 1 expr = ch(\"../f3\") }
+    }
+    channel labelparm {
+      lefttype = extend
+      righttype = extend
+      defaultString = "\"specify required nodes.
+You may also use the button below to adjust houdini's stock setup\""
+      flags = 0
+      segment { length = 0 expr = chs(\"../labelparm\") }
+    }
+    channel distributed_object_node {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"/obj/AutoDopNetwork/flipfluidobject1\"
+      flags = 0
+      segment { length = 0 expr = chsop(\"../distributed_object_node\") }
+    }
+    channel distributed_cache_node {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"/obj/distribute_flipfluidobject1/save_slices\"
+      flags = 0
+      segment { length = 0 expr = chsop(\"../distributed_cache_node\") }
+    }
+    channel distributed_control_node {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"/obj/AutoDopNetwork/DISTRIBUTE_flipfluidobject1_CONTROLS\"
+      flags = 0
+      segment { length = 0 expr = chsop(\"../distributed_control_node\") }
+    }
+    channel control_push_parms {
+      lefttype = extend
+      righttype = extend
+      flags = 0
+      segment { length = 0 expr = ch(\"../control_push_parms\") }
+    }
+    channel res_cpucountx {
+      lefttype = extend
+      righttype = extend
+      default = 1
+      flags = 0
+      segment { length = 0 value = 1 1 expr = ch(\"../res_cpucountx\") }
+    }
+    channel res_cpucounty {
+      lefttype = extend
+      righttype = extend
+      default = 32
+      flags = 0
+      segment { length = 0 value = 32 32 expr = ch(\"../res_cpucounty\") }
+    }
+    channel res_cpumemx {
+      lefttype = extend
+      righttype = extend
+      default = 1
+      flags = 0
+      segment { length = 0 value = 1 1 expr = ch(\"../res_cpumemx\") }
+    }
+    channel res_cpumemy {
+      lefttype = extend
+      righttype = extend
+      default = 128
+      flags = 0
+      segment { length = 0 value = 128 128 expr = ch(\"../res_cpumemy\") }
+    }
+  }
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.parm"
+Content-Type: text/plain
+
+{
+version 0.8
+execute	[ 0	locks=0 ]	(	0	)
+renderdialog	[ 0	locks=0 ]	(	0	)
+_hidden	[ 0	locks=0 ]	(	0	)
+submit	[ 0	locks=0 ]	(	0	)
+sch_ip	[ 0	locks=0 ]	(	[ sch_ip	127.0.0.1 ] 	)
+sch_port	[ 0	locks=0 ]	(	[ sch_port	1384 ] 	)
+broadcast_parameters	[ 0	locks=0 ]	(	0	)
+brd_ip	[ 0	locks=0 ]	(	[ brd_ip	0.0.0.0 ] 	)
+brd_port	[ 0	locks=0 ]	(	[ brd_port	34305 ] 	)
+brd_timeout	[ 0	locks=0 ]	(	[ brd_timeout	15 ] 	)
+brd_identifier	[ 0	locks=0 ]	(	[ brd_identifier	lifeblood_scheduler ] 	)
+broadcast_listen	[ 0	locks=0 ]	(	[ broadcast_listen	0 ] 	)
+node_name	[ 0	locks=0 ]	(	[ node_name	"" ] 	)
+task_name	[ 0	locks=0 ]	(	[ task_name	$OS ] 	)
+priority	[ 0	locks=0 ]	(	[ priority	50 ] 	)
+folder0	[ 0	locks=0 ]	(	0	0	)
+attribs	[ 0	locks=0 ]	(	5	)
+env_resolver_name	[ 0	locks=0 ]	(	StandardEnvironmentResolver	)
+env_resolver_args	[ 0	locks=0 ]	(	2	)
+enable_0	[ 0	locks=0 ]	(	"on"	)
+attr_name_0	[ 0	locks=0 ]	(	hipfile	)
+attr_type_0	[ 0	locks=0 ]	(	"str"	)
+val_int_0	[ 0	locks=0 ]	(	0	)
+val_flt_0	[ 0	locks=0 ]	(	0	)
+val_str_0	[ 0	locks=0 ]	(	$HIPFILE	)
+val_jsn_0	[ 0	locks=0 ]	(	""	)
+val_bln_0	[ 0	locks=0 ]	(	"off"	)
+val_lst_0	[ 0	locks=0 ]	(	0	)
+env_arg_name_0	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_name_0	"" ] 	)
+env_arg_val_0	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_val_0	"" ] 	)
+env_arg_name_1	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_name_1	"" ] 	)
+env_arg_val_1	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_val_1	"" ] 	)
+_hidden2	[ 0	locks=0 ]	(	0	)
+broadcast_parameters2	[ 0	locks=0 ]	(	0	)
+netscratchpath	[ 0	locks=0 ]	(	0	)
+sepparm	[ 0	locks=0 ]	(	)
+f	[ 0	locks=0 ]	(	[ f1	0 ] 	[ f2	0 ] 	[ f3	1 ] 	)
+distribution_control	[ 0	locks=0 ]	(	0	)
+labelparm	[ 0	locks=0 ]	(	[ labelparm	"specify required nodes.
+You may also use the button below to adjust houdini's stock setup" ] 	)
+distributed_object_node	[ 0	locks=0 ]	(	[ distributed_object_node	"" ] 	)
+distributed_cache_node	[ 0	locks=0 ]	(	[ distributed_cache_node	"" ] 	)
+distributed_control_node	[ 0	locks=0 ]	(	[ distributed_control_node	"" ] 	)
+control_push_parms	[ 0	locks=0 ]	(	[ control_push_parms	0 ] 	)
+control_push_parms_button_code	[ 0	locks=0 ]	(	"def do():
+    node = hou.pwd()
+    control_node = node.parm('distributed_control_node').evalAsNode()
+    cache_write = node.parm('distributed_cache_node').evalAsNode()
+    object_node = node.parm('distributed_object_node').evalAsNode()
+    if cache_write is None or cache_write.type().name() != 'rop_geometry':
+        hou.ui.displayMessage('Cache Node is invalid', severity=hou.severityType.Error)
+        return
+    cache_parm = cache_write.parm('sopoutput').getReferencedParm()
+    if cache_parm is None:
+        hou.ui.displayMessage('Cache node does not reference a filemerge', severity=hou.severityType.Error)
+        return
+    cache_read = cache_parm.node()
+    if cache_read is None:
+        hou.ui.displayMessage('Cache node does not reference a filemerge', severity=hou.severityType.Error)
+        return
+    if control_node is None:
+        hou.ui.displayMessage('Sim Control Node is invalid', severity=hou.severityType.Error)
+        return
+    if object_node is None:
+        hou.ui.displayMessage('Sim Object Node is invalid', severity=hou.severityType.Error)
+        return
+
+    control_node.parm('visaddress').set('\\`@simtracker_host\\`')
+    control_node.parm('port').setExpression('@simtracker_port')
+    control_node.parm('slice').setExpression('@slice')
+
+    cache_read.parm('file').set(cache_read.parm('file').unexpandedString().replace('\\$SLICE', '\\$LBATTR_slice'))
+    cache_read.parm('merge_var').set('LBATTR_slice')
+
+    hou.ui.displayMessage('setup updated, all valid')
+
+do()"	)
+resmanagement	[ 0	locks=0 ]	(	1	1	1	)
+res_cpucount	[ 0	locks=0 ]	(	[ res_cpucountx	2 ] 	[ res_cpucounty	4 ] 	)
+res_cpumem	[ 0	locks=0 ]	(	[ res_cpumemx	0.5 ] 	[ res_cpumemy	0 ] 	)
+res_gpucount	[ 0	locks=0 ]	(	0	0	)
+res_gpumem	[ 0	locks=0 ]	(	0	0	)
+enable_1	[ 0	locks=0 ]	(	"on"	)
+attr_name_1	[ 0	locks=0 ]	(	"slice count"	)
+attr_type_1	[ 0	locks=0 ]	(	"int"	)
+val_int_1	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ val_int_1	0 ] 	)
+val_flt_1	[ 0	locks=0 ]	(	0	)
+val_str_1	[ 0	locks=0 ]	(	""	)
+val_jsn_1	[ 0	locks=0 ]	(	""	)
+val_bln_1	[ 0	locks=0 ]	(	"off"	)
+val_lst_1	[ 0	locks=0 ]	(	0	)
+enable_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	"on"	)
+attr_name_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	frames	)
+attr_type_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	"json"	)
+val_int_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	0	)
+val_flt_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	0	)
+val_str_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	""	)
+val_jsn_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	[ val_jsn_2	"" ] 	)
+val_bln_2	[ 0	locks=0	autoscope=0	autosel=4294967295 ]	(	"off"	)
+val_lst_2	[ 0	locks=0 ]	(	0	)
+enable_3	[ 0	locks=0 ]	(	"on"	)
+attr_name_3	[ 0	locks=0 ]	(	requirements	)
+attr_type_3	[ 0	locks=0 ]	(	"json"	)
+val_int_3	[ 0	locks=0 ]	(	0	)
+val_flt_3	[ 0	locks=0 ]	(	0	)
+val_str_3	[ 0	locks=0 ]	(	""	)
+val_jsn_3	[ 0	locks=0 ]	(	[ val_jsn_3	"" ] 	)
+val_bln_3	[ 0	locks=0 ]	(	"off"	)
+val_lst_3	[ 0	locks=0 ]	(	0	)
+enable_4	[ 0	locks=0 ]	(	"on"	)
+attr_name_4	[ 0	locks=0 ]	(	hipdriver	)
+attr_type_4	[ 0	locks=0 ]	(	"str"	)
+val_int_4	[ 0	locks=0 ]	(	0	)
+val_flt_4	[ 0	locks=0 ]	(	0	)
+val_str_4	[ 0	locks=0 ]	(	`chsop(\"distributed_cache_node\")`	)
+val_jsn_4	[ 0	locks=0 ]	(	""	)
+val_bln_4	[ 0	locks=0 ]	(	"off"	)
+val_lst_4	[ 0	locks=0 ]	(	0	)
+}
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot/lifeblood_submitter.userdata"
+Content-Type: text/plain
+
+{
+	"___Version___":{
+		"type":"string",
+		"value":""
+	}
+}
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY
+Content-Disposition: attachment; filename="hdaroot.net"
+Content-Type: text/plain
+
+1
+
+--HOUDINIMIMEBOUNDARY0xD3ADD339-0x00000F49-0x56B122C9-0x00000001HOUDINIMIMEBOUNDARY--

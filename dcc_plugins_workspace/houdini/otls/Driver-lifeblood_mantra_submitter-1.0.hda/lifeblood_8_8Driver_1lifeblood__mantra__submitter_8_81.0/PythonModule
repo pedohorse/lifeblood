@@ -1,0 +1,24 @@
+import hou
+
+
+def submit_btn_callback(node):
+    # validate
+    ropnode = node.parm('roppath').evalAsNode()
+    if ropnode is None:
+        hou.ui.displayMessage(
+            'Mantra node is not selected',
+            severity=hou.severityType.Error,
+            title='you forgot to select node to render'
+        )
+        return
+    if (rop_type_name := ropnode.type().nameComponents()[2]) != 'mantra':
+        hou.ui.displayMessage(
+            f'Specify a Mantra node to render. instead I see "{rop_type_name}"',
+            severity=hou.severityType.Error,
+            title='Invalid node type to render'
+        )
+        return
+    
+    # submit
+    inner = node.node('lifeblood_submitter')
+    inner.hdaModule().submit_button_callback(inner)

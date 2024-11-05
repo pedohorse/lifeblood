@@ -1,0 +1,36 @@
+import hou
+
+
+def submit_btn_callback(node):
+    # validate
+    simobj_node = node.parm('distributed_object_node').evalAsNode()
+    cache_node = node.parm('distributed_cache_node').evalAsNode()
+    simctl_node = node.parm('distributed_control_node').evalAsNode()
+    for tgtnode, tgtname in (
+        (simobj_node, 'Flip Object (dop)'),
+        (cache_node, 'Slice Merge (sop)'),
+        (simctl_node, 'Distribution control null (dop)'),
+    ):
+        if tgtnode is None:
+            hou.ui.displayMessage(
+                f'{tgtname} node is not selected or invalid',
+                severity=hou.severityType.Error,
+                title='you forgot to select some node'
+            )
+            return
+    for tgtnode, tgttype, errmsg in (
+        (simobj_node, 'flipobject', 'Sim Object must point to Flip Object node'),
+        (cache_node, 'filemerge', 'Cache Node must point to save_slices file merge node'),
+        (simctl_node, 'null', 'Sim Control node must point to dop null with distribution control parameters node'),
+    ):
+        if tgtnode.type().nameComponents()[2] != tgttype:
+            hou.ui.displayMessage(
+                errmsg,
+                severity=hou.severityType.Error,
+                title='you forgot to select some node'
+            )
+            return
+    
+    # submit
+    inner = node.node('lifeblood_submitter')
+    inner.hdaModule().submit_button_callback(inner)

@@ -1,0 +1,35 @@
+import hou
+
+
+def submit_btn_callback(node):
+    # validate
+    ropnode = node.parm('roppath').evalAsNode()
+    if ropnode is None:
+        hou.ui.displayMessage(
+            'Cache node is not selected',
+            severity=hou.severityType.Error,
+            title='you forgot to select node to cache/render'
+        )
+        return
+    if ropnode.type().nameComponents()[2] == 'filecache' and (subnode := ropnode.node('render')):
+        roppath = node.parm('roppath').evalAsString()
+        if not roppath.endswith('/'):
+            roppath += '/'
+        try:
+            node.parm('roppath').set(roppath + 'render')
+            ropnode = subnode
+        except hou.OperationFailed:
+            pass  # we tried, it may be locked
+        assert node.parm('roppath').evalAsNode() == ropnode
+        
+    if not isinstance(ropnode, hou.RopNode):
+        hou.ui.displayMessage(
+            f'Specify a Rop node to cache/render. Like a Rop Geometry node in SOP"',
+            severity=hou.severityType.Error,
+            title='Invalid node type to cache/render'
+        )
+        return
+    
+    # submit
+    inner = node.node('lifeblood_submitter')
+    inner.hdaModule().submit_button_callback(inner)
