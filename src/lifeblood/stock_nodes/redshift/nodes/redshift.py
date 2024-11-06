@@ -1,4 +1,3 @@
-from copy import copy
 from lifeblood.node_plugin_base import BaseNodeWithTaskRequirements
 from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
@@ -32,7 +31,7 @@ class Redshift(BaseNodeWithTaskRequirements):
         super(Redshift, self).__init__(name)
         ui = self.get_ui()
         with ui.initializing_interface_lock():
-            ui.color_scheme().set_main_color(0.5, 0.25, 0.125)
+            ui.color_scheme().set_main_color(0.788, 0.18, 0.18)
             ui.add_parameter('rs path', 'rs file path', NodeParameterType.STRING, "`task['file']`")
             ui.add_parameter('image path', 'output image file path', NodeParameterType.STRING, "`task['outimage']`")
             ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
