@@ -1,8 +1,8 @@
-# Dialog script for lifeblood::karma_submitter::1.0 automatically generated
+# Dialog script for lifeblood::lifeblood_karma_submitter::1.0 automatically generated
 
 {
-    name	lifeblood::karma_submitter::1.0
-    script	lifeblood::karma_submitter::1.0
+    name	lifeblood::lifeblood_karma_submitter::1.0
+    script	lifeblood::lifeblood_karma_submitter::1.0
     label	"Lifeblood Karma Submitter"
 
     help {

@@ -1,6 +1,6 @@
-Operator:     lifeblood::karma_submitter::1.0
+Operator:     lifeblood::lifeblood_karma_submitter::1.0
 Label:        Lifeblood Karma Submitter
-Path:         oplib:/lifeblood::Driver/karma_submitter::1.0?lifeblood::Driver/karma_submitter::1.0
+Path:         oplib:/lifeblood::Driver/lifeblood_karma_submitter::1.0?lifeblood::Driver/lifeblood_karma_submitter::1.0
 Icon:         opdef:/lifeblood::Driver/lifeblood_submitter::1.0.0?IconSVG
 Table:        Driver
 License:      
