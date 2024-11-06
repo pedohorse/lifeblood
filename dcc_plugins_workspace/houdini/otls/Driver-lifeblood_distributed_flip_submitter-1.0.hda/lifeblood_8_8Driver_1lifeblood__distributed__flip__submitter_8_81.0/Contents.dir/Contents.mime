@@ -709,12 +709,6 @@ You may also use the button below to adjust houdini's stock setup\""
       flags = 0
       segment { length = 0 expr = chsop(\"../distributed_control_node\") }
     }
-    channel control_push_parms {
-      lefttype = extend
-      righttype = extend
-      flags = 0
-      segment { length = 0 expr = ch(\"../control_push_parms\") }
-    }
     channel res_cpucountx {
       lefttype = extend
       righttype = extend
@@ -794,7 +788,7 @@ You may also use the button below to adjust houdini's stock setup" ] 	)
 distributed_object_node	[ 0	locks=0 ]	(	[ distributed_object_node	"" ] 	)
 distributed_cache_node	[ 0	locks=0 ]	(	[ distributed_cache_node	"" ] 	)
 distributed_control_node	[ 0	locks=0 ]	(	[ distributed_control_node	"" ] 	)
-control_push_parms	[ 0	locks=0 ]	(	[ control_push_parms	0 ] 	)
+control_push_parms	[ 0	locks=0 ]	(	0	)
 control_push_parms_button_code	[ 0	locks=0 ]	(	"def do():
     node = hou.pwd()
     control_node = node.parm('distributed_control_node').evalAsNode()

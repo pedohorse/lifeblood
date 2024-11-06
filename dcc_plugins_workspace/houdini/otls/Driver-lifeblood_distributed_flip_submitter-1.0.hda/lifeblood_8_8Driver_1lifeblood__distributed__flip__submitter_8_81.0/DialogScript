@@ -238,6 +238,7 @@
                 parmtag { "autoscope" "0000000000000000" }
                 parmtag { "import_source" "op:./lifeblood_submitter" }
                 parmtag { "import_token" "control_push_parms" }
+                parmtag { "script_callback" "hou.phm().update_setup_button_callback(hou.pwd())" }
                 parmtag { "script_callback_language" "python" }
             }
         }
