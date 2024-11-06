@@ -1,0 +1,280 @@
+# Dialog script for lifeblood::lifeblood_distributed_flip_submitter::1.0 automatically generated
+
+{
+    name	lifeblood::lifeblood_distributed_flip_submitter::1.0
+    script	lifeblood::lifeblood_distributed_flip_submitter::1.0
+    label	"Lifeblood Distributed Flip Submitter"
+
+    help {
+	""
+    }
+
+    inputlabel	1	"Input #1"
+
+    parm {
+        name    "execute"
+        baseparm
+        label   "Render"
+        invisible
+        joinnext
+        export  none
+    }
+    parm {
+        name    "renderdialog"
+        baseparm
+        label   "Controls..."
+        nolabel
+        invisible
+        export  none
+    }
+    import {
+        label   submitter
+        source  "op:./lifeblood_submitter"
+        enable  1
+
+        parm {
+            name    "submit"
+            label   "create task"
+            type    button
+            default { "0" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "submit" }
+            parmtag { "script_callback" "hou.phm().submit_btn_callback(hou.pwd())" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sch_ip"
+            label   "ip"
+            type    string
+            joinnext
+            default { "127.0.0.1" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sch_ip" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sch_port"
+            label   "port"
+            type    integer
+            nolabel
+            default { "1384" }
+            range   { 0 10 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sch_port" }
+            parmtag { "script_callback_language" "python" }
+        }
+        groupcollapsible {
+            name    "folder2"
+            label   "broadcast parameters"
+            grouptag { "import_source" "op:./lifeblood_submitter" }
+            grouptag { "import_token" "broadcast_parameters2:broadcast parameters" }
+
+            parm {
+                name    "brd_ip"
+                label   "broadcast ip"
+                type    string
+                joinnext
+                default { "0.0.0.0" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_ip" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_port"
+                label   "port"
+                type    integer
+                nolabel
+                default { "34305" }
+                range   { 0 10 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_port" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_timeout"
+                label   "timeout (sec)"
+                type    integer
+                default { "15" }
+                range   { 1! 20 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_timeout" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_identifier"
+                label   "identifier"
+                type    string
+                default { "lifeblood_scheduler" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_identifier" }
+                parmtag { "script_callback_language" "python" }
+            }
+        }
+
+        parm {
+            name    "broadcast_listen"
+            label   "Listen to Scheduler's broadcast to get ip and port"
+            type    button
+            default { "0" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "broadcast_listen" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "node_name"
+            label   "node name"
+            type    string
+            default { "IN DISTRIBUTED SLICES" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "node_name" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "task_name"
+            label   "task name"
+            type    string
+            default { "$OS" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "task_name" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "priority"
+            label   "task group priority"
+            type    float
+            default { "50" }
+            range   { 0! 100 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "priority" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sepparm"
+            label   "Separator"
+            type    separator
+            default { "" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sepparm" }
+        }
+        parm {
+            name    "f"
+            label   "Start/End/Inc"
+            type    integer
+            size    3
+            default { [ "$FSTART" hscript-expr ] [ "$FEND" hscript-expr ] "1" }
+            range   { -1 1 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "f" }
+            parmtag { "script_callback_language" "python" }
+        }
+        groupsimple {
+            name    "folder3"
+            label   "Distributed Sim Information"
+            grouptag { "import_source" "op:./lifeblood_submitter" }
+            grouptag { "import_token" "distribution_control:Distributed Sim Information" }
+
+            parm {
+                name    "labelparm"
+                label   "Message"
+                type    label
+                default { "specify required nodes.\nYou may also use the button below to adjust houdini's stock setup" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "labelparm" }
+                parmtag { "sidefx::look" "block" }
+            }
+            parm {
+                name    "distributed_object_node"
+                label   "Sim Object Node"
+                type    oppath
+                default { "/obj/AutoDopNetwork/flipfluidobject1" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "distributed_object_node" }
+                parmtag { "opfilter" "!!DOP!!" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "distributed_cache_node"
+                label   "Cache Node"
+                type    oppath
+                default { "/obj/distribute_flipfluidobject1/save_slices" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "distributed_cache_node" }
+                parmtag { "opfilter" "!!DOP!!" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "distributed_control_node"
+                label   "Sim Control Node"
+                type    oppath
+                default { "/obj/AutoDopNetwork/DISTRIBUTE_flipfluidobject1_CONTROLS" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "distributed_control_node" }
+                parmtag { "opfilter" "!!DOP!!" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "control_push_parms"
+                label   "adjust default setup"
+                type    button
+                default { "0" }
+                help    "makes adjustments to default distribution setup so that it works with Lifeblood"
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "control_push_parms" }
+                parmtag { "script_callback" "hou.phm().update_setup_button_callback(hou.pwd())" }
+                parmtag { "script_callback_language" "python" }
+            }
+        }
+
+        group {
+            name    "folder4"
+            label   "Slice Resource Requirements"
+            grouptag { "import_source" "op:./lifeblood_submitter" }
+            grouptag { "import_token" "resmanagement:Slice Resource Requirements" }
+
+            parm {
+                name    "res_cpucount"
+                label   "Cpu cores (min/pref)"
+                type    vector2
+                size    2
+                default { "1" "32" }
+                range   { 0.1! 32 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "res_cpucount" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "res_cpumem"
+                label   "Cpu RAM GB (min/pref)"
+                type    vector2
+                size    2
+                default { "1" "128" }
+                range   { 0.1! 128 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "res_cpumem" }
+                parmtag { "script_callback_language" "python" }
+            }
+        }
+
+    }
+
+}

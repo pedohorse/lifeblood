@@ -1,0 +1,280 @@
+# Dialog script for lifeblood::lifeblood_karma_submitter::1.0 automatically generated
+
+{
+    name	lifeblood::lifeblood_karma_submitter::1.0
+    script	lifeblood::lifeblood_karma_submitter::1.0
+    label	"Lifeblood Karma Submitter"
+
+    help {
+	""
+    }
+
+    inputlabel	1	"Input #1"
+
+    parm {
+        name    "execute"
+        baseparm
+        label   "Render"
+        invisible
+        joinnext
+        export  none
+    }
+    parm {
+        name    "renderdialog"
+        baseparm
+        label   "Controls..."
+        nolabel
+        invisible
+        export  none
+    }
+    import {
+        label   submitter
+        source  "op:./lifeblood_submitter"
+        enable  1
+
+        parm {
+            name    "submit"
+            label   "create task"
+            type    button
+            default { "0" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_token" "submit" }
+            parmtag { "script_callback" "hou.phm().submit_btn_callback(hou.pwd())" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sch_ip"
+            label   "ip"
+            type    string
+            joinnext
+            default { "127.0.0.1" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sch_ip" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sch_port"
+            label   "port"
+            type    integer
+            nolabel
+            default { "1384" }
+            range   { 0 10 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sch_port" }
+            parmtag { "script_callback_language" "python" }
+        }
+        groupcollapsible {
+            name    "folder2"
+            label   "broadcast parameters"
+            grouptag { "import_source" "op:./lifeblood_submitter" }
+            grouptag { "import_token" "broadcast_parameters2:broadcast parameters" }
+
+            parm {
+                name    "brd_ip"
+                label   "broadcast ip"
+                type    string
+                joinnext
+                default { "0.0.0.0" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_ip" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_port"
+                label   "port"
+                type    integer
+                nolabel
+                default { "34305" }
+                range   { 0 10 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_port" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_timeout"
+                label   "timeout (sec)"
+                type    integer
+                default { "15" }
+                range   { 1! 20 }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_timeout" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "brd_identifier"
+                label   "identifier"
+                type    string
+                default { "lifeblood_scheduler" }
+                parmtag { "autoscope" "0000000000000000" }
+                parmtag { "import_source" "op:./lifeblood_submitter" }
+                parmtag { "import_token" "brd_identifier" }
+                parmtag { "script_callback_language" "python" }
+            }
+        }
+
+        parm {
+            name    "broadcast_listen"
+            label   "Listen to Scheduler's broadcast to get ip and port"
+            type    button
+            default { "0" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "broadcast_listen" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "node_name"
+            label   "node name"
+            type    string
+            default { "IN KARMA" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "node_name" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "task_name"
+            label   "task name"
+            type    string
+            default { "$OS" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "task_name" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "priority"
+            label   "task group priority"
+            type    float
+            default { "50" }
+            range   { 0! 100 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "priority" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "sepparm"
+            label   "Separator"
+            type    separator
+            default { "" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "sepparm" }
+        }
+        parm {
+            name    "f"
+            label   "Start/End/Inc"
+            type    integer
+            size    3
+            default { [ "$FSTART" hscript-expr ] [ "$FEND" hscript-expr ] "1" }
+            range   { -1 1 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "f" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "framechunk_size"
+            label   "Frame Chunk Size"
+            type    integer
+            default { "10" }
+            help    "number of frames per single ifd generation task"
+            range   { 1! 20 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "framechunk_size" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "roppath"
+            label   "Karma or USDrender Node To Render"
+            type    oppath
+            default { "" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "roppath" }
+            parmtag { "opfilter" "!!ROP!!" }
+            parmtag { "oprelative" "." }
+            parmtag { "script_callback_language" "python" }
+        }
+        group {
+            name    "folder3"
+            label   "Resource Requirements"
+            grouptag { "import_source" "op:./lifeblood_submitter" }
+            grouptag { "import_token" "resmanagement_group:Resource Requirements" }
+
+            groupsimple {
+                name    "folder6"
+                label   "USD Generation"
+                grouptag { "import_source" "op:./lifeblood_submitter" }
+                grouptag { "import_token" "resmanagement:USD Generation" }
+
+                parm {
+                    name    "res_cpucount"
+                    label   "Cpu cores (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "2" "4" }
+                    range   { 0.1! 32 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_cpucount" }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "res_cpumem"
+                    label   "Cpu RAM GB (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "0.5" "0.1" }
+                    range   { 0.1! 128 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_cpumem" }
+                    parmtag { "script_callback_language" "python" }
+                }
+            }
+
+            groupsimple {
+                name    "folder7"
+                label   "Karma Rendering"
+                grouptag { "import_source" "op:./lifeblood_submitter" }
+                grouptag { "import_token" "resmanagement_mantra:Karma Rendering" }
+
+                parm {
+                    name    "res_m_cpucount"
+                    label   "Cpu cores (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "2" "4" }
+                    range   { 0.1! 32 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_m_cpucount" }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "res_m_cpumem"
+                    label   "Cpu RAM GB (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "0.5" "0.1" }
+                    range   { 0.1! 128 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_m_cpumem" }
+                    parmtag { "script_callback_language" "python" }
+                }
+            }
+
+        }
+
+    }
+
+}

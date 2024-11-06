@@ -3,7 +3,7 @@
 {
     name	lifeblood::lifeblood_submitter::1.0.0
     script	lifeblood::lifeblood_submitter::1.0.0
-    label	"Lifeblood Submitter"
+    label	"Lifeblood Generic Submitter"
 
     help {
 	""

@@ -1,0 +1,94 @@
+import hou
+
+
+class UpdateSetupError(RuntimeError):
+    pass
+
+
+def submit_btn_callback(node):
+    # validate
+    simobj_node = node.parm('distributed_object_node').evalAsNode()
+    cache_node = node.parm('distributed_cache_node').evalAsNode()
+    simctl_node = node.parm('distributed_control_node').evalAsNode()
+    for tgtnode, tgtname in (
+        (simobj_node, 'Flip Object (dop)'),
+        (cache_node, 'Slice Merge (sop)'),
+        (simctl_node, 'Distribution control null (dop)'),
+    ):
+        if tgtnode is None:
+            hou.ui.displayMessage(
+                f'{tgtname} node is not selected or invalid',
+                severity=hou.severityType.Error,
+                title='you forgot to select some node'
+            )
+            return
+    for tgtnode, tgttype, errmsg in (
+        (simobj_node, 'flipobject', 'Sim Object must point to Flip Object node'),
+        (cache_node, 'rop_geometry', 'Cache Node must point to save_slices rop geometry node'),
+        (simctl_node, 'null', 'Sim Control node must point to dop null with distribution control parameters node'),
+    ):
+        if tgtnode.type().nameComponents()[2] != tgttype:
+            hou.ui.displayMessage(
+                errmsg,
+                severity=hou.severityType.Error,
+                title='you forgot to select some node'
+            )
+            return
+
+    # ensure setup updated
+    try:
+        update_setup(node)
+    except UpdateSetupError as e:
+        hou.ui.displayMessage(str(e), severity=hou.severityType.Error)
+        return
+
+    # submit
+    inner = node.node('lifeblood_submitter')
+    inner.hdaModule().submit_button_callback(inner)
+
+
+def update_setup_button_callback(node):
+    try:
+        update_setup(node)
+    except UpdateSetupError as e:
+        hou.ui.displayMessage(str(e), severity=hou.severityType.Error)
+        return
+
+    hou.ui.displayMessage('setup updated, all valid')
+
+
+def set_parm_if_needed(parm, value, is_expression=False):
+    if not is_expression and parm.unexpandedString() == value:
+        return
+    elif is_expression and parm.expression() == value:
+        return
+
+    if is_expression:
+        parm.setExpression(value)
+    else:
+        parm.set(value)
+
+
+def update_setup(node):
+    control_node = node.parm('distributed_control_node').evalAsNode()
+    cache_write = node.parm('distributed_cache_node').evalAsNode()
+    object_node = node.parm('distributed_object_node').evalAsNode()
+    if cache_write is None or cache_write.type().name() != 'rop_geometry':
+        raise UpdateSetupError('Cache Node is invalid')
+    cache_parm = cache_write.parm('sopoutput').getReferencedParm()
+    if cache_parm is None:
+        raise UpdateSetupError('Cache node does not reference a filemerge')
+    cache_read = cache_parm.node()
+    if cache_read is None:
+        raise UpdateSetupError('Cache node does not reference a filemerge')
+    if control_node is None:
+        raise UpdateSetupError('Sim Control Node is invalid')
+    if object_node is None:
+        raise UpdateSetupError('Sim Object Node is invalid')
+
+    set_parm_if_needed(control_node.parm('visaddress'), '`@simtracker_host`')
+    set_parm_if_needed(control_node.parm('port'), '@simtracker_port', is_expression=True)
+    set_parm_if_needed(control_node.parm('slice'), '@slice', is_expression=True)
+
+    set_parm_if_needed(cache_read.parm('file'), cache_read.parm('file').unexpandedString().replace('$SLICE', '$LBATTR_slice'))
+    set_parm_if_needed(cache_read.parm('merge_var'), 'LBATTR_slice')

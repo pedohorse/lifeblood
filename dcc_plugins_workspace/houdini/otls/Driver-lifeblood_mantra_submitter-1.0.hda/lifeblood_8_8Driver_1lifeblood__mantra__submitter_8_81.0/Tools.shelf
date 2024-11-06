@@ -16,5 +16,8 @@
     <script scriptType="python"><![CDATA[import drivertoolutils
 
 drivertoolutils.genericTool(kwargs, '$HDA_NAME')]]></script>
+    <keywordList>
+      <keyword>Mantra</keyword>
+    </keywordList>
   </tool>
 </shelfDocument>

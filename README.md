@@ -54,6 +54,12 @@ There are multiple ways to get Lifeblood to try it out, refer to [installation s
 
 In short - easiest way is to use [Lifeblood-Manager](https://github.com/pedohorse/lifeblood-manager/releases), as described in the docs
 
+### DCC tools and submitters
+
+Lifeblood-Manager can install houdini tools automatically.
+
+For manual installation - sumbitters for Houdini and Blender are available in [releases](https://github.com/pedohorse/lifeblood/releases).
+
 ## Links
 
 - [blog + support](https://www.patreon.com/xapkohheh)
