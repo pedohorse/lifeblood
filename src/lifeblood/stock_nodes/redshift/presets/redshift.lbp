@@ -455,6 +455,26 @@
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
+                "__requirements__.min_dev_0": {
+                    "name": "__requirements__.min_dev_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 0,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
+                "__requirements__.pref_dev_0": {
+                    "name": "__requirements__.pref_dev_0",
+                    "type": {
+                        "value": 0,
+                        "__NodeParameterType__": "==3*E=="
+                    },
+                    "uvalue": 99,
+                    "expr": null,
+                    "__dataclass__": "ParamData"
+                },
                 "rs path": {
                     "name": "rs path",
                     "type": {
