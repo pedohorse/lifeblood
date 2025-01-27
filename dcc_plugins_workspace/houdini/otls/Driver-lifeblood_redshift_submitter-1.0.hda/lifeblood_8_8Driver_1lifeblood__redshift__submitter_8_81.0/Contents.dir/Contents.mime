@@ -545,7 +545,7 @@ return \"package.houdini.py%d_%d\" % (sys.version_info.major, sys.version_info.m
       flags = 0
       segment { options = {	 autoslope  ai ao }
 
-	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "\"package.\" + hou.pwd().node(\"..\").evalParm(\"rs_pkg_name\")" language = python }
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "ifs(ch(\"../rs_pkg_do\"), \"package.\" + chs(\"../rs_pkg_name\"), \"\")" language = hscript }
     }
     channel env_arg_val_2 {
       lefttype = extend

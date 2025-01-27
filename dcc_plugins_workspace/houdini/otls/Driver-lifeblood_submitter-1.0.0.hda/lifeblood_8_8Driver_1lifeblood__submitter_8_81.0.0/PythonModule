@@ -7,6 +7,17 @@ except ImportError:
 
 
 def submit_button_callback(node):
+    # first - check for trivial error if user have not set up scheduler address
+    if node.evalParm("sch_ip").strip() == '':  # default "invalid" value
+        if hou.ui.displayMessage(
+                'You haven\'t set up scheduler address.\nDo you want to listen for scheduler\'s broadcast?',
+                buttons=('Yes', 'Cancel'),
+                default_choice=0,
+                close_choice=1) == 1:
+            return
+        if not fill_address_from_broadcast(node):
+            return
+
     if hou.hipFile.hasUnsavedChanges():
         if hou.ui.displayMessage('scene has unsaved changes, save and continue?', buttons=('Ok', 'Cancel'),
                                  severity=hou.severityType.Warning,
@@ -48,7 +59,11 @@ def submit(node):
     env_args = {}
     env_name = node.evalParm('env_resolver_name')
     for i in range(node.parm('env_resolver_args').evalAsInt()):
-        env_args[node.evalParm('env_arg_name_%d' % i)] = node.evalParm('env_arg_val_%d' % i)
+        arg_name = node.evalParm('env_arg_name_%d' % i)
+        # skip empty names
+        if arg_name.strip() == '':
+            continue
+        env_args[arg_name] = node.evalParm('env_arg_val_%d' % i)
     task.set_environment_resolver(env_name, env_args)
     
     for i in range(node.parm('attribs').evalAsInt()):
@@ -131,15 +146,22 @@ def fill_address_from_broadcast(node):
         ip, port = address_from_broadcast(node)
     except hou.OperationInterrupted:
         if hou.isUIAvailable():
-            hou.ui.displayMessage('waiting interrupted', severity=hou.severityType.Warning)
+            # this try-except block here is to workaround a bug in some hou builds
+            # that reraises OperationInterrupted exception
+            try:
+                hou.ui.displayMessage('waiting interrupted', severity=hou.severityType.Warning)
+            except hou.OperationInterrupted:
+                pass
         else:
             print('waiting interrupted')
+        return False
     if ip is None:
         if hou.isUIAvailable():
             hou.ui.displayMessage('did not receive a broadcast within timeout', severity=hou.severityType.Warning)
         else:
             print('did not receive a broadcast within timeout')
-        return
+        return False
     assert port is not None
     node.parm('sch_ip').set(ip)
     node.parm('sch_port').set(port)
+    return True

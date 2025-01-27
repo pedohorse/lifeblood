@@ -43,7 +43,7 @@
         label   "ip"
         type    string
         joinnext
-        default { "127.0.0.1" }
+        default { "" }
         parmtag { "script_callback_language" "python" }
     }
     parm {

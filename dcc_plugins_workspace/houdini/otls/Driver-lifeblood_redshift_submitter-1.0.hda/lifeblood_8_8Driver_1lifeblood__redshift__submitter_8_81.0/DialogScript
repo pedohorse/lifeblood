@@ -48,7 +48,7 @@
             label   "ip"
             type    string
             joinnext
-            default { "127.0.0.1" }
+            default { "" }
             parmtag { "autoscope" "0000000000000000" }
             parmtag { "import_source" "op:./lifeblood_submitter" }
             parmtag { "import_token" "sch_ip" }
@@ -281,11 +281,21 @@
             label   "Redshift Package"
 
             parm {
+                name    "rs_pkg_do"
+                label   "Require package"
+                type    toggle
+                joinnext
+                default { "1" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
                 name    "rs_pkg_name"
                 label   "Name"
                 type    string
+                nolabel
                 joinnext
                 default { "redshift" }
+                disablewhen "{ rs_pkg_do == 0 }"
                 parmtag { "script_callback_language" "python" }
             }
             parm {
@@ -293,6 +303,7 @@
                 label   "Version"
                 type    string
                 default { [ "if hasattr(hou.session, '_lifeblood__rs_ver_str'):\n    return hou.session._lifeblood__rs_ver_str\n\nreturn 'error! cannot autodetect'" python ] }
+                disablewhen "{ rs_pkg_do == 0 }"
                 parmtag { "script_callback_language" "python" }
             }
         }
