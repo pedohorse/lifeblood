@@ -201,6 +201,7 @@
             parmtag { "import_source" "op:./lifeblood_submitter" }
             parmtag { "import_token" "roppath" }
             parmtag { "opfilter" "!!ROP!!" }
+            parmtag { "oprelative" "." }
             parmtag { "script_callback_language" "python" }
         }
         group {
@@ -273,6 +274,27 @@
                 }
             }
 
+        }
+
+        group {
+            name    "folder3_1"
+            label   "Redshift Package"
+
+            parm {
+                name    "rs_pkg_name"
+                label   "Name"
+                type    string
+                joinnext
+                default { "redshift" }
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "rs_pkg_ver"
+                label   "Version"
+                type    string
+                default { [ "if hasattr(hou.session, '_lifeblood__rs_ver_str'):\n    return hou.session._lifeblood__rs_ver_str\n\nreturn 'error! cannot autodetect'" python ] }
+                parmtag { "script_callback_language" "python" }
+            }
         }
 
     }

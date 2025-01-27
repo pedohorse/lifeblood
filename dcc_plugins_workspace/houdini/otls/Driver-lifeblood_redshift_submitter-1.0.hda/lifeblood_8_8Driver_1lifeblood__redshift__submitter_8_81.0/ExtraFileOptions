@@ -1,7 +1,27 @@
 {
+	"PreFirstCreate/Cursor":{
+		"type":"intarray",
+		"value":[10,1]
+	},
+	"PreFirstCreate/IsExpr":{
+		"type":"bool",
+		"value":false
+	},
+	"PreFirstCreate/IsPython":{
+		"type":"bool",
+		"value":true
+	},
+	"PreFirstCreate/IsScript":{
+		"type":"bool",
+		"value":true
+	},
+	"PreFirstCreate/Source":{
+		"type":"string",
+		"value":""
+	},
 	"PythonModule/Cursor":{
 		"type":"intarray",
-		"value":[18,48]
+		"value":[18,1]
 	},
 	"PythonModule/IsExpr":{
 		"type":"bool",

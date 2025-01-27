@@ -538,6 +538,27 @@ return \"package.houdini.py%d_%d\" % (sys.version_info.major, sys.version_info.m
 
 	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "\"~=\" + hou.applicationVersionString()" language = python }
     }
+    channel env_arg_name_2 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "\"package.\" + hou.pwd().node(\"..\").evalParm(\"rs_pkg_name\")" language = python }
+    }
+    channel env_arg_val_2 {
+      lefttype = extend
+      righttype = extend
+      defaultString = \"\"
+      flags = 0
+      segment { options = {	 autoslope  ai ao }
+
+	 length = 0 accel = 0.33333333333333331 0.33333333333333331 expr = "if hasattr(hou.session, '_lifeblood__rs_ver_str'):
+    return '~=' + hou.session._lifeblood__rs_ver_str
+
+return 'error! cannot autodetect'" language = python }
+    }
     channel val_jsn_3 {
       lefttype = extend
       righttype = extend
@@ -781,7 +802,7 @@ priority	[ 0	locks=0 ]	(	[ priority	50 ] 	)
 folder0	[ 0	locks=0 ]	(	0	0	)
 attribs	[ 0	locks=0 ]	(	6	)
 env_resolver_name	[ 0	locks=0 ]	(	StandardEnvironmentResolver	)
-env_resolver_args	[ 0	locks=0 ]	(	2	)
+env_resolver_args	[ 0	locks=0 ]	(	3	)
 enable_0	[ 0	locks=0 ]	(	"on"	)
 attr_name_0	[ 0	locks=0 ]	(	hipfile	)
 attr_type_0	[ 0	locks=0 ]	(	"str"	)
@@ -795,6 +816,8 @@ env_arg_name_0	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_name_0	"
 env_arg_val_0	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_val_0	"" ] 	)
 env_arg_name_1	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_name_1	"" ] 	)
 env_arg_val_1	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_val_1	"" ] 	)
+env_arg_name_2	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_name_2	"" ] 	)
+env_arg_val_2	[ 0	locks=0	autoscope=1	autosel=4294967295 ]	(	[ env_arg_val_2	"" ] 	)
 _hidden2	[ 0	locks=0 ]	(	0	)
 broadcast_parameters2	[ 0	locks=0 ]	(	0	)
 sepparm	[ 0	locks=0 ]	(	)
