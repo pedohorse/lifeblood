@@ -5,6 +5,14 @@ import os
 import random
 import time
 
+# TODO: this text is incorrect, find a real redshift and take the real text
+noarg_text = '''Redshift Command-Line Renderer (version 3.0.39 - API: 3026)
+Copyright 2020 Redshift Rendering Technologies
+
+Querying texture cache buget from preferences.xml: 32 GB
+Querying cache path from REDSHIFT_CACHEPATH: /some/cache/path
+No GPUs were selected in the command line, using all devices
+'''
 
 prefix = '''Redshift Command-Line Renderer (version 3.0.39 - API: 3026)
 Copyright 2020 Redshift Rendering Technologies
@@ -231,6 +239,7 @@ def mock_render(args: list, do_crap_myself=False):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
+        print(noarg_text)
         sys.exit(2)
 
     mock_render(sys.argv[1:])
