@@ -48,11 +48,24 @@ class Redshift(BaseNodeWithTaskRequirements):
         # TODO!!!  in case of skip existing "files" is not filled with AOVs !!!
 
         script = 'import os\n' \
+                 'from lifeblood_connection import get_provided_devices\n' \
                  'import sys\n' \
                  'from subprocess import Popen, PIPE\n' \
                  'import tempfile\n' \
                  'import shutil\n' \
                  'import lifeblood_connection as lbc\n' \
+                 '\n' \
+                 'def _get_gpu_number_args():\n' \
+                 '    provided_devices = get_provided_devices()\n' \
+                 '    if "{gpu_dev_type}" not in provided_devices:\n' \
+                 '        return []\n' \
+                 '    redshift_devices = [dev_tags["redshift_dev"] for _, dev_tags in get_provided_devices().get("{gpu_dev_type}", {{}}).items() if "redshift_dev" in dev_tags]\n' \
+                 '    redshift_devices = [x for dev in redshift_devices for x in ("-device", dev)]\n' \
+                 '    \n' \
+                 '    if len(redshift_devices) == 0:\n' \
+                 '        raise RuntimeError("redshift cannot render without redshift device tags set on GPU devices")\n' \
+                 '    \n' \
+                 '    return redshift_devices\n' \
                  '\n' \
                  'out_beauty = {out_beauty}\n' \
                  'if {skip_if_exists} and os.path.exists(out_beauty):\n' \
@@ -63,7 +76,7 @@ class Redshift(BaseNodeWithTaskRequirements):
                  "\n" \
                  'temp_render_dir = tempfile.mkdtemp(prefix="redshift_")\n' \
                  "output_files = []\n" \
-                 "p = Popen(['redshiftCmdLine', {rspath}, '-oip', temp_render_dir], stdout=PIPE)\n" \
+                 "p = Popen(['redshiftCmdLine', {rspath}, '-oip', temp_render_dir] + _get_gpu_number_args(), stdout=PIPE)\n" \
                  'while p.poll() is None:\n' \
                  '    full_line = False\n' \
                  '    part_parts = []\n' \
@@ -110,9 +123,12 @@ class Redshift(BaseNodeWithTaskRequirements):
                  'print("all done")\n' \
                  "sys.exit()\n" \
                  '' \
-                 .format(skip_if_exists=repr(context.param_value('skip if exists')),  # for now we cannot know output image until after render
-                         rspath=repr(context.param_value('rs path')),
-                         out_beauty=repr(context.param_value('image path')))
+                 .format(
+                    skip_if_exists=repr(context.param_value('skip if exists')),  # for now we cannot know output image until after render
+                    rspath=repr(context.param_value('rs path')),
+                    out_beauty=repr(context.param_value('image path')),
+                    gpu_dev_type='gpu',
+                 )
 
         invoc = InvocationJob(['python', ':/rsccall.py'])
         invoc.set_extra_file('rsccall.py', script)
