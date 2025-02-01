@@ -423,8 +423,11 @@ class WorkerCore:
 
             # only announce devices that scheduler declares
             device_types_supported_by_scheduler = set(x.name for x in self.__scheduler_device_defs)
-            env['LBDEV_TYPES'] = ','.join({dev_type for dev_type, _, _ in self.__my_resources.devices() if dev_type in device_types_supported_by_scheduler})
+            env['LBDEV_TYPES'] = ','.join({dev_type for dev_type in device_types_supported_by_scheduler})
             for dev_type, dev_name_list in task.resources_to_use().devices.items():
+                # do not provide any info on configured devices that are not declared by scheduler
+                if dev_type not in device_types_supported_by_scheduler:
+                    continue
                 for i, dev_name in enumerate(dev_name_list):
                     env[f'LBDEV_TYPE{i}'] = dev_type
                     env[f'LBDEV_NAME{i}'] = dev_name
