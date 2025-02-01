@@ -205,6 +205,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                                        runcode: Optional[str] = None,
                                        worker_count: int = 1,
                                        tasks_to_complete=None,
+                                       expected_task_exit_code=0,
                                        **kwargs):
         """
         generic logic runner helper.
@@ -260,7 +261,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         print(f'finished {task.task_id()} out: {stdout}')
                         print(f'finished {task.task_id()} err: {stderr}')
                         print(f'exit code: {task.exit_code()}')
-                        side_effect_was_good = side_effect_was_good and 0 == task.exit_code()
+                        side_effect_was_good = side_effect_was_good and expected_task_exit_code == task.exit_code()
                         if task_done_logic:
                             try:
                                 task_done_logic(task)
@@ -305,7 +306,20 @@ class TestCaseBase(IsolatedAsyncioTestCase):
 
         return await self._helper_test_worker_node(_logic)
 
-    async def _helper_test_render_node(self, node_type_name, scn_ext, command, bin_rel_path):
+    async def _helper_test_render_node(
+            self,
+            node_type_name,
+            scn_ext,
+            command,
+            bin_rel_path,
+            special_task_done_logic=None,
+            skip_outfile_check=False,
+            expected_task_exit_code=0,
+            **kwargs
+    ):
+        """
+        kwargs are forwarded to _helper_test_worker_node (which forwards it to scheduler constructor
+        """
         the_worker = None
         tmpdir = tempfile.mkdtemp(prefix='test_render_')
         try:
@@ -374,22 +388,26 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         if res.attributes_to_set:
                             updated_attrs.update(res.attributes_to_set)
 
-                        self.assertTrue(os.path.exists(out_exr_path))
-                        self.assertEqual(out_exr_path, updated_attrs.get('file'))
+                        if not skip_outfile_check:
+                            self.assertTrue(os.path.exists(out_exr_path))
+                            self.assertEqual(out_exr_path, updated_attrs.get('file'))
 
-                        with open(out_exr_path, 'rb') as f:
-                            post_contents = f.read()
-                        if pre_contents is not None and skip_existing:
-                            self.assertEqual(pre_contents, post_contents)
-                        if pre_contents is None or not skip_existing:
-                            line_ok, line_args, line_fname = post_contents.splitlines(keepends=False)
-                            self.assertEqual(b'ok', line_ok)
-                            self.assertEqual(scn_filepath.encode(), line_fname)
+                            with open(out_exr_path, 'rb') as f:
+                                post_contents = f.read()
+                            if pre_contents is not None and skip_existing:
+                                self.assertEqual(pre_contents, post_contents)
+                            if pre_contents is None or not skip_existing:
+                                line_ok, line_args, line_fname = post_contents.splitlines(keepends=False)
+                                self.assertEqual(b'ok', line_ok)
+                                self.assertEqual(scn_filepath.encode(), line_fname)
 
                 return _logic
 
             def _task_done_logic(task: Invocation):
-                self.assertEqual(100.0, the_worker.task_status())
+                if special_task_done_logic:
+                    special_task_done_logic(the_worker, task)
+                else:
+                    self.assertEqual(100.0, the_worker.task_status())
 
             for skip_exist, pre_exist in ((False, False), (True, False), (True, True)):
                 print(f'testing with: skip_exist={skip_exist}')
@@ -401,7 +419,9 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                         f.write('some preexisting contents that is not the same as husk mock outputs')
                 await self._helper_test_worker_node(
                     _logic_gen(skip_exist),
-                    task_done_logic=_task_done_logic if not skip_exist or not pre_exist else lambda *args, **kwargs: None
+                    task_done_logic=_task_done_logic if not skip_exist or not pre_exist else lambda *args, **kwargs: None,
+                    expected_task_exit_code=expected_task_exit_code if not skip_exist or not pre_exist else 0,
+                    **kwargs
                 )
                 if os.path.exists(out_exr_path):
                     os.unlink(out_exr_path)
