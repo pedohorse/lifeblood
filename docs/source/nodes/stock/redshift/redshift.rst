@@ -35,3 +35,25 @@ When render is done, the following attributes are set:
     set to path of the rendered beauty pass image
 :files:
     set to a list of paths to all AOVs produced by the render
+
+Devices
+=======
+
+This node understands the following device types:
+
+:gpu:
+
+    Treated as Redshift Device (GPU)
+
+    tags used:
+
+    - ``redshift_dev`` - has format ``<redshift device number>``
+
+      Redshift device number is how redshift internally distinguishes one GPU from another.
+      The value of this tag is passed directly to redshiftCmdLine ``-device`` argument value.
+
+      Run ``redshiftCmdLine -listdevices`` to get a list of GPUs and numbers as Redshift recognizes them.
+
+      With single GPU machine setup the value will most definitely be simply ``0``
+
+      Example values: ``0``, ``1`` or ``2``
