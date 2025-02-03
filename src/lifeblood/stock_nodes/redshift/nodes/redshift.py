@@ -57,6 +57,7 @@ class Redshift(BaseNodeWithTaskRequirements):
                  '\n' \
                  'def _get_gpu_number_args():\n' \
                  '    provided_devices = get_provided_devices()\n' \
+                 '    print(provided_devices)\n' \
                  '    if "{gpu_dev_type}" not in provided_devices:\n' \
                  '        return []\n' \
                  '    redshift_devices = [dev_tags["redshift_dev"] for _, dev_tags in get_provided_devices().get("{gpu_dev_type}", {{}}).items() if "redshift_dev" in dev_tags]\n' \
@@ -91,6 +92,7 @@ class Redshift(BaseNodeWithTaskRequirements):
                  '    if part.startswith(b"Saving: "):\n' \
                  '        output_files.append(part[8:].strip())\n' \
                  '    sys.stdout.buffer.write(part)  # "promote" to stdout\n' \
+                 '    sys.stdout.flush()\n' \
                  '\n' \
                  'if not output_files:\n' \
                  '    sys.exit(1)\n' \
@@ -107,12 +109,14 @@ class Redshift(BaseNodeWithTaskRequirements):
                  'print("copying locally rendered files to final destination...")\n' \
                  'final_output_files = []\n' \
                  'sys.stdout.buffer.write(f"copying to {{out_beauty}}\\n".encode("UTF-8"))\n' \
+                 'sys.stdout.flush()\n' \
                  'cleancopy(output_files[0], out_beauty)\n' \
                  'final_output_files.append(out_beauty)\n' \
                  'out_beauty_dir = os.path.dirname(out_beauty)\n' \
                  'for file_path in output_files:\n' \
                  '    file_path_dst = os.path.join(out_beauty_dir, os.path.basename(file_path))\n' \
                  '    sys.stdout.buffer.write(f"copying to {{file_path_dst}}\\n".encode("UTF-8"))\n' \
+                 '    sys.stdout.flush()\n' \
                  '    cleancopy(file_path, file_path_dst)\n' \
                  '    final_output_files.append(file_path_dst)\n' \
                  '\n' \
