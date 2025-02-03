@@ -1,7 +1,14 @@
+import hou
 import subprocess
 import re
+import sys
 
-out, _ = subprocess.Popen(['redshiftCmdLine'], stdout=subprocess.PIPE).communicate()
+
+CREATE_NO_WINDOW = 0x08000000
+flags = 0
+if sys.platform == 'win32':
+    flags = CREATE_NO_WINDOW
+out, _ = subprocess.Popen(['redshiftCmdLine'], stdout=subprocess.PIPE, creationflags=flags).communicate()
 
 node_type = kwargs['type']
 for line in out.splitlines():
