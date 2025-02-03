@@ -62,14 +62,17 @@ class ConnectionPoolEntry:
 
 
 class ConnectionPool:
-    default_period = get_config('scheduler').get_option_noasync('shared_connection.keep_open_period', 0.0125)
-    get_logger('lazy_connection_pool').debug(f'using default open period: {default_period}')
+    default_period: Optional[float] = None
 
     def __init__(self):
         self.connection_cache: Dict[tuple, ConnectionPoolEntry] = {}
         self.pool_lock = asyncio.Lock()
-        self.keep_open_period = self.default_period
         self.__logger = get_logger('shared_aiosqlite_connection')
+        # TODO: should not be using get_config here, scheduler's data provider should be used instead
+        if ConnectionPool.default_period is None:
+            ConnectionPool.default_period = get_config('scheduler').get_option_noasync('shared_connection.keep_open_period', 0.0125)
+            self.__logger.debug(f'using default open period: {ConnectionPool.default_period}')
+        self.keep_open_period = ConnectionPool.default_period
         self.__my_loop = asyncio.get_running_loop()
 
     def is_in_this_loop(self, loop=None):
