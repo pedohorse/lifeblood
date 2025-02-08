@@ -17,32 +17,6 @@ Simple Demonstration
 
 TODO: make Lifeblood-manager video
 
-Pip Demonstration
-^^^^^^^^^^^^^^^^^
-
-This tutorial demonstrates simple installation using **pip**
-
-For any details about installation and initial configuration - see next **Installation** video
-
-.. raw:: html
-
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-      <iframe src="https://www.youtube.com/embed/R5zfpwcQVAg" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-    </div>
-
------
-
-Detailed Installation
-^^^^^^^^^^^^^^^^^^^^^
-
-.. raw:: html
-
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-      <iframe src="https://www.youtube.com/embed/LdduKOkUDvQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-    </div>
-
------
-
 Usage
 =====
 
