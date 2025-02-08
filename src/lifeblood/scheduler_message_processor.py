@@ -28,6 +28,7 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
             'pulse': self._command_pulse,
             'what_is_my_address': self._command_what_is_my_address,
             '_pulse3way_': self._command_pulse3way,  # TODO: remove this when handlers are implemented
+            'resource_defs': self._command_resource_definitions,
             # worker-specific
             'worker.ping': self._command_ping,
             'worker.done': self._command_done,
@@ -162,6 +163,21 @@ class SchedulerCommandHandler(CommandMessageHandlerBase):
         await client.send_message_as_json({'phase': 1})
         msg2 = await client.receive_message()
         await client.send_message_as_json({'phase': 2})
+
+    async def _command_resource_definitions(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
+        """
+        returns keys:
+            resources:
+            device_types:
+        """
+        ress = self.__scheduler.config_provider.hardware_resource_definitions()
+        defs = self.__scheduler.config_provider.hardware_device_type_definitions()
+
+        data = {
+            'resources': [r.to_json_dict() for r in ress],
+            'device_types': [d.to_json_dict() for d in defs],
+        }
+        await client.send_message_as_json(data)
 
     # worker task message forwarding
     async def _command_forward_invocation_message(self, args: dict, client: CommandJsonMessageClient, original_message: Message):

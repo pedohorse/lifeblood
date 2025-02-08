@@ -23,8 +23,40 @@ class WorkerResourceDefinition:
     label: str  # nicer looking user facing name
     default: Union[float, int] = 0
 
+    def to_json_dict(self) -> dict:
+        return {
+            'name': self.name,
+            'type': self.type.value,
+            'description': self.description,
+            'label': self.label,
+            'default': self.default,
+        }
+
+    @classmethod
+    def from_json_dict(cls, data: dict) -> "WorkerResourceDefinition":
+        return WorkerResourceDefinition(
+            data['name'],
+            WorkerResourceDataType(data['type']),
+            data['description'],
+            data['label'],
+            data['default'],
+        )
+
 
 @dataclass
 class WorkerDeviceTypeDefinition:
     name: str
     resources: Tuple[WorkerResourceDefinition, ...]
+
+    def to_json_dict(self) -> dict:
+        return {
+            'name': self.name,
+            'res': [x.to_json_dict() for x in self.resources]
+        }
+
+    @classmethod
+    def from_json_dict(cls, data: dict) -> "WorkerDeviceTypeDefinition":
+        return WorkerDeviceTypeDefinition(
+            data['name'],
+            tuple(WorkerResourceDefinition.from_json_dict(res) for res in data['res']),
+        )

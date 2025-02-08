@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e -o pipefail
 
 OUT=../dcc_plugins/houdini
 
@@ -21,7 +22,9 @@ rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT
 rsync -arhv --exclude=__pycache__ --exclude="*.pyc" ../src/lifeblood_client $OUT/python3.11libs
 
 pushd $OUT
-rm ../houdini.zip
+if [ -f ../houdini.zip ]; then
+  rm ../houdini.zip
+fi
 zip -r ../houdini.zip . --exclude "*__pycache__/" --exclude "*.pyc" --exclude "*.md"
 popd
 

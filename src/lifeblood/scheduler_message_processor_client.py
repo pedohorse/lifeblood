@@ -11,6 +11,7 @@ from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMe
 from .net_messages.impl.clients import CommandJsonMessageClient
 from .net_messages.address import AddressChain
 from .net_messages.exceptions import MessageReceiveTimeoutError
+from .worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 
 from typing import List, Optional, Set, Tuple
 
@@ -113,6 +114,18 @@ class SchedulerWorkerControlClient(SchedulerBaseClient):
         })
         reply = await self.__client.receive_message()
         return (await reply.message_body_as_json())['db_uid']
+
+    async def get_resource_configuration(self) -> Tuple[Tuple[WorkerResourceDefinition, ...], Tuple[WorkerDeviceTypeDefinition, ...]]:
+        """
+        get list of resources and device types that scheduler defines
+        """
+        await self.__client.send_command('resource_defs', {})
+        reply = await self.__client.receive_message()
+        reply_body = await reply.message_body_as_json()
+        print(reply_body)
+        resources = tuple(WorkerResourceDefinition.from_json_dict(res_data) for res_data in reply_body['resources'])
+        devices = tuple(WorkerDeviceTypeDefinition.from_json_dict(dev_data) for dev_data in reply_body['device_types'])
+        return resources, devices
 
     async def say_bye(self, address_of_worker: str):
         await self.__client.send_command('worker.bye', {

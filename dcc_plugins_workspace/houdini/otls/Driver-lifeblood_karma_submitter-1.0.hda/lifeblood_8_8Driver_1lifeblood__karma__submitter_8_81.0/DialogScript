@@ -47,7 +47,7 @@
             label   "ip"
             type    string
             joinnext
-            default { "127.0.0.1" }
+            default { "" }
             parmtag { "autoscope" "0000000000000000" }
             parmtag { "import_source" "op:./lifeblood_submitter" }
             parmtag { "import_token" "sch_ip" }

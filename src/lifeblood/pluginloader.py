@@ -12,7 +12,39 @@ from .node_dataprovider_base import NodeDataProvider
 from .snippets import NodeSnippetData
 from . import logging, plugin_info
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, Set, Sequence
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple, Type, Union, Set, Sequence
+
+
+class PackageMetadata:
+    def __init__(self, path: Path, category: str):
+        self.__path = path
+        self.__name = path.stem
+        self.__category = category
+        self.__deps: Set[str] = set()
+
+        if path.is_dir() and (meta_path := path / 'meta.toml').exists():
+            with open(meta_path, 'r') as f:
+                metadata = toml.load(f)
+            if depdata := metadata.get('dependencies'):
+                if not isinstance(depdata, list):
+                    raise RuntimeError('dependencies must be a list of strings')
+                self.__deps = set(depdata)
+            if namedata := metadata.get('name'):
+                if not isinstance(namedata, str):
+                    raise RuntimeError('name must be a string')
+                self.__name = namedata
+
+    def name(self) -> str:
+        return self.__name
+
+    def path(self) -> Path:
+        return self.__path
+
+    def category(self) -> str:
+        return self.__category
+
+    def dependency_names(self) -> FrozenSet[str]:
+        return frozenset(self.__deps)
 
 
 class PluginNodeDataProvider(NodeDataProvider):
@@ -49,16 +81,60 @@ class PluginNodeDataProvider(NodeDataProvider):
         self.__plugins = {}
 
         self.__loaded_package_paths: List[Path] = []
-        # load all plugins
+
+        already_loaded_package_names: Set[str] = set()
+        packages_to_install = []
+        package_names_to_install = set()
         for plugin_path, plugin_category in reversed(plugin_paths):
+            # gather all plugins
             for filepath in plugin_path.iterdir():
+                if filepath.name.startswith('__'):  # skip anything starting with __
+                    continue
                 if filepath.is_dir():
-                    self._install_package(filepath, plugin_category)
-                    self.__loaded_package_paths.insert(0, filepath)
+                    package = PackageMetadata(filepath, plugin_category)
+                    packages_to_install.append(package)
+                    package_names_to_install.add(package.name())
                 else:
                     if filepath.suffix != '.py':
                         continue
+                    # install single nodes straight away, before any package
                     self._install_node(filepath, plugin_category)
+
+        # load all packages
+        package_load_queue = list(packages_to_install)
+        packages_to_insert_after: Dict[str, List[PackageMetadata]] = {}
+        for i, package in enumerate(package_load_queue):
+            if package.name() in already_loaded_package_names:
+                self.logger.error(f'failed to load package "{package.name()}" at "{package.path()}" because of name collision. skipping...')
+                continue
+            dep_names = package.dependency_names()
+            if dep_names.intersection(already_loaded_package_names).union(dep_names.intersection(package_names_to_install)) != dep_names:
+                self.logger.error(f'cannot load package "{package.name()}" at "{package.path()}" because dependencies are not satisfied. skipping...')
+                continue
+            need_to_delay = False
+            for dep_name in dep_names:
+                if dep_name not in already_loaded_package_names:
+                    # we do NOT just push it in the end, cuz we try to preserve load order.
+                    # the last "custom" package RELIES on being the last
+                    packages_to_insert_after.setdefault(dep_name, []).append(package)  # delay loading of this package
+                    need_to_delay = True
+                    break
+            if need_to_delay:
+                continue
+
+            self._install_package(package)
+            already_loaded_package_names.add(package.name())
+            self.__loaded_package_paths.insert(0, package.path())
+            # check if some deps are now satisfied
+            if dep_list := packages_to_insert_after.pop(package.name(), None):
+                for d, dep in enumerate(dep_list):
+                    package_load_queue.insert(i + 1 + d, dep)
+
+        if packages_to_insert_after:  # can happen if some packages failed, so their dependants cannot be loaded
+            for package in (x for v in packages_to_insert_after.values() for x in v):
+                self.logger.error(f'failed to load package "{package.name()}" at "{package.path()}" because at least one of it\'s dependencies failed to load too')
+
+        self.logger.debug('package inverted load order is: %s', self.__loaded_package_paths)
 
         self.logger.info('loaded node types:\n\t' + '\n\t'.join(self.__plugins.keys()))
         self.logger.info('loaded node presets:\n\t' + '\n\t'.join(f'{pkg}::{label}' for pkg, pkgdata in self.__presets.items() for label in pkgdata.keys()))
@@ -110,7 +186,7 @@ class PluginNodeDataProvider(NodeDataProvider):
         # TODO: what if it's overriding existing module?
         sys.modules[modpath] = mod
 
-    def _install_package(self, package_path: Path, plugin_category: str):
+    def _install_package(self, package: PackageMetadata):
         """
         package structure:
             [package_name:dir]
@@ -141,7 +217,8 @@ class PluginNodeDataProvider(NodeDataProvider):
         :param plugin_category:
         :return:
         """
-        package_name = package_path.name
+        package_name = package.name()
+        package_path = package.path()
         if package_name not in self.__package_locations:  # read logic of this up
             self.__package_locations[package_name] = package_path
         # add extra bin paths
@@ -176,7 +253,7 @@ class PluginNodeDataProvider(NodeDataProvider):
             for filepath in nodes_path.iterdir():
                 if filepath.suffix != '.py':
                     continue
-                self._install_node(filepath, plugin_category, package_path)
+                self._install_node(filepath, package.category(), package_path)
 
         # install presets
         presets_path = package_path / 'presets'

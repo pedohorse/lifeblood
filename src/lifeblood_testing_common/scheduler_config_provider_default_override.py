@@ -83,7 +83,7 @@ class SchedulerConfigProviderOverrides(SchedulerConfigProviderDefaults):
         }
 
     def hardware_resource_definitions(self) -> Tuple[WorkerResourceDefinition, ...]:
-        return self.__resource_definitions or super().hardware_resource_definitions()
+        return self.__resource_definitions if self.__resource_definitions is not None else super().hardware_resource_definitions()
 
     def hardware_device_type_definitions(self) -> Tuple[WorkerDeviceTypeDefinition, ...]:
-        return self.__device_type_definitions or super().hardware_device_type_definitions()
+        return self.__device_type_definitions if self.__device_type_definitions is not None else super().hardware_device_type_definitions()

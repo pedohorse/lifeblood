@@ -1,0 +1,18 @@
+import hou
+import subprocess
+import re
+import sys
+
+
+CREATE_NO_WINDOW = 0x08000000
+flags = 0
+if sys.platform == 'win32':
+    flags = CREATE_NO_WINDOW
+out, _ = subprocess.Popen(['redshiftCmdLine'], stdout=subprocess.PIPE, creationflags=flags).communicate()
+
+node_type = kwargs['type']
+for line in out.splitlines():
+    m = re.search(r'version (\d+)\.(\d+)(?:\.(\d+))', line.decode())
+    if m:
+        hou.session._lifeblood__rs_ver_str = f'{m.group(1)}.{m.group(2)}.{m.group(3) or 0}'
+        break

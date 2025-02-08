@@ -31,6 +31,7 @@ from .net_messages.impl.tcp_simple_command_message_processor import TcpCommandMe
 from .net_messages.address import AddressChain, DirectAddress
 from .net_messages.exceptions import MessageTransferError
 from .defaults import worker_start_port as default_worker_start_port
+from .worker_resource_definition import WorkerResourceDefinition, WorkerDeviceTypeDefinition
 
 from .worker_runtime_pythonpath import lifeblood_connection
 import inspect
@@ -156,6 +157,8 @@ class WorkerCore:
         self.__ping_interval = scheduler_ping_interval
         self.__ping_missed_threshold = scheduler_ping_miss_threshold
         self.__ping_missed = 0
+        self.__scheduler_resource_defs: Tuple[WorkerResourceDefinition, ...] = ()
+        self.__scheduler_device_defs: Tuple[WorkerDeviceTypeDefinition, ...] = ()
         self.__scheduler_addr = scheduler_addr
         self.__scheduler_pinger = None
         self.__components_stop_event = asyncio.Event()
@@ -266,9 +269,11 @@ class WorkerCore:
                     # re-normalize addresses
                     self.__scheduler_addr, self.__my_addr_for_scheduler = await client.get_normalized_addresses()
                     self.__scheduler_db_uid = await client.say_hello(self.__my_addr_for_scheduler, self.__worker_type, self.__my_resources, metadata)
+                    self.__scheduler_resource_defs, self.__scheduler_device_defs = await client.get_resource_configuration()
             except MessageTransferError as e:
                 self.__logger.error('error connecting to scheduler during start')
                 abort_start = True
+            self.__logger.debug('scheduler connected')
             #
             # and report to the pool
             try:
@@ -416,8 +421,13 @@ class WorkerCore:
             env['LIFEBLOOD_RUNTIME_TID'] = task.task_id()
             env['LIFEBLOOD_RUNTIME_SCHEDULER_ADDR'] = self.__local_invocation_server_address_string
 
-            env['LBDEV_TYPES'] = ','.join({dev_type for dev_type, _, _ in self.__my_resources.devices()})
+            # only announce devices that scheduler declares
+            device_types_supported_by_scheduler = set(x.name for x in self.__scheduler_device_defs)
+            env['LBDEV_TYPES'] = ','.join({dev_type for dev_type in device_types_supported_by_scheduler})
             for dev_type, dev_name_list in task.resources_to_use().devices.items():
+                # do not provide any info on configured devices that are not declared by scheduler
+                if dev_type not in device_types_supported_by_scheduler:
+                    continue
                 for i, dev_name in enumerate(dev_name_list):
                     env[f'LBDEV_TYPE{i}'] = dev_type
                     env[f'LBDEV_NAME{i}'] = dev_name
@@ -815,6 +825,8 @@ class WorkerCore:
                         self.__logger.debug('saying hello')
                         self.__scheduler_db_uid = await client.say_hello(addr, self.__worker_type, self.__my_resources, metadata)
                         self.__logger.debug('reintroduce done')
+                        self.__scheduler_resource_defs, self.__scheduler_device_defs = await client.get_resource_configuration()
+                        self.__logger.debug('updated res/dev definitions')
                     break
                 except Exception:
                     self.__logger.exception('failed to reintroduce myself. sleeping a bit and retrying')

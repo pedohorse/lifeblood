@@ -1,9 +1,9 @@
-# Dialog script for lifeblood::lifeblood_distributed_flip_submitter::1.0 automatically generated
+# Dialog script for lifeblood::lifeblood_redshift_submitter::1.0 automatically generated
 
 {
-    name	lifeblood::lifeblood_distributed_flip_submitter::1.0
-    script	lifeblood::lifeblood_distributed_flip_submitter::1.0
-    label	"Lifeblood Distributed Flip Submitter"
+    name	lifeblood::lifeblood_redshift_submitter::1.0
+    script	lifeblood::lifeblood_redshift_submitter::1.0
+    label	"Lifeblood Redshift Submitter"
 
     help {
 	""
@@ -132,7 +132,7 @@
             name    "node_name"
             label   "node name"
             type    string
-            default { "IN DISTRIBUTED SLICES" }
+            default { "IN REDSHIFT" }
             parmtag { "autoscope" "0000000000000000" }
             parmtag { "import_source" "op:./lifeblood_submitter" }
             parmtag { "import_token" "node_name" }
@@ -180,97 +180,130 @@
             parmtag { "import_token" "f" }
             parmtag { "script_callback_language" "python" }
         }
-        groupsimple {
+        parm {
+            name    "framechunk_size"
+            label   "Frame Chunk Size"
+            type    integer
+            default { "10" }
+            help    "number of frames per single rs generation task"
+            range   { 1! 20 }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "framechunk_size" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
+            name    "roppath"
+            label   "Redshift Node To Render"
+            type    oppath
+            default { "" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "roppath" }
+            parmtag { "opfilter" "!!ROP!!" }
+            parmtag { "oprelative" "." }
+            parmtag { "script_callback_language" "python" }
+        }
+        group {
             name    "folder3"
-            label   "Distributed Sim Information"
+            label   "Resource Requirements"
             grouptag { "import_source" "op:./lifeblood_submitter" }
-            grouptag { "import_token" "distribution_control:Distributed Sim Information" }
+            grouptag { "import_token" "resmanagement_group:Resource Requirements" }
 
-            parm {
-                name    "labelparm"
-                label   "Message"
-                type    label
-                default { "specify required nodes.\nYou may also use the button below to adjust houdini's stock setup" }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "labelparm" }
-                parmtag { "sidefx::look" "block" }
+            groupsimple {
+                name    "folder6"
+                label   "RS Generation"
+                grouptag { "import_source" "op:./lifeblood_submitter" }
+                grouptag { "import_token" "resmanagement:RS Generation" }
+
+                parm {
+                    name    "res_cpucount"
+                    label   "Cpu cores (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "2" "4" }
+                    range   { 0.1! 32 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_cpucount" }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "res_cpumem"
+                    label   "Cpu RAM GB (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "0.5" "0.1" }
+                    range   { 0.1! 128 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_cpumem" }
+                    parmtag { "script_callback_language" "python" }
+                }
             }
-            parm {
-                name    "distributed_object_node"
-                label   "Sim Object Node"
-                type    oppath
-                default { "/obj/AutoDopNetwork/flipfluidobject1" }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "distributed_object_node" }
-                parmtag { "opfilter" "!!DOP!!" }
-                parmtag { "script_callback_language" "python" }
+
+            groupsimple {
+                name    "folder7"
+                label   "Redshift Rendering"
+                grouptag { "import_source" "op:./lifeblood_submitter" }
+                grouptag { "import_token" "resmanagement_redshift:Redshift Rendering" }
+
+                parm {
+                    name    "res_m_cpucount"
+                    label   "Cpu cores (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "2" "4" }
+                    range   { 0.1! 32 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_m_cpucount" }
+                    parmtag { "script_callback_language" "python" }
+                }
+                parm {
+                    name    "res_m_cpumem"
+                    label   "Cpu RAM GB (min/pref)"
+                    type    vector2
+                    size    2
+                    default { "0.5" "0.1" }
+                    range   { 0.1! 128 }
+                    parmtag { "autoscope" "0000000000000000" }
+                    parmtag { "import_source" "op:./lifeblood_submitter" }
+                    parmtag { "import_token" "res_m_cpumem" }
+                    parmtag { "script_callback_language" "python" }
+                }
             }
-            parm {
-                name    "distributed_cache_node"
-                label   "Cache Node"
-                type    oppath
-                default { "/obj/distribute_flipfluidobject1/save_slices" }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "distributed_cache_node" }
-                parmtag { "opfilter" "!!DOP!!" }
-                parmtag { "script_callback_language" "python" }
-            }
-            parm {
-                name    "distributed_control_node"
-                label   "Sim Control Node"
-                type    oppath
-                default { "/obj/AutoDopNetwork/DISTRIBUTE_flipfluidobject1_CONTROLS" }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "distributed_control_node" }
-                parmtag { "opfilter" "!!DOP!!" }
-                parmtag { "script_callback_language" "python" }
-            }
-            parm {
-                name    "control_push_parms"
-                label   "adjust default setup"
-                type    button
-                default { "0" }
-                help    "makes adjustments to default distribution setup so that it works with Lifeblood"
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "control_push_parms" }
-                parmtag { "script_callback" "hou.phm().update_setup_button_callback(hou.pwd())" }
-                parmtag { "script_callback_language" "python" }
-            }
+
         }
 
         group {
-            name    "folder4"
-            label   "Slice Resource Requirements"
-            grouptag { "import_source" "op:./lifeblood_submitter" }
-            grouptag { "import_token" "resmanagement:Slice Resource Requirements" }
+            name    "folder3_1"
+            label   "Redshift Package"
 
             parm {
-                name    "res_cpucount"
-                label   "Cpu cores (min/pref)"
-                type    vector2
-                size    2
-                default { "1" "32" }
-                range   { 0.1! 32 }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "res_cpucount" }
+                name    "rs_pkg_do"
+                label   "Require package"
+                type    toggle
+                joinnext
+                default { "1" }
                 parmtag { "script_callback_language" "python" }
             }
             parm {
-                name    "res_cpumem"
-                label   "Cpu RAM GB (min/pref)"
-                type    vector2
-                size    2
-                default { "1" "128" }
-                range   { 0.1! 128 }
-                parmtag { "autoscope" "0000000000000000" }
-                parmtag { "import_source" "op:./lifeblood_submitter" }
-                parmtag { "import_token" "res_cpumem" }
+                name    "rs_pkg_name"
+                label   "Name"
+                type    string
+                nolabel
+                joinnext
+                default { "redshift" }
+                disablewhen "{ rs_pkg_do == 0 }"
+                parmtag { "script_callback_language" "python" }
+            }
+            parm {
+                name    "rs_pkg_ver"
+                label   "Version"
+                type    string
+                default { [ "if hasattr(hou.session, '_lifeblood__rs_ver_str'):\n    return hou.session._lifeblood__rs_ver_str\n\nreturn 'error! cannot autodetect'" python ] }
+                disablewhen "{ rs_pkg_do == 0 }"
                 parmtag { "script_callback_language" "python" }
             }
         }
