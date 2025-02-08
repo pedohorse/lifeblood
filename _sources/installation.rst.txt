@@ -1,5 +1,11 @@
 .. _installation:
 
+.. toctree::
+    :caption: see also
+    :maxdepth: 1
+
+    installation_with_manager
+
 ============
 Installation
 ============
@@ -29,8 +35,13 @@ Also check the :ref:`tutorial section <tutorials_installation>`
 
 Matrix Notifier installation is described in :ref:`matrix notifier help page <nodes/stock/matrixnotifier>`
 
+.. _installation_simplest:
+
 Simplest: `Lifeblood Manager <https://github.com/pedohorse/lifeblood-manager/releases>`_
 ========================================================================================
+
+.. note::
+    See :ref:`step by step tutorial on how to install Lifeblood with Lifeblood Manager here <_installation_with_manager>`.
 
 There is a separate program made specifically to simplify Lifeblood installation and management: `Lifeblood-Manager <https://github.com/pedohorse/lifeblood-manager/releases>`_.
 It is not written in python and statically linked specifically to minimize the system software requirements.
@@ -45,13 +56,6 @@ When you run it, it will (or at least should) by default set the ``base director
 It downloads latest commit from Lifeblood repo and sets up a minimal venv for it to work. It also creates and maintains launch shortcuts ``lifeblood`` and ``lifeblood_viewer``.
 After installation you can easily launch lifeblood components with them. Manager can easily switch which version those shortcuts point to.
 
-So again:
-
-* Put lifeblood-manager into an empty folder you want lifeblood to be installed
-   * it's recommended **NOT** to use ``<home>/lifeblood``, as this is the place where lifeblood configs will be stored by default.
-* run lifeblood-manager
-* press ``download freshest`` button
-* now you can use ``lifeblood`` and ``lifeblood_viewer`` scripts to run lifeblood components. See :ref:`usage section <usage_prepare_to_launch>` on how to use them.
 
 .. image:: /images/manager_overview.png
 
@@ -61,14 +65,15 @@ So again:
 * ``make selected version current`` button switches selected version to be **current**, meaning ``lifeblood`` and ``lifeblood_viewer`` links will be pointing to that version.
   This way you can easily switch between experimental and stable versions, if needed.
 
+
 Troubleshooting
 ---------------
 
 In case something went wrong don't hesitate to delete everything installed and start from scratch. All configuration files live in different location, so there is nothing
 "state" saved in this location, you can remove and reinstall any number of times, that should not make any difference.
 
-Simple: Using pip
-=================
+Installation using pip
+======================
 
 .. note::
   pip package versions correspond to tags in the repository, so they are always behind the development edge.

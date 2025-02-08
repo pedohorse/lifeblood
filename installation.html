@@ -46,7 +46,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'installation';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="How to Use" href="usage.html" />
+    <link rel="next" title="Step-by-step typical installation instruction" href="installation_with_manager.html" />
     <link rel="prev" title="Invocation Communication" href="invocation_comm_feature.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -402,7 +402,11 @@ document.write(`
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"></div>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">see also</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation_with_manager.html">Step-by-step typical installation instruction</a></li>
+</ul>
+</div>
 </nav></div>
     </div>
   
@@ -455,8 +459,14 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="installation">
-<span id="id1"></span><h1>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">#</a></h1>
+  <div class="toctree-wrapper compound" id="installation">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">see also</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation_with_manager.html">Step-by-step typical installation instruction</a></li>
+</ul>
+</div>
+<section id="id1">
+<h1>Installation<a class="headerlink" href="#id1" title="Permalink to this heading">#</a></h1>
 <p>Lifeblood consists of 2 parts:</p>
 <ul class="simple">
 <li><p>the core part that contains scheduler and worker, and has no GUI dependencies</p></li>
@@ -476,7 +486,11 @@ while extra machines will only run worker pools.</p>
 <p>Also check the <a class="reference internal" href="tutorials.html#tutorials-installation"><span class="std std-ref">tutorial section</span></a></p>
 <p>Matrix Notifier installation is described in <a class="reference internal" href="nodes/stock/matrixnotifier.html#nodes-stock-matrixnotifier"><span class="std std-ref">matrix notifier help page</span></a></p>
 <section id="simplest-lifeblood-manager">
-<h2>Simplest: <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases">Lifeblood Manager</a><a class="headerlink" href="#simplest-lifeblood-manager" title="Permalink to this heading">#</a></h2>
+<span id="installation-simplest"></span><h2>Simplest: <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases">Lifeblood Manager</a><a class="headerlink" href="#simplest-lifeblood-manager" title="Permalink to this heading">#</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>See <span class="xref std std-ref">step by step tutorial on how to install Lifeblood with Lifeblood Manager here</span>.</p>
+</div>
 <p>There is a separate program made specifically to simplify Lifeblood installation and management: <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases">Lifeblood-Manager</a>.
 It is not written in python and statically linked specifically to minimize the system software requirements.
 (so you can for example use it on a windows system without python installed, or on linux without any extra packages)</p>
@@ -486,19 +500,6 @@ the directory you specify in it (by default it’s the directory where the execu
 <p>When you run it, it will (or at least should) by default set the <code class="docutils literal notranslate"><span class="pre">base</span> <span class="pre">directory</span></code> to the directory where you put the manager in</p>
 <p>It downloads latest commit from Lifeblood repo and sets up a minimal venv for it to work. It also creates and maintains launch shortcuts <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code>.
 After installation you can easily launch lifeblood components with them. Manager can easily switch which version those shortcuts point to.</p>
-<p>So again:</p>
-<ul class="simple">
-<li><dl class="simple">
-<dt>Put lifeblood-manager into an empty folder you want lifeblood to be installed</dt><dd><ul>
-<li><p>it’s recommended <strong>NOT</strong> to use <code class="docutils literal notranslate"><span class="pre">&lt;home&gt;/lifeblood</span></code>, as this is the place where lifeblood configs will be stored by default.</p></li>
-</ul>
-</dd>
-</dl>
-</li>
-<li><p>run lifeblood-manager</p></li>
-<li><p>press <code class="docutils literal notranslate"><span class="pre">download</span> <span class="pre">freshest</span></code> button</p></li>
-<li><p>now you can use <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code> scripts to run lifeblood components. See <a class="reference internal" href="usage.html#usage-prepare-to-launch"><span class="std std-ref">usage section</span></a> on how to use them.</p></li>
-</ul>
 <img alt="_images/manager_overview.png" src="_images/manager_overview.png" />
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">download</span> <span class="pre">freshest</span></code> button will download latest commit from given branch (dev by default for now), and make it <strong>current</strong> (so <code class="docutils literal notranslate"><span class="pre">lifeblood</span></code> and <code class="docutils literal notranslate"><span class="pre">lifeblood_viewer</span></code>
@@ -513,8 +514,8 @@ This way you can easily switch between experimental and stable versions, if need
 “state” saved in this location, you can remove and reinstall any number of times, that should not make any difference.</p>
 </section>
 </section>
-<section id="simple-using-pip">
-<h2>Simple: Using pip<a class="headerlink" href="#simple-using-pip" title="Permalink to this heading">#</a></h2>
+<section id="installation-using-pip">
+<h2>Installation using pip<a class="headerlink" href="#installation-using-pip" title="Permalink to this heading">#</a></h2>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>pip package versions correspond to tags in the repository, so they are always behind the development edge.</p>
@@ -559,11 +560,11 @@ tasks in a Lifeblood Scheduler</p></li>
       </div>
     </a>
     <a class="right-next"
-       href="usage.html"
+       href="installation_with_manager.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">How to Use</p>
+        <p class="prev-next-title">Step-by-step typical installation instruction</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -589,7 +590,7 @@ tasks in a Lifeblood Scheduler</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#troubleshooting">Troubleshooting</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simple-using-pip">Simple: Using pip</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-using-pip">Installation using pip</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#complicated-custom-way">Complicated: Custom way</a></li>
 </ul>
   </nav></div>

@@ -1,0 +1,803 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="" data-theme="dark">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Step-by-step typical installation instruction &#8212; Lifeblood 1.0.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "dark";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/css/custom.css" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'installation_with_manager';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="How to Use" href="usage.html" />
+    <link rel="prev" title="Installation" href="installation.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="dark">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+    
+    <img src="_static/lifeblood.svg" class="logo__image only-dark" alt="Lifeblood 1.0.0 documentation - Home"/>
+    <script>document.write(`<img src="_static/lifeblood.svg" class="logo__image only-light" alt="Lifeblood 1.0.0 documentation - Home"/>`);</script>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="news/index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="installation.html">
+    Installation
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="nodes.html">
+    Nodes
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="news/index.html">
+    News
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="components/index.html">
+    Components
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="overview.html">
+    Overview of Lifeblood
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="concepts.html">
+    Main Concepts
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="installation.html">
+    Installation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="usage.html">
+    How to Use
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="resource_control.html">
+    Resource Management
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="network_config.html">
+    Network Configuration
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="tutorials.html">
+    Tutorials
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="nodes.html">
+    Nodes
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">see also</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Step-by-step typical installation instruction</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="installation.html" class="nav-link">Installation</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Step-by-step...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="step-by-step-typical-installation-instruction">
+<span id="installation-with-manager"></span><h1>Step-by-step typical installation instruction<a class="headerlink" href="#step-by-step-typical-installation-instruction" title="Permalink to this heading">#</a></h1>
+<p>This document shows a step-by-step instruction of a typical Lifeblood installation using <a class="reference internal" href="installation.html#installation-simplest"><span class="std std-ref">Lifeblood Manager</span></a></p>
+<ul class="simple">
+<li><p>Assuming you are on Windows - download <code class="docutils literal notranslate"><span class="pre">lifeblood-manager.exe</span></code> from <a class="reference external" href="https://github.com/pedohorse/lifeblood-manager/releases/latest">the latest release here</a>.
+You do not need other files from there.</p></li>
+<li><dl class="simple">
+<dt>Put <code class="docutils literal notranslate"><span class="pre">lifeblood-manager.exe</span></code> into an empty folder you want lifeblood to be installed</dt><dd><ul>
+<li><p>It’s recommended <strong>NOT</strong> to use <code class="docutils literal notranslate"><span class="pre">&lt;home&gt;/lifeblood</span></code>, as this is the place where lifeblood configs will be stored by default.</p></li>
+<li><p>In this example I put it into <code class="docutils literal notranslate"><span class="pre">C:\users\username\Documents\lb</span></code> folder</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<section id="install-update-lifeblood-with-lifeblood-manager">
+<h2>Install/Update Lifeblood with Lifeblood Manager<a class="headerlink" href="#install-update-lifeblood-with-lifeblood-manager" title="Permalink to this heading">#</a></h2>
+<ul>
+<li><p>run lifeblood-manager</p>
+<img alt="_images/lbm_as_is_empty.png" src="_images/lbm_as_is_empty.png" />
+</li>
+<li><p>Check <code class="docutils literal notranslate"><span class="pre">Ignore</span> <span class="pre">system</span> <span class="pre">python</span></code> checkbox - this way a dedicated minimal python installation will be downloaded and used <strong>only</strong> for Lifeblood.</p>
+<img alt="_images/uncheck_python.png" src="_images/uncheck_python.png" />
+</li>
+<li><p>press <code class="docutils literal notranslate"><span class="pre">download</span> <span class="pre">freshest</span></code> button</p>
+<img alt="_images/press_download.png" src="_images/press_download.png" />
+</li>
+</ul>
+<p>It will take some time - latest Lifeblood and Viewer will be downloaded and installed in a separate directory under <code class="docutils literal notranslate"><span class="pre">base</span> <span class="pre">directory</span></code>.</p>
+<p>When you see something like below - you just have to wait till the process is completed. On windows this process tend to take much longer,
+probably due to windows defender checking every single file</p>
+<img alt="_images/takes_time.png" src="_images/takes_time.png" />
+<p>When installation finishes - the console will disappear, the interface will become responsive again, and you will see
+the new installed version in the list of versions, something like this:</p>
+<img alt="_images/lbm_as_is.png" src="_images/lbm_as_is.png" />
+</section>
+<section id="configuration-with-the-wizard">
+<h2>Configuration with the Wizard<a class="headerlink" href="#configuration-with-the-wizard" title="Permalink to this heading">#</a></h2>
+<p>If it is your first time using Lifeblood - a setup Wizard will popup automatically.</p>
+<p>Alternatively you can start the Wizard with this button</p>
+<img alt="_images/wizard_button.png" src="_images/wizard_button.png" />
+<p>The Wizard welcoming you with an intro screen.
+This screen contains some links, including a link to a telegram group chat where you can get help on anything related to Lifeblood.</p>
+<img alt="_images/wizard_intro.png" src="_images/wizard_intro.png" />
+<p>The Wizard will guide you through some basic configuration steps. Let’s for example assume we are going to setup Houdini and Redshift.</p>
+<ul>
+<li><p>First, if you are going to use multiple computers for render - you should set up a common network location accessible to all workers.
+If you are not sure - do not worry, you can do it later simply by re-running config Wizard.</p>
+<img alt="_images/wizard_scratch.png" src="_images/wizard_scratch.png" />
+</li>
+<li><p>Check <code class="docutils literal notranslate"><span class="pre">Houdini</span></code> and <code class="docutils literal notranslate"><span class="pre">Redshift</span></code> in the list of DCCs</p>
+<img alt="_images/wizard_dcc.png" src="_images/wizard_dcc.png" />
+</li>
+<li><p>You may have multiple houdini versions installed. Here we tell Lifeblood what houdini versions it may use, this is not for installing any tools.</p>
+<img alt="_images/wizard_houdini.png" src="_images/wizard_houdini.png" />
+<ul class="simple">
+<li><p>specify path to <code class="docutils literal notranslate"><span class="pre">.../bin/</span></code> directory inside houdini installation location</p></li>
+<li><p>Be sure to specify version correctly! It is very important, so better double check</p></li>
+<li><p>If you make a mistake - you will be able to correct it later by re-running this Wizard</p></li>
+</ul>
+</li>
+<li><p>This window is about tools. This will copy some python modules and submission HDAs into your houdini user dirs, as you select them.
+Here you can specify ANY path that could be added to <code class="docutils literal notranslate"><span class="pre">HOUDINI_PATH</span></code> if you want.</p>
+<img alt="_images/wizard_houdini_tools.png" src="_images/wizard_houdini_tools.png" />
+</li>
+<li><p>Now for Redshift - it’s very similar to houdini:</p>
+<img alt="_images/wizard_redshift.png" src="_images/wizard_redshift.png" />
+<ul>
+<li><p>specify path to <code class="docutils literal notranslate"><span class="pre">.../bin/</span></code> directory inside Redshift installation location</p></li>
+<li><p>be sure to specify Redshift version correctly! One way to be sure about Redshift version os to</p>
+<ul>
+<li><p>open a cmd (Win+R)</p></li>
+<li><p>paste the path to your Redshift bin location and add <cite>RedshiftCmdLine.exe</cite></p></li>
+<li><p>run it. It will not do anything, but the first line it prints will have the version information printed.</p>
+<img alt="_images/redshift_cmd.png" src="_images/redshift_cmd.png" />
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>GPU tab lets you setup your GPU devices.</p>
+<ul>
+<li><p>If you have a <strong>single GPU</strong> - just give it a name and put in information about it, such as memory, supported opencl version and cuda compute capability.
+You can find that information on vendor’s site, or on a database such as <a class="reference external" href="https://www.techpowerup.com/gpu-specs/">this one</a>.</p>
+<p>Do not change tags. (unless you fully understood the concept and know what you are doing)</p>
+<img alt="_images/wizard_gpu.png" src="_images/wizard_gpu.png" />
+</li>
+<li><p>If you have <strong>multiple GPUs</strong> - setup may be complicated. For identical GPUs you might get away with the default tag values, but it is not guaranteed,
+as tags solve a complicated problem of different software identifying GPUs in a different manner <a class="reference internal" href="news/post_01/index.html#news-post-01-gputags"><span class="std std-ref">[read more here]</span></a>.</p></li>
+</ul>
+</li>
+<li><p>As Wizard finalizes - you are ready to go!</p>
+<img alt="_images/wizard_succ.png" src="_images/wizard_succ.png" />
+</li>
+</ul>
+</section>
+<section id="running-components">
+<h2>Running Components<a class="headerlink" href="#running-components" title="Permalink to this heading">#</a></h2>
+<p>Now you can go to the Launch tab and run Lifeblood components. See <a class="reference internal" href="usage.html#usage-prepare-to-launch"><span class="std std-ref">usage section</span></a> on how to use them.</p>
+<img alt="_images/launch_tab.png" src="_images/launch_tab.png" />
+<p>In short - it is simple:</p>
+<ul class="simple">
+<li><p>you need to run a <strong>single</strong> instance of <code class="docutils literal notranslate"><span class="pre">Scheduler</span></code> in your whole network,</p></li>
+<li><p>then you just need to run <code class="docutils literal notranslate"><span class="pre">Worker</span> <span class="pre">Pool</span></code> on every machine that needs to do work.</p></li>
+<li><p>and <code class="docutils literal notranslate"><span class="pre">Viewer</span></code> you can run to connect to the <code class="docutils literal notranslate"><span class="pre">Scheduler</span></code> to set up your pipelines.</p></li>
+</ul>
+<p>If you have a single computer (or maybe you want to start with a single one and add another one later) - you can just run <code class="docutils literal notranslate"><span class="pre">Scheduler</span></code> and <code class="docutils literal notranslate"><span class="pre">Worker</span> <span class="pre">Pool</span></code>
+to have everything working.</p>
+<img alt="_images/launch_tab_launched.png" src="_images/launch_tab_launched.png" />
+<p>Now if you installed Houdini submission assets - you are ready to go and submit some work</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>if you close Lifeblood Manager without “stay to tray” checkbox set - the Manager will exit completely, and it will
+stop all the Lifeblood components running.
+So If you want to minimize Lifeblood Manager to tray - first check the “stay to tray” checkbox, then close the Manager window.</p>
+<p>Also see <a class="reference internal" href="#lifeblood-manager-autostart"><span class="std std-ref">Making Lifeblood components autostart with windows</span></a> section</p>
+</div>
+</section>
+<section id="lifeblood-node-graph-creation">
+<h2>Lifeblood Node Graph creation<a class="headerlink" href="#lifeblood-node-graph-creation" title="Permalink to this heading">#</a></h2>
+<p>Before we go into houdini - we need to create a <strong>pipeline</strong> for rendering hip files with Redshift.</p>
+<ul>
+<li><p>Open Lifeblood Viewer</p>
+<img alt="_images/start_viewer.png" src="_images/start_viewer.png" />
+</li>
+<li><p>You will see the viewer window that consists of several sections.
+If you don’t see some sections - grab the section separator with the mouse and pull them up</p>
+<img alt="_images/viewer_overview1.png" src="_images/viewer_overview1.png" />
+</li>
+<li><p>Use Tab in NodeGraph area to create nodes.</p>
+<img alt="_images/nodes_create.png" src="_images/nodes_create.png" />
+</li>
+<li><p>Start typing “redshift” and you will see some individual redshift related nodes, and a preset.
+You need the preset. Double-click on it, or select it and press enter, and the preset will be created</p>
+<img alt="_images/redshift_preset_overview.png" src="_images/redshift_preset_overview.png" />
+</li>
+<li><p>And that’s it, we are ready to submit. This preset is created to work well with default houdini submitter preset.
+If you look at the nodes - you will realize that everything is pretty logical: first  <code class="docutils literal notranslate"><span class="pre">.rs</span></code> files are generated
+in that shared network location we set up in the start of the Wizard (or locally if you missed that step).
+Then child tasks move to the redshift node and actually do the render using GPUs we set up in the wizard.</p>
+<p>But you do not have to understand everything just yet. Submit a short render task and see how tasks are processed by yourself.</p>
+</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>you can close the Viewer at any time - Viewer is NOT needed to process tasks. All the work is done by the Scheduler,
+and Viewer just connects to it.</p>
+</div>
+<p>Now that Lifeblood side setup is done - let’s go to Houdini and submit something</p>
+</section>
+<section id="submitting-redshift-render-from-houdini">
+<h2>Submitting Redshift Render From Houdini<a class="headerlink" href="#submitting-redshift-render-from-houdini" title="Permalink to this heading">#</a></h2>
+<ul>
+<li><p>Open houdini</p></li>
+<li><p>Open a scene to render</p></li>
+<li><p>In <code class="docutils literal notranslate"><span class="pre">/out</span></code> create Lifeblood Redshift Submitter node, and</p>
+<ul>
+<li><p>Specify Redshift node to render</p>
+<img alt="_images/redshift_submitter.png" src="_images/redshift_submitter.png" />
+</li>
+<li><p>Click <strong>Create Task</strong> button on the submitter node</p>
+<img alt="_images/create_task_btn.png" src="_images/create_task_btn.png" />
+</li>
+<li><p>First time you click that button - it will offer you to automatically find the scheduler you want to submit to. Just click Yes and wait a bit
+while scheduler broadcast is being waited for.</p>
+<img alt="_images/autolisten.png" src="_images/autolisten.png" />
+</li>
+<li><p>If you have unsaved changes in the scene - you will be required to save them, as the hip file will be used to render.
+Note, hip file is not copied anywhere by default, so if you make changes AFTER submission - those changes WILL AFFECT the rendering process,
+so <strong>BE CAREFUL</strong></p>
+<img alt="_images/savescene.png" src="_images/savescene.png" />
+</li>
+<li><p>A Success popup will tell you that submission has succeeded</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="how-does-submitted-task-look-on-lifeblood-s-side">
+<h2>How does submitted task look on Lifeblood’s side<a class="headerlink" href="#how-does-submitted-task-look-on-lifeblood-s-side" title="Permalink to this heading">#</a></h2>
+<p>Now take a look into the Lifeblood Viewer: to the left, in the Task Group list you will see a new group appear on the top</p>
+<img alt="_images/task_group_list.png" src="_images/task_group_list.png" />
+<p>And in the NodeGraph area you will see your submitted task already spawning children and doing the work</p>
+<img alt="_images/after_submission.png" src="_images/after_submission.png" />
+<p>If you look down into the Workers list - you will see something like this if you expand one of the entries:</p>
+<img alt="_images/workers_work.png" src="_images/workers_work.png" />
+<p>You can notice that there are several worker processes on the same computer, some are idle, some are off - this is normal.</p>
+<p>In case of Redshift that requires GPU, and we only have a single one setup - only single Redshift render will happen at a time
+if we only have one computer running Worker Pool. Note that other types of tasks that do not require GPUs can run in parallel
+without any problems.</p>
+<p>When rendering is done - you will see something like the following:</p>
+<img alt="_images/render_done.png" src="_images/render_done.png" />
+<p>All the actual rendering tasks will be “dead” in the killer node, you can select them to view rendering logs</p>
+<p>If you want a cleaner look of the graph instead - you can switch off a checkbox</p>
+<img alt="_images/see_dead.png" src="_images/see_dead.png" />
+<p>and then you will not see the dead tasks. This way is clearer for established pipelines where errors rarely occur</p>
+<img alt="_images/render_done_clean.png" src="_images/render_done_clean.png" />
+</section>
+<section id="making-lifeblood-components-autostart-with-windows">
+<span id="lifeblood-manager-autostart"></span><h2>Making Lifeblood components autostart with windows<a class="headerlink" href="#making-lifeblood-components-autostart-with-windows" title="Permalink to this heading">#</a></h2>
+<ul>
+<li><p>You can toggle “minimize to tray” and “autostart” toggles on the top of the manager to have the Lifeblood Manager autostart with windows.</p>
+<img alt="_images/tray_autostart.png" src="_images/tray_autostart.png" />
+</li>
+<li><p>Then you can toggle “autostart” toggles for each component you want to be started together with Lifeblood Manager.
+With no toggles set for components - nothing will be started automatically, only the Manager itself.</p>
+<img alt="_images/autostart_components.png" src="_images/autostart_components.png" />
+</li>
+<li><p>To reiterate: <strong>do NOT check autostart checkbox on every computer you install Lifeblood to, just on a SINGLE one</strong></p></li>
+<li><p>The tray icon will probably be hidden by windows by default, you can find it in the list</p>
+<img alt="_images/tray.png" src="_images/tray.png" />
+<p>You can see component status and open the Manager window through the tray right-click menu</p>
+<img alt="_images/tray_menu.png" src="_images/tray_menu.png" />
+</li>
+</ul>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="installation.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Installation</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="usage.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">How to Use</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-update-lifeblood-with-lifeblood-manager">Install/Update Lifeblood with Lifeblood Manager</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-with-the-wizard">Configuration with the Wizard</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-components">Running Components</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#lifeblood-node-graph-creation">Lifeblood Node Graph creation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submitting-redshift-render-from-houdini">Submitting Redshift Render From Houdini</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-does-submitted-task-look-on-lifeblood-s-side">How does submitted task look on Lifeblood’s side</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#making-lifeblood-components-autostart-with-windows">Making Lifeblood components autostart with windows</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="_sources/installation_with_manager.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 10132 BC - 2029 AD, XAPKOHHEH.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.4.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

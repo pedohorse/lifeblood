@@ -103,6 +103,8 @@ like "ID:FFB3"
 
 Therefore device tags were introduced.
 
+.. _news/post_01/gputags:
+
 Tags
 ++++
 
