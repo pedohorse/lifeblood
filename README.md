@@ -6,8 +6,6 @@
 
 ![](icon/lifeblood.svg)
 
-### TOC
-
 1. [Overview](#lifeblood)
 2. [Features](#features)
 3. [Installation](#installation)
