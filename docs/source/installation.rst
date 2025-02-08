@@ -41,7 +41,7 @@ Simplest: `Lifeblood Manager <https://github.com/pedohorse/lifeblood-manager/rel
 ========================================================================================
 
 .. note::
-    See :ref:`step by step tutorial on how to install Lifeblood with Lifeblood Manager here <_installation_with_manager>`.
+    See :ref:`step by step tutorial on how to install Lifeblood with Lifeblood Manager here <installation_with_manager>`.
 
 There is a separate program made specifically to simplify Lifeblood installation and management: `Lifeblood-Manager <https://github.com/pedohorse/lifeblood-manager/releases>`_.
 It is not written in python and statically linked specifically to minimize the system software requirements.
