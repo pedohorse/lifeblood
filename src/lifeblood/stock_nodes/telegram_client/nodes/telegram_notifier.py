@@ -92,8 +92,9 @@ class TelegramNotifier(BaseNodeWithTaskRequirements):
             ui.add_separator()
             ui.add_parameter('on worker', 'Use worker to send notification', NodeParameterType.BOOL, False)
 
-        self.param('worker cpu cost').set_value(0.0)
-        self.param('worker mem cost').set_value(0.1)
+        # TODO: fix these resource names
+        # self.param('worker cpu cost').set_value(0.0)
+        # self.param('worker mem cost').set_value(0.1)
 
     @classmethod
     def label(cls) -> str:
