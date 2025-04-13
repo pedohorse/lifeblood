@@ -30,6 +30,7 @@ class TaskSpawn(object):
         self._create_as_spawned = True
         self.__extra_groups = []
         self.__default_priority = None
+        self.__internal_order = 0.0
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -61,6 +62,9 @@ class TaskSpawn(object):
         """
         return self.__default_priority
 
+    def internal_order(self):
+        return self.__internal_order
+
     def add_extra_group_name(self, group_name):
         self.__extra_groups.append(group_name)
 
@@ -73,6 +77,9 @@ class TaskSpawn(object):
         If this task has nonempty list of groups to be assigned to - this default priority is
         """
         self.__default_priority = priority
+
+    def set_internal_order(self, order):
+        self.__internal_order = order
 
     def set_name(self, name):
         self.__name = name

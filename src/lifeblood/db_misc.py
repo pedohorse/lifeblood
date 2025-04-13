@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"attributes"	TEXT NOT NULL DEFAULT '{{}}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
 	"priority"	REAL NOT NULL DEFAULT 50,
+	"priority_tie_order" REAL NOT NULL DEFAULT 0,
 	"_invoc_requirement_clause"	TEXT,
 	"environment_resolver_data"	BLOB,
 	"dead"	INTEGER NOT NULL DEFAULT 0,

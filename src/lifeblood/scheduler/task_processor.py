@@ -226,6 +226,10 @@ class TaskProcessor(SchedulerComponentBase):
                                   (result_serialized, task_id))
             _bench_point_8 = time.perf_counter()
 
+            if process_result.internal_order is not None:
+                await con.execute('UPDATE tasks SET "priority_tie_order" = ? WHERE "id" == ?',
+                                  (process_result.internal_order, task_id))
+
             # unblock given tasks
             if process_result.tasks_to_unblock:
                 assert con.in_transaction and self.awaiter_lock.locked()  # sanity check
@@ -257,14 +261,26 @@ class TaskProcessor(SchedulerComponentBase):
             # splits
             if process_result._split_attribs is not None:
                 split_count = len(process_result._split_attribs)
+                split_internal_order = process_result._split_order
+                if not isinstance(split_internal_order, list) or len(split_internal_order) != split_count:
+                    split_internal_order = [0.0 for _ in range(split_count)]
+                    self.__logger.warning('Processing result has incorrect split internal order property, ignoring')
+
                 ui_task_delta.state = TaskState.SPLITTED  # note that split_task ALSO adds a task delta event with state update
-                for attr_dict, split_task_id in zip(process_result._split_attribs, await self.split_task(task_id, split_count, con)):
+                for internal_order, attr_dict, split_task_id in zip(split_internal_order, process_result._split_attribs, await self.split_task(task_id, split_count, con)):
                     async with con.execute('SELECT attributes FROM "tasks" WHERE "id" = ?', (split_task_id,)) as cur:
                         split_task_dict = await cur.fetchone()
                     assert split_task_dict is not None
                     split_task_attrs = await deserialize_attributes(split_task_dict['attributes'])
                     split_task_attrs.update(attr_dict)
-                    await con.execute('UPDATE "tasks" SET attributes = ? WHERE "id" = ?', (await serialize_attributes(split_task_attrs), split_task_id))  # TODO: run dumps in executor
+                    await con.execute(
+                        'UPDATE "tasks" SET attributes = ?, priority_tie_order = priority_tie_order + ? WHERE "id" == ?',
+                        (
+                            await serialize_attributes(split_task_attrs),  # TODO: run dumps in executor
+                            internal_order,  # note, internal order is added to split orig task's order
+                            split_task_id,
+                        )
+                    )
 
             _bench_point_11 = time.perf_counter()
             con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_tasks_updated, [ui_task_delta] if ui_task_delta_split is None else [ui_task_delta, ui_task_delta_split])  # ui event
@@ -570,7 +586,7 @@ class TaskProcessor(SchedulerComponentBase):
                                            'AND paused = 0 '
                                            'AND dead = 0 '
                                            'ORDER BY {prio_sort} RANDOM()'.format(
-                            prio_sort='tasks.priority DESC, ' if task_state == TaskState.READY else '',
+                            prio_sort='tasks.priority DESC, tasks.priority_tie_order ASC, ' if task_state == TaskState.READY else '',
                             attrs='attributes, environment_resolver_data, ' if task_state in (TaskState.WAITING, TaskState.POST_WAITING) else '',
                             maybe_get_req_clause='tasks.work_data_invocation_attempt, tasks._invoc_requirement_clause, ' if task_state == TaskState.READY else '',
                             ),
@@ -933,14 +949,26 @@ class TaskProcessor(SchedulerComponentBase):
         all_split_ids = []
         all_split_data = []
         for split_element in range(into):
-            async with con.execute('INSERT INTO tasks (parent_id, "state", "node_id", '
-                                   '"node_input_name", "node_output_name", '
-                                   '"work_data", "environment_resolver_data", "name", "attributes", "split_level") '
-                                   'VALUES (?,?,?,?,?,?,?,?,?,?)',
-                                   (None, task_row['state'], task_row['node_id'],
-                                    task_row['node_input_name'], task_row['node_output_name'],
-                                    task_row['work_data'], task_row['environment_resolver_data'], task_row['name'], task_row['attributes'], new_split_level)) \
-                    as insert_cur:
+            async with con.execute(
+                    'INSERT INTO tasks (parent_id, "state", "node_id", '
+                    '"node_input_name", "node_output_name", '
+                    '"work_data", "environment_resolver_data", "name", "attributes", "split_level", '
+                    '"priority_tie_order") '
+                    'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                    (
+                        None,
+                        task_row['state'],
+                        task_row['node_id'],
+                        task_row['node_input_name'],
+                        task_row['node_output_name'],
+                        task_row['work_data'],
+                        task_row['environment_resolver_data'],
+                        task_row['name'],
+                        task_row['attributes'],
+                        new_split_level,
+                        task_row['priority_tie_order'],
+                    )
+            ) as insert_cur:
                 new_task_id = insert_cur.lastrowid
 
             # copy groups  # TODO:SQL OPTIMIZE

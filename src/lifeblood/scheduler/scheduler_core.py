@@ -1663,11 +1663,23 @@ class SchedulerCore(NodeGraphHolderBase):
                     result.append((SpawnStatus.FAILED, None))
                     continue
 
-                async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                       (newtask.name(), await serialize_attributes(newtask._attributes()), parent_task_id,  # TODO: run dumps in executor
-                                        TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
-                                        node_id, newtask.node_output_name(),
-                                        newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:
+                # internal order is not inherited from parent.
+                #  reasoning: nothing solid really.
+                #  internal order is more to distinguish similar tasks, and children
+                #  should be distinguishable among themselves, but not from parent
+                async with con.execute(
+                        'INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data", "priority_tie_order") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        (
+                            newtask.name(),
+                            await serialize_attributes(newtask._attributes()),  # TODO: run dumps in executor
+                            parent_task_id,
+                            TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
+                            node_id,
+                            newtask.node_output_name(),
+                            newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None,
+                            newtask.internal_order(),
+                        )
+                ) as newcur:
                     new_id = newcur.lastrowid
 
                 all_groups = set()

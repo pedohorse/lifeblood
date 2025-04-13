@@ -25,7 +25,15 @@ class Unpickler(pickle.Unpickler):
 
 
 class TaskSpawn:
-    def __init__(self, name: str, source_invocation_id: Optional[int] = None, env_args: Optional[EnvironmentResolverArguments] = None, task_attributes: dict = None, extra_groups: Iterable[str] = None):
+    def __init__(
+            self,
+            name: str,
+            source_invocation_id: Optional[int] = None,
+            env_args: Optional[EnvironmentResolverArguments] = None,
+            task_attributes: dict = None,
+            extra_groups: Iterable[str] = None,
+            internal_order: float = 0.0
+    ):
         """
 
         :param name:
@@ -42,6 +50,7 @@ class TaskSpawn:
         self._create_as_spawned = True
         self.__extra_groups = list(extra_groups) if extra_groups is not None else []
         self.__default_priority = None
+        self.__internal_order = internal_order
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -82,6 +91,9 @@ class TaskSpawn:
         """
         return self.__default_priority
 
+    def internal_order(self) -> float:
+        return self.__internal_order
+
     def add_extra_group_name(self, group_name: str) -> None:
         self.__extra_groups.append(group_name)
 
@@ -97,6 +109,9 @@ class TaskSpawn:
         If this task has nonempty list of groups to be assigned to - this default priority is
         """
         self.__default_priority = priority
+
+    def set_internal_order(self, order: float):
+        self.__internal_order = order
 
     def set_name(self, name):
         self.__name = name

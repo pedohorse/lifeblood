@@ -19,7 +19,7 @@ from ..invocationjob import InvocationResources
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 5
+SCHEDULER_DB_FORMAT_VERSION = 6
 
 
 @dataclass
@@ -459,7 +459,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 5:
+        if from_version < 1 or to_version > 6:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -519,6 +519,10 @@ CREATE TABLE IF NOT EXISTS "resources" (
             con.execute('DROP TABLE "__old_resources"')
             con.execute('PRAGMA legacy_alter_table=OFF')
             con.execute('PRAGMA integrity_check')
+            return True
+        if to_version == 6:
+            # priority and ordering parameters for tasks were added
+            con.execute('ALTER TABLE "tasks" ADD COLUMN "priority_tie_order" REAL NOT NULL DEFAULT 0')
             return True
 
 
