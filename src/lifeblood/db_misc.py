@@ -1,4 +1,33 @@
 from . import enums
+
+
+update_tasks_priority_on_group_trigger_template = '''
+UPDATE "tasks" SET "priority" =
+	(
+		(SELECT COALESCE(MAX(task_group_attributes.priority), 0.0) AS priority FROM task_group_attributes
+		INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group"
+		WHERE task_groups.task_id == tasks.id AND task_group_attributes.state == {group_not_archived_state})
+		+
+		tasks.priority_invocation_adjust
+	)
+	FROM task_groups
+    WHERE task_groups.task_id == tasks.id AND task_groups."group" == {{group_source}}."group";
+'''.format(group_not_archived_state=enums.TaskGroupArchivedState.NOT_ARCHIVED.value)
+
+
+update_tasks_priority_on_invoc_trigger_template = '''
+UPDATE "tasks" SET "priority" =
+	(
+		(SELECT COALESCE(MAX(task_group_attributes.priority), 0.0) AS priority FROM task_group_attributes
+		INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group"
+		WHERE task_groups.task_id == {{id_source}} AND task_group_attributes.state == {group_not_archived_state})
+		+
+		tasks.priority_invocation_adjust
+	)
+	WHERE "id" == {{id_source}};
+'''.format(group_not_archived_state=enums.TaskGroupArchivedState.NOT_ARCHIVED.value)
+
+
 sql_init_script = '''
 BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS "lifeblood_metadata" (
@@ -28,6 +57,7 @@ CREATE TABLE IF NOT EXISTS "tasks" (
 	"attributes"	TEXT NOT NULL DEFAULT '{{}}',
 	"split_level"	INTEGER NOT NULL DEFAULT 0,
 	"priority"	REAL NOT NULL DEFAULT 50,
+	"priority_invocation_adjust"	REAL NOT NULL DEFAULT 0,
 	"priority_tie_order" REAL NOT NULL DEFAULT 0,
 	"_invoc_requirement_clause"	TEXT,
 	"environment_resolver_data"	BLOB,
@@ -81,6 +111,7 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
 	"task_id"	INTEGER NOT NULL,
 	"group"	TEXT NOT NULL,
 	FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE CASCADE
+	FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS "invocations" (
 	"id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -202,10 +233,55 @@ BEFORE UPDATE OF "node_id" ON "tasks" WHEN old.node_id <> new.node_id
 BEGIN
 UPDATE "tasks" SET "node_output_name" = NULL WHERE "id" == new.id;
 END;
+
+-- Triggers for PRIORITY update
+-- update from invocation side
+
+CREATE TRIGGER IF NOT EXISTS update_tasks_priority_from_invoc_update
+AFTER UPDATE OF "priority_invocation_adjust" ON "tasks"
+BEGIN
+{update_tasks_invoc_priority_trigger_body}
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_tasks_priority_from_invoc_update
+AFTER INSERT ON "tasks"
+BEGIN
+-- note: task is inserted WITHOUT any group assignment, so we don't check them
+UPDATE "tasks" SET "priority" = "priority_invocation_adjust" WHERE "id" == new.id;
+END;
+
+-- update from task group side
+
+CREATE TRIGGER IF NOT EXISTS update_tasks_priority_from_group_update
+AFTER UPDATE OF "priority" ON "task_group_attributes"
+BEGIN
+{update_tasks_priority_trigger_body}
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_tasks_priority_from_group_insert
+AFTER INSERT ON "task_groups"
+BEGIN
+{insert_task_groups_priority_trigger_body}
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_tasks_priority_from_group_delete
+AFTER DELETE ON "task_groups"
+BEGIN
+{delete_tasks_priority_trigger_body}
+END;
+
+-- Commit, set WAL and finish
+
 COMMIT;
 PRAGMA journal_mode=wal;
 PRAGMA synchronous=NORMAL;
-'''.format(dead_state=enums.TaskState.DEAD.value)
+'''.format(
+    dead_state=enums.TaskState.DEAD.value,
+    update_tasks_priority_trigger_body=update_tasks_priority_on_group_trigger_template.format(group_source='new'),
+    delete_tasks_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='old.task_id'),  # update_tasks_priority_on_group_trigger_template.format(group_source='old'),
+    insert_task_groups_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='new.task_id'),
+    update_tasks_invoc_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='new.id'),
+)
 # PRAGMA soft_heap_limit=100000000;
 # PRAGMA mmap_size=100000000;
 # TODO: add after delete triggers for children count
