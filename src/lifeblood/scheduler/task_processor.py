@@ -163,19 +163,11 @@ class TaskProcessor(SchedulerComponentBase):
                     taskdada_serialized = await process_result.invocation_job.serialize_async()
                     invoc_requirements_stash = process_result.invocation_job.requirements().pack_selection_info()
                     job_priority = process_result.invocation_job.priority()
-                    async with con.execute('SELECT MAX(task_group_attributes.priority) AS priority FROM task_group_attributes '
-                                           'INNER JOIN task_groups ON task_group_attributes."group"==task_groups."group" '
-                                           'WHERE task_groups.task_id==? AND task_group_attributes.state==?', (task_id, TaskGroupArchivedState.NOT_ARCHIVED.value)) as cur:
-                        group_priority = await cur.fetchone()
-                        if group_priority is None:
-                            group_priority = 50.0  # "or" should only work in case there were no unarchived groups at all for the task
-                        else:
-                            group_priority = group_priority[0] or 50.0
                     await con.execute('UPDATE tasks SET "work_data" = ?, "work_data_invocation_attempt" = 0, "state" = ?, "_invoc_requirement_clause" = ?, '
-                                      'priority = ? '
+                                      'priority_invocation_adjust = ? '
                                       'WHERE "id" = ?',
                                       (taskdada_serialized, TaskState.READY.value,  invoc_requirements_stash,
-                                       group_priority + job_priority,
+                                       job_priority,
                                        task_id))
                     ui_task_delta.work_data_invocation_attempt = 0  # for ui event
                     ui_task_delta.state = TaskState.READY  # for ui event
