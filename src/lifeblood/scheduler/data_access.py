@@ -73,9 +73,13 @@ class DataAccess:
         with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
             cur = con.execute('PRAGMA main.table_list')
-            has_tables = bool(cur.fetchall())
+            all_tables = set(x[1] for x in cur.fetchall() if x[1] not in ('sqlite_schema',))
+            # super early lifeblood dbs don't have metadata, so we check on tasks instead
+            has_lifeblood = 'lifeblood_metadata' in all_tables or 'tasks' in all_tables
             cur.close()
-            if not has_tables:  # no tables, consider db not initialized
+            if not has_lifeblood:  # no tables, consider db not initialized
+                if all_tables:  # there are tables, but not lifeblood's - safer to fail
+                    raise RuntimeError('provided db does not belong to Lifeblood and is not empty')
                 con.executescript(sql_init_script)
             cur = con.execute('SELECT * FROM lifeblood_metadata')
             metadata = cur.fetchone()  # there should be exactly one single row.
