@@ -68,13 +68,15 @@ class DataAccess:
 
         self.__workers_metadata: Dict[int, WorkerMetadata] = {}
         #
-        # ensure database is initialized
-        with sqlite3.connect(self.__db_path) as con:
-            con.executescript(sql_init_script)
 
-        # upgrade db definitions
+        # upgrade existing db definitions
         with sqlite3.connect(self.__db_path) as con:
             con.row_factory = sqlite3.Row
+            cur = con.execute('PRAGMA main.table_list')
+            has_tables = bool(cur.fetchall())
+            cur.close()
+            if not has_tables:  # no tables, consider db not initialized
+                con.executescript(sql_init_script)
             cur = con.execute('SELECT * FROM lifeblood_metadata')
             metadata = cur.fetchone()  # there should be exactly one single row.
             cur.close()
@@ -98,6 +100,10 @@ class DataAccess:
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+
+        # ensure database is initialized
+        with sqlite3.connect(self.__db_path) as con:
+            con.executescript(sql_init_script)
 
         # update resource table straight away
         # for now the logic is to keep existing columns
