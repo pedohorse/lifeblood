@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 import aiosqlite
 import sqlite3
 import random
@@ -16,10 +17,11 @@ from ..environment_resolver import EnvironmentResolverArguments
 from ..scheduler_config_provider_base import SchedulerConfigProviderBase
 from ..worker_resource_definition import WorkerResourceDataType
 from ..invocationjob import InvocationResources
+from ..enums import TaskGroupArchivedState
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 6
+SCHEDULER_DB_FORMAT_VERSION = 7
 
 
 @dataclass
@@ -176,6 +178,76 @@ class DataAccess:
                                 newtask.environment_resolver_arguments.serialize() if newtask.environment_resolver_arguments is not None else None)) as newcur:
             new_id = newcur.lastrowid
         return new_id
+
+    async def create_task_group(self, task_group_name: str, creator: Optional[str] = None, priority: float = 50.0, creation_timestamp: Optional[int] = None, *, con: Optional[aiosqlite.Connection] = None):
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.create_task_group(task_group_name, creator, priority, creation_timestamp, con=con)
+                await con.commit()
+            return ret
+
+        if creation_timestamp is None:
+            creation_timestamp = int(datetime.utcnow().timestamp())
+        await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime", "creator", "priority") VALUES (?, ?, ?, ?)',
+                          (task_group_name, creation_timestamp, creator, priority))
+
+    async def delete_task_group(self, task_group_name: str, *, con: Optional[aiosqlite.Connection] = None):
+        """
+        Note, just group is deleted, not tasks assigned to it
+        """
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.delete_task_group(task_group_name, con=con)
+                await con.commit()
+            return ret
+
+        if con.in_transaction:
+            async with con.execute('PRAGMA FOREIGN_KEYS') as cur:
+                if (await cur.fetchone())[0] == 0:
+                    raise NotImplementedError('This cannot be implemented due to sqlite. will be solved by #126')
+        await con.execute('PRAGMA FOREIGN_KEYS = on')
+        await con.execute('DELETE FROM task_group_attributes WHERE "group" == ?',
+                          (task_group_name,))
+
+    async def set_task_group_priority(self, task_group_name: str, priority: float, *, con: Optional[aiosqlite.Connection] = None):
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:
+            async with self.data_connection() as con:
+                ret = await self.set_task_group_priority(task_group_name, priority, con=con)
+                await con.commit()
+            return ret
+
+        await con.execute('UPDATE "task_group_attributes" SET "priority" = ? WHERE "group" == ?',
+                          (priority, task_group_name))
+
+    async def assign_task_to_group(self, task_id: int, task_group_name: str, *, con: Optional[aiosqlite.Connection] = None):
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:  # TODO: replace this all repeating con code with a decorator
+            async with self.data_connection() as con:
+                ret = await self.assign_task_to_group(task_id, task_group_name, con=con)
+                await con.commit()
+            return ret
+
+        await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                          (task_id, task_group_name))
+
+    async def unassign_task_from_group(self, task_id: int, task_group_name: str, *, con: Optional[aiosqlite.Connection] = None):
+        # TODO: scheduler must use this instead of creating directly
+        #  this should be done as part of a bigger refactoring
+        if con is None:  # TODO: replace this all repeating con code with a decorator
+            async with self.data_connection() as con:
+                ret = await self.unassign_task_from_group(task_id, task_group_name, con=con)
+                await con.commit()
+            return ret
+
+        await con.execute('DELETE FROM task_groups WHERE "task_id" == ? AND "group" == ?',
+                          (task_id, task_group_name))
 
     async def housekeeping(self):
         """
@@ -459,7 +531,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 6:
+        if from_version < 1 or to_version > 7:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -523,6 +595,36 @@ CREATE TABLE IF NOT EXISTS "resources" (
         if to_version == 6:
             # priority and ordering parameters for tasks were added
             con.execute('ALTER TABLE "tasks" ADD COLUMN "priority_tie_order" REAL NOT NULL DEFAULT 0')
+            return True
+        if to_version == 7:
+            # priority_invocation_adjust was added
+            con.execute('ALTER TABLE "tasks" ADD COLUMN "priority_invocation_adjust" REAL NOT NULL DEFAULT 0')
+            # NOTE: due to bug-feature explained in CREATE TRIGGER docs, triggers created for missing fields
+            #  will be ignored "Unrecognized column names are silently ignored"
+            con.execute('PRAGMA legacy_alter_table=ON')
+            con.execute('ALTER TABLE "task_groups" RENAME TO "__old_task_groups"')
+            con.execute('''
+CREATE TABLE IF NOT EXISTS "task_groups" (
+    "task_id"	INTEGER NOT NULL,
+    "group"	TEXT NOT NULL,
+    FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE CASCADE
+    FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
+);
+            ''')
+            con.execute('INSERT INTO "task_groups" SELECT * FROM "__old_task_groups"')
+            con.execute('DROP TABLE "__old_task_groups"')
+            # we need to rerun init script to ensure all triggers are created
+            con.executescript(sql_init_script)
+            con.execute('PRAGMA legacy_alter_table=OFF')
+            # now check that db is consistent
+            cur = con.cursor()
+            cur.execute('PRAGMA integrity_check')
+            if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
+                raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
+            cur.execute('PRAGMA foreign_key_check ')
+            if errors := cur.fetchall():
+                raise RuntimeError(f'database upgrade failed with foreign key check errors: {[str(list(x)) for x in errors]}')
+            cur.close()
             return True
 
 
