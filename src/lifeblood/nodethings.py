@@ -21,7 +21,9 @@ class ProcessingResult:
         self.split_attributes_to_set: Optional[Dict[str, Any]] = {}
         self.output_name: str = node_output_name
         self.tasks_to_unblock: List[int] = []
+        self.internal_order: Optional[float] = None
         self._split_attribs = None
+        self._split_order = None
         self._environment_resolver_arguments: Optional[EnvironmentResolverArguments] = None
 
     def set_node_output_name(self, newname: str):
@@ -61,11 +63,15 @@ class ProcessingResult:
     def cancel_split_task(self):
         self._split_attribs = None
 
-    def split_task(self, into: int):
+    def split_task(self, into: int, add_sequential_internal_order: bool = True):
         if into < 1:
             raise ValueError('cannot split into less than to 1 parts')
 
         self._split_attribs = [{} for _ in range(into)]
+        if add_sequential_internal_order:
+            self._split_order = [float(x) for x in range(into)]
+        else:
+            self._split_order = [0.0 for _ in range(into)]
 
     def set_split_task_attrib(self, split: int, attr_name: str, attr_value):
         # validate attrs

@@ -125,7 +125,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                      f"kwargs['hipfile'] = {repr(hippath)}\n" \
                      f"kwargs['file'] = node.evalParm(output_parm_name)\n"
         spawnlines += attr_transfer_lines
-        spawnlines += "lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs)\n"
+        spawnlines += "lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, kwargs, order=frame)\n"
 
         spawnlines = self._fescape(spawnlines)
         # now we add first line that we DON'T want to escape...

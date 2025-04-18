@@ -121,7 +121,7 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             f"        attrs = {{'frames': [frame], 'file': filepath, 'hipfile': {repr(hippath)}, 'outimage': outimage}}\n" \
             f"        for attr, val in {repr(attr_to_trans)}:\n" \
             f"            attrs[attr] = val\n" \
-            f"        lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, attrs)\n"
+            f"        lifeblood_connection.create_task(node.name() + '_spawned frame %g' % frame, attrs, order=frame)\n"
 
         if not self.is_output_connected('spawned'):
             spawnlines = ''

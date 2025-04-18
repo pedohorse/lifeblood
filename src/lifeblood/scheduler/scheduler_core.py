@@ -662,6 +662,7 @@ class SchedulerCore(NodeGraphHolderBase):
             self.data_access.clear_invocation_progress(task.invocation_id())
 
             ui_task_delta = TaskDelta(invocation['task_id'])  # for ui event
+            ui_task_delta.progress = None
             if task.finished_needs_retry():  # max retry count will be checked by task processor
                 await con.execute('UPDATE tasks SET "state" = ?, "work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
@@ -755,7 +756,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.READY.value, invocation['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.READY))  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.READY, progress=None))  # ui event
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
@@ -1319,6 +1320,10 @@ class SchedulerCore(NodeGraphHolderBase):
                     invoking_invoc_ids.remove(oid)
                 await asyncio.sleep(0.5)
 
+    async def set_task_group_priority(self, task_group: str, priority: float) -> float:
+        await self.data_access.set_task_group_priority(task_group, priority)
+        return priority  # for now there is no restrictions on priority, so return same
+
     #
     # set task name
     async def set_task_name(self, task_id: int, new_name: str):
@@ -1663,11 +1668,23 @@ class SchedulerCore(NodeGraphHolderBase):
                     result.append((SpawnStatus.FAILED, None))
                     continue
 
-                async with con.execute('INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data") VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                       (newtask.name(), await serialize_attributes(newtask._attributes()), parent_task_id,  # TODO: run dumps in executor
-                                        TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
-                                        node_id, newtask.node_output_name(),
-                                        newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None)) as newcur:
+                # internal order is not inherited from parent.
+                #  reasoning: nothing solid really.
+                #  internal order is more to distinguish similar tasks, and children
+                #  should be distinguishable among themselves, but not from parent
+                async with con.execute(
+                        'INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data", "priority_tie_order") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        (
+                            newtask.name(),
+                            await serialize_attributes(newtask._attributes()),  # TODO: run dumps in executor
+                            parent_task_id,
+                            TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
+                            node_id,
+                            newtask.node_output_name(),
+                            newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None,
+                            newtask.internal_order(),
+                        )
+                ) as newcur:
                     new_id = newcur.lastrowid
 
                 all_groups = set()

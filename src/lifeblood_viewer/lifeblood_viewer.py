@@ -38,10 +38,13 @@ def confirm_operation_gui(parent: QWidget, opname):
 class GroupsModel(QAbstractItemModel):
     SortRole = Qt.UserRole + 0
 
-    def __init__(self, parent):
+    __set_group_priority_signal = Signal(str, float)
+
+    def __init__(self, parent, connection_worker: SchedulerConnectionWorker):
         super(GroupsModel, self).__init__(parent=parent)
         self.__items: Dict[str, TaskGroupData] = {}
         self.__items_order = []
+        self.__connection_worker = connection_worker
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
         if role != Qt.DisplayRole:
@@ -86,7 +89,7 @@ class GroupsModel(QAbstractItemModel):
                 return QColor.fromRgbF(1.0, 0.9, 0.65)
         if role != Qt.DisplayRole and role != self.SortRole:
             return None
-        if index.column() == 0:
+        if index.column() == 0:  # name
             return self.__items_order[index.row()]
         elif index.column() == 1:  # creation time
             if role == Qt.DisplayRole:
@@ -99,6 +102,24 @@ class GroupsModel(QAbstractItemModel):
             item = self.__items[self.__items_order[index.row()]]
             return f"{item.statistics.tasks_in_progress}:{item.statistics.tasks_with_error}:{item.statistics.tasks_done}/{item.statistics.tasks_total}"
 
+    def flags(self, index) -> Qt.ItemFlags:
+        flags = super().flags(index)
+        if index.column() == 2:  # priority
+            flags |= Qt.ItemIsEditable
+        return flags
+
+    def setData(self, index: QModelIndex, value, role: int = Qt.EditRole):
+        if role != Qt.EditRole:
+            return False
+        col = index.column()
+        if col == 2:
+            task_group = self.__items[self.__items_order[index.row()]]
+            task_group.priority = float(value)
+            self.__set_group_priority_signal.emit(task_group.name, task_group.priority)
+            return True
+        else:
+            return False
+
     def index(self, row: int, column: int, parent: QModelIndex = None) -> QModelIndex:
         if parent is None:
             parent = QModelIndex()
@@ -110,10 +131,54 @@ class GroupsModel(QAbstractItemModel):
 
     @Slot(list)
     def update_groups(self, groups: TaskGroupBatchData):
-        self.beginResetModel()
-        self.__items = groups.task_groups
-        self.__items_order = sorted(list(groups.task_groups.keys()), key=lambda x: self.__items[x].creation_timestamp, reverse=True)
-        self.endResetModel()
+
+        orig_row_count = len(self.__items_order)
+
+        # 1. remove removed
+        for inv_row, group_name in enumerate(reversed(self.__items_order[:])):
+            row = orig_row_count - 1 - inv_row
+            if group_name in groups.task_groups:
+                continue
+            self.beginRemoveRows(QModelIndex(), row, row)
+            self.__items_order.pop(row)
+            self.__items.pop(group_name)
+            self.endRemoveRows()
+
+        # 2. add new
+        for group_name, group_data in groups.task_groups.items():
+            if group_name in self.__items:
+                continue
+            self.beginInsertRows(QModelIndex(), len(self.__items_order), len(self.__items_order))
+            self.__items[group_name] = group_data
+            self.__items_order.append(group_name)
+            self.endInsertRows()
+
+        # 3. update existing
+        for row, group_name in enumerate(self.__items_order):
+            if group_data := groups.task_groups.get(group_name):
+                min_col = self.columnCount()
+                max_col = -1
+                existing_group = self.__items[group_name]
+                for col in range(self.columnCount()):
+                    if (
+                            col == 0 and existing_group.name != group_data.name
+                            or col == 1 and existing_group.creation_timestamp != group_data.creation_timestamp
+                            or col == 2 and existing_group.priority != group_data.priority
+                            or col == 3 and existing_group.statistics != group_data.statistics
+                    ):
+                        min_col = min(min_col, col)
+                        max_col = max(max_col, col)
+                if max_col < min_col:  # nothing changed
+                    continue
+                self.__items[group_name] = group_data
+                self.dataChanged.emit(self.index(row, min_col), self.index(row, max_col))
+
+    def start(self):
+        self.__connection_worker.groups_full_update.connect(self.update_groups)
+        self.__set_group_priority_signal.connect(self.__connection_worker.set_task_group_priority)
+
+    def stop(self):
+        self.__connection_worker.disconnect(self)
 
 
 class GroupsView(QTreeView):
@@ -174,7 +239,8 @@ class GroupsView(QTreeView):
 
         # some visual adjustment
         header = self.header()
-        header.moveSection(3, 0)
+        header.moveSection(2, 0)
+        header.moveSection(3, 2)
         # header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
         header.resizeSection(0, 200)
         header.resizeSection(1, 128)
@@ -218,6 +284,7 @@ class LifebloodViewer(QMainWindow):
         # icon
         self.setWindowIcon(QIcon(str(pathlib.Path(__file__).parent/'icons'/'lifeblood.svg')))
         self.setWindowTitle('Lifeblood Viewer')
+        self.__do_select = False
 
         if db_path is None:
             db_path = paths.config_path('node_viewer.db', 'viewer')
@@ -298,7 +365,7 @@ class LifebloodViewer(QMainWindow):
         act.setChecked(False)
         act.toggled.connect(self.__node_editor.set_archived_groups_shown)
 
-        self.__model_main = GroupsModel(self)
+        self.__model_main = GroupsModel(self, self.__ui_connection_worker)
         self.__group_list.set_main_model(self.__model_main)
         self.__group_list.header().setStretchLastSection(True)
 
@@ -325,7 +392,8 @@ class LifebloodViewer(QMainWindow):
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiSceneWithDataController)
-        self.__ui_connection_worker.groups_full_update.connect(self.update_groups)
+        self.__model_main.modelAboutToBeReset.connect(self._pre_groups_update)
+        self.__model_main.modelReset.connect(self._post_groups_update)
         self.__ui_connection_worker.scheduler_connection_lost.connect(self._show_connection_message)
         self.__ui_connection_worker.scheduler_connection_established.connect(self._hide_connection_message)
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
@@ -369,10 +437,11 @@ class LifebloodViewer(QMainWindow):
         get_config('viewer').set_option_noasync('viewer.nodeeditor.display_dead_tasks', show)
         self.__node_editor.set_dead_shown(show)
 
-    def update_groups(self, groups: TaskGroupBatchData):
-        do_select = self.__model_main.rowCount() == 0
-        self.__model_main.update_groups(groups)
-        if do_select and self.__model_main.rowCount() > 0:
+    def _pre_groups_update(self):
+        self.__do_select = self.__model_main.rowCount() == 0
+
+    def _post_groups_update(self):
+        if self.__do_select and self.__model_main.rowCount() > 0:
             self.__group_list.set_current_index_from_main_model(self.__model_main.index(0, 0))
 
     def setSceneRect(self, *args, **kwargs):
@@ -388,10 +457,12 @@ class LifebloodViewer(QMainWindow):
     def start(self):
         self.__node_editor.start()
         self.__ui_connection_thread.start()
+        self.__model_main.start()
 
     def stop(self):
         self.__node_editor.stop()
         self.__worker_list.stop()
+        self.__model_main.stop()
         self.__ui_connection_worker.request_interruption()
         self.__ui_connection_thread.exit()
         self.__ui_connection_thread.wait()

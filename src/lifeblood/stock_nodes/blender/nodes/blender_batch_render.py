@@ -165,7 +165,7 @@ class BlenderBatchRender(BaseNodeWithTaskRequirements):
             f"    attrs = {{'frames': [frame], 'blendfile': {repr(file_path)}, 'file': outimage}}\n" \
             f"    for attr, val in {repr(attr_to_trans)}:\n" \
             f"        attrs[attr] = val\n" \
-            f"    lifeblood_connection.create_task('{context.task_name()}_spawned frame %g' % frame, attrs)\n"
+            f"    lifeblood_connection.create_task('{context.task_name()}_spawned frame %g' % frame, attrs, order=frame)\n"
 
         do_spawn = self.is_output_connected('spawned')
         main_script = f'import bpy\n' \

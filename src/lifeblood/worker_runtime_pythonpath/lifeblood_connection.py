@@ -146,7 +146,7 @@ class TaskSpawn:
     keep it up-to-date
     and keep it 2-3 compatible!!
     """
-    def __init__(self, name, source_invocation_id, env_args=None, task_attributes=None):
+    def __init__(self, name, source_invocation_id, env_args=None, task_attributes=None, internal_order=0.0):
         self.__name = name
         self.__attributes = dict(task_attributes or {})
         self.__env_args = env_args
@@ -156,6 +156,7 @@ class TaskSpawn:
         self._create_as_spawned = True
         self.__extra_groups = []
         self.__default_priority = None
+        self.__internal_order = internal_order
 
     def create_as_spawned(self):
         return self._create_as_spawned
@@ -187,6 +188,9 @@ class TaskSpawn:
         """
         return self.__default_priority
 
+    def internal_order(self):  # type: () -> float
+        return self.__internal_order
+
     def add_extra_group_name(self, group_name):
         self.__extra_groups.append(group_name)
 
@@ -199,6 +203,9 @@ class TaskSpawn:
         If this task has nonempty list of groups to be assigned to - this default priority is
         """
         self.__default_priority = priority
+
+    def set_internal_order(self, order):  # type: (float) -> None
+        self.__internal_order = order
 
     def set_name(self, name):
         self.__name = name
@@ -240,17 +247,18 @@ def _connect_to_worker(timeout=None):
     return sock
 
 
-def create_task(name, attributes, env_arguments=None, blocking=False):
+def create_task(name, attributes, env_arguments=None, order=0.0, blocking=False):
     """
     creates a new task with name and attributes.
     if env_attributes is None - environment is inherited fully from the parent,
       otherwise env_attributes completely override env from the parent task.
+    order provides an arbitrary float number to break ties when sorting ties with same priorities
 
     if blocking is False - create_task creates a thread and exits immediately.
       this is the default as you would usually want to contact scheduler in parallel with actual work.
     """
     invocation_id = int(os.environ['LIFEBLOOD_RUNTIME_IID'])
-    spawn = TaskSpawn(name, invocation_id, task_attributes=attributes, env_args=env_arguments)
+    spawn = TaskSpawn(name, invocation_id, task_attributes=attributes, env_args=env_arguments, internal_order=order)
 
     def _send():
         sock = _connect_to_worker(timeout=30)
