@@ -902,6 +902,19 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
+    def set_task_group_priority(self, task_group_name: str, priority: float):
+        if not self.ensure_connected():
+            return
+        assert self.__client is not None
+
+        try:
+            self.__client.set_task_group_priority(task_group_name, priority)
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+    @Slot()
     def set_task_node(self, task_id: int, node_id: int):
         if not self.ensure_connected():
             return
