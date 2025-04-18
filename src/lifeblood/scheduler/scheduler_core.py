@@ -662,6 +662,7 @@ class SchedulerCore(NodeGraphHolderBase):
             self.data_access.clear_invocation_progress(task.invocation_id())
 
             ui_task_delta = TaskDelta(invocation['task_id'])  # for ui event
+            ui_task_delta.progress = None
             if task.finished_needs_retry():  # max retry count will be checked by task processor
                 await con.execute('UPDATE tasks SET "state" = ?, "work_data_invocation_attempt" = "work_data_invocation_attempt" + 1 WHERE "id" = ?',
                                   (TaskState.READY.value, invocation['task_id']))
@@ -755,7 +756,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 tasks_to_wait.append(asyncio.create_task(self._save_external_logs(task.invocation_id(), stdout, stderr)))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.READY.value, invocation['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.READY))  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invocation['task_id'], state=TaskState.READY, progress=None))  # ui event
             await con.commit()
             if len(tasks_to_wait) > 0:
                 await asyncio.wait(tasks_to_wait)
