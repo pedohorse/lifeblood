@@ -1319,6 +1319,10 @@ class SchedulerCore(NodeGraphHolderBase):
                     invoking_invoc_ids.remove(oid)
                 await asyncio.sleep(0.5)
 
+    async def set_task_group_priority(self, task_group: str, priority: float) -> float:
+        await self.data_access.set_task_group_priority(task_group, priority)
+        return priority  # for now there is no restrictions on priority, so return same
+
     #
     # set task name
     async def set_task_name(self, task_id: int, new_name: str):

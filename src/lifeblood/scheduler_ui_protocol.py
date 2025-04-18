@@ -84,6 +84,12 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             state = await self.__scheduler.ui_state_access.get_tasks_ui_state(groups, not include_dead)
             await state.serialize_to_streamwriter(writer)
 
+        async def comm_set_ui_task_group_prio():  # set_task_group_priority
+            group_name = await read_string()
+            priority, = struct.unpack('>d', await reader.readexactly(8))
+            priority = await self.__scheduler.set_task_group_priority(group_name, priority)
+            writer.write(struct.pack('>d', priority))
+
         # ui events
 
         async def comm_request_subscribe_to_task_events():  # request_task_events
@@ -632,6 +638,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'get_ui_graph_state': comm_get_ui_graph_state,
                     'get_ui_task_groups': comm_get_ui_task_groups,
                     'get_ui_tasks_state': comm_get_ui_tasks_state,
+                    'set_task_group_priority': comm_set_ui_task_group_prio,
                     'request_task_events': comm_request_subscribe_to_task_events,
                     'task_events_since_id': comm_request_task_events_since_id,
                     'get_ui_workers_state': comm_get_ui_workers_state,
@@ -826,6 +833,14 @@ class UIProtocolSocketClient:
         w.flush()
         data = TaskBatchData.deserialize(r)
         return data
+
+    def set_task_group_priority(self, group_name: str, priority: float):
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('set_task_group_priority')
+        w.write_string(group_name)
+        w.write(struct.pack('>d', priority))
+        w.flush()
+        r.readexactly(8)  # ignore result
 
     # task subscription
     def request_subscribe_to_task_events(self, groups: Iterable[str], include_dead: bool, request_for_seconds: float = 10.0) -> List[TaskEvent]:
