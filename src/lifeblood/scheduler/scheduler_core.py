@@ -10,6 +10,7 @@ import aiofiles
 from aiorwlock import RWLock
 from contextlib import asynccontextmanager
 
+from ..misc import alocking
 from .. import logging
 from ..nodegraph_holder_base import NodeGraphHolderBase
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
@@ -1258,6 +1259,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
     #
     # change task group archived state
+    @alocking('scheduler.task_group_deletion')
     async def set_task_group_archived(self, task_group_name: str, state: TaskGroupArchivedState = TaskGroupArchivedState.ARCHIVED) -> None:
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -1319,6 +1321,189 @@ class SchedulerCore(NodeGraphHolderBase):
                     assert oid in invoking_invoc_ids
                     invoking_invoc_ids.remove(oid)
                 await asyncio.sleep(0.5)
+
+    async def __cancel_invocations_for_tasks(self, con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]):
+        async with con.execute(
+                'SELECT "id" FROM invocations '
+                f'WHERE task_id IN ({",".join(str(x) for x in task_ids)})'
+        ) as cur:
+            invoc_ids = [x['id'] for x in await cur.fetchall()]
+
+        for inv_id in invoc_ids:
+            await self.cancel_invocation(inv_id)
+
+    @staticmethod
+    async def __has_nonfinished_invocations_for_tasks(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]) -> bool:
+        async with con.execute(
+                'SELECT COUNT(*) as cnt FROM invocations '
+                f'WHERE state != ? AND task_id IN ({",".join(str(x) for x in task_ids)})',
+                (InvocationState.FINISHED.value,)
+        ) as cur:
+            return (await cur.fetchone())['cnt'] != 0
+
+    @staticmethod
+    async def __remove_tasks_not_fully_present_in_splits(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int], split_ids: Set[int]) -> bool:
+        smth_changed = False
+        async with con.execute(
+                f'WITH tmp AS (SELECT * FROM tasks WHERE "id" IN ({",".join(str(x) for x in task_ids)})) '
+                'SELECT id, "split_id", "split_count" FROM task_splits '
+                'INNER JOIN tmp ON  task_splits.task_id == tmp.id OR (task_splits.origin_task_id == tmp.id AND task_splits.split_element == 0)'
+        ) as cur:
+            rows = await cur.fetchall()
+        split_id_counts = {}
+        for row in rows:
+            split_id = row['split_id']
+            if split_id not in split_id_counts:
+                split_id_counts[split_id] = 0
+            split_id_counts[split_id] += 1
+
+        for row in rows:
+            split_id = row['split_id']
+            # +1 cuz we expect full group to have split_count splitted tasks + 1 origin task
+            if row['split_count'] + 1 == split_id_counts[split_id]:
+                # means full group, remember to purge
+                if row['split_id'] not in split_ids:
+                    split_ids.add(row['split_id'])
+                    smth_changed = True
+                # and skip
+                continue
+            if row['id'] in task_ids:
+                task_ids.remove(row['id'])
+                smth_changed = True
+        return smth_changed
+
+    @staticmethod
+    async def __remove_tasks_not_fully_present_in_with_parental_tree(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]) -> bool:
+        smth_changed = False
+        async with con.execute(
+                f'WITH tmp AS (SELECT * FROM tasks WHERE "id" IN ({",".join(str(x) for x in task_ids)})) '
+                'SELECT tasks.id as pid, tasks.parent_id, tasks.children_count, tmp.id as cid FROM tasks '
+                'INNER JOIN tmp ON tasks.id == tmp.parent_id OR tasks.id == tmp.id '
+                'WHERE tasks.children_count != 0'
+        ) as cur:
+            rows = await cur.fetchall()
+        pid_counts = {}
+        for row in rows:
+            pid = row['pid']
+            if pid not in pid_counts:
+                pid_counts[pid] = 0
+            pid_counts[pid] += 1
+
+        for row in rows:
+            pid = row['pid']
+            # +1 cuz we expect full group to have children_count children tasks + 1 parent task
+            if row['children_count'] + 1 == pid_counts[pid]:
+                # and skip
+                continue
+            if row['cid'] in task_ids:
+                task_ids.remove(row['cid'])
+                smth_changed = True
+        return smth_changed
+
+    @alocking('scheduler.task_group_deletion')
+    async def delete_task_group(self, task_group_name: str, also_delete_orphaned_tasks: bool = True):
+        """
+        deletes task group named task_group_name.
+        If also_delete_orphaned_tasks is True - then also delete all tasks that will have no
+        task groups left as a result of this group deletion.
+
+        Note, affected tasks will be archived first, all running invocations belonging to these
+        tasks will be force stopped, which may take time.
+        The method will not return until all operations are completed,
+        but this may not (and will not) be completed in a single transaction, so other components
+        may see intermediate states of things, such as orphaned archived tasks waiting to be deleted
+        """
+        self.__logger.debug('removing task group %s', task_group_name)
+        task_ids_to_purge: Set[int] = set()
+        split_ids_to_purge: Set[int] = set()
+
+        # first delete the group in a single transaction
+        async with self.data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('PRAGMA FOREIGN_KEYS = on')
+            # all within a transaction to ensure consistent select results
+            await self.data_access.begin_immediate_transaction(con=con)
+            if also_delete_orphaned_tasks:
+                # remember which tasks will become orphaned to delete
+                async with con.execute(
+                        'SELECT "id" FROM tasks '
+                        'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
+                        'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
+                        (task_group_name,)
+                ) as cur:
+                    task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
+
+                # we must exclude ones that participate in splits with tasks not to be deleted
+                while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole split tree
+
+                # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
+                while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole family tree
+
+                self.__logger.debug('tasks to be removed with the group: %s', task_ids_to_purge)
+
+            await self.data_access.delete_task_group(task_group_name, con=con)
+            await con.commit()
+
+        # if no tasks need to be removed - that is all
+        if not also_delete_orphaned_tasks:
+            return
+
+        async with self.data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('PRAGMA FOREIGN_KEYS = on')
+
+            await con.executemany(
+                'UPDATE tasks SET "dead" = "dead" | 2 '
+                'WHERE "id" == ?',
+                ((x,) for x in task_ids_to_purge)
+            )
+
+        do_wait_a_bit = False
+        while True:
+            # if it's not first attempt - wait a bit
+            if do_wait_a_bit:
+                await asyncio.sleep(0.5)
+            do_wait_a_bit = True
+
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                # ensure that no invocations are running
+                if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+
+                    continue
+
+                await self.data_access.begin_immediate_transaction(con=con)
+                # Ensure again that no invocations running, go back to waiting if there are
+                if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+                    await con.rollback()
+                    continue
+
+                # remove ALL invocations related to tasks
+                # TODO: delete external logs if any
+                await con.executemany(
+                    'DELETE FROM invocations '
+                    'WHERE task_id == ?',
+                    ((x,) for x in task_ids_to_purge)
+                )
+
+                # remove all splits
+                await con.executemany(
+                    'DELETE FROM task_splits '
+                    'WHERE split_id == ?',
+                    ((x,) for x in split_ids_to_purge)
+                )
+
+                # finally, remove all tasks
+                await con.executemany(
+                    'DELETE FROM tasks '
+                    'WHERE "id" == ?',
+                    ((x,) for x in task_ids_to_purge)
+                )
+
+                await con.commit()
+                break
 
     async def set_task_group_priority(self, task_group: str, priority: float) -> float:
         await self.data_access.set_task_group_priority(task_group, priority)
