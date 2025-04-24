@@ -1,7 +1,7 @@
 import random
 
 import aiosqlite
-import asyncio
+import inspect
 from unittest import IsolatedAsyncioTestCase
 from unittest import mock
 import shutil
@@ -23,7 +23,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         if testdbpath.exists():
             testdbpath.unlink()
         if recreate:
-            shutil.copy2('data/test_taskgroup_del.db', testdbpath)
+            shutil.copy2(Path(inspect.getmodule(cls).__file__).parent / 'data' / 'test_taskgroup_del.db', testdbpath)
 
     @classmethod
     def setUp(cls) -> None:
