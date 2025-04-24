@@ -23,7 +23,7 @@ class TestAlocking(IsolatedAsyncioTestCase):
         obj[0] *= 7
         await asyncio.sleep(0.1)
 
-    @alocking('test.lock1')
+    @alocking('test.lock2')
     async def _meth3(self, obj):
         await asyncio.sleep(0.4)
         obj[0] += 1
@@ -32,7 +32,7 @@ class TestAlocking(IsolatedAsyncioTestCase):
         await asyncio.sleep(0.4)
         obj[0] += 1
 
-    @alocking('test.lock2')
+    @alocking('test.lock3')
     async def _meth4(self, obj):
         await asyncio.sleep(0.01)
         obj[0] *= 13
