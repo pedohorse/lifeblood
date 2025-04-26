@@ -72,6 +72,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     _signal_set_task_state = Signal(list, TaskState)
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], int, str]
     _signal_set_task_group_state_requested = Signal(str, TaskGroupArchivedState)
+    _signal_delete_task_group_requested = Signal(str)
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
     _signal_set_task_groups_requested = Signal(int, set)
@@ -173,6 +174,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         self._signal_set_task_state.connect(self.__ui_connection_worker.set_task_state)
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_state_requested.connect(self.__ui_connection_worker.set_task_group_archived_state)
+        self._signal_delete_task_group_requested.connect(self.__ui_connection_worker.delete_task_group)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_set_task_name_requested.connect(self.__ui_connection_worker.set_task_name)
@@ -287,6 +289,10 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     def set_task_group_archived_state(self, group_names: List[str], state: TaskGroupArchivedState):
         for group_name in group_names:
             self._signal_set_task_group_state_requested.emit(group_name, state)
+
+    def delete_task_groups(self, group_names: List[str]):
+        for group_name in group_names:
+            self._signal_delete_task_group_requested.emit(group_name)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
