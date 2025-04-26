@@ -1323,6 +1323,9 @@ class SchedulerCore(NodeGraphHolderBase):
                 await asyncio.sleep(0.5)
 
     async def __cancel_invocations_for_tasks(self, con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]):
+        if not task_ids:
+            return
+
         async with con.execute(
                 'SELECT "id" FROM invocations '
                 f'WHERE task_id IN ({",".join(str(x) for x in task_ids)})'
@@ -1334,6 +1337,9 @@ class SchedulerCore(NodeGraphHolderBase):
 
     @staticmethod
     async def __has_nonfinished_invocations_for_tasks(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]) -> bool:
+        if not task_ids:
+            return False
+
         async with con.execute(
                 'SELECT COUNT(*) as cnt FROM invocations '
                 f'WHERE state != ? AND task_id IN ({",".join(str(x) for x in task_ids)})',
@@ -1429,50 +1435,16 @@ class SchedulerCore(NodeGraphHolderBase):
         task_ids_to_purge: Set[int] = set()
         split_ids_to_purge: Set[int] = set()
 
-        # first delete the group in a single transaction
-        async with self.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            await con.execute('PRAGMA FOREIGN_KEYS = on')
-            # all within a transaction to ensure consistent select results
-            await self.data_access.begin_immediate_transaction(con=con)
-
-            # remember which tasks will become orphaned to delete
-            async with con.execute(
-                    'SELECT "id" FROM tasks '
-                    'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
-                    'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
-                    (task_group_name,)
-            ) as cur:
-                task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
-
-            # we must exclude ones that participate in splits with tasks not to be deleted
-            while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
-                pass  # loop will ensure we propagate tasks through the whole split tree
-
-            # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
-            while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
-                pass  # loop will ensure we propagate tasks through the whole family tree
-
-            self.__logger.debug('task group "%s" removal: tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
-
-            # do NOT delete group until we are sure no tasks are left in it
-
-            await con.executemany(
-                'UPDATE tasks SET "dead" = "dead" | 2 '
-                'WHERE "id" == ?',
-                ((x,) for x in task_ids_to_purge)
-            )
-            self.__logger.debug('task group "%s" removal: orphaned tasks set archived', task_group_name)
-            await con.commit()
-
-            await self.__cancel_invocations_for_tasks(con, task_ids_to_purge)
-            self.__logger.debug('task group "%s" removal: orphaned task invocations cancellations sent', task_group_name)
+        # everything will be done in an iterative loop
+        # to ensure the whole deletion is done in a single transaction,
+        # while all running invocations are still cancelled between transaction attempts
 
         do_wait_a_bit = False
         while True:
-            self.__logger.debug('task group "%s" removal: waiting for affected invocations to be cancelled', task_group_name)
+            something_changed_this_iteration = False
             # if it's not first attempt - wait a bit
             if do_wait_a_bit:
+                self.__logger.debug('task group "%s" removal: waiting for affected invocations to be cancelled', task_group_name)
                 await asyncio.sleep(0.5)
             do_wait_a_bit = True
 
@@ -1481,7 +1453,6 @@ class SchedulerCore(NodeGraphHolderBase):
                 await con.execute('PRAGMA FOREIGN_KEYS = on')
                 # ensure that no invocations are running
                 if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
-
                     continue
 
                 await self.data_access.begin_immediate_transaction(con=con)
@@ -1489,7 +1460,55 @@ class SchedulerCore(NodeGraphHolderBase):
                 if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
                     await con.rollback()
                     continue
+
+                # only now, within a transaction we once again reselect all tasks
+                # and make sure no invocations are running.
+                # Only this way we can be sure there are no changes made between transactions,
+                # while we wait for invocation cancellation
+
+                old_task_ids_to_purge = set(task_ids_to_purge)
+                old_split_ids_to_purge = set(split_ids_to_purge)
+
+                # remember which tasks will become orphaned to delete
+                async with con.execute(
+                        'SELECT "id" FROM tasks '
+                        'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
+                        'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
+                        (task_group_name,)
+                ) as cur:
+                    task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
+                split_ids_to_purge = set()
+
+                # we must exclude ones that participate in splits with tasks not to be deleted
+                while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole split tree
+
+                # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
+                while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole family tree
+
+                if task_ids_to_purge != old_task_ids_to_purge or split_ids_to_purge != old_split_ids_to_purge:
+                    something_changed_this_iteration = True
+                    self.__logger.debug('task group "%s" removal: updated intermediate list of tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
+
+                # do NOT delete group until we are sure no tasks are left in it
+
+                if something_changed_this_iteration:
+                    await con.executemany(
+                        'UPDATE tasks SET "dead" = "dead" | 2 '
+                        'WHERE "id" == ?',
+                        ((x,) for x in task_ids_to_purge)
+                    )
+                    self.__logger.debug('task group "%s" removal: orphaned tasks set archived', task_group_name)
+
+                    # Ensure once again that no invocations running with possible task_ids updated, go back to waiting if there are
+                    if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+                        await con.commit()
+                        await self.__cancel_invocations_for_tasks(con, task_ids_to_purge)
+                        self.__logger.debug('task group "%s" removal: orphaned task invocations cancellations sent', task_group_name)
+                        continue
                 self.__logger.debug('task group "%s" removal: all invocations done, proceeding with removal', task_group_name)
+                self.__logger.debug('task group "%s" removal: tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
 
                 # remove ALL invocations related to tasks
                 # TODO: delete external logs if any
