@@ -100,6 +100,9 @@ class SceneDataController:
     def set_task_group_archived_state(self, group_names: List[str], state: TaskGroupArchivedState):
         raise NotImplementedError()
 
+    def delete_task_groups(self, group_names: List[str]):
+        raise NotImplementedError()
+
     def request_task_cancel(self, task_id: int):
         raise NotImplementedError()
 
