@@ -549,6 +549,17 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             await self.__scheduler.set_task_group_archived(group_name, state)
             writer.write(b'\1')
 
+        async def comm_delete_task_group():  # delete task group and all tasks in it
+            group_name = await read_string()
+            try:
+                await self.__scheduler.delete_task_group(group_name, also_delete_orphaned_tasks=True)
+            except DataIntegrityError:
+                # this is a precaution. constrant violations should not be possible in current implementation
+                self.__logger.exception('unexpected data constraint violation during group delete')
+                writer.write(b'\0')
+            else:
+                writer.write(b'\1')
+
         async def comm_task_cancel():  # elif command == b'tcancel':  # cancel task invocation
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             await self.__scheduler.cancel_invocation_for_task(task_id)
@@ -668,6 +679,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'tpauselst': comm_pause_tasks,
                     'tpausegrp': comm_pause_task_group,
                     'tarchivegrp': comm_archive_task_group,
+                    'tdeletegrp': comm_delete_task_group,
                     'tcancel': comm_task_cancel,
                     'workertaskcancel': worker_task_cancel,
                     'tsetnode': comm_task_set_node,
@@ -1241,6 +1253,14 @@ class UIProtocolSocketClient:
         w.write(struct.pack('>I', archived_state.value))
         w.flush()
         assert r.readexactly(1) == b'\1'
+
+    def delete_task_group(self, task_group_name: str):
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('tdeletegrp')
+        w.write_string(task_group_name)
+        w.flush()
+        if r.readexactly(1) != b'\1':
+            raise UiClientOperationFailed(f'failed to delete task group "{task_group_name} due to internal errors')
 
     def cancel_invocation_for_task(self, task_id: int):
         r, w = self.__connection.get_rw_pair()
