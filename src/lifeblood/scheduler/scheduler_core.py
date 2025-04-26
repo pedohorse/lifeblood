@@ -1126,7 +1126,7 @@ class SchedulerCore(NodeGraphHolderBase):
         # - later worker sends task_cancel_reported, and we are happy
         # - but worker might be overloaded, broken or whatever and may never send it. and it can even finish task and send task_done_reported, witch we need to treat
         with WorkerControlClient.get_worker_control_client(addr, self.message_processor()) as client:  # type: WorkerControlClient
-            await client.cancel_task()
+            await client.cancel_task()  # TODO: cannot blindly cancel whatever "current" task is, must provide invocation ID we are cancelling
 
         # oh no, we don't do that, we wait for worker to report task canceled.  await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?', (InvocationState.FINISHED.value, invocation_id))
 
@@ -1413,7 +1413,19 @@ class SchedulerCore(NodeGraphHolderBase):
         but this may not (and will not) be completed in a single transaction, so other components
         may see intermediate states of things, such as orphaned archived tasks waiting to be deleted
         """
-        self.__logger.debug('removing task group %s', task_group_name)
+        self.__logger.debug('removing task group "%s"', task_group_name)
+        if not also_delete_orphaned_tasks:
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                await self.data_access.delete_task_group(task_group_name, con=con)
+                await con.commit()
+                self.__logger.debug('task group "%s" removal: group removed', task_group_name)
+            self.__logger.debug('task group "%s" removal: done', task_group_name)
+            return
+
+        assert also_delete_orphaned_tasks
+
         task_ids_to_purge: Set[int] = set()
         split_ids_to_purge: Set[int] = set()
 
@@ -1423,45 +1435,42 @@ class SchedulerCore(NodeGraphHolderBase):
             await con.execute('PRAGMA FOREIGN_KEYS = on')
             # all within a transaction to ensure consistent select results
             await self.data_access.begin_immediate_transaction(con=con)
-            if also_delete_orphaned_tasks:
-                # remember which tasks will become orphaned to delete
-                async with con.execute(
-                        'SELECT "id" FROM tasks '
-                        'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
-                        'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
-                        (task_group_name,)
-                ) as cur:
-                    task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
 
-                # we must exclude ones that participate in splits with tasks not to be deleted
-                while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
-                    pass  # loop will ensure we propagate tasks through the whole split tree
+            # remember which tasks will become orphaned to delete
+            async with con.execute(
+                    'SELECT "id" FROM tasks '
+                    'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
+                    'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
+                    (task_group_name,)
+            ) as cur:
+                task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
 
-                # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
-                while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
-                    pass  # loop will ensure we propagate tasks through the whole family tree
+            # we must exclude ones that participate in splits with tasks not to be deleted
+            while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
+                pass  # loop will ensure we propagate tasks through the whole split tree
 
-                self.__logger.debug('tasks to be removed with the group: %s', task_ids_to_purge)
+            # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
+            while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
+                pass  # loop will ensure we propagate tasks through the whole family tree
 
-            await self.data_access.delete_task_group(task_group_name, con=con)
-            await con.commit()
+            self.__logger.debug('task group "%s" removal: tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
 
-        # if no tasks need to be removed - that is all
-        if not also_delete_orphaned_tasks:
-            return
-
-        async with self.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-            await con.execute('PRAGMA FOREIGN_KEYS = on')
+            # do NOT delete group until we are sure no tasks are left in it
 
             await con.executemany(
                 'UPDATE tasks SET "dead" = "dead" | 2 '
                 'WHERE "id" == ?',
                 ((x,) for x in task_ids_to_purge)
             )
+            self.__logger.debug('task group "%s" removal: orphaned tasks set archived', task_group_name)
+            await con.commit()
+
+            await self.__cancel_invocations_for_tasks(con, task_ids_to_purge)
+            self.__logger.debug('task group "%s" removal: orphaned task invocations cancellations sent', task_group_name)
 
         do_wait_a_bit = False
         while True:
+            self.__logger.debug('task group "%s" removal: waiting for affected invocations to be cancelled', task_group_name)
             # if it's not first attempt - wait a bit
             if do_wait_a_bit:
                 await asyncio.sleep(0.5)
@@ -1469,6 +1478,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
             async with self.data_access.data_connection() as con:
                 con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
                 # ensure that no invocations are running
                 if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
 
@@ -1479,6 +1489,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
                     await con.rollback()
                     continue
+                self.__logger.debug('task group "%s" removal: all invocations done, proceeding with removal', task_group_name)
 
                 # remove ALL invocations related to tasks
                 # TODO: delete external logs if any
@@ -1487,6 +1498,7 @@ class SchedulerCore(NodeGraphHolderBase):
                     'WHERE task_id == ?',
                     ((x,) for x in task_ids_to_purge)
                 )
+                self.__logger.debug('task group "%s" removal: invocations removed', task_group_name)
 
                 # remove all splits
                 await con.executemany(
@@ -1494,6 +1506,7 @@ class SchedulerCore(NodeGraphHolderBase):
                     'WHERE split_id == ?',
                     ((x,) for x in split_ids_to_purge)
                 )
+                self.__logger.debug('task group "%s" removal: task splits removed', task_group_name)
 
                 # finally, remove all tasks
                 await con.executemany(
@@ -1501,9 +1514,25 @@ class SchedulerCore(NodeGraphHolderBase):
                     'WHERE "id" == ?',
                     ((x,) for x in task_ids_to_purge)
                 )
+                self.__logger.debug('task group "%s" removal: tasks removed', task_group_name)
+
+                # only delete group if it is empty after all deletions
+                # check if there are any tasks left in the group
+                async with con.execute(
+                        'SELECT COUNT(*) as cnt FROM task_groups '
+                        'WHERE "group" == ?',
+                        (task_group_name,)
+                ) as cur:
+                    still_has_tasks = (await cur.fetchone())['cnt'] > 0
+                if still_has_tasks:
+                    self.__logger.debug('task group "%s" removal: task group cannot be removed as there are tasks left in it', task_group_name)
+                else:
+                    await self.data_access.delete_task_group(task_group_name, con=con)
+                    self.__logger.debug('task group "%s" removal: task group removed', task_group_name)
 
                 await con.commit()
                 break
+        self.__logger.debug('task group "%s" removal: done', task_group_name)
 
     async def set_task_group_priority(self, task_group: str, priority: float) -> float:
         await self.data_access.set_task_group_priority(task_group, priority)
