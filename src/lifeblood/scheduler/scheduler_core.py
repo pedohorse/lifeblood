@@ -10,6 +10,7 @@ import aiofiles
 from aiorwlock import RWLock
 from contextlib import asynccontextmanager
 
+from ..misc import alocking
 from .. import logging
 from ..nodegraph_holder_base import NodeGraphHolderBase
 from ..attribute_serialization import serialize_attributes, deserialize_attributes
@@ -1125,7 +1126,7 @@ class SchedulerCore(NodeGraphHolderBase):
         # - later worker sends task_cancel_reported, and we are happy
         # - but worker might be overloaded, broken or whatever and may never send it. and it can even finish task and send task_done_reported, witch we need to treat
         with WorkerControlClient.get_worker_control_client(addr, self.message_processor()) as client:  # type: WorkerControlClient
-            await client.cancel_task()
+            await client.cancel_task()  # TODO: cannot blindly cancel whatever "current" task is, must provide invocation ID we are cancelling
 
         # oh no, we don't do that, we wait for worker to report task canceled.  await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?', (InvocationState.FINISHED.value, invocation_id))
 
@@ -1258,6 +1259,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
     #
     # change task group archived state
+    @alocking('scheduler.task_group_deletion')
     async def set_task_group_archived(self, task_group_name: str, state: TaskGroupArchivedState = TaskGroupArchivedState.ARCHIVED) -> None:
         async with self.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
@@ -1319,6 +1321,237 @@ class SchedulerCore(NodeGraphHolderBase):
                     assert oid in invoking_invoc_ids
                     invoking_invoc_ids.remove(oid)
                 await asyncio.sleep(0.5)
+
+    async def __cancel_invocations_for_tasks(self, con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]):
+        if not task_ids:
+            return
+
+        async with con.execute(
+                'SELECT "id" FROM invocations '
+                f'WHERE task_id IN ({",".join(str(x) for x in task_ids)})'
+        ) as cur:
+            invoc_ids = [x['id'] for x in await cur.fetchall()]
+
+        for inv_id in invoc_ids:
+            await self.cancel_invocation(inv_id)
+
+    @staticmethod
+    async def __has_nonfinished_invocations_for_tasks(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]) -> bool:
+        if not task_ids:
+            return False
+
+        async with con.execute(
+                'SELECT COUNT(*) as cnt FROM invocations '
+                f'WHERE state != ? AND task_id IN ({",".join(str(x) for x in task_ids)})',
+                (InvocationState.FINISHED.value,)
+        ) as cur:
+            return (await cur.fetchone())['cnt'] != 0
+
+    @staticmethod
+    async def __remove_tasks_not_fully_present_in_splits(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int], split_ids: Set[int]) -> bool:
+        smth_changed = False
+        async with con.execute(
+                f'WITH tmp AS (SELECT * FROM tasks WHERE "id" IN ({",".join(str(x) for x in task_ids)})) '
+                'SELECT id, "split_id", "split_count" FROM task_splits '
+                'INNER JOIN tmp ON  task_splits.task_id == tmp.id OR (task_splits.origin_task_id == tmp.id AND task_splits.split_element == 0)'
+        ) as cur:
+            rows = await cur.fetchall()
+        split_id_counts = {}
+        for row in rows:
+            split_id = row['split_id']
+            if split_id not in split_id_counts:
+                split_id_counts[split_id] = 0
+            split_id_counts[split_id] += 1
+
+        for row in rows:
+            split_id = row['split_id']
+            # +1 cuz we expect full group to have split_count splitted tasks + 1 origin task
+            if row['split_count'] + 1 == split_id_counts[split_id]:
+                # means full group, remember to purge
+                if row['split_id'] not in split_ids:
+                    split_ids.add(row['split_id'])
+                    smth_changed = True
+                # and skip
+                continue
+            if row['id'] in task_ids:
+                task_ids.remove(row['id'])
+                smth_changed = True
+        return smth_changed
+
+    @staticmethod
+    async def __remove_tasks_not_fully_present_in_with_parental_tree(con: aiosqlite_overlay.ConnectionWithCallbacks, task_ids: Set[int]) -> bool:
+        smth_changed = False
+        async with con.execute(
+                f'WITH tmp AS (SELECT * FROM tasks WHERE "id" IN ({",".join(str(x) for x in task_ids)})) '
+                'SELECT tasks.id as pid, tasks.parent_id, tasks.children_count, tmp.id as cid FROM tasks '
+                'INNER JOIN tmp ON tasks.id == tmp.parent_id OR tasks.id == tmp.id '
+                'WHERE tasks.children_count != 0'
+        ) as cur:
+            rows = await cur.fetchall()
+        pid_counts = {}
+        for row in rows:
+            pid = row['pid']
+            if pid not in pid_counts:
+                pid_counts[pid] = 0
+            pid_counts[pid] += 1
+
+        for row in rows:
+            pid = row['pid']
+            # +1 cuz we expect full group to have children_count children tasks + 1 parent task
+            if row['children_count'] + 1 == pid_counts[pid]:
+                # and skip
+                continue
+            if row['cid'] in task_ids:
+                task_ids.remove(row['cid'])
+                smth_changed = True
+        return smth_changed
+
+    @alocking('scheduler.task_group_deletion')
+    async def delete_task_group(self, task_group_name: str, also_delete_orphaned_tasks: bool = True):
+        """
+        deletes task group named task_group_name.
+        If also_delete_orphaned_tasks is True - then also delete all tasks that will have no
+        task groups left as a result of this group deletion.
+
+        Note, affected tasks will be archived first, all running invocations belonging to these
+        tasks will be force stopped, which may take time.
+        The method will not return until all operations are completed,
+        but this may not (and will not) be completed in a single transaction, so other components
+        may see intermediate states of things, such as orphaned archived tasks waiting to be deleted
+        """
+        self.__logger.debug('removing task group "%s"', task_group_name)
+        if not also_delete_orphaned_tasks:
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                await self.data_access.delete_task_group(task_group_name, con=con)
+                await con.commit()
+                self.__logger.debug('task group "%s" removal: group removed', task_group_name)
+            self.__logger.debug('task group "%s" removal: done', task_group_name)
+            return
+
+        assert also_delete_orphaned_tasks
+
+        task_ids_to_purge: Set[int] = set()
+        split_ids_to_purge: Set[int] = set()
+
+        # everything will be done in an iterative loop
+        # to ensure the whole deletion is done in a single transaction,
+        # while all running invocations are still cancelled between transaction attempts
+
+        do_wait_a_bit = False
+        while True:
+            something_changed_this_iteration = False
+            # if it's not first attempt - wait a bit
+            if do_wait_a_bit:
+                self.__logger.debug('task group "%s" removal: waiting for affected invocations to be cancelled', task_group_name)
+                await asyncio.sleep(0.5)
+            do_wait_a_bit = True
+
+            async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
+                await con.execute('PRAGMA FOREIGN_KEYS = on')
+                # ensure that no invocations are running
+                if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+                    continue
+
+                await self.data_access.begin_immediate_transaction(con=con)
+                # Ensure again that no invocations running, go back to waiting if there are
+                if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+                    await con.rollback()
+                    continue
+
+                # only now, within a transaction we once again reselect all tasks
+                # and make sure no invocations are running.
+                # Only this way we can be sure there are no changes made between transactions,
+                # while we wait for invocation cancellation
+
+                old_task_ids_to_purge = set(task_ids_to_purge)
+                old_split_ids_to_purge = set(split_ids_to_purge)
+
+                # remember which tasks will become orphaned to delete
+                async with con.execute(
+                        'SELECT "id" FROM tasks '
+                        'INNER JOIN task_groups ON task_groups.task_id == tasks.id '
+                        'GROUP BY tasks."id" HAVING COUNT("group") == 1 AND "group" == ?',
+                        (task_group_name,)
+                ) as cur:
+                    task_ids_to_purge = {x['id'] for x in await cur.fetchall()}
+                split_ids_to_purge = set()
+
+                # we must exclude ones that participate in splits with tasks not to be deleted
+                while await self.__remove_tasks_not_fully_present_in_splits(con, task_ids_to_purge, split_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole split tree
+
+                # also exclude partial parents-children. delete whole family only, so noone wants to get revenge later
+                while await self.__remove_tasks_not_fully_present_in_with_parental_tree(con, task_ids_to_purge):
+                    pass  # loop will ensure we propagate tasks through the whole family tree
+
+                if task_ids_to_purge != old_task_ids_to_purge or split_ids_to_purge != old_split_ids_to_purge:
+                    something_changed_this_iteration = True
+                    self.__logger.debug('task group "%s" removal: updated intermediate list of tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
+
+                # do NOT delete group until we are sure no tasks are left in it
+
+                if something_changed_this_iteration:
+                    await con.executemany(
+                        'UPDATE tasks SET "dead" = "dead" | 2 '
+                        'WHERE "id" == ?',
+                        ((x,) for x in task_ids_to_purge)
+                    )
+                    self.__logger.debug('task group "%s" removal: orphaned tasks set archived', task_group_name)
+
+                    # Ensure once again that no invocations running with possible task_ids updated, go back to waiting if there are
+                    if await self.__has_nonfinished_invocations_for_tasks(con, task_ids_to_purge):
+                        await con.commit()
+                        await self.__cancel_invocations_for_tasks(con, task_ids_to_purge)
+                        self.__logger.debug('task group "%s" removal: orphaned task invocations cancellations sent', task_group_name)
+                        continue
+                self.__logger.debug('task group "%s" removal: all invocations done, proceeding with removal', task_group_name)
+                self.__logger.debug('task group "%s" removal: tasks to be removed with the group: %s', task_group_name, task_ids_to_purge)
+
+                # remove ALL invocations related to tasks
+                # TODO: delete external logs if any
+                await con.executemany(
+                    'DELETE FROM invocations '
+                    'WHERE task_id == ?',
+                    ((x,) for x in task_ids_to_purge)
+                )
+                self.__logger.debug('task group "%s" removal: invocations removed', task_group_name)
+
+                # remove all splits
+                await con.executemany(
+                    'DELETE FROM task_splits '
+                    'WHERE split_id == ?',
+                    ((x,) for x in split_ids_to_purge)
+                )
+                self.__logger.debug('task group "%s" removal: task splits removed', task_group_name)
+
+                # finally, remove all tasks
+                await con.executemany(
+                    'DELETE FROM tasks '
+                    'WHERE "id" == ?',
+                    ((x,) for x in task_ids_to_purge)
+                )
+                self.__logger.debug('task group "%s" removal: tasks removed', task_group_name)
+
+                # only delete group if it is empty after all deletions
+                # check if there are any tasks left in the group
+                async with con.execute(
+                        'SELECT COUNT(*) as cnt FROM task_groups '
+                        'WHERE "group" == ?',
+                        (task_group_name,)
+                ) as cur:
+                    still_has_tasks = (await cur.fetchone())['cnt'] > 0
+                if still_has_tasks:
+                    self.__logger.debug('task group "%s" removal: task group cannot be removed as there are tasks left in it', task_group_name)
+                else:
+                    await self.data_access.delete_task_group(task_group_name, con=con)
+                    self.__logger.debug('task group "%s" removal: task group removed', task_group_name)
+
+                await con.commit()
+                break
+        self.__logger.debug('task group "%s" removal: done', task_group_name)
 
     async def set_task_group_priority(self, task_group: str, priority: float) -> float:
         await self.data_access.set_task_group_priority(task_group, priority)

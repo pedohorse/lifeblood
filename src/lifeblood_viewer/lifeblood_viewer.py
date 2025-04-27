@@ -185,6 +185,7 @@ class GroupsView(QTreeView):
     selection_changed = Signal(set)
     group_pause_state_change_requested = Signal(list, bool)
     task_group_archived_state_change_requested = Signal(list, TaskGroupArchivedState)
+    task_group_delete_requested = Signal(list)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -217,9 +218,33 @@ class GroupsView(QTreeView):
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, False))
         menu.addSeparator()
         if model.sourceModel().is_archived(index):
-            menu.addAction('restore').triggered.connect(lambda: confirm_operation_gui(self, f'restoration of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.NOT_ARCHIVED))
+            menu.addAction('restore').triggered.connect(
+                lambda: confirm_operation_gui(
+                    self,
+                    f'restoration of groups: {", ".join(x for x in groups)}'
+                ) and self.task_group_archived_state_change_requested.emit(
+                    groups,
+                    TaskGroupArchivedState.NOT_ARCHIVED
+                )
+            )
         else:
-            menu.addAction('delete').triggered.connect(lambda: confirm_operation_gui(self, f'deletion of groups: {", ".join(x for x in groups)}') and self.task_group_archived_state_change_requested.emit(groups, TaskGroupArchivedState.ARCHIVED))
+            menu.addAction('archive').triggered.connect(
+                lambda: confirm_operation_gui(
+                    self,
+                    f'archivation of groups: {", ".join(x for x in groups)}'
+                ) and self.task_group_archived_state_change_requested.emit(
+                    groups,
+                    TaskGroupArchivedState.ARCHIVED
+                )
+            )
+        menu.addSeparator()
+        menu.addAction('delete').triggered.connect(
+            lambda: confirm_operation_gui(
+                self,
+                f'permanent deletion of groups: {", ".join(x for x in groups)}'
+            ) and self.task_group_delete_requested.emit(
+                groups,
+            ))
         menu.popup(event.globalPos())
 
     def set_current_index_from_main_model(self, index: QModelIndex):
@@ -399,6 +424,7 @@ class LifebloodViewer(QMainWindow):
         self.__group_list.selection_changed.connect(scene.set_task_group_filter)
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
         self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
+        self.__group_list.task_group_delete_requested.connect(scene.delete_task_groups)
 
         if mem_debug:
             self.__tracemalloc_timer = QTimer(self)

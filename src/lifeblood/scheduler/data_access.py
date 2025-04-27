@@ -475,6 +475,8 @@ class DataAccess:
 
         return res['node_id']
 
+    async def begin_immediate_transaction(self, *, con: aiosqlite.Connection):
+        await con.execute('BEGIN IMMEDIATE')
 
     # statistics
 
@@ -600,7 +602,9 @@ CREATE TABLE IF NOT EXISTS "resources" (
             con.execute('INSERT INTO "resources" SELECT * FROM "__old_resources"')
             con.execute('DROP TABLE "__old_resources"')
             con.execute('PRAGMA legacy_alter_table=OFF')
-            con.execute('PRAGMA integrity_check')
+            cur = con.execute('PRAGMA integrity_check')
+            if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
+                raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
             return True
         if to_version == 6:
             # priority and ordering parameters for tasks were added
