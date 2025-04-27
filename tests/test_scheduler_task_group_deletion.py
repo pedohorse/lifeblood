@@ -9,7 +9,7 @@ from pathlib import Path
 from lifeblood.scheduler.pinger import Pinger
 from lifeblood_testing_common.common import create_default_scheduler
 from itertools import chain
-from typing import Iterable
+from typing import Iterable, Union
 
 
 class SchedulerTests(IsolatedAsyncioTestCase):
@@ -49,6 +49,19 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 tasks = {x['id'] for x in await cur.fetchall()}
             self.assertSetEqual({i for i in tasks_iterable}, tasks)
 
+    async def _task_group_tasks(self, sched, task_group_name: str, expect_tasks: Union[bool, Iterable[int]]):
+        async with sched.data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute(
+                    'SELECT task_id FROM task_groups WHERE "group" == ?',
+                    (task_group_name,)
+            ) as cur:
+                actual_tasks = set(x['task_id'] for x in await cur.fetchall())
+            if isinstance(expect_tasks, bool):
+                self.assertTrue((len(actual_tasks) > 0) == expect_tasks, actual_tasks)
+            else:
+                self.assertSetEqual(set(expect_tasks), actual_tasks)
+
     async def test_delete_task_groups_normal(self):
 
         with mock.patch('lifeblood.scheduler.scheduler_core.Pinger') as ppatch:
@@ -64,18 +77,27 @@ class SchedulerTests(IsolatedAsyncioTestCase):
 
             # delete group
             await sched.delete_task_group('test_split1#1')
-            await self._check_tasks_exist(sched, range(11, 43))
             await self._db_integrity_check(sched)
+            await self._check_tasks_exist(sched, range(11, 43))
+            await self._task_group_tasks(sched, 'test_split1#1', False)
+            await self._task_group_tasks(sched, 'test_par1#11', range(11, 17))
+            await self._task_group_tasks(sched, 'test_par2#17', range(17, 43))
 
             # delete group
             await sched.delete_task_group('test_par2#17')
-            await self._check_tasks_exist(sched, range(11, 17))
             await self._db_integrity_check(sched)
+            await self._check_tasks_exist(sched, range(11, 17))
+            await self._task_group_tasks(sched, 'test_split1#1', False)
+            await self._task_group_tasks(sched, 'test_par1#11', range(11, 17))
+            await self._task_group_tasks(sched, 'test_par2#17', False)
 
             # delete group
             await sched.delete_task_group('test_par1#11')
-            await self._check_tasks_exist(sched, ())
             await self._db_integrity_check(sched)
+            await self._check_tasks_exist(sched, ())
+            await self._task_group_tasks(sched, 'test_split1#1', False)
+            await self._task_group_tasks(sched, 'test_par1#11', False)
+            await self._task_group_tasks(sched, 'test_par2#17', False)
 
             sched.stop()
             await sched.wait_till_stops()
@@ -89,6 +111,9 @@ class SchedulerTests(IsolatedAsyncioTestCase):
 
             await sched.delete_task_group('nonononono')
             await self._check_tasks_exist(sched, range(1, 43))
+            await self._task_group_tasks(sched, 'test_split1#1', range(1, 11))
+            await self._task_group_tasks(sched, 'test_par1#11', range(11, 17))
+            await self._task_group_tasks(sched, 'test_par2#17', range(17, 43))
 
             sched.stop()
             await sched.wait_till_stops()
@@ -152,6 +177,10 @@ class SchedulerTests(IsolatedAsyncioTestCase):
             tasks_to_add_to_group: Iterable[int],
             tasks_to_exist_after_delete: Iterable[int]
     ):
+        tasks_to_pre_add = list(tasks_to_pre_add)
+        tasks_to_add_to_group = list(tasks_to_add_to_group)
+        tasks_to_exist_after_delete = list(tasks_to_exist_after_delete)
+
         sched = create_default_scheduler(self.dbpath(), do_broadcasting=False, helpers_minimal_idle_to_ensure=0)
         await sched.start()
 
@@ -171,6 +200,9 @@ class SchedulerTests(IsolatedAsyncioTestCase):
 
             await sched.data_access.create_task_group(group_name, con=con)
             # add random tasks in group
+            all_tasks_added = set()
+            all_tasks_added.update(tasks_to_pre_add)
+            all_tasks_added.update(tasks_to_add_to_group)
             for tid in tasks_to_pre_add:
                 await sched.data_access.assign_task_to_group(tid, group_name, con=con)
             for tid in tasks_to_add_to_group:
@@ -180,6 +212,8 @@ class SchedulerTests(IsolatedAsyncioTestCase):
         await sched.delete_task_group(group_name)
 
         await self._check_tasks_exist(sched, tasks_to_exist_after_delete)
+        await self._task_group_tasks(sched, group_name, bool(all_tasks_added.intersection(tasks_to_exist_after_delete)))
+
         await self._db_integrity_check(sched)
 
         sched.stop()
