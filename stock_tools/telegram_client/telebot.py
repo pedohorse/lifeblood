@@ -1,3 +1,4 @@
+import certifi
 import urllib3
 from pathlib import Path
 import json
@@ -10,7 +11,7 @@ class TelegramClient:
     def __init__(self, bot_token: str):
         self.__token = bot_token
         self.__headers = {'Content-Type': 'application/json'}
-        self.__http = urllib3.PoolManager()
+        self.__http = urllib3.PoolManager(ca_certs=certifi.where())
 
     @classmethod
     def __check_common_reply(cls, reply) -> dict:
