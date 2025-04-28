@@ -11,7 +11,7 @@
                         "value": 2,
                         "__NodeParameterType__": "==3*E=="
                     },
-                    "uvalue": 0.5649999976158142,
+                    "uvalue": -0.5,
                     "expr": null,
                     "__dataclass__": "ParamData"
                 },
