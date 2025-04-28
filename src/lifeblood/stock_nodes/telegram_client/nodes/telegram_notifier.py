@@ -46,6 +46,7 @@ def run_stuff(args, bot_id: str, message: str, fail_on_error: bool = True):
         stderr=subprocess.PIPE,
         env={
             'TELEGRAM_CLIENT_BOTID': bot_id,
+            **({'SYSTEMROOT': os.environ['SYSTEMROOT']} if 'SYSTEMROOT' in os.environ else {}),
         }
     )
     out, err = proc.communicate(message.encode('UTF-8'))
