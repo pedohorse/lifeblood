@@ -139,7 +139,7 @@ def main(argv):
 
     config = SchedulerConfigProviderFileOverrides(
         main_config=get_config('scheduler'),
-        nodes_config=get_config('scheduler.nodes'),
+        nodes_config=get_config('nodes'),
         main_db_location=db_path,
         do_broadcast=opts.broadcast_interval > 0 if opts.broadcast_interval is not None else None,
         broadcast_interval=opts.broadcast_interval,
