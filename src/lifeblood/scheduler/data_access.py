@@ -21,7 +21,7 @@ from ..enums import TaskGroupArchivedState
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 7
+SCHEDULER_DB_FORMAT_VERSION = 8
 
 
 @dataclass
@@ -109,6 +109,20 @@ class DataAccess:
         with sqlite3.connect(self.__db_path) as con:
             con.executescript(sql_init_script)
 
+        # ensure global data exists
+        with sqlite3.connect(self.__db_path) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.execute('SELECT COUNT(*) AS cnt FROM global_data')
+            cnt = cur.fetchone()['cnt']
+            cur.close()
+            if cnt == 0:
+                # in case splits already exist - we have to adjust
+                cur = con.execute('SELECT MAX("split_id") AS m FROM "task_splits"')
+                next_split_id = 1 + ((cur.fetchone())['m'] or 0)
+                cur.close()
+                con.execute('INSERT INTO global_data (next_split_id) VALUES (?)', (next_split_id,))
+                con.commit()
+
         # update resource table straight away
         # for now the logic is to keep existing columns
         with sqlite3.connect(self.__db_path) as con:
@@ -155,7 +169,6 @@ class DataAccess:
 
                 con.execute(f'DROP TABLE IF EXISTS "{dev_type_table_name}"')
                 con.execute(f'CREATE TABLE "{dev_type_table_name}" ({",".join(dev_res_sql_parts)})')
-
 
     async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
         # TODO: scheduler must use this instead of creating directly
@@ -258,6 +271,15 @@ class DataAccess:
 
         await con.execute('DELETE FROM task_groups WHERE "task_id" == ? AND "group" == ?',
                           (task_id, task_group_name))
+
+    async def get_next_split_id(self, *, start_transaction: bool = True, bump_split_id: bool = True, con: aiosqlite.Connection) -> int:
+        if start_transaction and not con.in_transaction:
+            await self.begin_immediate_transaction(con=con)
+        async with con.execute('SELECT next_split_id FROM global_data LIMIT 1') as cur:
+            next_id = (await cur.fetchone())['next_split_id']
+        if bump_split_id:
+            await con.execute('UPDATE global_data SET next_split_id = next_split_id + 1')
+        return next_id
 
     async def housekeeping(self):
         """
@@ -543,7 +565,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 7:
+        if from_version < 1 or to_version > 8:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -639,6 +661,9 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
             if errors := cur.fetchall():
                 raise RuntimeError(f'database upgrade failed with foreign key check errors: {[str(list(x)) for x in errors]}')
             cur.close()
+            return True
+        if to_version == 8:
+            # nothing to do - a table will be created by main db script
             return True
 
 

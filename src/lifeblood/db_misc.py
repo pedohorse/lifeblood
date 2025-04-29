@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS "lifeblood_metadata" (
 	"component"	TEXT NOT NULL DEFAULT 'scheduler',
 	"unique_db_id"	INTEGER DEFAULT NULL
 );
+CREATE TABLE IF NOT EXISTS "global_data" (
+	"next_split_id"	INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS "worker_groups" (
 	"worker_hwid"	INTEGER NOT NULL,
 	"group"	TEXT NOT NULL,
