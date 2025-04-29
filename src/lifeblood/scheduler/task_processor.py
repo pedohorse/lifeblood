@@ -931,8 +931,7 @@ class TaskProcessor(SchedulerComponentBase):
             task_row = await cur.fetchone()
         new_split_level = task_row['split_level'] + 1
 
-        async with con.execute('SELECT MAX("split_id") as m FROM "task_splits"') as maxsplitcur:
-            next_split_id = 1 + ((await maxsplitcur.fetchone())['m'] or 0)  # TODO: do i need this? can i just rely on AUTOINCREMENT ?
+        next_split_id = await self.scheduler.data_access.get_next_split_id(bump_split_id=True, con=con)
         await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?',
                           (TaskState.SPLITTED.value, task_id))
         con.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, TaskDelta(task_id, state=TaskState.SPLITTED))  # ui event
