@@ -345,7 +345,10 @@ class TaskProcessor(SchedulerComponentBase):
                     # case 1 when it's just not INVOKING - we clearly don't control that worker
                     # case 2 when there's multiple invocations - we don't touch worker as another invocation deals with it
                     await self.__submitter_finalize_cancel_transaction(submit_transaction, None, worker_state, task_id)
+                    # do not forget to create an ui event of task state reset
+                    ui_task_delta.state = TaskState.READY  # ui event
 
+                    submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, ui_task_delta)
                     # we poke scheduler after transaction commit to process task again straight away
                     submit_transaction.add_after_commit_callback(self.poke)
                     await submit_transaction.commit()
