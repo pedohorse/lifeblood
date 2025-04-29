@@ -168,6 +168,9 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         task._set_parent_node(self)
         self.__tasks.add(task)
 
+        # invalidate sorted cache
+        self.__tasks_sorted_cached = None
+
         self.item_updated()
 
         if len(self.item_watchers()) > 0:
