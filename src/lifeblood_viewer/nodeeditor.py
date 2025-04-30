@@ -980,7 +980,12 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         # whether we can or cannot react to screenChange event - depends on system setup
         #  non-native windows are optimized for drawing, but don't have native reference
         #  so why not just check scale on every draw? If this proves to be a bottleneck - need to find a better solution
+        # As I understood it, devicePixelRatio is physical-to-local pixels (bound to device first of all)
+        #  On top of that there is logical DPI for font drawing, and DMs (mostly windows) change THAT one
+        #  when you change scale - devicePixelRatio stays same, but logicalDotsPerInch change
+        #  Why default 96? dunno, it seem to be the case for x11, wayland, windows, dunno about mac
         imgui_io.display_fb_scale = (self.screen().devicePixelRatio(),) * 2
+        imgui_io.font_global_scale = (self.screen().logicalDotsPerInch() / 96.0)
 
         # start new frame context
         imgui.new_frame()
