@@ -1206,11 +1206,12 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
     def wheelEvent(self, event: PySide2.QtGui.QWheelEvent):
         self.imguiProcessEvents(event)
-        if imgui.get_io().want_capture_mouse:
+        imgui_io = imgui.get_io()
+        if imgui_io.want_capture_mouse:
             event.accept()
         else:
             event.accept()
-            self.__view_scale = max(0, self.__view_scale - event.angleDelta().y()*0.001)
+            self.__view_scale = max(log2(1.0 / imgui_io.font_global_scale), self.__view_scale - event.angleDelta().y()*0.001)
 
             iz = 2**(-self.__view_scale)
             self.setTransform(QTransform.fromScale(iz, iz))
