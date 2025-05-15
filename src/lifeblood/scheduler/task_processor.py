@@ -338,10 +338,11 @@ class TaskProcessor(SchedulerComponentBase):
 
                 # sanity check - this may happen if worker restarted at a very specific inconvenient time
                 # so worker DID change state OR invocation already exists
-                if worker_row['session_key'] != worker_starting_session_key or worker_state != WorkerState.INVOKING or invocation_already_exists:
+                worker_keys_are_good = self.__submitter_worker_session_keys_are_good(worker_row['session_key'], worker_starting_session_key)
+                if not worker_keys_are_good or worker_state != WorkerState.INVOKING or invocation_already_exists:
                     # TODO: seems like after introducing session_key check - other checks have no point ^
                     # just report appropriate thing
-                    if worker_row['session_key'] != worker_starting_session_key:
+                    if not worker_keys_are_good:
                         self.__logger.warning(f'worker was restarted before submission of {task_id} could begin. aborting')
                     elif worker_state != WorkerState.INVOKING:
                         self.__logger.warning('worker changed states before invocation was added, current state: %s, consider submission failed', worker_state)
@@ -408,6 +409,7 @@ class TaskProcessor(SchedulerComponentBase):
                 fail_class = 'submission'
                 reply_message = None
 
+            worker_keys_are_good = False
             # Second main transaction of the submission
             async with self.awaiter_lock:
                 await submit_transaction.execute('BEGIN IMMEDIATE')
@@ -429,7 +431,8 @@ class TaskProcessor(SchedulerComponentBase):
 
                 worker_restarted = False
                 # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
-                if worker_current_session_key != worker_starting_session_key:
+                worker_keys_are_good = self.__submitter_worker_session_keys_are_good(worker_starting_session_key, worker_current_session_key)
+                if not worker_keys_are_good:
                     worker_restarted = True
                     self.__logger.warning('submitter: worker was shut down during submitter work')
                     # if we reach here - scheduling could not have succeeded, safer to assume it's failed
@@ -476,6 +479,10 @@ class TaskProcessor(SchedulerComponentBase):
                     submit_transaction.add_after_commit_callback(self.poke)
                 submit_transaction.add_after_commit_callback(self.scheduler.ui_state_access.scheduler_reports_task_updated, ui_task_delta)  # ui event
                 await submit_transaction.commit()
+
+    @staticmethod
+    def __submitter_worker_session_keys_are_good(key_orig, key) -> bool:
+        return key is not None and key_orig == key
 
     async def __submitter_finalize_cancel_transaction(self, submit_transaction, worker_row, worker_state: WorkerState, task_id: int):
         """
