@@ -430,7 +430,6 @@ class TaskProcessor(SchedulerComponentBase):
                 assert maybe_updated_task_state == TaskState.INVOKING, f'logic failure, task {task_id}({invocation_id}) state is {maybe_updated_task_state}'
 
                 worker_restarted = False
-                # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
                 worker_keys_are_good = self.__submitter_worker_session_keys_are_good(worker_starting_session_key, worker_current_session_key)
                 if not worker_keys_are_good:
                     worker_restarted = True
