@@ -329,12 +329,6 @@ class TaskProcessor(SchedulerComponentBase):
                     worker_state = WorkerState(tmp_worker_row['state'])
                     worker_starting_session_key = tmp_worker_row['session_key']
 
-                # sanity check - this may happen if worker restarted at a very specific inconvenient time
-                if worker_row['session_key'] != worker_starting_session_key:
-                    self.__logger.warning(f'worker was restarted before submission of {task_id} could begin. aborting')
-                    await submit_transaction.rollback()
-                    return
-
                 # this next is for the case when worker restarted before transaction and already happened to again become INVOKING.
                 # then either another submitter is at BEFORE this place, or AFTER. if AFTER - there's new invoking invocation, we check that,
                 # one of submitters will fail, one will proceed
@@ -342,10 +336,14 @@ class TaskProcessor(SchedulerComponentBase):
                                                       (worker_row['id'], InvocationState.INVOKING.value)) as incur:
                     invocation_already_exists = (await incur.fetchone()) is not None
 
+                # sanity check - this may happen if worker restarted at a very specific inconvenient time
                 # so worker DID change state OR invocation already exists
-                if worker_state != WorkerState.INVOKING or invocation_already_exists:
+                if worker_row['session_key'] != worker_starting_session_key or worker_state != WorkerState.INVOKING or invocation_already_exists:
+                    # TODO: seems like after introducing session_key check - other checks have no point ^
                     # just report appropriate thing
-                    if worker_state != WorkerState.INVOKING:
+                    if worker_row['session_key'] != worker_starting_session_key:
+                        self.__logger.warning(f'worker was restarted before submission of {task_id} could begin. aborting')
+                    elif worker_state != WorkerState.INVOKING:
                         self.__logger.warning('worker changed states before invocation was added, current state: %s, consider submission failed', worker_state)
                     else:  # ... or invocation_already_exists
                         self.__logger.warning('worker is in INVOKING state, but another INVOKING invocation exists.'
