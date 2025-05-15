@@ -588,6 +588,8 @@ class SchedulerCore(NodeGraphHolderBase):
         :param also_update_resources:
         :return: need commit?
         """
+        assert con.in_transaction, 'expectation failure'
+
         async with con.execute('SELECT * FROM invocations WHERE "worker_id" = ? AND "state" == ?',
                                (worker_id, InvocationState.IN_PROGRESS.value)) as incur:
             all_invoc_rows = await incur.fetchall()  # we don't really want to update db while reading it
