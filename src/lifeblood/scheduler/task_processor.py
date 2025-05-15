@@ -324,8 +324,17 @@ class TaskProcessor(SchedulerComponentBase):
                 await submit_transaction.execute('BEGIN IMMEDIATE')
 
                 # first of all we check that worker has not changed state since the start of submitter
-                async with submit_transaction.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
-                    worker_state = WorkerState((await incur.fetchone())[0])
+                async with submit_transaction.execute('SELECT "state", session_key FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
+                    tmp_worker_row = await incur.fetchone()
+                    worker_state = WorkerState(tmp_worker_row['state'])
+                    worker_starting_session_key = tmp_worker_row['session_key']
+
+                # sanity check - this may happen if worker restarted at a very specific inconvenient time
+                if worker_row['session_key'] != worker_starting_session_key:
+                    self.__logger.warning(f'worker was restarted before submission of {task_id} could begin. aborting')
+                    await submit_transaction.rollback()
+                    return
+
                 # this next is for the case when worker restarted before transaction and already happened to again become INVOKING.
                 # then either another submitter is at BEFORE this place, or AFTER. if AFTER - there's new invoking invocation, we check that,
                 # one of submitters will fail, one will proceed
@@ -387,16 +396,14 @@ class TaskProcessor(SchedulerComponentBase):
             invocation = Invocation(job, invocation_id, task_id, resources)
 
             # actually communicating submission to the worker
-            self.__logger.debug(f'submitting task to {addr}')
+            self.__logger.debug(f'submitting task {task_id}({invocation_id}) to {addr}')
             try:
                 # this is potentially a long operation - db must NOT be locked during it
                 with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
-                    # import random
-                    # await asyncio.sleep(random.uniform(0, 8))  # DEBUG! IMITATE HIGH LOAD
                     reply, fail_class, reply_message = await client.give_task(invocation, self.scheduler.server_message_address(addr))
                     # TODO: introduce optional "worker cookie" - uid that one passes with some commands
                     #  like give_task to ensure that we are submitting here to the same worker task processing loop selected
-                self.__logger.debug(f'got reply {reply} ({fail_class}), ({reply_message})')
+                self.__logger.debug(f'got reply from {task_id}({invocation_id}): {reply} ({fail_class}), ({reply_message})')
             except Exception as e:
                 self.__logger.error('some unexpected error %s %s' % (str(type(e)), str(e)))
                 reply = TaskScheduleStatus.FAILED
@@ -406,32 +413,33 @@ class TaskProcessor(SchedulerComponentBase):
             # Second main transaction of the submission
             async with self.awaiter_lock:
                 await submit_transaction.execute('BEGIN IMMEDIATE')
-                async with submit_transaction.execute('SELECT "state" FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
-                    worker_state = WorkerState((await incur.fetchone())[0])
+                async with submit_transaction.execute('SELECT "state", session_key FROM workers WHERE "id" == ?', (worker_row['id'],)) as incur:
+                    tmp_worker_row = await incur.fetchone()
+                    worker_state = WorkerState(tmp_worker_row['state'])
+                    worker_current_session_key = tmp_worker_row['session_key']
                 async with submit_transaction.execute('SELECT "state" FROM invocations WHERE "id" == ?', (invocation_id,)) as incur:
                     # if worker managed to stop and start before we reach this transaction - invocation state will be reset
                     # we have to check it
-                    maybe_updated_invocation_state = InvocationState((await incur.fetchone())[0])
+                    maybe_updated_invocation_state = InvocationState((await incur.fetchone())['state'])
+                async with submit_transaction.execute('SELECT "state" FROM tasks WHERE "id" == ?', (task_id,)) as incur:
+                    maybe_updated_task_state = TaskState((await incur.fetchone())['state'])
 
-                worker_apparently_restarted = False
-                if maybe_updated_invocation_state != InvocationState.INVOKING:
-                    # the only normal way why this can happen - is if worker reported "bye", that resets invocation
-                    self.__logger.warning(f'worker seem to have stopped during submission attempt, ignoring, retrying. reply was: {reply}, worker state is: {worker_state}')
-                    worker_apparently_restarted = True
-                    reply = TaskScheduleStatus.FAILED
+                # at this point no matter what happens - nothing should ever change invocation and task state from INVOKING
+                # worker restarting should not affect INVOKING invocations
+                assert maybe_updated_invocation_state == InvocationState.INVOKING, f'logic failure, invocation {invocation_id} state is {maybe_updated_invocation_state}'
+                assert maybe_updated_task_state == TaskState.INVOKING, f'logic failure, task {task_id}({invocation_id}) state is {maybe_updated_task_state}'
 
+                worker_restarted = False
                 # IF worker state is NOT invoking - then either worker_hello, or worker_bye happened between starting _submitter and here
-                if worker_state == WorkerState.OFF:
-                    self.__logger.warning('submitter: worker state changed to OFF during submitter work')
+                if worker_current_session_key != worker_starting_session_key:
+                    worker_restarted = True
+                    self.__logger.warning('submitter: worker was shut down during submitter work')
                     # if we reach here - scheduling could not have succeeded, safer to assume it's failed
                     if reply == TaskScheduleStatus.SUCCESS:
                         self.__logger.warning('submitter succeeded, yet worker state changed to OFF in the middle of submission. forcing reply to FAIL')
-                        reply = TaskScheduleStatus.FAILED
-                        # note that at this time we cannot be sure if worker actually picked invocation or not,
-                        #  but there is nothing really we can do about it, just wait for pingers to resolve the situation
-
-                # this assert should never break: as hello preserves INVOKING state, and we catch worker restart case
-                assert worker_apparently_restarted or worker_state != WorkerState.IDLE, f'worker restarted={worker_apparently_restarted}, state={worker_state}'
+                    reply = TaskScheduleStatus.FAILED
+                    # note that at this time we cannot be sure if worker actually picked invocation or not,
+                    #  but there is nothing really we can do about it, just wait for pingers to resolve the situation
 
                 if reply == TaskScheduleStatus.SUCCESS:
                     await submit_transaction.execute('UPDATE tasks SET state = ? '
@@ -450,7 +458,8 @@ class TaskProcessor(SchedulerComponentBase):
                     # for now invoking invocation are invalidated by deletion (here and in scheduler start)
                     await submit_transaction.execute('DELETE FROM invocations WHERE "id" = ?',
                                                      (invocation_id,))
-                    await self.__submitter_finalize_cancel_transaction(submit_transaction, worker_row, worker_state, task_id)
+
+                    await self.__submitter_finalize_cancel_transaction(submit_transaction, worker_row if not worker_restarted else None, worker_state, task_id)
 
                     if reply == TaskScheduleStatus.FAILED:
                         if reply_message:
@@ -551,6 +560,9 @@ class TaskProcessor(SchedulerComponentBase):
                     to_remove.add(task_to_wait)
                     try:
                         await task_to_wait
+                    except AssertionError:
+                        self.__logger.critical('assertion error in awaitable, safest is to crash!')
+                        raise
                     except Exception as e:
                         self.__logger.exception('awaited task raised some problems')
             tasks_to_wait -= to_remove
@@ -844,7 +856,7 @@ class TaskProcessor(SchedulerComponentBase):
                                        (WorkerState.IDLE.value,)) as worcur:
                     potential_count = (await worcur.fetchone())['total']
                 # actual selecting workers
-                async with con.execute(f'SELECT workers.id, workers.hwid, last_address from workers '
+                async with con.execute(f'SELECT workers.id, workers.hwid, last_address, session_key from workers '
                                        f'INNER JOIN resources ON workers.hwid=resources.hwid ' +
                                        ' '.join(dev_join_clauses) +
                                        f' WHERE state == ? AND ( {requirements_clause_sql} ) ' +

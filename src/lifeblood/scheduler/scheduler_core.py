@@ -47,6 +47,19 @@ from typing import Optional, Any, Callable, Tuple, List, Iterable, Union, Dict, 
 
 
 class SchedulerCore(NodeGraphHolderBase):
+    __next_unique_session_key = 0
+
+    @classmethod
+    def _next_unique_session_key(cls) -> int:
+        """
+        just a helper that returns globally unique integers.
+        could use uuid, but this seems more straightforward and easier to debug
+
+        """
+        key = cls.__next_unique_session_key
+        cls.__next_unique_session_key += 1
+        return key
+
     def __init__(self, *,
                  scheduler_config_provider: SchedulerConfigProviderBase,
                  node_data_provider: NodeDataProvider,
@@ -586,7 +599,7 @@ class SchedulerCore(NodeGraphHolderBase):
                               (InvocationState.FINISHED.value, invoc_row['id']))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.READY.value, invoc_row['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, invoc_row['task_id'])  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id']))  # ui event
         if also_update_resources:
             need_commit = need_commit or await self._update_worker_resouce_usage(worker_id, connection=con)
         return need_commit
@@ -803,8 +816,6 @@ class SchedulerCore(NodeGraphHolderBase):
 
             tstamp = int(time.time())
             if worker_row is not None:
-                if worker_row['state'] == WorkerState.INVOKING.value:  # so we are in the middle of sumbission
-                    state = WorkerState.INVOKING.value  # then we preserve INVOKING state
                 await self.reset_invocations_for_worker(worker_row['id'], con=con, also_update_resources=False)  # we update later
                 await con.execute('UPDATE "workers" SET '
                                   'hwid=?, '
@@ -843,6 +854,12 @@ class SchedulerCore(NodeGraphHolderBase):
                 #                   'VALUES '
                 #                   '(?, ?, ?)',
                 #                   (worker_id, tstamp, ping_state))
+
+            # set new worker's unique session key
+            await con.execute(
+                'UPDATE "workers" SET session_key = ? WHERE "id" == ?',
+                (self._next_unique_session_key(), worker_id)
+            )
 
             resource_fields: Tuple[str, ...] = tuple(x.name for x in self.__config_provider.hardware_resource_definitions())
             # device_type_names = tuple(x.name for x in self.__config_provider.hardware_device_type_definitions())
@@ -1087,13 +1104,19 @@ class SchedulerCore(NodeGraphHolderBase):
             # print(wid)
 
             # we ensure there are no invocations running with this worker
-            async with con.execute('SELECT "id", task_id FROM invocations WHERE worker_id = ? AND ("state" = ? OR "state" = ?)',
+            async with con.execute('SELECT "id", task_id, state FROM invocations WHERE worker_id = ? AND ("state" = ? OR "state" = ?)',
                                    (wid, InvocationState.IN_PROGRESS.value, InvocationState.INVOKING.value)) as invcur:
                 invocations = await invcur.fetchall()
 
-            await con.execute('UPDATE workers SET "state" = ? WHERE "id" = ?', (WorkerState.OFF.value, wid))
-            await con.executemany('UPDATE invocations SET state = ? WHERE "id" = ?', ((InvocationState.FINISHED.value, x["id"]) for x in invocations))
-            await con.executemany('UPDATE tasks SET state = ? WHERE "id" = ?', ((TaskState.READY.value, x["task_id"]) for x in invocations))
+            await con.execute('UPDATE workers SET "state" = ?, session_key = ? WHERE "id" = ?', (WorkerState.OFF.value, None, wid))
+            for invocation_row in invocations:
+                invocation_state = InvocationState(invocation_row['state'])
+                # we do NOT touch invoking invocations and tasks -
+                # if they are still invoking - submission process is still going,
+                # and it itself will cancel those invocations
+                if invocation_state == InvocationState.IN_PROGRESS:
+                    await con.execute('UPDATE invocations SET state = ? WHERE "id" = ?', (InvocationState.FINISHED.value, invocation_row["id"]))
+                    await con.execute('UPDATE tasks SET state = ? WHERE "id" = ?', (TaskState.READY.value, invocation_row["task_id"]))
             await self._update_worker_resouce_usage(wid, hwid=hwid, connection=con)  # oh wait, it happens right here, still an assert won't hurt
             del self.data_access.mem_cache_workers_resources[wid]  # remove from cache  # TODO: ENSURE resources were already unset for this wid
             if len(invocations) > 0:
