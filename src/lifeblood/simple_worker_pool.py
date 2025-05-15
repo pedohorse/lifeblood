@@ -37,6 +37,7 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
     def __init__(self, worker_type: WorkerType = WorkerType.STANDARD, *,
                  minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
                  idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
+                 idle_timeout_boost: float = 0.0,
                  priority=ProcessPriorityAdjustment.NO_CHANGE,
                  scheduler_address: AddressChain,
                  message_proxy_address: Optional[Tuple[Optional[str], Optional[int]]] = None,
@@ -65,6 +66,8 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         self.__maximum_total = maximum_total
         self.__worker_type = worker_type
         self.__idle_timeout = idle_timeout  # after this amount of idling worker will be stopped if total count is above minimum
+        self.__idle_timeout_boost_interval = idle_timeout_boost  # every time any worker changes state - this time is to be waited before idle prunning
+        self.__idle_timeout_boost_start_time = 0.0
         self.__housekeeping_interval = housekeeping_interval
         self.__worker_priority = priority
         self.__scheduler_address = scheduler_address
@@ -224,6 +227,9 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         return len([k for k, v in self.__id_to_procdata.items()
                     if v.state in (WorkerState.IDLE, WorkerState.OFF) and not v.sent_term_signal])  # consider OFF ones as IDLEs that just boot up
 
+    def should_prune_idles(self) -> bool:
+        return time.time() - self.__idle_timeout_boost_start_time >= self.__idle_timeout_boost_interval
+
     #
     # local worker pool manager
     async def local_worker_pool_manager(self):
@@ -284,7 +290,7 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
                 # check for idle workers
                 idle_guys = self.idle_active_worker_count()
                 total_guys = self.total_active_worker_count()
-                if idle_guys > self.__ensure_minimum_idle and total_guys > self.__ensure_minimum_total:
+                if self.should_prune_idles() and idle_guys > self.__ensure_minimum_idle and total_guys > self.__ensure_minimum_total:
                     max_to_kill = min(idle_guys - self.__ensure_minimum_idle, total_guys - self.__ensure_minimum_total)
                     self.__logger.debug(f'cleaning up. max {max_to_kill} workers to kill')
                     # if we above minimum - we can kill some idle ones
@@ -374,5 +380,7 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         self.__logger.debug(f'worker (id: {worker_id}) reported state={state}')
         if self.__id_to_procdata[worker_id].state != state:
             self.__id_to_procdata[worker_id].state = state
-            self.__id_to_procdata[worker_id].state_entering_time = time.time()
+            now = time.time()
+            self.__id_to_procdata[worker_id].state_entering_time = now
+            self.__idle_timeout_boost_start_time = now
             self.__poke_event.set()
