@@ -152,10 +152,11 @@ class WorkerRestartDoubleInvocationCaseTest(IsolatedAsyncioTestCaseWithDb):
             'id': 1,
             'last_address': '555.555.555.555:5555555',
             'hwid': 12345,
+            'session_key': 1,
         }
         async with sched.data_access.data_connection() as con:
-            await con.execute('INSERT INTO workers ("id", "state", "ping_state", hwid, last_address) VALUES (?, ?, ?, ?, ?)',
-                              (1, WorkerState.INVOKING.value, WorkerPingState.WORKING.value, fake_worker_row['hwid'], fake_worker_row['last_address']))
+            await con.execute('INSERT INTO workers ("id", "state", "ping_state", hwid, last_address, session_key) VALUES (?, ?, ?, ?, ?, ?)',
+                              (1, WorkerState.INVOKING.value, WorkerPingState.WORKING.value, fake_worker_row['hwid'], fake_worker_row['last_address'], fake_worker_row['session_key']))
             for fake_task_row in fake_task_rows:
                 await con.execute('UPDATE tasks SET work_data=? WHERE "id"==?',
                                   (fake_task_row['work_data'], fake_task_row['id']))
