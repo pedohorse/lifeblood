@@ -469,7 +469,7 @@ class SchedulerCore(NodeGraphHolderBase):
             # for now invoking invocation are invalidated by deletion (here and in task_processor)
             await con.execute('DELETE FROM invocations WHERE "state" = ?', (InvocationState.INVOKING.value,))
             await con.execute('UPDATE workers SET "ping_state" = ?', (WorkerPingState.UNKNOWN.value,))
-            await con.execute('UPDATE "workers" SET "state" = ?', (WorkerState.UNKNOWN.value,))
+            await con.execute('UPDATE "workers" SET "state" = ?, session_key = ?', (WorkerState.UNKNOWN.value, None))
             await con.commit()
 
             # update volatile mem cache:
