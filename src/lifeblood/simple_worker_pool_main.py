@@ -17,30 +17,50 @@ from .net_messages.address import AddressChain
 async def create_worker_pool(worker_type: WorkerType = WorkerType.STANDARD, *,
                              minimal_total_to_ensure=0, minimal_idle_to_ensure=0, maximum_total=256,
                              idle_timeout=10, worker_suspicious_lifetime=4, housekeeping_interval: float = 10,
+                             idle_timeout_boost: float = 0.0,
                              priority=ProcessPriorityAdjustment.NO_CHANGE, scheduler_address: AddressChain):
-    swp = SimpleWorkerPool(worker_type,
-                     minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
-                     idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, housekeeping_interval=housekeeping_interval, priority=priority, scheduler_address=scheduler_address,
-                     message_processor_factory=WorkerPoolMessageProcessor,
-                     )
+    swp = SimpleWorkerPool(
+        worker_type,
+        minimal_total_to_ensure=minimal_total_to_ensure, minimal_idle_to_ensure=minimal_idle_to_ensure, maximum_total=maximum_total,
+        idle_timeout=idle_timeout, worker_suspicious_lifetime=worker_suspicious_lifetime, housekeeping_interval=housekeeping_interval,
+        idle_timeout_boost=idle_timeout_boost,
+        priority=priority,
+        scheduler_address=scheduler_address,
+        message_processor_factory=WorkerPoolMessageProcessor,
+    )
     return swp
 
 
 async def async_main(argv):
     logger = get_logger('simple_worker_pool')
-    parser = argparse.ArgumentParser('lifeblood pool simple')
+    parser = argparse.ArgumentParser(
+        'lifeblood pool simple',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument('--min-idle', '-m',
                         dest='minimal_idle_to_ensure',
                         default=1, type=int,
-                        help='worker pool will ensure at least this amount of workers is up idle (default=1)')
+                        help='worker pool will ensure at least this amount of workers is up idle')
     parser.add_argument('--min-total',
                         dest='minimal_total_to_ensure',
                         default=0, type=int,
-                        help='worker pool will ensure at least this amount of workers is up total (default=0)')
+                        help='worker pool will ensure at least this amount of workers is up total')
     parser.add_argument('--max', '-M',
                         dest='maximum_total',
                         default=256, type=int,
-                        help='no more than this amount of workers will be run locally at the same time (default=256)')
+                        help='no more than this amount of workers will be run locally at the same time')
+    parser.add_argument('--idle-timeout',
+                        dest='idle_timeout',
+                        default=60.0, type=float,
+                        help='workers idle for more than this period will be shut down if needed to respect given min constraints')
+    parser.add_argument('--suspicious-lifetime',
+                        dest='worker_suspicious_lifetime',
+                        default=4.0, type=float,
+                        help='if workers die within given interval - worker spawning will be throttled down')
+    parser.add_argument('--idle-timeout-boost-interval',
+                        dest='idle_timeout_boost',
+                        default=30.0, type=float,
+                        )
     parser.add_argument('--priority', choices=tuple(x.name for x in ProcessPriorityAdjustment), default=ProcessPriorityAdjustment.LOWER.name, help='pass to spawned workers: adjust child process priority')
 
     opts = parser.parse_args(argv)
