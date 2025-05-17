@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS "invocations" (
 	"stderr"	TEXT,
 	"progress"	REAL,
 	"runtime"	REAL,
+	"inprog_time"	INTEGER DEFAULT NULL,
+	"finish_time"	INTEGER DEFAULT NULL,
 	FOREIGN KEY("worker_id") REFERENCES "workers"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE RESTRICT,
 	FOREIGN KEY("node_id") REFERENCES "nodes"("id") ON UPDATE CASCADE ON DELETE RESTRICT
@@ -238,6 +240,20 @@ BEGIN
 UPDATE "tasks" SET "node_output_name" = NULL WHERE "id" == new.id;
 END;
 
+-- Triggers for invocations timings
+
+CREATE TRIGGER IF NOT EXISTS update_invocations_inprog_time
+AFTER UPDATE OF "state" ON "invocations" WHEN old.state != {invoc_inprog_state} AND new.state == {invoc_inprog_state}
+BEGIN
+	UPDATE "invocations" SET inprog_time = unixepoch() WHERE "id" == new.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_invocations_finish_time
+AFTER UPDATE OF "state" ON "invocations" WHEN old.state != {invoc_finish_state} AND new.state == {invoc_finish_state} 
+BEGIN
+	UPDATE "invocations" SET finish_time = unixepoch() WHERE "id" == new.id;
+END;
+
 -- Triggers for PRIORITY update
 -- update from invocation side
 
@@ -281,6 +297,8 @@ PRAGMA journal_mode=wal;
 PRAGMA synchronous=NORMAL;
 '''.format(
     dead_state=enums.TaskState.DEAD.value,
+    invoc_inprog_state=enums.InvocationState.IN_PROGRESS.value,
+    invoc_finish_state=enums.InvocationState.FINISHED.value,
     update_tasks_priority_trigger_body=update_tasks_priority_on_group_trigger_template.format(group_source='new'),
     delete_tasks_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='old.task_id'),  # update_tasks_priority_on_group_trigger_template.format(group_source='old'),
     insert_task_groups_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='new.task_id'),
