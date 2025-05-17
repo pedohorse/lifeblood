@@ -1,3 +1,4 @@
+import sys
 from . import enums
 
 
@@ -245,13 +246,13 @@ END;
 CREATE TRIGGER IF NOT EXISTS update_invocations_inprog_time
 AFTER UPDATE OF "state" ON "invocations" WHEN old.state != {invoc_inprog_state} AND new.state == {invoc_inprog_state}
 BEGIN
-	UPDATE "invocations" SET inprog_time = unixepoch() WHERE "id" == new.id;
+	UPDATE "invocations" SET inprog_time = {unixepoch_func} WHERE "id" == new.id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS update_invocations_finish_time
 AFTER UPDATE OF "state" ON "invocations" WHEN old.state != {invoc_finish_state} AND new.state == {invoc_finish_state} 
 BEGIN
-	UPDATE "invocations" SET finish_time = unixepoch() WHERE "id" == new.id;
+	UPDATE "invocations" SET finish_time = {unixepoch_func} WHERE "id" == new.id;
 END;
 
 -- Triggers for PRIORITY update
@@ -303,6 +304,8 @@ PRAGMA synchronous=NORMAL;
     delete_tasks_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='old.task_id'),  # update_tasks_priority_on_group_trigger_template.format(group_source='old'),
     insert_task_groups_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='new.task_id'),
     update_tasks_invoc_priority_trigger_body=update_tasks_priority_on_invoc_trigger_template.format(id_source='new.id'),
+    # windows' python 3.9 and before use older sqlite versions with no unixepoch func
+    unixepoch_func='unixepoch()' if sys.version_info.minor > 9 else "CAST(STRFTIME('%s', 'now') AS INT)"
 )
 # PRAGMA soft_heap_limit=100000000;
 # PRAGMA mmap_size=100000000;
