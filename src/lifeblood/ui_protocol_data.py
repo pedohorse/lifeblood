@@ -625,14 +625,40 @@ class TaskGroupStatisticsData(IBufferSerializable):
     tasks_in_progress: int
     tasks_with_error: int
     tasks_total: int
+    first_start: Optional[int] = None
+    last_finish: Optional[int] = None
+    total_runtime: Optional[int] = None
 
     def serialize(self, stream: BufferedIOBase):
-        stream.write(struct.pack('>QQQQ', self.tasks_done or 0, self.tasks_in_progress or 0, self.tasks_with_error or 0, self.tasks_total or 0))
+        stream.write(struct.pack(
+            '>QQQQ?Q?Q?Q',
+            self.tasks_done or 0,
+            self.tasks_in_progress or 0,
+            self.tasks_with_error or 0,
+            self.tasks_total or 0,
+            self.first_start is not None,
+            self.first_start or 0,
+            self.last_finish is not None,
+            self.last_finish or 0,
+            self.total_runtime is not None,
+            self.total_runtime or 0,
+        ))
 
     @classmethod
     def deserialize(cls, stream: BufferedReader) -> "TaskGroupStatisticsData":
-        tasks_done, tasks_in_progress, tasks_with_error, tasks_total = struct.unpack('>QQQQ', stream.readexactly(32))
-        return TaskGroupStatisticsData(tasks_done, tasks_in_progress, tasks_with_error, tasks_total)
+        tasks_done, tasks_in_progress, tasks_with_error, tasks_total, \
+            has_first_start, first_start, \
+            has_last_finish, last_finish, \
+            has_total_runtime, total_runtime = struct.unpack('>QQQQ?Q?Q?Q', stream.readexactly(59))
+        return TaskGroupStatisticsData(
+            tasks_done,
+            tasks_in_progress,
+            tasks_with_error,
+            tasks_total,
+            first_start if has_first_start else None,
+            last_finish if has_last_finish else None,
+            total_runtime if has_total_runtime else None,
+        )
 
 
 @dataclass

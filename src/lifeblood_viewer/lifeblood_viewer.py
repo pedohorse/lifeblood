@@ -1,6 +1,6 @@
 import os
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from PySide2.QtWidgets import *
 from PySide2.QtGui import *
 from PySide2.QtCore import Qt, Slot, Signal, QAbstractItemModel, QItemSelection, QModelIndex, QSortFilterProxyModel, QItemSelectionModel, QThread, QTimer
@@ -40,6 +40,15 @@ class GroupsModel(QAbstractItemModel):
 
     __set_group_priority_signal = Signal(str, float)
 
+    GROUP_NAME_COL = 0
+    CREATION_TIME_COL = 1
+    START_TIME_COL = 2
+    END_TIME_COL = 3
+    TOTAL_RUNTIME_COL = 4
+    PRIORITY_COL = 5
+    SUMMARY_COL = 6
+    COL_COUNT = 7
+
     def __init__(self, parent, connection_worker: SchedulerConnectionWorker):
         super(GroupsModel, self).__init__(parent=parent)
         self.__items: Dict[str, TaskGroupData] = {}
@@ -49,13 +58,19 @@ class GroupsModel(QAbstractItemModel):
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
         if role != Qt.DisplayRole:
             return
-        if section == 0:
+        if section == self.GROUP_NAME_COL:
             return 'group name'
-        elif section == 1:
+        elif section == self.CREATION_TIME_COL:
             return 'creation time'
-        elif section == 2:
+        elif section == self.START_TIME_COL:
+            return 'start time'
+        elif section == self.END_TIME_COL:
+            return 'end time'
+        elif section == self.TOTAL_RUNTIME_COL:
+            return 'total runtime'
+        elif section == self.PRIORITY_COL:
             return 'priority'
-        elif section == 3:
+        elif section == self.SUMMARY_COL:
             return 'summary'
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -66,7 +81,7 @@ class GroupsModel(QAbstractItemModel):
         return 0
 
     def columnCount(self, parent: QModelIndex = None) -> int:
-        return 4
+        return self.COL_COUNT
 
     def is_archived(self, index) -> bool:
         return self.__items[self.__items_order[index.row()]].state == TaskGroupArchivedState.ARCHIVED
@@ -89,22 +104,40 @@ class GroupsModel(QAbstractItemModel):
                 return QColor.fromRgbF(1.0, 0.9, 0.65)
         if role != Qt.DisplayRole and role != self.SortRole:
             return None
-        if index.column() == 0:  # name
+        if index.column() == self.GROUP_NAME_COL:  # name
             return self.__items_order[index.row()]
-        elif index.column() == 1:  # creation time
+        elif index.column() == self.CREATION_TIME_COL:  # creation time
             if role == Qt.DisplayRole:
                 return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].creation_timestamp).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
                 return self.__items[self.__items_order[index.row()]].creation_timestamp
-        elif index.column() == 2:  # priority
+        elif index.column() == self.START_TIME_COL:  # start time
+            val = self.__items[self.__items_order[index.row()]].statistics.first_start
+            if role == Qt.DisplayRole:
+                return datetime.utcfromtimestamp(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
+            elif role == self.SortRole:
+                return val or 0
+        elif index.column() == self.END_TIME_COL:  # end time
+            val = self.__items[self.__items_order[index.row()]].statistics.last_finish
+            if role == Qt.DisplayRole:
+                return datetime.utcfromtimestamp(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
+            elif role == self.SortRole:
+                return val or 0
+        elif index.column() == self.TOTAL_RUNTIME_COL:  # total runtime
+            val = self.__items[self.__items_order[index.row()]].statistics.total_runtime
+            if role == Qt.DisplayRole:
+                return str(timedelta(seconds=val)) if val is not None else 'N/A'
+            elif role == self.SortRole:
+                return val or 0
+        elif index.column() == self.PRIORITY_COL:  # priority
             return self.__items[self.__items_order[index.row()]].priority
-        elif index.column() == 3:  # completion progress
+        elif index.column() == self.SUMMARY_COL:  # completion progress
             item = self.__items[self.__items_order[index.row()]]
             return f"{item.statistics.tasks_in_progress}:{item.statistics.tasks_with_error}:{item.statistics.tasks_done}/{item.statistics.tasks_total}"
 
     def flags(self, index) -> Qt.ItemFlags:
         flags = super().flags(index)
-        if index.column() == 2:  # priority
+        if index.column() == self.PRIORITY_COL:  # priority
             flags |= Qt.ItemIsEditable
         return flags
 
@@ -112,7 +145,7 @@ class GroupsModel(QAbstractItemModel):
         if role != Qt.EditRole:
             return False
         col = index.column()
-        if col == 2:
+        if col == self.PRIORITY_COL:
             task_group = self.__items[self.__items_order[index.row()]]
             task_group.priority = float(value)
             self.__set_group_priority_signal.emit(task_group.name, task_group.priority)
@@ -161,10 +194,13 @@ class GroupsModel(QAbstractItemModel):
                 existing_group = self.__items[group_name]
                 for col in range(self.columnCount()):
                     if (
-                            col == 0 and existing_group.name != group_data.name
-                            or col == 1 and existing_group.creation_timestamp != group_data.creation_timestamp
-                            or col == 2 and existing_group.priority != group_data.priority
-                            or col == 3 and existing_group.statistics != group_data.statistics
+                            col == self.GROUP_NAME_COL and existing_group.name != group_data.name
+                            or col == self.CREATION_TIME_COL and existing_group.creation_timestamp != group_data.creation_timestamp
+                            or col == self.START_TIME_COL and existing_group.statistics.first_start != group_data.statistics.first_start
+                            or col == self.END_TIME_COL and existing_group.statistics.last_finish != group_data.statistics.last_finish
+                            or col == self.TOTAL_RUNTIME_COL and existing_group.statistics.total_runtime != group_data.statistics.total_runtime
+                            or col == self.PRIORITY_COL and existing_group.priority != group_data.priority
+                            or col == self.SUMMARY_COL and existing_group.statistics != group_data.statistics
                     ):
                         min_col = min(min_col, col)
                         max_col = max(max_col, col)
@@ -264,19 +300,19 @@ class GroupsView(QTreeView):
 
         # some visual adjustment
         header = self.header()
-        header.moveSection(2, 0)
-        header.moveSection(3, 2)
+        header.moveSection(GroupsModel.PRIORITY_COL, 0)
+        header.moveSection(GroupsModel.SUMMARY_COL, 2)
         # header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # this cause incredible lag with QSplitter
-        header.resizeSection(0, 200)
-        header.resizeSection(1, 128)
-        header.resizeSection(2, 32)
-        header.resizeSection(3, 80)
+        header.resizeSection(GroupsModel.GROUP_NAME_COL, 200)
+        header.resizeSection(GroupsModel.CREATION_TIME_COL, 128)
+        header.resizeSection(GroupsModel.PRIORITY_COL, 32)
+        header.resizeSection(GroupsModel.SUMMARY_COL, 80)
         # header.setSectionResizeMode(3, QHeaderView.Fixed)
         # header.resizeSection(3, 16)
 
     @Slot()
     def _pre_model_reset(self):
-        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == 0)  # 0 is group name, but we should not hardcode numbers...
+        self.__stashed_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
 
     @Slot()
     def _post_model_reset(self):
@@ -289,14 +325,14 @@ class GroupsView(QTreeView):
         self.__block_selection_signals = True
         try:
             for i in range(model.rowCount(QModelIndex())):
-                idx = model.index(i, 0)  # 0 is group name, but we should not hardcode numbers...
+                idx = model.index(i, GroupsModel.GROUP_NAME_COL)
                 if idx.data(Qt.DisplayRole) in self.__stashed_selection:
                     selmodel.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
         finally:
             self.__block_selection_signals = _prev_blocked
 
         # emit signal IF sel changed
-        new_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == 0)  # 0 is group name, but we should not hardcode numbers...
+        new_selection = set(x.data(Qt.DisplayRole) for x in self.selectedIndexes() if x.column() == GroupsModel.GROUP_NAME_COL)
         if self.__stashed_selection != new_selection:
             self.selection_changed.emit(new_selection)
 

@@ -345,13 +345,29 @@ class UIStateAccessor(SchedulerComponentBase):
             # need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
             # fetch_statistics = fetch_statistics and need_group_totals_update
             if fetch_statistics:
-                sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall FROM task_group_attributes ' \
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall, min_start, max_finish FROM task_group_attributes ' \
                           'LEFT JOIN ' \
                           f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
                           f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
                           f'       SUM(state=={TaskState.ERROR.value}) as terr, ' \
-                          f'       COUNT() as tall, "group" as grp FROM tasks JOIN task_groups ON tasks."id"==task_groups.task_id WHERE tasks.dead==0 GROUP BY "group") ' \
+                          '        COUNT() as tall, ' \
+                          '        "group" as grp ' \
+                          '    FROM tasks ' \
+                          '    JOIN task_groups ' \
+                          '    ON tasks."id"==task_groups.task_id ' \
+                          '    WHERE tasks.dead==0 ' \
+                          '    GROUP BY "group"' \
+                          ') ' \
                           'ON "grp"==task_group_attributes."group" ' \
+                          'LEFT JOIN ' \
+                          '(SELECT MIN(inprog_time) as min_start, ' \
+                          '        MAX(finish_time) as max_finish, ' \
+                          '        "group" as grp2 ' \
+                          '    FROM invocations ' \
+                          '    JOIN task_groups ON invocations.task_id == task_groups.task_id ' \
+                          '    GROUP BY "group"' \
+                          ')' \
+                          'ON "grp2"==task_group_attributes."group" ' \
                           + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
             else:
                 sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
@@ -753,7 +769,15 @@ def _pack_task_groups(db_uid: int, all_task_groups) -> "TaskGroupBatchData":
     for group_name, group_raw in all_task_groups.items():
         assert group_name == group_raw['group']
         if 'tdone' in group_raw:  # if has stat:
-            stat = TaskGroupStatisticsData(group_raw['tdone'], group_raw['tprog'], group_raw['terr'], group_raw['tall'])
+            stat = TaskGroupStatisticsData(
+                group_raw['tdone'],
+                group_raw['tprog'],
+                group_raw['terr'],
+                group_raw['tall'],
+                first_start=group_raw['min_start'],
+                last_finish=group_raw['max_finish'],
+                total_runtime=group_raw['max_finish'] - group_raw['min_start'] if group_raw['min_start'] is not None and group_raw['max_finish'] is not None else None
+            )
         else:
             stat = None
         task_groups[group_name] = TaskGroupData(group_name, group_raw['ctime'], TaskGroupArchivedState(group_raw['state']),
