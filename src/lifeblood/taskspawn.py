@@ -97,8 +97,8 @@ class TaskSpawn:
     def add_extra_group_name(self, group_name: str) -> None:
         self.__extra_groups.append(group_name)
 
-    def add_extra_group_names(self, group_names: Iterable[str]) -> None:
-        self.__extra_groups += group_names
+    def set_extra_group_names(self, group_names: Iterable[str]) -> None:
+        self.__extra_groups = list(group_names)
 
     def extra_group_names(self) -> List[str]:
         return self.__extra_groups
