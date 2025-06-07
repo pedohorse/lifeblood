@@ -7,7 +7,7 @@ from lifeblood.node_ui import NodeUi
 from lifeblood.invocationjob import InvocationJob
 from lifeblood.nethelpers import address_to_ip_port, get_default_addr
 from lifeblood import logging
-from lifeblood.enums import TaskState, TaskGroupArchivedState
+from lifeblood.enums import TaskState, TaskGroupArchivedState, SpawnStatus
 from lifeblood.broadcasting import await_broadcast
 from lifeblood.config import get_config
 from lifeblood.exceptions import UiClientOperationFailed
@@ -62,6 +62,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     node_connections_removed = Signal(list, list, object)
     node_connections_added = Signal(list, object)
     node_task_set = Signal(int, int, object)  # generic error report, when longop data is not provided
+    task_group_user_data_fetched = Signal(str, bool, object, object)
+    task_group_added = Signal(str, bool, object)
+    task_added = Signal(object, object)
 
     def __init__(self, parent=None):
         super(SchedulerConnectionWorker, self).__init__(parent)
@@ -919,6 +922,30 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.exception('problems in network operations')
 
     @Slot()
+    def add_task_group(self, task_group_name: str, creator: str, allow_name_change_to_make_unique: bool, priority: float, user_data: Optional[bytes], data):
+        if not self.ensure_connected():
+            return
+        assert self.__client is not None
+
+        actual_group_name = task_group_name
+        success = False
+        try:
+            actual_group_name = self.__client.add_task_group(
+                task_group_name,
+                creator,
+                allow_name_change_to_make_unique,
+                priority,
+                user_data,
+            )
+            success = True
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+        self.task_group_added.emit(actual_group_name, success, data)
+
+    @Slot()
     def set_task_group_priority(self, task_group_name: str, priority: float):
         if not self.ensure_connected():
             return
@@ -930,6 +957,24 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problems in network operations')
+
+    @Slot()
+    def get_task_group_user_data(self, task_group_name: str, data=None):
+        if not self.ensure_connected():
+            return
+        assert self.__client is not None
+
+        user_data = None
+        success = False
+        try:
+            user_data = self.__client.get_task_group_user_data(task_group_name)
+            success = True
+        except ConnectionError as e:
+            logger.error(f'failed {e}')
+        except Exception:
+            logger.exception('problems in network operations')
+
+        self.task_group_user_data_fetched.emit(task_group_name, success, user_data, data)
 
     @Slot()
     def set_task_node(self, task_id: int, node_id: int):
@@ -1037,12 +1082,16 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             return
         assert self.__client is not None
 
+        status = SpawnStatus.FAILED
+        new_id = None
         try:
-            self.__client.add_task(new_task)
+            status, new_id = self.__client.add_task(new_task)
         except ConnectionError as e:
             logger.error(f'failed {e}')
         except Exception:
             logger.exception('problem in network operations')
+
+        self.task_added.emit(status, new_id)
 
     @Slot()
     def set_environment_resolver_arguments(self, task_id: int, env_args: Optional[EnvironmentResolverArguments]):
