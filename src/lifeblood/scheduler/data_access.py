@@ -21,7 +21,7 @@ from ..enums import TaskGroupArchivedState
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 10
+SCHEDULER_DB_FORMAT_VERSION = 11
 
 
 @dataclass
@@ -565,7 +565,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 10:
+        if from_version < 1 or to_version > 11:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -673,6 +673,9 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
             con.execute('''ALTER TABLE "invocations" ADD COLUMN "finish_time" INTEGER DEFAULT NULL''')
             # we need to rerun init script to ensure all triggers are created
             con.executescript(sql_init_script)
+            return True
+        if to_version == 11:
+            con.execute('''ALTER TABLE "task_group_attributes" ADD COLUMN "user_data" BLOB''')
             return True
 
 

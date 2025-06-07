@@ -53,6 +53,12 @@ class NotSubscribedError(RuntimeError):
     pass
 
 
+class NoSuchGroupError(RuntimeError):
+    def __init__(self, group_name):
+        super().__init__(f'no task group named "{group_name}"')
+        self.group_name = group_name
+
+
 class CouldNotNegotiateProtocolVersion(RuntimeError):
     def __init__(self,
                  our_supported_versions: Tuple[Tuple[int, int], ...],

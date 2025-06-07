@@ -1282,6 +1282,54 @@ class SchedulerCore(NodeGraphHolderBase):
         self.wake()
         self.poke_task_processor()
 
+    async def add_task_group(self, task_group_name: str, creator: str, *, allow_name_change_to_make_unique: bool = False, priority: float = 50.0, user_data: Optional[bytes] = None) -> Tuple[bool, str]:
+        """
+        returns True if group was created, False if it already exists
+        """
+        async with self.data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            await con.execute('BEGIN IMMEDIATE')
+            base_task_group_name = task_group_name
+            counter = 1
+            while True:
+                async with con.execute('SELECT 1 FROM task_group_attributes WHERE "group" == ?', (task_group_name,)) as cur:
+                    if (await cur.fetchone()) is not None:
+                        if allow_name_change_to_make_unique:
+                            task_group_name = f'{base_task_group_name} {counter}'
+                            counter += 1
+                            continue
+                        else:
+                            return False, ''
+                    break
+
+            await con.execute(
+                'INSERT INTO task_group_attributes '
+                '("group", "ctime", "state", "creator", priority, user_data) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (
+                    task_group_name,
+                    int(datetime.utcnow().timestamp()),
+                    TaskGroupArchivedState.NOT_ARCHIVED.value,
+                    creator,
+                    priority,
+                    bytes(user_data) if user_data is not None else None,
+                )
+            )
+            await con.commit()
+        return True, task_group_name
+
+    async def get_task_group_user_data(self, task_group_name: str) -> Optional[bytes]:
+        async with self.data_access.data_connection() as con:
+            con.row_factory = aiosqlite.Row
+            async with con.execute(
+                    'SELECT user_data FROM task_group_attributes WHERE "group" == ?',
+                    (task_group_name,)
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            raise NoSuchGroupError(task_group_name)
+        return bytes(row['user_data']) if row['user_data'] is not None else None
+
     #
     # change task group archived state
     @alocking('scheduler.task_group_deletion')
@@ -1562,6 +1610,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
                 # only delete group if it is empty after all deletions
                 # check if there are any tasks left in the group
+                # TODO: allow deleting groups with tasks that still belong to at least one OTHER group
                 async with con.execute(
                         'SELECT COUNT(*) as cnt FROM task_groups '
                         'WHERE "group" == ?',
@@ -1930,22 +1979,28 @@ class SchedulerCore(NodeGraphHolderBase):
                 #  reasoning: nothing solid really.
                 #  internal order is more to distinguish similar tasks, and children
                 #  should be distinguishable among themselves, but not from parent
-                async with con.execute(
-                        'INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data", "priority_tie_order") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        (
-                            newtask.name(),
-                            await serialize_attributes(newtask._attributes()),  # TODO: run dumps in executor
-                            parent_task_id,
-                            TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
-                            node_id,
-                            newtask.node_output_name(),
-                            newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None,
-                            newtask.internal_order(),
-                        )
-                ) as newcur:
-                    new_id = newcur.lastrowid
+                try:
+                    async with con.execute(
+                            'INSERT INTO tasks ("name", "attributes", "parent_id", "state", "node_id", "node_output_name", "environment_resolver_data", "priority_tie_order") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                            (
+                                newtask.name(),
+                                await serialize_attributes(newtask._attributes()),  # TODO: run dumps in executor
+                                parent_task_id,
+                                TaskState.SPAWNED.value if newtask.create_as_spawned() else TaskState.WAITING.value,
+                                node_id,
+                                newtask.node_output_name(),
+                                newtask.environment_arguments().serialize() if newtask.environment_arguments() is not None else None,
+                                newtask.internal_order(),
+                            )
+                    ) as newcur:
+                        new_id = newcur.lastrowid
+                except aiosqlite.IntegrityError:
+                    result.append((SpawnStatus.FAILED, None))
+                    continue
 
+                # Groups
                 all_groups = set()
+                extra_group_names = list(newtask.extra_group_names())
                 if parent_task_id is not None:  # inherit all parent's groups
                     # check and inherit parent's environment wrapper arguments
                     if newtask.environment_arguments() is None:
@@ -1955,42 +2010,28 @@ class SchedulerCore(NodeGraphHolderBase):
                     # inc children count happens in db trigger
                     # inherit groups
                     async with con.execute('SELECT "group" FROM task_groups WHERE "task_id" = ?', (parent_task_id,)) as gcur:
-                        groups = [x['group'] for x in await gcur.fetchall()]
-                    all_groups.update(groups)
-                    if len(groups) > 0:
-                        con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
-                        await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
-                                              zip(itertools.repeat(new_id, len(groups)), groups))
-                else:  # parent_task_id is None
+                        extra_group_names += [x['group'] for x in await gcur.fetchall()]
+                elif len(extra_group_names) == 0:  # parent_task_id is None and no extra groups provided
                     # in this case we create a default group for the task.
                     # task should not be left without groups at all - otherwise it will be impossible to find in UI
-                    new_group = '{name}#{id:d}'.format(name=newtask.name(), id=new_id)
-                    all_groups.add(new_group)
-                    await con.execute('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
-                                      (new_id, new_group))
-                    await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
-                                      (new_group, current_timestamp))
-                    if newtask.default_priority() is not None:
-                        await con.execute('UPDATE task_group_attributes SET "priority" = ? WHERE "group" = ?',
-                                          (newtask.default_priority(), new_group))
-                    con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, (new_group,))  # ui event
+                    extra_group_names.append('{name}#{id:d}'.format(name=newtask.name(), id=new_id))
                     #
-                if newtask.extra_group_names():
-                    groups = newtask.extra_group_names()
-                    all_groups.update(groups)
-                    await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
-                                          zip(itertools.repeat(new_id, len(groups)), groups))
-                    con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, groups)  # ui event
-                    for group in groups:
+                if extra_group_names:
+                    all_groups.update(extra_group_names)
+                    for group in extra_group_names:
                         async with con.execute('SELECT "group" FROM task_group_attributes WHERE "group" == ?', (group,)) as gcur:
                             need_create = await gcur.fetchone() is None
                         if not need_create:
                             continue
                         await con.execute('INSERT INTO task_group_attributes ("group", "ctime") VALUES (?, ?)',
                                           (group, current_timestamp))
-                        # TODO: task_groups.group should be a foreign key to task_group_attributes.group
-                        #  but then we need to insert those guys in correct order (first in attributes table, then groups)
-                        #  then smth like FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
+                        # TODO: a warning or smth here, cuz we create a group with not enough data specified
+                        if newtask.default_priority() is not None:
+                            await con.execute('UPDATE task_group_attributes SET "priority" = ? WHERE "group" = ?',
+                                              (newtask.default_priority(), group))
+                    await con.executemany('INSERT INTO task_groups ("task_id", "group") VALUES (?, ?)',
+                                          zip(itertools.repeat(new_id, len(extra_group_names)), extra_group_names))
+                    con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_groups_changed, extra_group_names)  # ui event
                 result.append((SpawnStatus.SUCCEEDED, new_id))
                 new_tasks.append(TaskData(new_id, parent_task_id, 0, 0,
                                           TaskState.SPAWNED if newtask.create_as_spawned() else TaskState.WAITING, '',
@@ -2011,6 +2052,7 @@ class SchedulerCore(NodeGraphHolderBase):
             stuff = await _inner_shit()
         else:
             async with self.data_access.data_connection() as con:
+                await con.execute('PRAGMA foreign_keys=on')  # TODO: this should be made DEFAULT !
                 con.row_factory = aiosqlite.Row
                 stuff = await _inner_shit()
                 await con.commit()
