@@ -1,3 +1,4 @@
+import sqlite3
 import struct
 import pickle
 import asyncio
@@ -10,7 +11,7 @@ from .node_parameters import Parameter, ParameterLocked, ParameterReadonly, Para
 from .ui_protocol_data import NodeGraphStructureData, TaskGroupBatchData, TaskBatchData, WorkerBatchData, InvocationLogData, IncompleteInvocationLogData
 from .ui_events import TaskEvent
 from .enums import NodeParameterType, TaskState, SpawnStatus, TaskGroupArchivedState
-from .exceptions import NotSubscribedError, DataIntegrityError, UiClientOperationFailed
+from .exceptions import NotSubscribedError, NoSuchGroupError, DataIntegrityError, UiClientOperationFailed
 from .invocationjob import InvocationJob
 from .node_type_metadata import NodeTypeMetadata
 from .taskspawn import NewTask
@@ -89,6 +90,19 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             priority, = struct.unpack('>d', await reader.readexactly(8))
             priority = await self.__scheduler.set_task_group_priority(group_name, priority)
             writer.write(struct.pack('>d', priority))
+
+        async def comm_get_task_group_user_data():  # get_task_group_user_data
+            group_name = await read_string()
+            try:
+                data = await self.__scheduler.get_task_group_user_data(group_name)
+            except NoSuchGroupError as e:
+                # TODO: proper error reporting to client needed
+                self.__logger.error(f'task group named "{group_name}" does not exist')
+                writer.write(struct.pack('>?Q', False, 0))
+                return
+            writer.write(struct.pack('>?Q', data is not None, len(data) if data is not None else 0))
+            if data is not None:
+                writer.write(data)
 
         # ui events
 
@@ -560,6 +574,25 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             else:
                 writer.write(b'\1')
 
+        async def comm_add_task_group():
+            task_group_name = await read_string()
+            creator = await read_string()
+            allow_name_change_to_make_unique, priority, has_user_data, user_data_len = struct.unpack('>?d?Q', await reader.readexactly(18))
+            user_data = None
+            if has_user_data:
+                user_data = await reader.readexactly(user_data_len)
+
+            good, actual_group_name = await self.__scheduler.add_task_group(
+                task_group_name,
+                creator,
+                allow_name_change_to_make_unique=allow_name_change_to_make_unique,
+                priority=priority,
+                user_data=user_data,
+            )
+
+            writer.write(struct.pack('>?', good))
+            await write_string(actual_group_name)
+
         async def comm_task_cancel():  # elif command == b'tcancel':  # cancel task invocation
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             await self.__scheduler.cancel_invocation_for_task(task_id)
@@ -650,6 +683,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'get_ui_task_groups': comm_get_ui_task_groups,
                     'get_ui_tasks_state': comm_get_ui_tasks_state,
                     'set_task_group_priority': comm_set_ui_task_group_prio,
+                    'get_task_group_user_data': comm_get_task_group_user_data,
                     'request_task_events': comm_request_subscribe_to_task_events,
                     'task_events_since_id': comm_request_task_events_since_id,
                     'get_ui_workers_state': comm_get_ui_workers_state,
@@ -680,6 +714,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'tpausegrp': comm_pause_task_group,
                     'tarchivegrp': comm_archive_task_group,
                     'tdeletegrp': comm_delete_task_group,
+                    'add_task_group': comm_add_task_group,
                     'tcancel': comm_task_cancel,
                     'workertaskcancel': worker_task_cancel,
                     'tsetnode': comm_task_set_node,
@@ -745,6 +780,8 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     raise NotImplementedError()
 
                 await writer.drain()
+        except sqlite3.IntegrityError as e:
+            self.__logger.error('failed to perform requested command, error was not handled, dropping connection: %s', e)
         except ConnectionResetError as e:
             self.__logger.warning('connection was reset. UI disconnected %s', e)
         except ConnectionError as e:
@@ -845,6 +882,16 @@ class UIProtocolSocketClient:
         w.flush()
         data = TaskBatchData.deserialize(r)
         return data
+
+    def get_task_group_user_data(self, group_name: str) -> Optional[bytes]:
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('get_task_group_user_data')
+        w.write_string(group_name)
+        w.flush()
+        has_data, data_len = struct.unpack('>?Q', r.readexactly(9))
+        if not has_data:
+            return None
+        return r.readexactly(data_len)
 
     def set_task_group_priority(self, group_name: str, priority: float):
         r, w = self.__connection.get_rw_pair()
@@ -1262,6 +1309,20 @@ class UIProtocolSocketClient:
         if r.readexactly(1) != b'\1':
             raise UiClientOperationFailed(f'failed to delete task group "{task_group_name} due to internal errors')
 
+    def add_task_group(self, task_group_name: str, creator: str, allow_name_change_to_make_unique: bool, priority: float, user_data: Optional[bytes]) -> str:
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('add_task_group')
+        w.write_string(task_group_name)
+        w.write_string(creator)
+        w.write(struct.pack('>?d?Q', allow_name_change_to_make_unique, priority, user_data is not None, len(user_data or b'')))
+        if user_data is not None:
+            w.write(user_data)
+        w.flush()
+        good, = struct.unpack('>?', r.readexactly(1))
+        if not good:
+            raise RuntimeError(f'failed to create group "{task_group_name}"')
+        return r.read_string()
+
     def cancel_invocation_for_task(self, task_id: int):
         r, w = self.__connection.get_rw_pair()
         w.write_string('tcancel')
@@ -1327,7 +1388,7 @@ class UIProtocolSocketClient:
         w.flush()
         assert r.readexactly(1) == b'\1'
 
-    def add_task(self, new_task: NewTask) -> Optional[int]:
+    def add_task(self, new_task: NewTask) -> Tuple[SpawnStatus, Optional[int]]:
         """
 
         :param new_task:
@@ -1340,9 +1401,10 @@ class UIProtocolSocketClient:
         w.write(data)
         w.flush()
         spawn_status_value, good, new_id = struct.unpack('>I?Q', r.readexactly(13))  # reply that we don't care about for now
-        if SpawnStatus(spawn_status_value) == SpawnStatus.FAILED or not good:
-            return None
-        return new_id
+        spawn_status = SpawnStatus(spawn_status_value)
+        if spawn_status == SpawnStatus.FAILED or not good:
+            return spawn_status, None
+        return spawn_status, new_id
 
     def set_task_environment_resolver_arguments(self, task_id: int, env_args: Optional[EnvironmentResolverArguments]):
         r, w = self.__connection.get_rw_pair()
