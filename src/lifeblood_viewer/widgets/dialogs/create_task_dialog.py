@@ -4,7 +4,7 @@ from PySide2.QtCore import Slot, QSize
 
 from typing import TYPE_CHECKING, Optional, Tuple, List
 if TYPE_CHECKING:
-    from .graphics_items import Task
+    from lifeblood_viewer.graphics_items import Task
 
 
 class LineEditWithDefaults(QLineEdit):
