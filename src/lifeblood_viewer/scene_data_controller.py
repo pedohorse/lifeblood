@@ -103,6 +103,12 @@ class SceneDataController:
     def delete_task_groups(self, group_names: List[str]):
         raise NotImplementedError()
 
+    def request_add_task_group(self, task_group_name: str, creator: str, *, allow_name_change_to_make_unique: bool = False, priority: float = 50.0, user_data: Optional[bytes] = None, operation_data: Optional[LongOperationData] = None) -> str:
+        raise NotImplementedError()
+
+    def request_task_group_user_data(self, group_name: str, operation_data: Optional[LongOperationData] = None):
+        raise NotImplementedError()
+
     def request_task_cancel(self, task_id: int):
         raise NotImplementedError()
 
