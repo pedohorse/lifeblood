@@ -139,6 +139,16 @@
             parmtag { "script_callback_language" "python" }
         }
         parm {
+            name    "group_name"
+            label   "group name"
+            type    string
+            default { "$HIPNAME - `opname(chsop(\"node_name\"))`" }
+            parmtag { "autoscope" "0000000000000000" }
+            parmtag { "import_source" "op:./lifeblood_submitter" }
+            parmtag { "import_token" "group_name" }
+            parmtag { "script_callback_language" "python" }
+        }
+        parm {
             name    "task_name"
             label   "task name"
             type    string
