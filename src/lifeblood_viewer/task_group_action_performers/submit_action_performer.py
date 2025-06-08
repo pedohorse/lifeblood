@@ -2,6 +2,7 @@ from lifeblood_viewer.task_group_actions import TaskGroupViewerActionPerformerBa
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.long_op import LongOperationProcessor, LongOperationData, LongOperation
 from lifeblood_viewer.widgets.dialogs.value_input import MultiInputDialog, IntListInputWidget
+from lifeblood_viewer.task_group_actions_impl.submit_action import TaskGroupViewerSubmitAction
 from PySide2.QtWidgets import QWidget
 
 
@@ -18,6 +19,7 @@ class SubmitViewerActionPerformer(TaskGroupViewerActionPerformerBase):
     def perform_action(self, action: TaskGroupViewerAction):
 
         def opop(longop: LongOperation):
+            assert isinstance(action, TaskGroupViewerSubmitAction)  # for ide analysis
             # mapping of requested to actual group names
             group_names_mapping = {}
             for group_def in action.groups:
@@ -39,6 +41,9 @@ class SubmitViewerActionPerformer(TaskGroupViewerActionPerformerBase):
                 task.set_extra_group_names((group_names_mapping.get(x, x) for x in task.extra_group_names()))
                 # I guess no need to wait for spawn completion here...
                 self.__data_controller.request_add_task(task)
+
+        if not isinstance(action, TaskGroupViewerSubmitAction):
+            raise RuntimeError('unexpected action type class')
 
         if action.attribute_substitutions:
             has_single_key = len(action.attribute_substitutions)

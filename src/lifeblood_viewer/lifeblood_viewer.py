@@ -21,9 +21,11 @@ from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .nodeeditor_windows.ui_task_list_window import TaskListWindow
 from .widgets.worker_list import WorkerListWidget
 from .nodeeditor_overlays.task_history_overlay import TaskHistoryOverlay
-from .task_group_actions import TaskGroupViewerAction, TaskGroupViewerActionPerformerBase, ActionTypeNotSupported
+from .task_group_actions import TaskGroupViewerAction, TaskGroupViewerActionPerformerBase, ActionTypeNotSupported, TaskGroupViewerActionRegistry
 from .task_group_action_performers.noop_action_performer import NoopViewerActionPerformer
 from .task_group_action_performers.submit_action_performer import SubmitViewerActionPerformer
+from .task_group_actions_impl.submit_action import TaskGroupViewerSubmitAction
+from .task_group_actions_impl.noop_action import TaskGroupViewerNoopAction
 
 from typing import Dict, List, Optional, Tuple
 
@@ -501,6 +503,11 @@ class LifebloodViewer(QMainWindow):
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiSceneWithDataController)
 
+        # action types
+        self.__viewer_action_registry = TaskGroupViewerActionRegistry()
+        self.__viewer_action_registry.register_action_type(('submit',), TaskGroupViewerSubmitAction)
+        self.__viewer_action_registry.register_action_type(('noop',), TaskGroupViewerNoopAction)
+
         # action performers
         self.__viewer_action_performers: List[TaskGroupViewerActionPerformerBase] = []
 
@@ -540,7 +547,7 @@ class LifebloodViewer(QMainWindow):
             return
 
         try:
-            actions = TaskGroupViewerAction.from_user_data(user_data)
+            actions = self.__viewer_action_registry.from_user_data(user_data)
         except Exception as e:
             self.__logger.warning(f'task group user data does not contain actions I can understand: {str(e)}')
             self.__group_list.task_group_actions_updated(task_group, {})
