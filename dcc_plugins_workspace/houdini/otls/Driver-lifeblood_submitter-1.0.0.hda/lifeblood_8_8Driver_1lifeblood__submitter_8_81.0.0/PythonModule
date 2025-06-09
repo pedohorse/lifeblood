@@ -1,5 +1,7 @@
+import hou
 import json
 import os
+import getpass
 try:
     from lifeblood_client import submitting
 except ImportError:
@@ -44,6 +46,7 @@ def submit_button_callback(node):
         hou.ui.displayMessage('Success!\n'
                               'task id: {}'.format(submitted_task.id))
 
+
 def submit(node):
     s_ip = node.parm('sch_ip').evalAsString()
     s_port = node.parm('sch_port').evalAsInt()
@@ -54,8 +57,11 @@ def submit(node):
     taskname = node.parm('task_name').evalAsString().strip()
     if taskname == '':
         raise hou.Error('task name cannot be empty')
-        
-    task = submitting.create_task(taskname, nodename, (s_ip, s_port), priority=node.evalParm('priority'))
+    group_name = node.parm('task_name').evalAsString().strip()
+    if group_name == '':
+        group_name = taskname
+
+    task = submitting.create_task(taskname, nodename, (s_ip, s_port))
     env_args = {}
     env_name = node.evalParm('env_resolver_name')
     for i in range(node.parm('env_resolver_args').evalAsInt()):
@@ -65,7 +71,8 @@ def submit(node):
             continue
         env_args[arg_name] = node.evalParm('env_arg_val_%d' % i)
     task.set_environment_resolver(env_name, env_args)
-    
+
+    default_frames = None
     for i in range(node.parm('attribs').evalAsInt()):
         if not node.parm('enable_%d' % i).evalAsInt():
             continue
@@ -96,7 +103,44 @@ def submit(node):
         else:
             raise NotImplementedError('unsupported attribute type %s' % attrtype)
         task.set_attribute(attrname, val)
-    
+        # check for special case to remember default "frames" value for resubmission action
+        if attrname == 'frames' and isinstance(val, list) and all(isinstance(x, int) for x in val):
+            default_frames = val
+
+    priority = node.evalParm('priority')
+    task.set_extra_group_names([group_name])  # set original group name for serializing into user data
+    user_data_groups = [
+        {
+            'name': group_name,
+            'priority': priority,
+            'user_data': None,
+            'set_self_as_user_data': True
+         }
+    ]
+    user_data_dict = {
+        'actions': {
+            'resubmit': {
+                'type': 'submit',
+                'tasks':  {'0': task.serialize().decode('latin1')},
+                'groups': user_data_groups,
+            },
+        },
+    }
+    if default_frames:
+        user_data_dict['actions']['resubmit with different frame range'] = {
+                'type': 'submit',
+                'tasks': {'0': task.serialize().decode('latin1')},
+                'groups': user_data_groups,
+                'attribute_substitutions': {'0': {'frames': {'type': 'int_list', 'default': default_frames}}},
+            }
+    user_data = json.dumps(user_data_dict).encode('UTF-8')
+
+    group_name = submitting.create_task_group((s_ip, s_port), group_name, getpass.getuser(), priority=priority, user_data=user_data)
+    if group_name is None:
+        hou.ui.displayMessage('failed to create new task group', severity=hou.severityType.Error)
+        return
+    task.set_extra_group_names([group_name])  # update with actual group name
+
     return task.submit()
 
     

@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS "task_group_attributes" (
 	"state"	INTEGER NOT NULL DEFAULT 0,
 	"creator"	TEXT,
 	"priority"	REAL NOT NULL DEFAULT 50,
+	"user_data" BLOB,
 	PRIMARY KEY("group")
 );
 CREATE INDEX IF NOT EXISTS "task_group_attrs_state_creator_idx" ON "task_group_attributes" (

@@ -26,7 +26,7 @@ from lifeblood.misc import timeit
 from lifeblood.node_ui import NodeUi
 from lifeblood.node_parameters import Parameter
 from lifeblood.ui_protocol_data import TaskBatchData, NodeGraphStructureData, TaskDelta, DataNotSet, IncompleteInvocationLogData, InvocationLogData
-from lifeblood.enums import TaskState, TaskGroupArchivedState
+from lifeblood.enums import TaskState, TaskGroupArchivedState, SpawnStatus
 from lifeblood import logging
 from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.taskspawn import NewTask
@@ -73,6 +73,8 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     _signal_set_tasks_paused = Signal(object, bool)  # object is Union[List[int], int, str]
     _signal_set_task_group_state_requested = Signal(str, TaskGroupArchivedState)
     _signal_delete_task_group_requested = Signal(str)
+    _signal_add_task_group_requested = Signal(str, str, bool, float, object, object)
+    _signal_task_group_actions_requested = Signal(str, object)
     _signal_set_task_node_requested = Signal(int, int)
     _signal_set_task_name_requested = Signal(int, str)
     _signal_set_task_groups_requested = Signal(int, set)
@@ -95,6 +97,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     nodepreset_received = Signal(str, str, NodeSnippetData)
     task_invocation_job_fetched = Signal(int, InvocationJob)
     unhandled_error_happened = Signal(str)
+    task_group_user_data_fetched = Signal(str, bool, object)
 
     def __init__(self, scene_item_factory: SceneItemFactoryBase, db_path: str = None, worker: Optional["SchedulerConnectionWorker"] = None, parent=None):
         super(QGraphicsImguiSceneWithDataController, self).__init__(parent=parent)
@@ -148,6 +151,9 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         self.__ui_connection_worker.node_connections_removed.connect(self._node_connections_removed)
         self.__ui_connection_worker.node_connections_added.connect(self._node_connections_added)
         self.__ui_connection_worker.node_task_set.connect(self._node_task_set)
+        self.__ui_connection_worker.task_group_user_data_fetched.connect(self._task_group_user_data_fetched)
+        self.__ui_connection_worker.task_group_added.connect(self._task_group_added)
+        self.__ui_connection_worker.task_added.connect(self._task_added)
 
         self._signal_log_has_been_requested.connect(self.__ui_connection_worker.get_log)
         self._signal_log_meta_has_been_requested.connect(self.__ui_connection_worker.get_invocation_metadata)
@@ -175,6 +181,8 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         self._signal_set_tasks_paused.connect(self.__ui_connection_worker.set_tasks_paused)
         self._signal_set_task_group_state_requested.connect(self.__ui_connection_worker.set_task_group_archived_state)
         self._signal_delete_task_group_requested.connect(self.__ui_connection_worker.delete_task_group)
+        self._signal_add_task_group_requested.connect(self.__ui_connection_worker.add_task_group)
+        self._signal_task_group_actions_requested.connect(self.__ui_connection_worker.get_task_group_user_data)
         self._signal_set_task_group_filter.connect(self.__ui_connection_worker.set_task_group_filter)
         self._signal_set_task_node_requested.connect(self.__ui_connection_worker.set_task_node)
         self._signal_set_task_name_requested.connect(self.__ui_connection_worker.set_task_name)
@@ -293,6 +301,12 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
     def delete_task_groups(self, group_names: List[str]):
         for group_name in group_names:
             self._signal_delete_task_group_requested.emit(group_name)
+
+    def request_add_task_group(self, task_group_name: str, creator: str, *, allow_name_change_to_make_unique: bool = False, priority: float = 50.0, user_data: Optional[bytes] = None, operation_data: Optional[LongOperationData] = None) -> str:
+        self._signal_add_task_group_requested.emit(task_group_name, creator, allow_name_change_to_make_unique, priority, user_data, operation_data)
+
+    def request_task_group_user_data(self, group_name: str, operation_data: Optional[LongOperationData] = None):
+        self._signal_task_group_actions_requested.emit(group_name, operation_data)
 
     def request_task_cancel(self, task_id: int):
         self._signal_cancel_task_requested.emit(task_id)
@@ -910,6 +924,25 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         # no need to do anything - task update will be polled by connection worker
         if error is not None:
             self.unhandled_error_happened.emit(error)
+
+    @Slot(str, bool, object, object)
+    def _task_group_user_data_fetched(self, task_group_name: str, success: bool, user_data: Optional[bytes], data: Optional[LongOperationData] = None):
+        self.task_group_user_data_fetched.emit(task_group_name, success, user_data)
+        if data is not None:
+            data.data = (task_group_name, success, user_data)
+            self.process_operation(data)
+
+    @Slot(str, object)
+    def _task_group_added(self, actual_task_group_name: str, success: bool, data: Optional[LongOperationData] = None):
+        # TODO: update group list or poke group update
+        if data is not None:
+            data.data = (actual_task_group_name, success)
+            self.process_operation(data)
+
+    @Slot(object, object)
+    def _task_added(self, status: SpawnStatus, task_id: Optional[int]):
+        if status == SpawnStatus.FAILED:
+            self.unhandled_error_happened.emit('failed to add task')
 
     @Slot(object)
     def _nodetypes_fetched(self, nodetypes):

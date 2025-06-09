@@ -32,8 +32,8 @@ from PySide2.QtWidgets import QApplication, QDialog, QGraphicsView, QInputDialog
 from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
 from PySide2.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard
 
-from .dialogs import MessageWithSelectableText
-from .create_task_dialog import CreateTaskDialog
+from .widgets.dialogs.message_dialog import MessageWithSelectableText
+from .widgets.dialogs.create_task_dialog import CreateTaskDialog
 from .save_node_settings_dialog import SaveNodeSettingsDialog
 from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 from .undo_stack import OperationCompletionDetails, OperationCompletionStatus
@@ -761,7 +761,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
     def _popup_create_task_callback(self, node_id: int, wgt: CreateTaskDialog):
         new_task = NewTask(wgt.get_task_name(), node_id, task_attributes=wgt.get_task_attributes())
-        new_task.add_extra_group_names(wgt.get_task_groups())
+        new_task.set_extra_group_names(wgt.get_task_groups())
         res_name, res_args = wgt.get_task_environment_resolver_and_arguments()
         new_task.set_environment_resolver(res_name, res_args)
         self.__scene.request_add_task(new_task)

@@ -8,6 +8,7 @@ from lifeblood.config import get_config
 from lifeblood.enums import TaskGroupArchivedState
 from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
 from lifeblood import paths
+from lifeblood.logging import get_logger
 from .nodeeditor import NodeEditor
 from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from .connection_worker import SchedulerConnectionWorker
@@ -20,8 +21,13 @@ from .nodeeditor_windows.ui_parameters_window import ParametersWindow
 from .nodeeditor_windows.ui_task_list_window import TaskListWindow
 from .widgets.worker_list import WorkerListWidget
 from .nodeeditor_overlays.task_history_overlay import TaskHistoryOverlay
+from .task_group_actions import TaskGroupViewerAction, TaskGroupViewerActionPerformerBase, ActionTypeNotSupported, TaskGroupViewerActionRegistry
+from .task_group_action_performers.noop_action_performer import NoopViewerActionPerformer
+from .task_group_action_performers.submit_action_performer import SubmitViewerActionPerformer
+from .task_group_actions_impl.submit_action import TaskGroupViewerSubmitAction
+from .task_group_actions_impl.noop_action import TaskGroupViewerNoopAction
 
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 
 mem_debug = 'LIFEBLOOD_VIEWER_MEM_DEBUG' in os.environ
 
@@ -50,6 +56,9 @@ class GroupsModel(QAbstractItemModel):
     COL_COUNT = 7
 
     def __init__(self, parent, connection_worker: SchedulerConnectionWorker):
+        # TODO: this should work with data controller abstraction instead of connection_worker
+        #  cuz connection worker is not even an implementation of data controller,
+        #  but it's an implementation detail.
         super(GroupsModel, self).__init__(parent=parent)
         self.__items: Dict[str, TaskGroupData] = {}
         self.__items_order = []
@@ -222,6 +231,8 @@ class GroupsView(QTreeView):
     group_pause_state_change_requested = Signal(list, bool)
     task_group_archived_state_change_requested = Signal(list, TaskGroupArchivedState)
     task_group_delete_requested = Signal(list)
+    task_group_actions_requested = Signal(str)
+    task_group_action_perform_requested = Signal(str, TaskGroupViewerAction)
 
     def __init__(self, parent=None):
         super(GroupsView, self).__init__(parent)
@@ -230,6 +241,7 @@ class GroupsView(QTreeView):
         self.__sorting_model = QSortFilterProxyModel(self)
         self.__stashed_selection = None
         self.__block_selection_signals = False
+        self.__last_active_actions_submenu: Optional[Tuple[QMenu, str]] = None
 
     def selectionChanged(self, selected: QItemSelection, deselected: QItemSelection) -> None:
         super(GroupsView, self).selectionChanged(selected, deselected)
@@ -250,6 +262,15 @@ class GroupsView(QTreeView):
             groups = list({x.siblingAtColumn(0).data(Qt.DisplayRole) for x in self.selectedIndexes()})
         event.accept()
         menu = QMenu(parent=self)
+
+        if len(groups) == 1:
+            # only show actions for a single group, cuz it's simpler for now
+            actions_submenu = menu.addMenu('actions')
+            actions_submenu.addAction('...loading...')
+            menu.addSeparator()
+            self.task_group_actions_requested.emit(groups[0])
+            self.__last_active_actions_submenu = (actions_submenu, groups[0])
+
         menu.addAction('pause all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, True))
         menu.addAction('resume all tasks').triggered.connect(lambda: self.group_pause_state_change_requested.emit(groups, False))
         menu.addSeparator()
@@ -281,6 +302,12 @@ class GroupsView(QTreeView):
             ) and self.task_group_delete_requested.emit(
                 groups,
             ))
+
+        def _menu_cleanup():
+            menu.deleteLater()
+            self.__last_active_actions_submenu = None
+
+        menu.aboutToHide.connect(_menu_cleanup)
         menu.popup(event.globalPos())
 
     def set_current_index_from_main_model(self, index: QModelIndex):
@@ -309,6 +336,27 @@ class GroupsView(QTreeView):
         header.resizeSection(GroupsModel.SUMMARY_COL, 80)
         # header.setSectionResizeMode(3, QHeaderView.Fixed)
         # header.resizeSection(3, 16)
+
+    @Slot(str, object)
+    def task_group_actions_updated(self, task_group_name: str, user_data_actions: Dict[str, TaskGroupViewerAction]):
+        # should be connected to something that returns updated action lists
+        if self.__last_active_actions_submenu is None:
+            return
+
+        submenu, submenu_task_group_name = self.__last_active_actions_submenu
+        if submenu_task_group_name != task_group_name:
+            # not ours, probably from last menu call
+            return
+
+        submenu.clear()
+        for action_name, action_data in user_data_actions.items():
+            submenu.addAction(
+                action_name,
+                lambda group_name=task_group_name, adata=action_data:
+                    self.task_group_action_perform_requested.emit(group_name, adata)
+            )
+        if not user_data_actions:
+            submenu.addAction('No actions available').setEnabled(False)
 
     @Slot()
     def _pre_model_reset(self):
@@ -342,6 +390,8 @@ class GroupsView(QTreeView):
 class LifebloodViewer(QMainWindow):
     def __init__(self, db_path: str = None, parent=None):
         super(LifebloodViewer, self).__init__(parent)
+        self.__logger = get_logger('viewer')
+
         # icon
         self.setWindowIcon(QIcon(str(pathlib.Path(__file__).parent/'icons'/'lifeblood.svg')))
         self.setWindowTitle('Lifeblood Viewer')
@@ -449,10 +499,27 @@ class LifebloodViewer(QMainWindow):
         self.__node_editor.setFocusPolicy(Qt.ClickFocus)
         self.__worker_list.setFocusPolicy(Qt.ClickFocus)
 
-        # cOnNeC1
         # TODO: Now that lifeblood_viewer owns connection worker - we may reconnect these in a more straight way...
         scene = self.__node_editor.scene()
         assert isinstance(scene, QGraphicsImguiSceneWithDataController)
+
+        # action types
+        self.__viewer_action_registry = TaskGroupViewerActionRegistry()
+        self.__viewer_action_registry.register_action_type(('submit',), TaskGroupViewerSubmitAction)
+        self.__viewer_action_registry.register_action_type(('noop',), TaskGroupViewerNoopAction)
+
+        # action performers
+        self.__viewer_action_performers: List[TaskGroupViewerActionPerformerBase] = []
+
+        # init specific action performers
+        self.__viewer_action_performers.extend(
+            [
+                NoopViewerActionPerformer(),
+                SubmitViewerActionPerformer('testcreator', scene, scene, self),
+            ]
+        )
+
+        # cOnNeC1
         self.__model_main.modelAboutToBeReset.connect(self._pre_groups_update)
         self.__model_main.modelReset.connect(self._post_groups_update)
         self.__ui_connection_worker.scheduler_connection_lost.connect(self._show_connection_message)
@@ -461,6 +528,9 @@ class LifebloodViewer(QMainWindow):
         self.__group_list.group_pause_state_change_requested.connect(scene.set_tasks_paused)
         self.__group_list.task_group_archived_state_change_requested.connect(scene.set_task_group_archived_state)
         self.__group_list.task_group_delete_requested.connect(scene.delete_task_groups)
+        self.__group_list.task_group_actions_requested.connect(scene.request_task_group_user_data)
+        scene.task_group_user_data_fetched.connect(self._task_group_user_data_updated)
+        self.__group_list.task_group_action_perform_requested.connect(self._task_group_action_perform)
 
         if mem_debug:
             self.__tracemalloc_timer = QTimer(self)
@@ -470,6 +540,34 @@ class LifebloodViewer(QMainWindow):
 
         # start
         self.start()
+
+    def _task_group_user_data_updated(self, task_group: str, success: bool, user_data: Optional[bytes]):
+        if not success:
+            self.__group_list.task_group_actions_updated(task_group, {})
+            return
+
+        try:
+            actions = self.__viewer_action_registry.from_user_data(user_data)
+        except Exception as e:
+            self.__logger.warning(f'task group user data does not contain actions I can understand: {str(e)}')
+            self.__group_list.task_group_actions_updated(task_group, {})
+        else:
+            self.__group_list.task_group_actions_updated(task_group, actions)
+
+    def _task_group_action_perform(self, task_group, action: TaskGroupViewerAction):
+        self.__logger.debug(f'preforming viewer action "{action}" for group "{task_group}"')
+        for performer in self.__viewer_action_performers:
+            if not performer.is_action_supported(action):
+                continue
+            try:
+                performer.perform_action(action)
+            except ActionTypeNotSupported:
+                self.__logger.warning(f'action performer "{performer}" failed to perform a supported action "{action}", skipping')
+                continue
+            except Exception as e:
+                self.__logger.exception('unexpected error performing viewer action')
+                continue
+            break
 
     def resizeEvent(self, event):
         self.__layout_overlay_items()

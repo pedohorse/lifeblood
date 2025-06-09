@@ -68,6 +68,9 @@ class TaskSpawn(object):
     def add_extra_group_name(self, group_name):
         self.__extra_groups.append(group_name)
 
+    def set_extra_group_names(self, group_names) -> None:
+        self.__extra_groups = list(group_names)
+
     def extra_group_names(self):
         return self.__extra_groups
 
@@ -139,10 +142,33 @@ class NewTask(TaskSpawn):
         sock.sendall(struct.pack('>Q', len(data)))
         sock.sendall(data)
         status, is_not_null, task_id = struct.unpack('>I?Q', sock.recv(13))
+        sock.close()
         if status != 0:
             raise RuntimeError('scheduler failed to create task')
         assert is_not_null
         return Task(self.__scheduler_addr, task_id)
+
+
+def create_task_group(scheduler_addr, name, creator, priority=50.0, user_data=None):
+    """
+    create new task group
+    returns: (bool, str) - status of creation and actual group name created, as group name must be unique it may be modified
+    """
+    addr, sport = scheduler_addr
+    port = int(sport)
+    sock = socket.create_connection((addr, port), timeout=30)
+    sock.sendall(b'\0\0\0\0')
+    send_string(sock, 'addtaskgroup')
+    send_string(sock, name)
+    send_string(sock, creator)
+    sock.sendall(struct.pack('>dQ', priority, len(user_data) if user_data is not None else 0))
+    if user_data:
+        sock.sendall(user_data)
+    good, = struct.unpack('>?', sock.recv(1))
+    name = recv_string(sock)
+    sock.close()
+
+    return name if good else None
 
 
 def create_task(name, node_id_or_name,

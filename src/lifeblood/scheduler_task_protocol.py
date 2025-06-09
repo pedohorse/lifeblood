@@ -50,7 +50,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             writer.write(b'\2')
 
         #
-        # commands used mostly by lifeblood_connection
+        # commands used mostly by lifeblood_connection/lifeblood_client
         #
         # spawn a child task for task being processed
         async def comm_spawn():  # elif command == b'spawn':
@@ -58,6 +58,21 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
             taskspawn: TaskSpawn = TaskSpawn.deserialize(await reader.readexactly(tasksize))
             ret: Tuple[SpawnStatus, Optional[int]] = await self.__scheduler.spawn_tasks(taskspawn)
             writer.write(struct.pack('>I?Q', ret[0].value, ret[1] is not None, 0 if ret[1] is None else ret[1]))
+
+        async def comm_add_task_group():  # command == 'addtaskgroup'
+            name: str = await read_string()
+            creator: str = await read_string()
+            priority, user_data_size = struct.unpack('>dQ', await reader.readexactly(16))
+            user_data: Optional[bytes] = None if user_data_size == 0 else await reader.readexactly(user_data_size)
+            added, name = await self.__scheduler.add_task_group(
+                name,
+                creator,
+                allow_name_change_to_make_unique=True,
+                priority=priority,
+                user_data=user_data,
+            )
+            writer.write(struct.pack('>?', added))
+            await write_string(name)
 
         async def comm_node_name_to_id():  # elif command == b'nodenametoid':
             nodename = await read_string()
@@ -96,6 +111,7 @@ class SchedulerTaskProtocol(asyncio.StreamReaderProtocol):
                     'pulse': comm_pulse,
                     '_pulse3way_': comm__pulse3way_,  # WARNING: this is for tests only!
                     'spawn': comm_spawn,
+                    'addtaskgroup': comm_add_task_group,
                     'nodenametoid': comm_node_name_to_id,
                     'tupdateattribs': comm_update_task_attributes,
                     'gettaskstate': comm_get_task_state,
