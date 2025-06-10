@@ -272,6 +272,17 @@ class DataAccess:
         await con.execute('DELETE FROM task_groups WHERE "task_id" == ? AND "group" == ?',
                           (task_id, task_group_name))
 
+    async def get_group_tasks(self, task_group_name: str, *, con: Optional[aiosqlite.Connection] = None):
+        if con is None:  # TODO: replace this all repeating con code with a decorator
+            async with self.data_connection() as con:
+                ret = await self.get_group_tasks(task_group_name, con=con)
+            return ret
+
+        async with con.execute(
+                'SELECT task_id FROM task_groups WHERE "group" == ?',
+                (task_group_name,)) as cur:
+            return tuple(x[0] for x in await cur.fetchall())
+
     async def get_next_split_id(self, *, start_transaction: bool = True, bump_split_id: bool = True, con: aiosqlite.Connection) -> int:
         if start_transaction and not con.in_transaction:
             await self.begin_immediate_transaction(con=con)
