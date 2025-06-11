@@ -21,7 +21,7 @@ from ..enums import TaskGroupArchivedState
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 11
+SCHEDULER_DB_FORMAT_VERSION = 12
 
 
 @dataclass
@@ -271,6 +271,17 @@ class DataAccess:
 
         await con.execute('DELETE FROM task_groups WHERE "task_id" == ? AND "group" == ?',
                           (task_id, task_group_name))
+
+    async def get_group_tasks(self, task_group_name: str, *, con: Optional[aiosqlite.Connection] = None):
+        if con is None:  # TODO: replace this all repeating con code with a decorator
+            async with self.data_connection() as con:
+                ret = await self.get_group_tasks(task_group_name, con=con)
+            return ret
+
+        async with con.execute(
+                'SELECT task_id FROM task_groups WHERE "group" == ?',
+                (task_group_name,)) as cur:
+            return tuple(x[0] for x in await cur.fetchall())
 
     async def get_next_split_id(self, *, start_transaction: bool = True, bump_split_id: bool = True, con: aiosqlite.Connection) -> int:
         if start_transaction and not con.in_transaction:
@@ -565,7 +576,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 11:
+        if from_version < 1 or to_version > 12:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -676,6 +687,25 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
             return True
         if to_version == 11:
             con.execute('''ALTER TABLE "task_group_attributes" ADD COLUMN "user_data" BLOB''')
+            return True
+        if to_version == 12:
+            con.execute('PRAGMA legacy_alter_table=ON')
+            con.execute('ALTER TABLE "task_groups" RENAME TO "__old_task_groups"')
+            con.executescript('''\
+CREATE TABLE IF NOT EXISTS "task_groups" (
+    "task_id"	INTEGER NOT NULL,
+    "group"	TEXT NOT NULL,
+    FOREIGN KEY("task_id") REFERENCES "tasks"("id") ON UPDATE CASCADE ON DELETE CASCADE
+    FOREIGN KEY("group") REFERENCES "task_group_attributes"("group") ON UPDATE CASCADE ON DELETE CASCADE
+    UNIQUE ("task_id", "group") ON CONFLICT IGNORE
+);
+            ''')
+            con.execute('INSERT INTO "task_groups" SELECT * FROM "__old_task_groups"')
+            con.execute('DROP TABLE "__old_task_groups"')
+            con.execute('PRAGMA legacy_alter_table=OFF')
+            cur = con.execute('PRAGMA integrity_check')
+            if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
+                raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
             return True
 
 
