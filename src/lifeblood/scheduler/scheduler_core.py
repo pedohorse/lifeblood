@@ -603,7 +603,8 @@ class SchedulerCore(NodeGraphHolderBase):
                               (TaskState.READY.value, invoc_row['task_id']))
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id']))  # ui event
         if also_update_resources:
-            need_commit = need_commit or await self._update_worker_resouce_usage(worker_id, connection=con)
+            also_need_commit = await self._update_worker_resouce_usage(worker_id, connection=con)
+            need_commit = need_commit or also_need_commit
         return need_commit
 
     #
