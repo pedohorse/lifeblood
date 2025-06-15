@@ -25,6 +25,13 @@ logger = logging.get_logger('viewer')
 class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
     class TaskSortOrder(Enum):
         ID = 0
+        ID_REV = 1
+        FRAMES = 2
+        FRAMES_REV = 3
+        NAME = 4
+        NAME_REV = 5
+        TOTAL_RUNTIME = 6
+        TOTAL_RUNTIME_REV = 7
 
     # cache node type-2-inputs/outputs names, not to ask a million times for every node
     # actually this can be dynamic, and this cache is not used anyway, so TODO: get rid of it?
@@ -211,10 +218,21 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         if self.__tasks_sorted_cached is None:
             self.__tasks_sorted_cached = {}
         if order not in self.__tasks_sorted_cached:
-            if order == Node.TaskSortOrder.ID:
-                self.__tasks_sorted_cached[order] = sorted(self.__tasks, key=lambda x: x.get_id())
+            if order in (Node.TaskSortOrder.ID, Node.TaskSortOrder.ID_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.get_id(), reverse=order == Node.TaskSortOrder.ID_REV)
+            elif order in (Node.TaskSortOrder.FRAMES, Node.TaskSortOrder.FRAMES_REV):
+                tasks = sorted(
+                    self.__tasks,
+                    key=lambda x: foo[0] if (foo := x.attributes().get('frames', ())) and isinstance(foo, list) and len(foo) else 0,
+                    reverse=order == Node.TaskSortOrder.FRAMES_REV,
+                )
+            elif order in (Node.TaskSortOrder.NAME, Node.TaskSortOrder.NAME_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.name(), reverse=order == Node.TaskSortOrder.NAME_REV)
+            elif order in (Node.TaskSortOrder.TOTAL_RUNTIME, Node.TaskSortOrder.TOTAL_RUNTIME_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.invocations_total_time(only_last_per_node=True), reverse=order == Node.TaskSortOrder.TOTAL_RUNTIME_REV)
             else:
                 raise NotImplementedError(f'sort order {order} is not implemented')
+            self.__tasks_sorted_cached[order] = tasks
         return self.__tasks_sorted_cached[order]
 
     def tasks_iter(self, *, order: Optional[TaskSortOrder] = None) -> Iterable["Task"]:
