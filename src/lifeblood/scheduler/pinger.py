@@ -74,12 +74,14 @@ class Pinger(SchedulerComponentBase):
         async with self.scheduler.data_access.data_connection() as con:
             con.row_factory = aiosqlite.Row
 
-            async def _check_lastseen_and_drop_invocations(switch_state_on_reset: Optional[WorkerState] = None) -> bool:
+            async def _check_lastseen_and_drop_invocations(switch_state_on_reset: WorkerState) -> bool:
                 if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 64:  # TODO: make this time a configurable parameter
                     return False
                 if switch_state_on_reset is not None:
+                    self.__pinger_logger.info(f'    :: Resetting worker state to {switch_state_on_reset}')
                     await self._set_worker_state(worker_row['id'], switch_state_on_reset, con, nocommit=True)
-                need_commit = (await self.scheduler.reset_invocations_for_worker(worker_row['id'], con, also_update_resources=True))
+                self.__pinger_logger.info(f'    :: Resetting worker resources')
+                need_commit = await self.scheduler.reset_invocations_for_worker(worker_row['id'], con, also_update_resources=True)
                 return need_commit or switch_state_on_reset is not None
 
             self.__pinger_logger.debug('    :: pinger started')
@@ -91,8 +93,7 @@ class Pinger(SchedulerComponentBase):
             except ValueError:
                 self.__pinger_logger.debug(f'    :: malformed address "{addr}"')
                 self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                await self._set_worker_state(worker_row['id'], WorkerState.ERROR, con, nocommit=True)
-                await _check_lastseen_and_drop_invocations()
+                await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR)
                 await con.commit()
                 return
 
