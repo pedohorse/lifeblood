@@ -70,7 +70,9 @@ class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
                     # pick sorting order
                     sort_spec = imgui.table_get_sort_specs()
                     sort_order = self.__displayed_node.TaskSortOrder.ID
-                    if sort_spec.specs_count:
+                    if sort_spec is None:
+                        logger.warning('task sorting internal error')
+                    elif sort_spec.specs_count:
                         spec = sort_spec.specs[0]
                         if spec.column_index == 0:
                             if spec.sort_direction == imgui.SORT_DIRECTION_ASCENDING:
