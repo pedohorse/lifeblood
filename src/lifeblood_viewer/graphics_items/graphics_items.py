@@ -223,7 +223,7 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
             elif order in (Node.TaskSortOrder.FRAMES, Node.TaskSortOrder.FRAMES_REV):
                 tasks = sorted(
                     self.__tasks,
-                    key=lambda x: foo[0] if (foo := x.attributes().get('frames', ())) and isinstance(foo, list) and len(foo) else 0,
+                    key=lambda x: foo[0] if (foo := x.attributes().get('frames', ())) and isinstance(foo, list) and len(foo) and isinstance(foo[0], (int, float)) else 0,
                     reverse=order == Node.TaskSortOrder.FRAMES_REV,
                 )
             elif order in (Node.TaskSortOrder.NAME, Node.TaskSortOrder.NAME_REV):
