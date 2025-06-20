@@ -25,6 +25,13 @@ logger = logging.get_logger('viewer')
 class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
     class TaskSortOrder(Enum):
         ID = 0
+        ID_REV = 1
+        FRAMES = 2
+        FRAMES_REV = 3
+        NAME = 4
+        NAME_REV = 5
+        TOTAL_RUNTIME = 6
+        TOTAL_RUNTIME_REV = 7
 
     # cache node type-2-inputs/outputs names, not to ask a million times for every node
     # actually this can be dynamic, and this cache is not used anyway, so TODO: get rid of it?
@@ -211,10 +218,21 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         if self.__tasks_sorted_cached is None:
             self.__tasks_sorted_cached = {}
         if order not in self.__tasks_sorted_cached:
-            if order == Node.TaskSortOrder.ID:
-                self.__tasks_sorted_cached[order] = sorted(self.__tasks, key=lambda x: x.get_id())
+            if order in (Node.TaskSortOrder.ID, Node.TaskSortOrder.ID_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.get_id(), reverse=order == Node.TaskSortOrder.ID_REV)
+            elif order in (Node.TaskSortOrder.FRAMES, Node.TaskSortOrder.FRAMES_REV):
+                tasks = sorted(
+                    self.__tasks,
+                    key=lambda x: foo[0] if (foo := x.attributes().get('frames', ())) and isinstance(foo, list) and len(foo) and isinstance(foo[0], (int, float)) else 0,
+                    reverse=order == Node.TaskSortOrder.FRAMES_REV,
+                )
+            elif order in (Node.TaskSortOrder.NAME, Node.TaskSortOrder.NAME_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.name(), reverse=order == Node.TaskSortOrder.NAME_REV)
+            elif order in (Node.TaskSortOrder.TOTAL_RUNTIME, Node.TaskSortOrder.TOTAL_RUNTIME_REV):
+                tasks = sorted(self.__tasks, key=lambda x: x.invocations_total_time(only_last_per_node=True), reverse=order == Node.TaskSortOrder.TOTAL_RUNTIME_REV)
             else:
                 raise NotImplementedError(f'sort order {order} is not implemented')
+            self.__tasks_sorted_cached[order] = tasks
         return self.__tasks_sorted_cached[order]
 
     def tasks_iter(self, *, order: Optional[TaskSortOrder] = None) -> Iterable["Task"]:
@@ -230,6 +248,30 @@ class Node(SceneNetworkItemWithUI, WatchableNetworkItemProxy):
         here node might decide to highlight the task that changed state one way or another
         """
         pass
+
+    def task_name_changed(self, task):
+        """
+        called by child task when it's name were changed
+        """
+        if self.__tasks_sorted_cached:
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.NAME, None)
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.NAME_REV, None)
+
+    def task_attributes_changed(self, task):
+        """
+        called by child task when it's attributes were changed
+        """
+        if self.__tasks_sorted_cached:
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.FRAMES, None)
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.FRAMES_REV, None)
+
+    def task_logs_updated(self, task):
+        """
+        called by child task when it's logs are changed
+        """
+        if self.__tasks_sorted_cached:
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.TOTAL_RUNTIME, None)
+            self.__tasks_sorted_cached.pop(Node.TaskSortOrder.TOTAL_RUNTIME_REV, None)
 
     def draw_imgui_elements(self, drawing_widget):
         pass  # base item doesn't draw anything
@@ -370,6 +412,9 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         if name == self.__raw_data.name:
             return
         self.__raw_data.name = name
+
+        if self.__node:
+            self.__node.task_name_changed(self)
         self.item_updated()
 
     def state(self) -> TaskState:
@@ -520,6 +565,8 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         # clear cached inverted dict, it will be rebuilt on next access
         self.__reset_cached_invocation_data()
 
+        if self.__node:
+            self.__node.task_logs_updated(self)
         self.item_updated()
 
     def remove_invocations_log(self, invocation_ids: List[int]):
@@ -532,6 +579,8 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
         # clear cached inverted dict, it will be rebuilt on next access
         self.__reset_cached_invocation_data()
 
+        if self.__node:
+            self.__node.task_logs_updated(self)
         self.item_updated()
 
     def invocations_total_time(self, only_last_per_node: bool = True) -> float:
@@ -576,6 +625,9 @@ class Task(SceneNetworkItemWithUI, WatchableNetworkItem):
     def update_attributes(self, attributes: dict):
         logger.debug('attrs updated with %s', attributes)
         self.__ui_attributes = attributes
+
+        if self.__node:
+            self.__node.task_attributes_changed(self)
         self.item_updated()
 
     def set_environment_attributes(self, env_attrs: Optional[EnvironmentResolverArguments]):

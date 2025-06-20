@@ -2,6 +2,7 @@ import imgui
 from datetime import timedelta
 
 from lifeblood.enums import TaskState
+from lifeblood.logging import get_logger
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
 from ..graphics_items import Node, NetworkItemWatcher
@@ -9,6 +10,9 @@ from ..graphics_items.pretty_items.fancy_items.scene_task import SceneTask
 from PySide2.QtGui import QCursor
 
 from typing import Optional
+
+
+logger = get_logger('viewer.windows.task_list')
 
 
 class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
@@ -48,24 +52,56 @@ class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
             base_name = f'table_{self._imgui_key_name()}'
             with imgui.begin_table(f'tasks##{base_name}', 6, imgui.TABLE_SIZING_STRETCH_PROP |
                                                              imgui.TABLE_BORDERS_INNER_VERTICAL |
-                                                             imgui.TABLE_ROW_BACKGROUND
+                                                             imgui.TABLE_ROW_BACKGROUND |
+                                                             imgui.TABLE_SORTABLE
                                    ) as table:
                 if table.opened:
                     imgui.table_setup_column('ID', imgui.TABLE_COLUMN_DEFAULT_SORT)
                     imgui.table_setup_column('frame(s)')
                     imgui.table_setup_column('name')
                     imgui.table_setup_column('total runtime')
-                    imgui.table_setup_column('paused', imgui.TABLE_COLUMN_WIDTH_FIXED, 64)
-                    imgui.table_setup_column('state', imgui.TABLE_COLUMN_WIDTH_FIXED, 128.0)
+                    imgui.table_setup_column('paused', imgui.TABLE_COLUMN_WIDTH_FIXED | imgui.TABLE_COLUMN_NO_SORT, 64)
+                    imgui.table_setup_column('state', imgui.TABLE_COLUMN_WIDTH_FIXED | imgui.TABLE_COLUMN_NO_SORT, 128.0)
                     imgui.table_headers_row()
 
                     imgui.table_next_row()
                     imgui.table_next_column()
 
+                    # pick sorting order
+                    sort_spec = imgui.table_get_sort_specs()
+                    sort_order = self.__displayed_node.TaskSortOrder.ID
+                    if sort_spec is None:
+                        logger.warning('task sorting internal error')
+                    elif sort_spec.specs_count:
+                        spec = sort_spec.specs[0]
+                        if spec.column_index == 0:
+                            if spec.sort_direction == imgui.SORT_DIRECTION_ASCENDING:
+                                sort_order = self.__displayed_node.TaskSortOrder.ID
+                            else:
+                                sort_order = self.__displayed_node.TaskSortOrder.ID_REV
+                        elif spec.column_index == 1:
+                            if spec.sort_direction == imgui.SORT_DIRECTION_ASCENDING:
+                                sort_order = self.__displayed_node.TaskSortOrder.FRAMES
+                            else:
+                                sort_order = self.__displayed_node.TaskSortOrder.FRAMES_REV
+                        elif spec.column_index == 2:
+                            if spec.sort_direction == imgui.SORT_DIRECTION_ASCENDING:
+                                sort_order = self.__displayed_node.TaskSortOrder.NAME
+                            else:
+                                sort_order = self.__displayed_node.TaskSortOrder.NAME_REV
+                        elif spec.column_index == 3:
+                            if spec.sort_direction == imgui.SORT_DIRECTION_ASCENDING:
+                                sort_order = self.__displayed_node.TaskSortOrder.TOTAL_RUNTIME
+                            else:
+                                sort_order = self.__displayed_node.TaskSortOrder.TOTAL_RUNTIME_REV
+                        else:
+                            logger.error(f'sorting by column {spec.column_index} is not implemented')
+                    #
+
                     prev_task = None
                     select_next_task = False
                     task_to_reselect = None
-                    for task in self.__displayed_node.tasks_iter(order=self.__displayed_node.TaskSortOrder.ID):
+                    for task in self.__displayed_node.tasks_iter(order=sort_order):
                         if isinstance(task, SceneTask):
                             task.request_update_meta_if_needed()  # note that this is async, so this will just do request, old data will be drawn in this call
                         if task.isSelected():
@@ -88,7 +124,7 @@ class TaskListWindow(ImguiViewWindow, NetworkItemWatcher):
 
                         imgui.table_next_column()
 
-                        if frames := task.attributes().get('frames'):
+                        if (frames := task.attributes().get('frames')) and isinstance(frames, list):
                             if len(frames) == 1:
                                 imgui.text(str(frames[0]))
                             else:
