@@ -17,7 +17,7 @@ class Pinger(SchedulerComponentBase):
     def __init__(
             self,
             scheduler: "SchedulerCore",
-            ping_processors: Iterable[PingProducerBase],
+            ping_producers: Iterable[PingProducerBase],
     ):
         super().__init__(scheduler)
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
@@ -25,7 +25,7 @@ class Pinger(SchedulerComponentBase):
         self.__ping_interval, self.__ping_idle_interval, self.__ping_off_interval, self.__dormant_mode_ping_interval_multiplier = self.scheduler.config_provider.ping_intervals()
         self.__ping_interval_mult = 1
 
-        self.__processors: List[PingProducerBase] = list(ping_processors)
+        self.__producers: List[PingProducerBase] = list(ping_producers)
 
     def _main_task(self):
         return self.pinger()
@@ -80,13 +80,13 @@ class Pinger(SchedulerComponentBase):
             nowtime = datetime.now()  # TODO: use utc time!
 
             self.__pinger_logger.debug('    ::selecting pingables...')
-            entities = [(x, processor) for processor in self.__processors for x in await processor.select_entities()]
-            self.__pinger_logger.debug('    ::selected pingables: %d from %d producers', len(entities), len(self.__processors))
+            entities = [(x, producer) for producer in self.__producers for x in await producer.select_entities()]
+            self.__pinger_logger.debug('    ::selected pingables: %d from %d producers', len(entities), len(self.__producers))
             stat_discarded = 0
             stat_attempted = 0
-            for entity, processor in entities:
+            for entity, producer in entities:
                 if entity.address() in tasks:  # if we are already waiting for a reply from this address - do not pile them up
-                    await processor.entity_discarded(entity)
+                    await producer.entity_discarded(entity)
                     stat_discarded += 1
                     continue
 
@@ -94,11 +94,11 @@ class Pinger(SchedulerComponentBase):
                 if (entity.idleness() == PingEntityIdleness.ACTIVE
                         or entity.idleness() == PingEntityIdleness.WORKING_IDLE and time_delta > self.__ping_idle_interval * self.__ping_interval_mult
                         or entity.idleness() == PingEntityIdleness.SLEEPING_IDLE and time_delta > self.__ping_off_interval * self.__ping_interval_mult):
-                    await processor.entity_accepted(entity)
-                    tasks[entity.address()] = (asyncio.create_task(self._ping_awaiter(entity)), entity, processor)
+                    await producer.entity_accepted(entity)
+                    tasks[entity.address()] = (asyncio.create_task(self._ping_awaiter(entity)), entity, producer)
                     stat_attempted += 1
                 else:
-                    await processor.entity_discarded(entity)
+                    await producer.entity_discarded(entity)
                     stat_discarded += 1
 
             self.__pinger_logger.debug('    ::from selected pingables: %d attempted, %d discarded', stat_attempted, stat_discarded)
@@ -106,12 +106,12 @@ class Pinger(SchedulerComponentBase):
             while True:
                 # now clean the list
                 pruned_tasks = {}
-                for key, (task, entity, processor) in tasks.items():
+                for key, (task, entity, producer) in tasks.items():
                     if task.done():
                         reply = await task  # _ping_awaiter is not supposed to raise
-                        await processor.entity_reply_received(reply)
+                        await producer.entity_reply_received(reply)
                     else:
-                        pruned_tasks[key] = (task, entity, processor)
+                        pruned_tasks[key] = (task, entity, producer)
                 tasks = pruned_tasks
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
@@ -156,9 +156,9 @@ class Pinger(SchedulerComponentBase):
             self.__pinger_logger.debug(f'waiting for {len(tasks)} pinger tasks...')
             t_done, t_pending = await asyncio.wait([x[0] for x in tasks.values()], return_when=asyncio.ALL_COMPLETED, timeout=5)
             self.__pinger_logger.debug(f'waiting enough, {len(t_done)} tasks finished properly, cancelling {len(t_pending)} tasks')
-            for _, (task, entity, processor) in tasks.items():
+            for _, (task, entity, producer) in tasks.items():
                 # discard all!
-                await processor.entity_discarded(entity)
+                await producer.entity_discarded(entity)
                 if task in t_done:
                     await task
                     t_done.remove(task)
