@@ -14,8 +14,36 @@ from .net_messages.address import AddressChain, DirectAddress
 from .net_messages.messages import Message
 from .net_messages.impl.message_haldlers import CommandMessageHandlerBase
 from .worker_core import WorkerCore
+from .message_processor_ping_generic_handler import PingGenericHandler
 
 from typing import Iterable, Tuple, Union
+
+
+class WorkerPingHandler(PingGenericHandler):
+    def __init__(self, worker: WorkerCore):
+        super().__init__()
+        self.__worker = worker
+        
+    async def produce_reply(self, data: dict) -> dict:
+        """
+        """
+        # TODO: implement this shit too (this is an old TODO, not sure what it means any more)
+        # if self.__worker.is_stopping():
+        #     pstats = WorkerPingReply.OFF.value
+        #     pvalue = 0
+        # el
+
+        if self.__worker.is_task_running():
+            pstatus = WorkerPingReply.BUSY.value
+            pvalue = int(self.__worker.task_status() or 0)
+        else:
+            pstatus = WorkerPingReply.IDLE.value
+            pvalue = 0
+
+        return {
+            'status': pstatus,
+            'progress': pvalue,
+        }
 
 
 class WorkerCommandHandler(CommandMessageHandlerBase):
@@ -25,40 +53,18 @@ class WorkerCommandHandler(CommandMessageHandlerBase):
         self.__worker = worker
 
     def command_mapping(self):
-        return {'ping': self._command_ping,
-                'task': self._command_task,
-                'quit': self._command_quit,
-                'drop': self._command_drop,
-                'status': self._command_status,
-                'log': self._command_log,
-                'invocation_message': self._command_invocation_message}
+        return {
+            'task': self._command_task,
+            'quit': self._command_quit,
+            'drop': self._command_drop,
+            'status': self._command_status,
+            'log': self._command_log,
+            'invocation_message': self._command_invocation_message
+        }
 
     #
     # commands
     #
-
-    #
-    # command ping
-    async def _command_ping(self, args: dict, client: CommandJsonMessageClient, original_message: Message):
-        """
-        expects keys:
-        returns keys:
-            ps: ping status
-            pv: task completion percentage (0-1) if any
-        """
-        # TODO: implement this shit too
-        # if self.__worker.is_stopping():
-        #     pstats = WorkerPingReply.OFF.value
-        #     pvalue = 0
-        # el
-        if self.__worker.is_task_running():
-            pstatus = WorkerPingReply.BUSY.value
-            pvalue = int(self.__worker.task_status() or 0)
-        else:
-            pstatus = WorkerPingReply.IDLE.value
-            pvalue = 0
-        await client.send_message_as_json({'ps': pstatus,
-                                           'pv': pvalue})
 
     #
     # command enqueue task
@@ -211,4 +217,4 @@ class WorkerMessageProcessor(TcpCommandMessageProcessor):
         super().__init__(listening_address_or_addresses,
                          backlog=backlog,
                          connection_pool_cache_time=connection_pool_cache_time,
-                         message_handlers=(WorkerCommandHandler(worker),))
+                         message_handlers=(WorkerPingHandler(worker), WorkerCommandHandler(worker),))
