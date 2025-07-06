@@ -19,13 +19,6 @@ class WorkerControlClient:
         with processor.message_client(worker_address) as message_client:
             yield WorkerControlClient(message_client)
 
-    async def ping(self) -> Tuple[WorkerPingReply, float]:
-        await self.__client.send_command('ping', {})
-
-        reply_message = await self.__client.receive_message()
-        data_json = await reply_message.message_body_as_json()
-        return WorkerPingReply(data_json['ps']), float(data_json['pv'])
-
     async def give_task(self, task: invocationjob.Invocation, reply_address: Optional[AddressChain] = None) -> Tuple[TaskScheduleStatus, str, str]:
         """
         if reply_address is not given - message source address will be used
