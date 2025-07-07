@@ -1,14 +1,13 @@
-import aiosqlite
 import asyncio
-import time
+from datetime import datetime
 from .. import logging
-from ..worker_message_processor_client import WorkerControlClient
-from ..enums import WorkerState, WorkerPingState, WorkerPingReply
+from ..message_processor_ping_generic_handler import PingGenericClient
 from .scheduler_component_base import SchedulerComponentBase
+from .ping_producer_base import PingEntity, PingProducerBase, PingEntityIdleness, PingReply
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Dict, Iterable, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler_core import SchedulerCore
@@ -18,6 +17,7 @@ class Pinger(SchedulerComponentBase):
     def __init__(
             self,
             scheduler: "SchedulerCore",
+            ping_producers: Iterable[PingProducerBase],
     ):
         super().__init__(scheduler)
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger')
@@ -25,8 +25,10 @@ class Pinger(SchedulerComponentBase):
         self.__ping_interval, self.__ping_idle_interval, self.__ping_off_interval, self.__dormant_mode_ping_interval_multiplier = self.scheduler.config_provider.ping_intervals()
         self.__ping_interval_mult = 1
 
+        self.__producers: List[PingProducerBase] = list(ping_producers)
+
     def _main_task(self):
-        return self.worker_pinger()
+        return self.pinger()
 
     def _my_sleep(self):
         self.__ping_interval_mult = self.__dormant_mode_ping_interval_multiplier
@@ -38,195 +40,131 @@ class Pinger(SchedulerComponentBase):
     def set_pinger_interval_multiplier(self, multiplier: float):
         self.__ping_interval_mult = multiplier
 
-    async def _set_worker_state(self, wid: int, state: WorkerState, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
-        if con is None:
-            # TODO: safe check table and field, allow only text
-            # TODO: handle db errors
-            async with self.scheduler.data_access.data_connection() as con:
-                await con.execute("UPDATE workers SET state = ? WHERE id = ?", (state.value, wid))
-                if not nocommit:
-                    await con.commit()
-        else:
-            await con.execute("UPDATE workers SET state = ? WHERE id = ?", (state.value, wid))
-            if not nocommit:
-                await con.commit()
+    async def _ping_awaiter(self, entity: PingEntity) -> PingReply:
+        exc = None
+        data = None
+        try:
+            with PingGenericClient.get_worker_control_client(entity.address(), self.scheduler.message_processor()) as client:  # type: PingGenericClient
+                data = (await client.ping(entity.ping_data()))['data']
+        except MessageTransferTimeoutError as e:
+            self.__pinger_logger.info(f'    :: network timeout {entity.address()}')
+            exc = e
+        except MessageTransferError as e:
+            self.__pinger_logger.info(f'    :: host/route down {entity.address()} {e.wrapped_exception()}')
+            exc = e
+        except Exception as e:
+            self.__pinger_logger.info(f'    :: ping failed {entity.address()} {type(e)}, {e}')
+            exc = e
 
-    async def _set_value(self, table: str, field: str, wid: int, value: Any, con: Optional[aiosqlite.Connection] = None, nocommit: bool = False) -> None:
-        if con is None:
-            # TODO: safe check table and field, allow only text
-            # TODO: handle db errors
-            async with self.scheduler.data_access.data_connection() as con:
-                await con.execute("UPDATE %s SET %s= ? WHERE id = ?" % (table, field), (value, wid))
-                if not nocommit:
-                    await con.commit()
-        else:
-            await con.execute("UPDATE %s SET %s = ? WHERE id = ?" % (table, field), (value, wid))
-            if not nocommit:
-                await con.commit()
-
-    async def _iter_iter_func(self, worker_row):
-        # This function currently runs as a separate task in the main thread
-        # this operates on the same worker data task_processor operates on, therefore
-        # this MUST NOT interfere with usual scheduler business
-        # here we only write to DB when:
-        # * a super obvious error is detected, like when there is an error pinging worker for some significant time
-        # * a worker reappeared after being in Error state  # TODO: actually this can be resolved on worker side - it pings, sees error, reintroduces
-        async with self.scheduler.data_access.data_connection() as con:
-            con.row_factory = aiosqlite.Row
-
-            async def _check_lastseen_and_drop_invocations(switch_state_on_reset: WorkerState) -> bool:
-                if worker_row['last_seen'] is not None and time.time() - worker_row['last_seen'] < 64:  # TODO: make this time a configurable parameter
-                    return False
-                if switch_state_on_reset is not None:
-                    self.__pinger_logger.info(f'    :: Resetting worker state to {switch_state_on_reset}')
-                    await self._set_worker_state(worker_row['id'], switch_state_on_reset, con, nocommit=True)
-                self.__pinger_logger.info(f'    :: Resetting worker resources')
-                need_commit = await self.scheduler.reset_invocations_for_worker(worker_row['id'], con, also_update_resources=True)
-                return need_commit or switch_state_on_reset is not None
-
-            self.__pinger_logger.debug('    :: pinger started')
-            self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.CHECKING.value
-            self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['last_checked'] = int(time.time())
-
-            try:
-                addr = AddressChain(worker_row['last_address'])
-            except ValueError:
-                self.__pinger_logger.debug(f'    :: malformed address "{addr}"')
-                self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR)
-                await con.commit()
-                return
-
-            self.__pinger_logger.debug(f'    :: checking {addr}')
-
-            try:
-                with WorkerControlClient.get_worker_control_client(addr, self.scheduler.message_processor()) as client:  # type: WorkerControlClient
-                    # TODO: lower message timeout
-                    ping_code, pvalue = await client.ping()
-                    self.__pinger_logger.debug(f'    :: {addr} is {ping_code}')
-            except MessageTransferTimeoutError:
-                self.__pinger_logger.info(f'    :: network timeout {addr}')
-                self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.ERROR):  # TODO: maybe give it a couple of tries before declaring a failure?
-                    await con.commit()
-                return
-            except MessageTransferError as e:
-                self.__pinger_logger.info(f'    :: host/route down {addr} {e.wrapped_exception()}')
-                self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.OFF.value
-                if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
-                    await con.commit()
-                return
-            except Exception as e:
-                self.__pinger_logger.info(f'    :: ping failed {addr} {type(e)}, {e}')
-                self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.ERROR.value
-                if await _check_lastseen_and_drop_invocations(switch_state_on_reset=WorkerState.OFF):
-                    await con.commit()
-                return
-
-            # at this point we sure to have received a reply
-            # fixing possibly inconsistent worker states
-            # this inconsistencies should only occur shortly after scheduler restart
-            # due to desync of still working workers and scheduler
-            workerstate = await self.scheduler.get_worker_state(worker_row['id'], con=con)
-            if workerstate == WorkerState.OFF:
-                # there can be race conditions (theoretically) if worker saz goodbye right after getting the ping, so we get OFF state from db. or all vice-versa
-                # so there is nothing but warnings here. inconsistencies should be reliably resolved by worker
-                if ping_code == WorkerPingReply.IDLE:
-                    self.__pinger_logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as IDLE... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
-                    # await self._set_worker_state(worker_row['id'], WorkerState.IDLE, con=con, nocommit=True)
-                elif ping_code == WorkerPingReply.BUSY:
-                    self.__pinger_logger.warning(f'worker {worker_row["id"]} is marked off, but pinged as BUSY... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
-                    # await self._set_worker_state(worker_row['id'], WorkerState.BUSY, con=con, nocommit=True)
-
-            if ping_code == WorkerPingReply.IDLE:  # TODO, just like above - add warnings, but leave solving to worker
-                pass
-            elif ping_code == WorkerPingReply.BUSY:
-                pass
-
-            else:
-                raise NotImplementedError(f'not a known ping_code {ping_code}')
-
-            self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['ping_state'] = WorkerPingState.WORKING.value
-            self.scheduler.data_access.mem_cache_workers_state[worker_row['id']]['last_seen'] = int(time.time())
-            if worker_row['state'] == WorkerState.ERROR.value:  # so we thought worker had a network error, but now it's all fine
-                await self._set_worker_state(worker_row['id'], workerstate)
-
-            self.__pinger_logger.debug('    :: %s', ping_code)
+        return PingReply(
+            entity,
+            data,
+            exc,
+        )
 
     #
     # pinger task
-    async def worker_pinger(self):
+    async def pinger(self):
         """
         one of main constantly running coroutines
         responsible for pinging all the workers once in a while in separate tasks each
         TODO: test how well this approach works for 1000+ workers
-        :return: NEVER !!
         """
 
-        tasks = []
+        tasks: Dict[AddressChain, Tuple[asyncio.Task, PingEntity, PingProducerBase]] = {}
         stop_task = asyncio.create_task(self._stop_event.wait())
         wakeup_task = asyncio.create_task(self._poke_event.wait())
+        poll_task = None
         self._main_task_is_ready_now()
         while not self._stop_event.is_set():
-            nowtime = time.time()
+            nowtime = datetime.now()  # TODO: use utc time!
 
-            self.__pinger_logger.debug('    ::selecting workers...')
-            async with self.scheduler.data_access.data_connection() as con:
-                con.row_factory = aiosqlite.Row
-                async with con.execute('SELECT '
-                                       '"id", last_address, worker_type, hwid, state '
-                                       'FROM workers '
-                                       'WHERE state != ? AND state != ?', (WorkerState.UNKNOWN.value, WorkerState.OFF.value)  # so we don't bother to ping UNKNOWN ones, until they hail us and stop being UNKNOWN
-                                       # 'WHERE tmp_workers_states.ping_state != ?', (WorkerPingState.CHECKING.value,)
-                                       ) as cur:
-                    all_rows = await cur.fetchall()
-            for row in all_rows:
-                row = dict(row)
-                if row['last_address'] is None:
-                    continue
-                for cached_field in ('last_seen', 'last_checked', 'ping_state'):
-                    row[cached_field] = self.scheduler.data_access.mem_cache_workers_state[row['id']][cached_field]
-                if row['ping_state'] == WorkerPingState.CHECKING.value:  # TODO: this check could happen in the very beginning of this loop... too sleepy now to blindly move it
+            self.__pinger_logger.debug('    ::selecting pingables...')
+            entities = [(x, producer) for producer in self.__producers for x in await producer.select_entities()]
+            self.__pinger_logger.debug('    ::selected pingables: %d from %d producers', len(entities), len(self.__producers))
+            stat_discarded = 0
+            stat_attempted = 0
+            for entity, producer in entities:
+                if entity.address() in tasks:  # if we are already waiting for a reply from this address - do not pile them up
+                    await producer.entity_discarded(entity)
+                    stat_discarded += 1
                     continue
 
-                time_delta = nowtime - (row['last_checked'] or 0)
-                if row['state'] == WorkerState.BUSY.value:
-                    tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                elif row['state'] == WorkerState.IDLE.value and time_delta > self.__ping_idle_interval * self.__ping_interval_mult:
-                    tasks.append(asyncio.create_task(self._iter_iter_func(row)))
-                else:  # worker state is error or off
-                    if time_delta > self.__ping_off_interval * self.__ping_interval_mult:
-                        tasks.append(asyncio.create_task(self._iter_iter_func(row)))
+                time_delta = (nowtime - entity.last_checked()).total_seconds()
+                if (entity.idleness() == PingEntityIdleness.ACTIVE
+                        or entity.idleness() == PingEntityIdleness.WORKING_IDLE and time_delta > self.__ping_idle_interval * self.__ping_interval_mult
+                        or entity.idleness() == PingEntityIdleness.SLEEPING_IDLE and time_delta > self.__ping_off_interval * self.__ping_interval_mult):
+                    await producer.entity_accepted(entity)
+                    tasks[entity.address()] = (asyncio.create_task(self._ping_awaiter(entity)), entity, producer)
+                    stat_attempted += 1
+                else:
+                    await producer.entity_discarded(entity)
+                    stat_discarded += 1
 
-            # now clean the list
-            tasks = [x for x in tasks if not x.done()]
-            self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
+            self.__pinger_logger.debug('    ::from selected pingables: %d attempted, %d discarded', stat_attempted, stat_discarded)
 
-            # now wait
-            if wakeup_task is not None:
-                sleeping_tasks = (stop_task, wakeup_task)
-            else:
-                wakeup_task = asyncio.create_task(self._poke_event.wait())
-                sleeping_tasks = (stop_task, wakeup_task)
+            while True:
+                # now clean the list
+                pruned_tasks = {}
+                for key, (task, entity, producer) in tasks.items():
+                    if task.done():
+                        reply = await task  # _ping_awaiter is not supposed to raise
+                        await producer.entity_reply_received(reply)
+                    else:
+                        pruned_tasks[key] = (task, entity, producer)
+                tasks = pruned_tasks
+                self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
-            done, _ = await asyncio.wait(sleeping_tasks, timeout=self.__ping_interval * self.__ping_interval_mult, return_when=asyncio.FIRST_COMPLETED)
-            if wakeup_task in done:
-                wakeup_task = None
+                # now wait
+                if poll_task is None:
+                    poll_task = asyncio.create_task(asyncio.sleep(self.__ping_interval * self.__ping_interval_mult))
+                if wakeup_task is None:
+                    wakeup_task = asyncio.create_task(self._poke_event.wait())
+                sleeping_tasks = (stop_task, wakeup_task, poll_task)
 
-            # end when stop is set
+                done, _ = await asyncio.wait(
+                    sleeping_tasks + tuple(x[0] for x in tasks.values()),  # wait on stopping tasks OR any ping to finish
+                    timeout=2 * self.__ping_interval * self.__ping_interval_mult,  # this timeout is really arbitrary, we don't need it really
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                if len(done) == 0:  # timeout happened
+                    continue
+
+                if wakeup_task in done:
+                    wakeup_task = None
+                if poll_task in done:
+                    poll_task = None
+                if wakeup_task is None or poll_task is None:
+                    break  # and continue outer while loop if stop not set
+
+                # end when stop is set
+                if stop_task in done:
+                    break
+                # if not breaked - one of ping tasks have completed, so we continue inner loop
             if stop_task in done:
                 break
 
         # FINALIZING PINGER
         self.__pinger_logger.info('finishing worker pinger...')
+        if poll_task and not poll_task.done():
+            poll_task.cancel()
         if not wakeup_task.done():
             wakeup_task.cancel()
         if not stop_task.done():
             stop_task.cancel()
         if len(tasks) > 0:
             self.__pinger_logger.debug(f'waiting for {len(tasks)} pinger tasks...')
-            _, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED, timeout=5)
-            self.__pinger_logger.debug(f'waiting enough, cancelling {len(pending)} tasks')
-            for task in pending:
-                task.cancel()
+            t_done, t_pending = await asyncio.wait([x[0] for x in tasks.values()], return_when=asyncio.ALL_COMPLETED, timeout=5)
+            self.__pinger_logger.debug(f'waiting enough, {len(t_done)} tasks finished properly, cancelling {len(t_pending)} tasks')
+            for _, (task, entity, producer) in tasks.items():
+                # discard all!
+                await producer.entity_discarded(entity)
+                if task in t_done:
+                    await task
+                    t_done.remove(task)
+                elif task in t_pending:
+                    task.cancel()
+                    t_pending.remove(task)
+            assert len(t_pending) == 0, t_pending
+            assert len(t_done) == 0, t_done
         self.__pinger_logger.info('worker pinger finished')

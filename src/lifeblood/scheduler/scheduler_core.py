@@ -40,6 +40,7 @@ from ..worker_pool_message_processor import WorkerPoolMessageProcessor
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
 from .pinger import Pinger
+from .ping_producer_base import PingProducerBase
 from .task_processor import TaskProcessor
 from .ui_state_accessor import UIStateAccessor
 
@@ -67,6 +68,8 @@ class SchedulerCore(NodeGraphHolderBase):
                  message_processor_factory: Callable[["SchedulerCore", List[DirectAddress]], MessageProcessorBase],
                  legacy_task_protocol_factory: Callable[["SchedulerCore"], asyncio.StreamReaderProtocol],
                  ui_protocol_factory: Callable[["SchedulerCore"], asyncio.StreamReaderProtocol],
+                 data_access: DataAccess,
+                 ping_producers: Iterable[PingProducerBase],
                  ):
         """
         TODO: add a docstring
@@ -96,9 +99,7 @@ class SchedulerCore(NodeGraphHolderBase):
         if not self.__db_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
             self.__db_path = os.path.realpath(os.path.expanduser(self.__db_path))
         self.__logger.debug(f'starting scheduler with database: {self.__db_path}')
-        self.data_access: DataAccess = DataAccess(
-            config_provider=self.__config_provider,
-        )
+        self.data_access: DataAccess = data_access
         ##
 
         self.__use_external_log = self.__config_provider.external_log_location() is not None
@@ -112,7 +113,7 @@ class SchedulerCore(NodeGraphHolderBase):
             if not os.access(self.__external_log_location, os.X_OK | os.W_OK):
                 raise RuntimeError('cannot write to external log location provided')
 
-        self.__pinger: Pinger = Pinger(self)
+        self.__pinger: Pinger = Pinger(self, ping_producers=list(ping_producers))
         self.task_processor: TaskProcessor = TaskProcessor(self)
         self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
@@ -596,12 +597,12 @@ class SchedulerCore(NodeGraphHolderBase):
         need_commit = False
         for invoc_row in all_invoc_rows:  # mark all (probably single one) invocations
             need_commit = True
-            self.__logger.debug("fixing dangling invocation %d" % (invoc_row['id'],))
+            self.__logger.warning("fixing unresponsive invocation %d for worker %d" % (invoc_row['id'], worker_id))
             await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
                               (InvocationState.FINISHED.value, invoc_row['id']))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.READY.value, invoc_row['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id']))  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id'], state=TaskState.READY))  # ui event
         if also_update_resources:
             also_need_commit = await self._update_worker_resouce_usage(worker_id, connection=con)
             need_commit = need_commit or also_need_commit
