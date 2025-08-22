@@ -2175,7 +2175,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
         return self.message_processor().listening_address(to)
 
-    def server_message_addresses(self) -> Tuple[AddressChain]:
+    def server_message_addresses(self) -> Tuple[AddressChain, ...]:
         if self.__message_processor is None:
             raise RuntimeError('cannot get listening address of a non started server')
 
