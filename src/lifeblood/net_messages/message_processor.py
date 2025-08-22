@@ -195,6 +195,9 @@ class MessageProcessorBase(ComponentBase):
             server.wait_till_stopped()
             for server in servers
         ))
+        # clear handler states after all servers are down and cannot generate any messages
+        for handler in self.__handlers:
+            await handler.clear_internal_state()
         await self._post_receiver_stop_waited()
         self._logger.info('message server stopped')
         if exception_to_reraise:
