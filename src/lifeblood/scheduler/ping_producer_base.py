@@ -19,6 +19,9 @@ class PingEntity:
         raise NotImplementedError()
 
     def last_checked(self) -> datetime:
+        """
+        should return UTC time when ping for the corresponding entity was last accepted
+        """
         raise NotImplementedError()
 
     def ping_data(self) -> dict:
@@ -46,6 +49,9 @@ class PingReply:
 
 class PingProducerBase:
     """
+    this must return all non-pruned entities to ping.
+    missing entities are treated as "offline"
+
     all entities returned by select_entities()
     will eventually either be passed to
     entity_accepted and then eventually to entity_reply_received, or
