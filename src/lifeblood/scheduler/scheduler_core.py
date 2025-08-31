@@ -20,6 +20,7 @@ from ..invocationjob import Invocation, InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import SimpleWorkerPool
+from ..timestamp import global_timestamp_int
 from ..nethelpers import get_broadcast_addr_for, all_interfaces
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
@@ -189,6 +190,9 @@ class SchedulerCore(NodeGraphHolderBase):
         :return:
         """
         self.task_processor.poke()
+
+    def poke_pinger(self):
+        self.__pinger.poke()
 
     def _component_changed_mode(self, component: SchedulerComponentBase, mode: SchedulerMode):
         if component == self.task_processor and mode == SchedulerMode.DORMANT:
@@ -818,7 +822,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 ping_state = WorkerPingState.OFF.value
                 state = WorkerState.OFF.value
 
-            tstamp = int(time.time())
+            tstamp = global_timestamp_int()
             if worker_row is not None:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con, also_update_resources=False)  # we update later
                 await con.execute('UPDATE "workers" SET '
@@ -930,6 +934,7 @@ class SchedulerCore(NodeGraphHolderBase):
             await con.commit()
         self.__logger.debug(f'finished worker reported added: {addr}')
         self.poke_task_processor()
+        self.poke_pinger()
 
     # TODO: add decorator that locks method from reentry or smth
     #  potentially a worker may report done while this works,
@@ -1310,7 +1315,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 'VALUES (?, ?, ?, ?, ?, ?)',
                 (
                     task_group_name,
-                    int(datetime.utcnow().timestamp()),
+                    global_timestamp_int(),
                     TaskGroupArchivedState.NOT_ARCHIVED.value,
                     creator,
                     priority,
@@ -1656,7 +1661,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
             for group_name in groups_to_set:
                 await con.execute('INSERT INTO task_groups (task_id, "group") VALUES (?, ?)', (task_id, group_name))
-                await con.execute('INSERT OR IGNORE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, int(datetime.utcnow().timestamp())))
+                await con.execute('INSERT OR IGNORE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, global_timestamp_int()))
             for group_name in groups_to_del:
                 await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_removed_from_group, [task_id], groups_to_del)  # ui event
@@ -1958,7 +1963,7 @@ class SchedulerCore(NodeGraphHolderBase):
         async def _inner_shit() -> Tuple[Tuple[SpawnStatus, Optional[int]], ...]:
             result = []
             new_tasks = []
-            current_timestamp = int(datetime.utcnow().timestamp())
+            current_timestamp = global_timestamp_int()
             assert len(newtasks) > 0, 'expectations failure'
             if not con.in_transaction:  # IF this is called from multiple async tasks with THE SAME con - this may cause race conditions
                 await con.execute('BEGIN IMMEDIATE')
