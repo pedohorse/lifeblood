@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
+from ..timestamp import global_timestamp_datetime
 from .. import logging
 from ..message_processor_ping_generic_handler import PingGenericClient
 from .scheduler_component_base import SchedulerComponentBase
@@ -7,7 +8,7 @@ from .ping_producer_base import PingEntity, PingProducerBase, PingEntityIdleness
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
 
-from typing import Dict, Iterable, List, Tuple, TYPE_CHECKING
+from typing import Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:  # TODO: maybe separate a subset of scheduler's methods to smth like SchedulerData class, or idunno, for now no obvious way to separate, so having a reference back
     from .scheduler_core import SchedulerCore
@@ -37,15 +38,15 @@ class Pinger(SchedulerComponentBase):
         self.__ping_interval_mult = 1
         self.poke()
 
-    def set_pinger_interval_multiplier(self, multiplier: float):
-        self.__ping_interval_mult = multiplier
-
-    async def _ping_awaiter(self, entity: PingEntity) -> PingReply:
+    async def _ping_awaiter(self, entity: PingEntity, promised_period: Optional[float]) -> PingReply:
         exc = None
         data = None
         try:
             with PingGenericClient.get_worker_control_client(entity.address(), self.scheduler.message_processor()) as client:  # type: PingGenericClient
-                data = (await client.ping(entity.ping_data()))['data']
+                data = (await client.ping(
+                    entity.ping_data(),
+                    max_seconds_till_next_ping=promised_period,
+                ))['data']
         except MessageTransferTimeoutError as e:
             self.__pinger_logger.info(f'    :: network timeout {entity.address()}')
             exc = e
@@ -72,37 +73,77 @@ class Pinger(SchedulerComponentBase):
         """
 
         tasks: Dict[AddressChain, Tuple[asyncio.Task, PingEntity, PingProducerBase]] = {}
+        promised_ping_intervals: Dict[AddressChain, Tuple[datetime, float]] = {}
         stop_task = asyncio.create_task(self._stop_event.wait())
         wakeup_task = asyncio.create_task(self._poke_event.wait())
         poll_task = None
+        promise_wait_task = None
         self._main_task_is_ready_now()
-        while not self._stop_event.is_set():
-            nowtime = datetime.now()  # TODO: use utc time!
 
-            self.__pinger_logger.debug('    ::selecting pingables...')
+        while not self._stop_event.is_set():
+            nowtime = global_timestamp_datetime()
+
+            self.__pinger_logger.debug('    :: selecting pingables...')
             entities = [(x, producer) for producer in self.__producers for x in await producer.select_entities()]
-            self.__pinger_logger.debug('    ::selected pingables: %d from %d producers', len(entities), len(self.__producers))
+            self.__pinger_logger.debug('    :: selected pingables: %d from %d producers', len(entities), len(self.__producers))
             stat_discarded = 0
             stat_attempted = 0
+
+            # clear promises for entities that are no more
+            entity_addresses = set(x[0].address() for x in entities)
+            for address in list(promised_ping_intervals.keys()):
+                if address not in entity_addresses:
+                    self.__pinger_logger.debug('removing promise for an entity that is no more: %s', address)
+                    promised_ping_intervals.pop(address)
+
             for entity, producer in entities:
                 if entity.address() in tasks:  # if we are already waiting for a reply from this address - do not pile them up
                     await producer.entity_discarded(entity)
                     stat_discarded += 1
+
+                    # in edge case we might be due on promised second ping already,
+                    #  in such case we can only consider promise is already broken, so we remove it
+                    address = entity.address()
+                    if (address in promised_ping_intervals
+                            and nowtime > promised_ping_intervals[address][0] + timedelta(seconds=promised_ping_intervals[address][1])):
+                        self.__pinger_logger.warning(f'removing broken ping promise while ping is being delivered {address}')
+                        promised_ping_intervals.pop(address)
+
                     continue
 
+                # calc appropriate ping interval according to entity idleness and current state of pinger
+                if entity.idleness() == PingEntityIdleness.ACTIVE:
+                    default_ping_interval = self.__ping_interval * self.__ping_interval_mult
+                elif entity.idleness() == PingEntityIdleness.WORKING_IDLE:
+                    default_ping_interval = self.__ping_idle_interval * self.__ping_interval_mult
+                elif entity.idleness() == PingEntityIdleness.SLEEPING_IDLE:
+                    default_ping_interval = self.__ping_off_interval * self.__ping_interval_mult
+                else:
+                    raise NotImplementedError(f'unknown entity idleness state {entity.idleness()}')
+
+                # effective ping interval for address is the min of promised interval and currently calculated one
+                #  it's fine if we ping earlier, it's not fine if we ping later than promised
                 time_delta = (nowtime - entity.last_checked()).total_seconds()
-                if (entity.idleness() == PingEntityIdleness.ACTIVE
-                        or entity.idleness() == PingEntityIdleness.WORKING_IDLE and time_delta > self.__ping_idle_interval * self.__ping_interval_mult
-                        or entity.idleness() == PingEntityIdleness.SLEEPING_IDLE and time_delta > self.__ping_off_interval * self.__ping_interval_mult):
+                promise_needs_fulfilling = False
+                if promised_ping_interval_data := promised_ping_intervals.get(entity.address()):
+                    promise_needs_fulfilling = nowtime > promised_ping_interval_data[0] + timedelta(seconds=promised_ping_interval_data[1])
+                if time_delta >= default_ping_interval or promise_needs_fulfilling:
                     await producer.entity_accepted(entity)
-                    tasks[entity.address()] = (asyncio.create_task(self._ping_awaiter(entity)), entity, producer)
+                    ping_interval = default_ping_interval
+                    promised_ping_intervals[entity.address()] = nowtime, ping_interval
+                    tasks[entity.address()] = (asyncio.create_task(self._ping_awaiter(
+                        entity,
+                        ping_interval,
+                    )), entity, producer)
                     stat_attempted += 1
                 else:
                     await producer.entity_discarded(entity)
                     stat_discarded += 1
 
-            self.__pinger_logger.debug('    ::from selected pingables: %d attempted, %d discarded', stat_attempted, stat_discarded)
+            self.__pinger_logger.debug('    :: from selected pingables: %d attempted, %d discarded', stat_attempted, stat_discarded)
 
+            # waiting loop
+            done = ()
             while True:
                 # now clean the list
                 pruned_tasks = {}
@@ -115,16 +156,29 @@ class Pinger(SchedulerComponentBase):
                 tasks = pruned_tasks
                 self.__pinger_logger.debug('    :: remaining ping tasks: %d', len(tasks))
 
+                # promise waiter only matters within one loop iteration
+                if promise_wait_task is not None:
+                    promise_wait_task.cancel()
+                    promise_wait_task = None
+
                 # now wait
+                nowtime = global_timestamp_datetime()
+                if len(promised_ping_intervals) > 0:
+                    min_promise_interval_remaining = min(interval - (nowtime - start_datatime).total_seconds() for _, (start_datatime, interval) in promised_ping_intervals.items())
+                    if min_promise_interval_remaining <= 0:
+                        # instantly break this waiting loop: we are late on promises
+                        break
+                    promise_wait_task = asyncio.create_task(asyncio.sleep(min_promise_interval_remaining))
+
                 if poll_task is None:
                     poll_task = asyncio.create_task(asyncio.sleep(self.__ping_interval * self.__ping_interval_mult))
                 if wakeup_task is None:
                     wakeup_task = asyncio.create_task(self._poke_event.wait())
-                sleeping_tasks = (stop_task, wakeup_task, poll_task)
 
                 done, _ = await asyncio.wait(
-                    sleeping_tasks + tuple(x[0] for x in tasks.values()),  # wait on stopping tasks OR any ping to finish
-                    timeout=2 * self.__ping_interval * self.__ping_interval_mult,  # this timeout is really arbitrary, we don't need it really
+                    (stop_task, wakeup_task, poll_task)  # wait on stopping tasks
+                    + tuple(x[0] for x in tasks.values())  # OR on any ping to finish
+                    + ((promise_wait_task,) if promise_wait_task is not None else ()),  # OR on promise
                     return_when=asyncio.FIRST_COMPLETED
                 )
                 if len(done) == 0:  # timeout happened
@@ -134,6 +188,14 @@ class Pinger(SchedulerComponentBase):
                     wakeup_task = None
                 if poll_task in done:
                     poll_task = None
+
+                if promise_wait_task in done:
+                    promise_wait_task = None
+                    # yes, not breaking waiting loop, but allow just one more min_promise_interval_remaining check,
+                    # and break if it's actually <= 0
+                    # this is to allow possibility for imprecise sleeps
+                    continue
+
                 if wakeup_task is None or poll_task is None:
                     break  # and continue outer while loop if stop not set
 
@@ -152,6 +214,9 @@ class Pinger(SchedulerComponentBase):
             wakeup_task.cancel()
         if not stop_task.done():
             stop_task.cancel()
+        if promise_wait_task and not promise_wait_task.done():
+            promise_wait_task.cancel()
+            promise_wait_task = None
         if len(tasks) > 0:
             self.__pinger_logger.debug(f'waiting for {len(tasks)} pinger tasks...')
             t_done, t_pending = await asyncio.wait([x[0] for x in tasks.values()], return_when=asyncio.ALL_COMPLETED, timeout=5)
