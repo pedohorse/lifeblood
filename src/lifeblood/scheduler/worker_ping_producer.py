@@ -6,6 +6,7 @@ from ..enums import WorkerState, WorkerPingState, WorkerPingReply
 from .ping_producer_base import PingEntity, PingProducerBase, PingEntityIdleness, PingReply
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
+from ..timestamp import global_timestamp_int
 from .data_access import DataAccess
 from .scheduler_core import SchedulerCore
 
@@ -53,7 +54,7 @@ class WorkerPingProducer(PingProducerBase):
         self.__pinger_logger = logging.get_logger('scheduler.worker_pinger.processor')
 
     async def __check_lastseen_and_drop_invocations(self, wid: int, last_seen: int, *, switch_state_on_reset: WorkerState):
-        if last_seen is not None and time.time() - last_seen < 64:  # TODO: make this time a configurable parameter
+        if last_seen is not None and global_timestamp_int() - last_seen < 64:  # TODO: make this time a configurable parameter
             return False
 
         self.__pinger_logger.info(f'    :: Resetting worker state to {switch_state_on_reset}')
@@ -79,7 +80,7 @@ class WorkerPingProducer(PingProducerBase):
             row = dict(row)
             for cached_field in ('last_seen', 'last_checked', 'ping_state'):
                 row[cached_field] = self.__data_access.mem_cache_workers_state[row['id']][cached_field]
-            if row['last_address'] is None or row['ping_state'] == WorkerPingState.CHECKING.value:
+            if row['last_address'] is None:
                 continue
 
             try:
@@ -97,7 +98,7 @@ class WorkerPingProducer(PingProducerBase):
     async def entity_accepted(self, entity: PingEntity):
         assert isinstance(entity, WorkerPingEntity)
         self.__data_access.mem_cache_workers_state[entity.worker_id()]['ping_state'] = WorkerPingState.CHECKING.value
-        self.__data_access.mem_cache_workers_state[entity.worker_id()]['last_checked'] = int(time.time())
+        self.__data_access.mem_cache_workers_state[entity.worker_id()]['last_checked'] = global_timestamp_int()
 
     async def entity_discarded(self, entity: PingEntity):
         assert isinstance(entity, WorkerPingEntity)
@@ -150,7 +151,7 @@ class WorkerPingProducer(PingProducerBase):
             raise NotImplementedError(f'not a known ping_code {ping_code}')
 
         self.__data_access.mem_cache_workers_state[entity.worker_id()]['ping_state'] = WorkerPingState.WORKING.value
-        self.__data_access.mem_cache_workers_state[entity.worker_id()]['last_seen'] = int(time.time())
+        self.__data_access.mem_cache_workers_state[entity.worker_id()]['last_seen'] = global_timestamp_int()
         # if worker was in ERROR state - it's up to worker to reintroduce itself to reset all possible errors, we don't do it here
 
         self.__pinger_logger.debug('    :: %s', ping_code)
