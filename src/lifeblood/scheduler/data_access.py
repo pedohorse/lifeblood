@@ -12,6 +12,7 @@ from ..enums import TaskState, InvocationState
 from ..worker_metadata import WorkerMetadata
 from ..logging import get_logger
 from ..shared_lazy_sqlite_connection import SharedLazyAiosqliteConnection
+from ..timestamp import global_timestamp_int
 from .. import aiosqlite_overlay
 from ..environment_resolver import EnvironmentResolverArguments
 from ..scheduler_config_provider_base import SchedulerConfigProviderBase
@@ -212,7 +213,7 @@ class DataAccess:
             return ret
 
         if creation_timestamp is None:
-            creation_timestamp = int(datetime.utcnow().timestamp())
+            creation_timestamp = global_timestamp_int()
         await con.execute('INSERT OR REPLACE INTO task_group_attributes ("group", "ctime", "creator", "priority") VALUES (?, ?, ?, ?)',
                           (task_group_name, creation_timestamp, creator, priority))
 
