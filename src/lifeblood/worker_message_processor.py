@@ -25,14 +25,6 @@ class WorkerPingHandler(PingGenericHandler):
         self.__worker = worker
         
     async def produce_reply(self, data: dict) -> dict:
-        """
-        """
-        # TODO: implement this shit too (this is an old TODO, not sure what it means any more)
-        # if self.__worker.is_stopping():
-        #     pstats = WorkerPingReply.OFF.value
-        #     pvalue = 0
-        # el
-
         if self.__worker.is_task_running():
             pstatus = WorkerPingReply.BUSY.value
             pvalue = int(self.__worker.task_status() or 0)
