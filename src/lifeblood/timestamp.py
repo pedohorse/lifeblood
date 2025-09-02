@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
+from typing import Union
 
 def global_timestamp_int() -> int:
     """
@@ -23,3 +24,18 @@ def global_timestamp_datetime() -> datetime:
     with persistent origin point
     """
     return datetime.utcnow()
+
+
+def global_timestamp_to_local_datetime(timestamp: Union[int, float, datetime]) -> datetime:
+    """
+    convert global (utc) timestamp to local time datetime
+    """
+    if isinstance(timestamp, (int, float)):
+        ts = datetime.fromtimestamp(timestamp)
+        ts = ts.replace(tzinfo=timezone.utc)
+    elif isinstance(timestamp, datetime):
+        ts = timestamp.replace(tzinfo=timezone.utc)
+    else:
+        raise ValueError(f'wrong timestamp type {type(timestamp)}: {repr(timestamp)}')
+
+    return ts.astimezone()
