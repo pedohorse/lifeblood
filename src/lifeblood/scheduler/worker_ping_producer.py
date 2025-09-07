@@ -131,10 +131,24 @@ class WorkerPingProducer(PingProducerBase):
         # fixing possibly inconsistent worker states
         # this inconsistencies should only occur shortly after scheduler restart
         # due to desync of still working workers and scheduler
-        # TODO: deal with reply_data being unexpected
-        ping_code = WorkerPingReply(reply.reply_data()['status'])
-        # TODO: reply.reply_data()['progress'] is legacy and unused
+        reply_data = reply.reply_data()
+        if 'status' in reply_data:
+            ping_code = WorkerPingReply(reply_data['status'])
+        else:  # unexpected data returned
+            self.__pinger_logger.error(
+                f'worker {entity.worker_id()} at {entity.address()} replied with unexpected data. '
+                f'may be version mismatch? worker consistency cannot be established! data: {reply_data}'
+            )
+            await self.__check_lastseen_and_drop_invocations(
+                entity.worker_id(),
+                self.__data_access.mem_cache_workers_state[entity.worker_id()]['last_seen'],
+                switch_state_on_reset=WorkerState.ERROR,
+            )
+            return
+
         workerstate = await self.__scheduler.get_worker_state(entity.worker_id())
+        # NOTE: this worker state MAY differ from worker state at the moment of ping creation!
+        #  therefore strict actions MUST NOT be taken here without another strict check
         if workerstate == WorkerState.OFF:
             # there can be race conditions (theoretically) if worker saz goodbye right after getting the ping, so we get OFF state from db. or all vice-versa
             # so there is nothing but warnings here. inconsistencies should be reliably resolved by worker
@@ -143,10 +157,14 @@ class WorkerPingProducer(PingProducerBase):
             elif ping_code == WorkerPingReply.BUSY:
                 self.__pinger_logger.warning(f'worker {entity.worker_id()} is marked off, but pinged as BUSY... have scheduler been restarted recently? waiting for worker to ping me and resolve this inconsistency...')
 
-        if ping_code == WorkerPingReply.IDLE:  # TODO, just like above - add warnings, but leave solving to worker
-            pass
+        if ping_code == WorkerPingReply.IDLE:
+            if workerstate not in (WorkerState.IDLE, WorkerState.INVOKING):
+                self.__pinger_logger.debug('pinger edge case: code is IDLE, but current worker state is not IDLE/INVOKING. '
+                                           'this must only happen when pinged exactly at worker state change, as race with pinger is allowed there')
         elif ping_code == WorkerPingReply.BUSY:
-            pass
+            if workerstate != WorkerState.BUSY:
+                self.__pinger_logger.debug('pinger edge case: code is BUSY, but current worker state is not BUSY. '
+                                           'this must only happen when pinged exactly at worker state change, as race with pinger is allowed there')
         else:
             raise NotImplementedError(f'not a known ping_code {ping_code}')
 
