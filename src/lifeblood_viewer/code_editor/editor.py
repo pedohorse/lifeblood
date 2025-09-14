@@ -152,13 +152,12 @@ class QTextEditButTabsAreSpaces(QPlainTextEdit):
             return
         self.__last_highligh_block_num = cur.blockNumber()
 
-        ## TODO: this bug will be fixed in next PySide6 version
-        # linesel = QTextEdit.ExtraSelection()
-        # linesel.format.setBackground(QColor('#2B2B2F'))
-        # linesel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
-        # linesel.cursor = QTextCursor(cur)
-        # linesel.cursor.clearSelection()
-        # self.setExtraSelections([linesel])
+        linesel = QTextEdit.ExtraSelection()
+        linesel.format.setBackground(QColor('#2B2B2F'))
+        linesel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+        linesel.cursor = QTextCursor(cur)
+        linesel.cursor.clearSelection()
+        self.setExtraSelections([linesel])
 
 
 class StringParameterEditor(QWidget):
