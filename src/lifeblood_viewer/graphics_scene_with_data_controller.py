@@ -126,7 +126,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
             self.__ui_connection_thread = None
             self.__ui_connection_worker = worker
 
-        self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update, type=Qt.ConnectionType.BlockingQueuedConnection)
+        self.__ui_connection_worker.graph_full_update.connect(self.graph_full_update)
         self.__ui_connection_worker.tasks_full_update.connect(self.tasks_full_update)
         self.__ui_connection_worker.tasks_events_arrived.connect(self.tasks_process_events)
         self.__ui_connection_worker.db_uid_update.connect(self.db_uid_update)
