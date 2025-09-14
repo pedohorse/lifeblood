@@ -1,9 +1,9 @@
-from datetime import datetime
 from dataclasses import dataclass
 from lifeblood.ui_protocol_data import WorkerData, WorkerBatchData, WorkerResources, WorkerMetadata
 from lifeblood.enums import WorkerType, WorkerState
 from lifeblood.text import nice_memory_formatting
 from lifeblood.logging import get_logger
+from lifeblood.timestamp import global_timestamp_to_local_datetime
 from lifeblood.misc import performance_measurer
 from lifeblood_viewer.connection_worker import SchedulerConnectionWorker
 from lifeblood_viewer.models.multiple_sort_model import MultipleFilterSortProxyModel
@@ -331,7 +331,7 @@ class WorkerModel(QAbstractItemModel):
         if col_name == 'last_seen':
             if role == self.SORT_ROLE:  # for sorting
                 return worker.last_seen_timestamp
-            return datetime.fromtimestamp(worker.last_seen_timestamp).strftime('%H:%M:%S %d.%m.%Y')
+            return global_timestamp_to_local_datetime(worker.last_seen_timestamp).strftime('%H:%M:%S %d.%m.%Y')
         if col_name == 'worker_type':
             if worker.type is None:
                 return None
@@ -533,11 +533,11 @@ class WorkerModel(QAbstractItemModel):
                     self.beginRemoveRows(parent_index, self.__wid_order[hwid].index(wid), self.__wid_order[hwid].index(wid))
                     self.__workers.pop(wid)
                     self.__wid_order[hwid].remove(wid)
-                    if len(self.__wid_order[hwid]) == 0:
-                        hwids_to_remove.add(hwid)
-                    else:
-                        hwids_to_update.add(hwid)
                     self.endRemoveRows()
+                if len(self.__wid_order[hwid]) == 0:
+                    hwids_to_remove.add(hwid)
+                else:
+                    hwids_to_update.add(hwid)
             for hwid in hwids_to_remove:
                 assert len(self.__wid_order[hwid]) == 0
                 self.beginRemoveRows(QModelIndex(), self.__hwid_order.index(hwid), self.__hwid_order.index(hwid))

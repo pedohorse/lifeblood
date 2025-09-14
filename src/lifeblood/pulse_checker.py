@@ -20,6 +20,7 @@ class PulseChecker:
         self.__miss_reported = False
         self.__logger = get_logger('Pulse')
 
+        self.pulse_function: Callable[[SchedulerWorkerControlClient], Coroutine] = self._default_pulse_send_function
         self.__on_fail_callbacks = set()
 
     async def start(self):
@@ -45,6 +46,10 @@ class PulseChecker:
     def remove_pulse_fail_callback(self, async_func: Callable[[], Coroutine]):
         self.__on_fail_callbacks.remove(async_func)
 
+    @staticmethod
+    async def _default_pulse_send_function(client: SchedulerWorkerControlClient):
+        return await client.pulse()
+
     async def pinger(self):
         stop_waiter = asyncio.create_task(self.__stop_event.wait())
         while not self.__stop_event.is_set():
@@ -54,7 +59,7 @@ class PulseChecker:
 
             try:
                 with SchedulerWorkerControlClient.get_scheduler_control_client(self.__address, self.__message_processor) as client:  # type: SchedulerWorkerControlClient
-                    await client.pulse()
+                    await self.pulse_function(client)
                     self.__misses = 0
                     if self.__miss_reported:
                         self.__logger.info('pulse restored')
@@ -64,7 +69,7 @@ class PulseChecker:
                 self.__logger.warning(f'scheduler missed pulse, current miss count: {self.__misses}')
 
             if self.__misses >= self.__maximum_misses:
-                self.__logger.warning(f'shceduler missed {self.__misses} pulses, reporting')
+                self.__logger.warning(f'scheduler missed {self.__misses} pulses, running fail callbacks')
                 self.__miss_reported = True
                 for func in self.__on_fail_callbacks:
                     await func()

@@ -20,6 +20,7 @@ from ..invocationjob import Invocation, InvocationJob, Requirements
 from ..environment_resolver import EnvironmentResolverArguments
 from ..broadcasting import create_broadcaster
 from ..simple_worker_pool import SimpleWorkerPool
+from ..timestamp import global_timestamp_int
 from ..nethelpers import get_broadcast_addr_for, all_interfaces
 from ..worker_metadata import WorkerMetadata
 from ..taskspawn import TaskSpawn
@@ -40,6 +41,7 @@ from ..worker_pool_message_processor import WorkerPoolMessageProcessor
 from .data_access import DataAccess
 from .scheduler_component_base import SchedulerComponentBase
 from .pinger import Pinger
+from .ping_producer_base import PingProducerBase
 from .task_processor import TaskProcessor
 from .ui_state_accessor import UIStateAccessor
 
@@ -67,6 +69,8 @@ class SchedulerCore(NodeGraphHolderBase):
                  message_processor_factory: Callable[["SchedulerCore", List[DirectAddress]], MessageProcessorBase],
                  legacy_task_protocol_factory: Callable[["SchedulerCore"], asyncio.StreamReaderProtocol],
                  ui_protocol_factory: Callable[["SchedulerCore"], asyncio.StreamReaderProtocol],
+                 data_access: DataAccess,
+                 ping_producers: Iterable[PingProducerBase],
                  ):
         """
         TODO: add a docstring
@@ -96,9 +100,7 @@ class SchedulerCore(NodeGraphHolderBase):
         if not self.__db_path.startswith('file:'):  # if schema is used - we do not modify the db uri in any way
             self.__db_path = os.path.realpath(os.path.expanduser(self.__db_path))
         self.__logger.debug(f'starting scheduler with database: {self.__db_path}')
-        self.data_access: DataAccess = DataAccess(
-            config_provider=self.__config_provider,
-        )
+        self.data_access: DataAccess = data_access
         ##
 
         self.__use_external_log = self.__config_provider.external_log_location() is not None
@@ -112,7 +114,7 @@ class SchedulerCore(NodeGraphHolderBase):
             if not os.access(self.__external_log_location, os.X_OK | os.W_OK):
                 raise RuntimeError('cannot write to external log location provided')
 
-        self.__pinger: Pinger = Pinger(self)
+        self.__pinger: Pinger = Pinger(self, ping_producers=list(ping_producers))
         self.task_processor: TaskProcessor = TaskProcessor(self)
         self.ui_state_access: UIStateAccessor = UIStateAccessor(self)
 
@@ -188,6 +190,9 @@ class SchedulerCore(NodeGraphHolderBase):
         :return:
         """
         self.task_processor.poke()
+
+    def poke_pinger(self):
+        self.__pinger.poke()
 
     def _component_changed_mode(self, component: SchedulerComponentBase, mode: SchedulerMode):
         if component == self.task_processor and mode == SchedulerMode.DORMANT:
@@ -596,12 +601,12 @@ class SchedulerCore(NodeGraphHolderBase):
         need_commit = False
         for invoc_row in all_invoc_rows:  # mark all (probably single one) invocations
             need_commit = True
-            self.__logger.debug("fixing dangling invocation %d" % (invoc_row['id'],))
+            self.__logger.warning("fixing unresponsive invocation %d for worker %d" % (invoc_row['id'], worker_id))
             await con.execute('UPDATE invocations SET "state" = ? WHERE "id" = ?',
                               (InvocationState.FINISHED.value, invoc_row['id']))
             await con.execute('UPDATE tasks SET "state" = ? WHERE "id" = ?',
                               (TaskState.READY.value, invoc_row['task_id']))
-            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id']))  # ui event
+            con.add_after_commit_callback(self.ui_state_access.scheduler_reports_task_updated, TaskDelta(invoc_row['task_id'], state=TaskState.READY))  # ui event
         if also_update_resources:
             also_need_commit = await self._update_worker_resouce_usage(worker_id, connection=con)
             need_commit = need_commit or also_need_commit
@@ -817,7 +822,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 ping_state = WorkerPingState.OFF.value
                 state = WorkerState.OFF.value
 
-            tstamp = int(time.time())
+            tstamp = global_timestamp_int()
             if worker_row is not None:
                 await self.reset_invocations_for_worker(worker_row['id'], con=con, also_update_resources=False)  # we update later
                 await con.execute('UPDATE "workers" SET '
@@ -929,6 +934,7 @@ class SchedulerCore(NodeGraphHolderBase):
             await con.commit()
         self.__logger.debug(f'finished worker reported added: {addr}')
         self.poke_task_processor()
+        self.poke_pinger()
 
     # TODO: add decorator that locks method from reentry or smth
     #  potentially a worker may report done while this works,
@@ -1309,7 +1315,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 'VALUES (?, ?, ?, ?, ?, ?)',
                 (
                     task_group_name,
-                    int(datetime.utcnow().timestamp()),
+                    global_timestamp_int(),
                     TaskGroupArchivedState.NOT_ARCHIVED.value,
                     creator,
                     priority,
@@ -1655,7 +1661,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
             for group_name in groups_to_set:
                 await con.execute('INSERT INTO task_groups (task_id, "group") VALUES (?, ?)', (task_id, group_name))
-                await con.execute('INSERT OR IGNORE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, int(datetime.utcnow().timestamp())))
+                await con.execute('INSERT OR IGNORE INTO task_group_attributes ("group", "ctime") VALUES (?, ?)', (group_name, global_timestamp_int()))
             for group_name in groups_to_del:
                 await con.execute('DELETE FROM task_groups WHERE task_id = ? AND "group" = ?', (task_id, group_name))
             con.add_after_commit_callback(self.ui_state_access.scheduler_reports_tasks_removed_from_group, [task_id], groups_to_del)  # ui event
@@ -1957,7 +1963,7 @@ class SchedulerCore(NodeGraphHolderBase):
         async def _inner_shit() -> Tuple[Tuple[SpawnStatus, Optional[int]], ...]:
             result = []
             new_tasks = []
-            current_timestamp = int(datetime.utcnow().timestamp())
+            current_timestamp = global_timestamp_int()
             assert len(newtasks) > 0, 'expectations failure'
             if not con.in_transaction:  # IF this is called from multiple async tasks with THE SAME con - this may cause race conditions
                 await con.execute('BEGIN IMMEDIATE')
@@ -2174,7 +2180,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
         return self.message_processor().listening_address(to)
 
-    def server_message_addresses(self) -> Tuple[AddressChain]:
+    def server_message_addresses(self) -> Tuple[AddressChain, ...]:
         if self.__message_processor is None:
             raise RuntimeError('cannot get listening address of a non started server')
 

@@ -132,13 +132,17 @@ class MessageProcessorBase(ComponentBase):
         """
         return self.__address_router.select_source_for(self.__addresses, for_this)
 
-    def listening_addresses(self) -> Tuple[DirectAddress]:
+    def listening_addresses(self) -> Tuple[DirectAddress, ...]:
         return self.__addresses
 
     def forwarded_messages_count(self):
         return self.__forwarded_messages_count
 
     def add_message_handler(self, handler: MessageHandlerBase):
+        """
+        Note: processor owns given handler and is responsible for it's deinitialization
+        do not share same handler instances between processors
+        """
         if handler not in self.__handlers:
             self.__handlers.append(handler)
 
@@ -191,6 +195,9 @@ class MessageProcessorBase(ComponentBase):
             server.wait_till_stopped()
             for server in servers
         ))
+        # clear handler states after all servers are down and cannot generate any messages
+        for handler in self.__handlers:
+            await handler.clear_internal_state()
         await self._post_receiver_stop_waited()
         self._logger.info('message server stopped')
         if exception_to_reraise:

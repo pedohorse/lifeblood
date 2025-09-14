@@ -903,7 +903,7 @@ class WorkerCore:
                 self.__logger.warning('scheduler replied it thinks i\'m ERROR, but i\'m doing fine. probably something is wrong with the network. waiting for scheduler to resolve the problem')
                 # no we don't reintroduce - error state on scheduler side just means he won't give us tasks for now
                 # and since error is most probably due to network - it will either resolve itself, or there is no point reintroducing if connection cannot be established anyway
-            elif result is not None:
+            if result is not None:
                 self.__ping_missed = 0
 
     def worker_message_address(self) -> DirectAddress:
