@@ -104,10 +104,12 @@ class DataAccess:
                 metadata = cur.fetchone()  # there should be exactly one single row.
                 cur.close()
             self.__db_uid = struct.unpack('>Q', struct.pack('>q', metadata['unique_db_id']))[0]  # reinterpret signed as unsigned
+        con.close()
 
         # ensure database is initialized
         with sqlite3.connect(self.__db_path) as con:
             con.executescript(sql_init_script)
+        con.close()
 
         # ensure global data exists
         with sqlite3.connect(self.__db_path) as con:
@@ -122,6 +124,7 @@ class DataAccess:
                 cur.close()
                 con.execute('INSERT INTO global_data (next_split_id) VALUES (?)', (next_split_id,))
                 con.commit()
+        con.close()
 
         # update resource table straight away
         # for now the logic is to keep existing columns
@@ -169,6 +172,7 @@ class DataAccess:
 
                 con.execute(f'DROP TABLE IF EXISTS "{dev_type_table_name}"')
                 con.execute(f'CREATE TABLE "{dev_type_table_name}" ({",".join(dev_res_sql_parts)})')
+        con.close()
 
     async def create_node(self, node_type: str, node_name: str, *, con: Optional[aiosqlite.Connection] = None) -> int:
         # TODO: scheduler must use this instead of creating directly
@@ -638,6 +642,7 @@ CREATE TABLE IF NOT EXISTS "resources" (
             cur = con.execute('PRAGMA integrity_check')
             if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
                 raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
+            cur.close()
             return True
         if to_version == 6:
             # priority and ordering parameters for tasks were added
@@ -706,6 +711,7 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
             cur = con.execute('PRAGMA integrity_check')
             if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
                 raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
+            cur.close()
             return True
 
 

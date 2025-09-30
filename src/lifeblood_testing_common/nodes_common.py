@@ -195,6 +195,7 @@ def purge_db():
     testdbpath.touch()
     with sqlite3.connect('test_swc.db') as con:
         con.executescript(sql_init_script)
+    con.close()
 
 
 class TestCaseBase(IsolatedAsyncioTestCase):

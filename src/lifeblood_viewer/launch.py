@@ -57,6 +57,7 @@ def start_viewer(config_path=None):
             posy = row['posy']
             if row['scene_x'] is not None:
                 scene_rect = QRectF(row['scene_x'], row['scene_y'], 1, 1)
+    con.close()
 
     widget = LifebloodViewer(config_path)
     if hgt is not None:
@@ -77,7 +78,7 @@ def start_viewer(config_path=None):
                     ('main', *widget.size().toTuple(), *widget.pos().toTuple(),
                      *scene_rect.topLeft().toTuple(), *scene_rect.size().toTuple()))
         con.commit()
-
+    con.close()
 
 def console_entry_point():
     sys.exit(main(sys.argv[1:]))

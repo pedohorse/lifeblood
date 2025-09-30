@@ -415,6 +415,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 row = cur.fetchone()
                 if row is not None:
                     return row['posx'], row['posy']
+            con.close()
 
         raise ValueError(f'node id {node_id} has no stored position')
 
@@ -430,6 +431,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 row = cur.fetchone()
                 if row is not None:
                     return row['posx'], row['posy']
+            con.close()
 
     def node_types(self) -> MappingProxyType[str, NodeTypeMetadata]:
         return MappingProxyType(self.__cached_nodetypes)
@@ -576,6 +578,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
             self.__nodes_table_name = f'nodes_{self.__db_uid}'
             with sqlite3.connect(self.__db_path) as con:
                 con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
+            con.close()
             self.reset_undo_stack()
 
     @Slot(object)
@@ -1114,6 +1117,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 con.execute(f'INSERT OR REPLACE INTO "{self.__nodes_table_name}" ("id", "posx", "posy") '
                             f'VALUES (?, ?, ?)', (item.get_id(), *item.pos().toTuple()))
             con.commit()
+        con.close()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         for item in self.selectedItems():

@@ -22,6 +22,7 @@ PRAGMA foreign_key_check;
 VACUUM;
         ''')
         con.commit()
+    con.close()
 
 
 def info_db(db_path):
@@ -35,6 +36,7 @@ def info_db(db_path):
         worker_cnt = cur.fetchone()[0]
         cur.execute('SELECT count("group") FROM task_group_attributes')
         groups_cnt = cur.fetchone()[0]
+    con.close()
 
     return {'workers count': worker_cnt,
             'tasks count': task_cnt,

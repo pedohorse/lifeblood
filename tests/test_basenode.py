@@ -1,4 +1,6 @@
 import os.path
+import asyncio
+
 import random
 import sqlite3
 from unittest import IsolatedAsyncioTestCase
