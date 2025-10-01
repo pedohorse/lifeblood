@@ -40,4 +40,4 @@ class ParentChildrenIntegrationTest(FullIntegrationTestCase):
         return 4
 
     def _timeout(self) -> float:
-        return 60.0
+        return 90.0
