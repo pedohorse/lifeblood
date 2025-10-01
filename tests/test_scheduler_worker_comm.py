@@ -364,6 +364,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 cur = con.cursor()
                 cur.execute('SELECT count("id") FROM workers')
                 cnt = cur.fetchone()[0]
+                cur.close()
                 if cnt > 0:
                     self.assertEqual(1, cnt)
                     break
@@ -408,6 +409,7 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 cur = con.cursor()
                 cur.execute('SELECT "state" FROM workers WHERE "id" = 1')
                 sstate = WorkerState(cur.fetchone()[0])
+                cur.close()
             con.close()
 
             if state == 0:
