@@ -991,7 +991,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         #  On top of that there is logical DPI for font drawing, and DMs (mostly windows) change THAT one
         #  when you change scale - devicePixelRatio stays same, but logicalDotsPerInch change
         #  Why default 96? dunno, it seem to be the case for x11, wayland, windows, dunno about mac
-        imgui_io.display_fb_scale = (self.screen().devicePixelRatio(),) * 2
+        imgui_io.display_fb_scale = (self.devicePixelRatioF(),) * 2
         imgui_io.font_global_scale = (self.screen().logicalDotsPerInch() / 96.0)
 
         # start new frame context
