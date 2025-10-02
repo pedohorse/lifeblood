@@ -237,6 +237,9 @@ class SchedulerConnectionWorker(PySide6.QtCore.QObject):
                     return None
                 await asyncio.sleep(0.5)
 
+        async def _await_coros(*coros):
+            return await asyncio.wait([asyncio.create_task(c) for c in coros], return_when=asyncio.FIRST_COMPLETED)
+
         config = get_config('viewer')
         if config.get_option_noasync('viewer.listen_to_broadcast', True):
             sche_addr, sche_port = None, None
@@ -261,9 +264,9 @@ class SchedulerConnectionWorker(PySide6.QtCore.QObject):
             if sche_addr is None:
                 logger.info('waiting for scheduler broadcast...')
                 while True:
-                    tasks = asyncio.run(asyncio.wait((
+                    tasks = asyncio.run(_await_coros(
                         await_broadcast('lifeblood_scheduler'),
-                        _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
+                        _interrupt_waiter()))
 
                     logger.debug(tasks)
                     message = list(tasks[0])[0].result()
