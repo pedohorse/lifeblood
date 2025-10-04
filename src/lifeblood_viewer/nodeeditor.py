@@ -31,7 +31,7 @@ import PySide6.QtGui
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QMessageBox, QMenu, QGraphicsView, QDialog, QLineEdit, QInputDialog, QTextEdit, QApplication, QVBoxLayout
 from PySide6.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
-from PySide6.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard, QShortcut
+from PySide6.QtGui import QSurfaceFormat, QGuiApplication, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard, QShortcut
 
 from .widgets.dialogs.message_dialog import MessageWithSelectableText
 from .widgets.dialogs.create_task_dialog import CreateTaskDialog
@@ -436,7 +436,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         Nodes are not additionally renamed, as they are with standard copy operation
         """
         snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
-        QClipboard().setText(snippet.serialize(ascii=True).decode('latin1'), QClipboard.Mode.Clipboard)
+        QGuiApplication.clipboard().setText(snippet.serialize(ascii=True).decode('latin1'), QClipboard.Mode.Clipboard)
         self.show_message('Nodes copied to clipboard', 2)
 
     @Slot()
@@ -521,7 +521,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         """
         if pos is None:
             pos = self.mapToScene(self.mapFromGlobal(QCursor.pos()))
-        clipdata = QClipboard().text(QClipboard.Mode.Clipboard)
+        clipdata = QGuiApplication.clipboard().text(QClipboard.Mode.Clipboard)
         if clipdata is None:
             return
         try:
