@@ -365,10 +365,10 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 cur.execute('SELECT count("id") FROM workers')
                 cnt = cur.fetchone()[0]
                 cur.close()
-                if cnt > 0:
-                    self.assertEqual(1, cnt)
-                    break
             con.close()
+            if cnt > 0:
+                self.assertEqual(1, cnt)
+                break
             await asyncio.sleep(0.1)
         print('worker connected to scheduler')
 
