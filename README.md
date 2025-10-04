@@ -11,13 +11,15 @@
 3. [Installation](#installation)
 
 ## Lifeblood
-Lifeblood is a generic task management software.
+Lifeblood is a generic execution task management and workflow creation software.
 
-In terms of CG industry Lifeblood is a render farm manager, but actually it's more than that,  
+In Lifeblood you define with a node graph how tasks need to be processed.
+
+In terms of CG industry Lifeblood can be simplified to be a render farm manager, but actually it's much more than that,  
 It is a universal task automation tool.
 
 Rendering, simulating, caching, generating previews, publishing, reporting, converting, 
-copying, processing - all those are tasks that can be automated and connected.
+copying, processing - all those are tasks that can be automated and connected using visual and somewhat intuitive node graph.
 
 This [series of posts](https://www.patreon.com/posts/different-4-82326359) show 
 how Lifeblood can be used not just like a renderfarm manager, but can run all of studio's pipeline.
