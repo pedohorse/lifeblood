@@ -7,7 +7,7 @@ from .graphics_scene import GraphicsScene
 from .scene_data_controller import SceneDataController
 from lifeblood.snippets import NodeSnippetData
 from lifeblood.node_parameters import ParameterLocked, ParameterReadonly
-from PySide2.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from typing import Callable, Optional, Tuple, Iterable
 

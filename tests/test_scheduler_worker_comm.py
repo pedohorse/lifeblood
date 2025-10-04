@@ -26,6 +26,7 @@ def purge_db():
     testdbpath.touch()
     with sqlite3.connect('test_swc.db') as con:
         con.executescript(sql_init_script)
+    con.close()
 
 
 class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
@@ -363,9 +364,11 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 cur = con.cursor()
                 cur.execute('SELECT count("id") FROM workers')
                 cnt = cur.fetchone()[0]
-                if cnt > 0:
-                    self.assertEqual(1, cnt)
-                    break
+                cur.close()
+            con.close()
+            if cnt > 0:
+                self.assertEqual(1, cnt)
+                break
             await asyncio.sleep(0.1)
         print('worker connected to scheduler')
 
@@ -406,6 +409,8 @@ class SchedulerWorkerCommSameProcess(IsolatedAsyncioTestCase):
                 cur = con.cursor()
                 cur.execute('SELECT "state" FROM workers WHERE "id" = 1')
                 sstate = WorkerState(cur.fetchone()[0])
+                cur.close()
+            con.close()
 
             if state == 0:
                 if sstate == WorkerState.INVOKING:

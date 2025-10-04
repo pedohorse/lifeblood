@@ -26,11 +26,12 @@ from lifeblood.invocationjob import InvocationJob
 from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 
-import PySide2.QtCore
-import PySide2.QtGui
-from PySide2.QtWidgets import QApplication, QDialog, QGraphicsView, QInputDialog, QLineEdit, QMenu, QMessageBox, QOpenGLWidget, QShortcut, QTextEdit, QVBoxLayout
-from PySide2.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
-from PySide2.QtGui import QSurfaceFormat, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard
+import PySide6.QtCore
+import PySide6.QtGui
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QMessageBox, QMenu, QGraphicsView, QDialog, QLineEdit, QInputDialog, QTextEdit, QApplication, QVBoxLayout
+from PySide6.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
+from PySide6.QtGui import QSurfaceFormat, QGuiApplication, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard, QShortcut
 
 from .widgets.dialogs.message_dialog import MessageWithSelectableText
 from .widgets.dialogs.create_task_dialog import CreateTaskDialog
@@ -53,9 +54,9 @@ _in_debug_mode = logger.isEnabledFor(logging.DEBUG)
 
 def call_later(callable, *args, **kwargs):
     if len(args) == 0 and len(kwargs) == 0:
-        PySide2.QtCore.QTimer.singleShot(0, callable)
+        PySide6.QtCore.QTimer.singleShot(0, callable)
     else:
-        PySide2.QtCore.QTimer.singleShot(0, lambda: callable(*args, **kwargs))
+        PySide6.QtCore.QTimer.singleShot(0, lambda: callable(*args, **kwargs))
 
 
 class QOpenGLWidgetWithSomeShit(QOpenGLWidget):
@@ -110,13 +111,17 @@ class MenuSeparatorItem:
 
 
 class Shortcutable:
-    def __init__(self, config_name):
+    def __init__(self, config_name: Optional[str] = None):
+        super().__init__()
         assert isinstance(self, QObject)
         self.__shortcuts: Dict[str, QShortcut] = {}
         self.__shortcut_contexts: Dict[str, Set[str]] = {}
-        self.__config = get_config(config_name)
+        self.__config = get_config(config_name) if config_name is not None else None
 
         self.__context_name = 'main'
+
+    def set_shortcut_config_by_name(self, config_name: str):
+        self.__config = get_config(config_name)
 
     def add_shortcut(self, action: str, context: str, shortcut: str, callback: Callable):
         """
@@ -126,9 +131,10 @@ class Shortcutable:
             logger.error(f'action "{action}" is already defined, ignoring')
             return
 
-        shortcut = self.__config.get_option_noasync(f'shortcuts.{action}', shortcut)
+        if self.__config is not None:
+            shortcut = self.__config.get_option_noasync(f'shortcuts.{action}', shortcut)
 
-        self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, shortcutContext=Qt.WidgetShortcut)
+        self.__shortcuts[action] = QShortcut(QKeySequence(shortcut), self, None, None, Qt.ShortcutContext.WidgetShortcut)
         logger.debug(f'adding shortcut: {self.__shortcuts[action]}, {shortcut}')
         self.__shortcut_contexts.setdefault(action, set()).add(context)
         self.__shortcuts[action].activated.connect(callback)
@@ -175,20 +181,21 @@ class Shortcutable:
 
 class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     def __init__(self, db_path: str = None, worker=None, parent=None):
-        super(NodeEditor, self).__init__(parent=parent)
-        # PySide's QWidget does not call super, so we call explicitly
-        Shortcutable.__init__(self, 'viewer')
+        super().__init__(parent=parent)
+        assert parent is self.parent(), 'probably pyside bug with multiple inheritance and arg handling'
+
+        self.set_shortcut_config_by_name('viewer')
 
         self.__overlay_message = FlashyLabel(parent=self)
 
         self.__oglwidget = QOpenGLWidgetWithSomeShit()
         self.setViewport(self.__oglwidget)
-        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)
         self.setMouseTracking(True)
-        self.setDragMode(self.RubberBandDrag)
+        self.setDragMode(self.DragMode.RubberBandDrag)
 
-        self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
-        self.setCacheMode(QGraphicsView.CacheBackground)
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
+        self.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
         self.__view_scale = 0.0
 
         self.__ui_panning_lastpos = None
@@ -201,7 +208,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         item_producer.set_data_controller(self.__scene)
 
         self.setScene(self.__scene)
-        #self.__update_timer = PySide2.QtCore.QTimer(self)
+        #self.__update_timer = PySide6.QtCore.QTimer(self)
         #self.__update_timer.timeout.connect(lambda: self.__scene.invalidate(layers=QGraphicsScene.ForegroundLayer))
         #self.__update_timer.setInterval(50)
         #self.__update_timer.start()
@@ -363,7 +370,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
     def _window_opened(self, window: ImguiWindow):
         self.__opened_windows.add(window)
-        PySide2.QtCore.QTimer.singleShot(0, self.resetCachedContent)  # this ensures foreground is redrawn, so window's draw is actually called
+        PySide6.QtCore.QTimer.singleShot(0, self.resetCachedContent)  # this ensures foreground is redrawn, so window's draw is actually called
 
     def _window_closed(self, window: ImguiWindow):
         if window not in self.__opened_windows:
@@ -429,7 +436,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         Nodes are not additionally renamed, as they are with standard copy operation
         """
         snippet = UiNodeSnippetData.from_viewer_nodes([x for x in self.__scene.selectedItems() if isinstance(x, Node)])
-        QClipboard().setText(snippet.serialize(ascii=True).decode('latin1'), QClipboard.Clipboard)
+        QGuiApplication.clipboard().setText(snippet.serialize(ascii=True).decode('latin1'), QClipboard.Mode.Clipboard)
         self.show_message('Nodes copied to clipboard', 2)
 
     @Slot()
@@ -444,7 +451,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             return
 
         if preset_label is None:
-            preset_label, good = QInputDialog.getText(self, 'pick a label for this preset', 'label:', QLineEdit.Normal)
+            preset_label, good = QInputDialog.getText(self, 'pick a label for this preset', 'label:', QLineEdit.EchoMode.Normal)
             if not good:
                 return
 
@@ -456,7 +463,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             return
 
         if (preset_label in self.__viewer_presets
-                and QMessageBox.No == QMessageBox.warning(self, 'preset already exists', f'preset with name "{preset_label}" already exists, override?', QMessageBox.Yes | QMessageBox.No)):
+                and QMessageBox.StandardButton.No == QMessageBox.warning(self, 'preset already exists', f'preset with name "{preset_label}" already exists, override?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)):
             return
 
         viewer_preset_path = paths.config_path('presets', 'viewer') / f'{preset_label}.lbp'
@@ -514,7 +521,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         """
         if pos is None:
             pos = self.mapToScene(self.mapFromGlobal(QCursor.pos()))
-        clipdata = QClipboard().text(QClipboard.Clipboard)
+        clipdata = QGuiApplication.clipboard().text(QClipboard.Mode.Clipboard)
         if clipdata is None:
             return
         try:
@@ -752,7 +759,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         self.__imgui_input_blocked = True
         wgt.editingFinished.connect(lambda i=node.get_id(), w=wgt: self.__scene.rename_node(i, w.text()))
         wgt.editingFinished.connect(wgt.deleteLater)
-        wgt.editingFinished.connect(lambda: PySide2.QtCore.QTimer.singleShot(0, self.__unblock_imgui_input))  # polish trick to make this be called after current events are processed, events where keypress might be that we need to skip
+        wgt.editingFinished.connect(lambda: PySide6.QtCore.QTimer.singleShot(0, self.__unblock_imgui_input))  # polish trick to make this be called after current events are processed, events where keypress might be that we need to skip
 
         wgt.textChanged.connect(lambda x: logger.debug(f'sh {self.sizeHint()}'))
         wgt.setText(node.node_name())
@@ -904,8 +911,8 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     def drawBackground(self, painter, rect):
         pen = QPen()
         pen2 = QPen()
-        pen.setStyle(Qt.DotLine)
-        pen2.setStyle(Qt.DotLine)
+        pen.setStyle(Qt.PenStyle.DotLine)
+        pen2.setStyle(Qt.PenStyle.DotLine)
         pen.setColor(QColor.fromRgbF(0.65, 0.65, 0.75, 0.05))
 
         spacing = 150
@@ -944,7 +951,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             for y in range(int(rect.top()/spacing)*spacing, int(rect.bottom())+1, spacing):
                 painter.drawLine(left, y, right, y)
 
-    def drawForeground(self, painter: PySide2.QtGui.QPainter, rect: QRectF) -> None:
+    def drawForeground(self, painter: PySide6.QtGui.QPainter, rect: QRectF) -> None:
         for overlay in self.__overlays:
             overlay.wrapped_draw_scene_foreground(painter, rect)
 
@@ -984,7 +991,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         #  On top of that there is logical DPI for font drawing, and DMs (mostly windows) change THAT one
         #  when you change scale - devicePixelRatio stays same, but logicalDotsPerInch change
         #  Why default 96? dunno, it seem to be the case for x11, wayland, windows, dunno about mac
-        imgui_io.display_fb_scale = (self.screen().devicePixelRatio(),) * 2
+        imgui_io.display_fb_scale = (self.devicePixelRatioF(),) * 2
         imgui_io.font_global_scale = (self.screen().logicalDotsPerInch() / 96.0)
 
         # start new frame context
@@ -1050,34 +1057,34 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         self.__imimpl.render(imgui.get_draw_data())
         painter.endNativePainting()
 
-    def imguiProcessEvents(self, event: PySide2.QtGui.QInputEvent, do_recache=True):
+    def imguiProcessEvents(self, event: PySide6.QtGui.QInputEvent, do_recache=True):
         if self.__imgui_input_blocked:
             return
         if not self.__imgui_init:
             return
         io = imgui.get_io()
-        if isinstance(event, PySide2.QtGui.QMouseEvent):
+        if isinstance(event, PySide6.QtGui.QMouseEvent):
             io.mouse_pos = event.pos().toTuple()
-        elif isinstance(event, PySide2.QtGui.QWheelEvent):
+        elif isinstance(event, PySide6.QtGui.QWheelEvent):
             io.mouse_wheel = event.angleDelta().y() / 100
-        elif isinstance(event, PySide2.QtGui.QKeyEvent):
+        elif isinstance(event, PySide6.QtGui.QKeyEvent):
             #print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
             if event.key() in imgui_key_map:
-                if event.type() == QEvent.KeyPress:
+                if event.type() == QEvent.Type.KeyPress:
                     io.keys_down[imgui_key_map[event.key()]] = True  # TODO: figure this out
                     #io.keys_down[event.key()] = True
-                elif event.type() == QEvent.KeyRelease:
+                elif event.type() == QEvent.Type.KeyRelease:
                     io.keys_down[imgui_key_map[event.key()]] = False
-            elif event.key() == Qt.Key_Control:
-                io.key_ctrl = event.type() == QEvent.KeyPress
+            elif event.key() == Qt.Key.Key_Control:
+                io.key_ctrl = event.type() == QEvent.Type.KeyPress
 
-            if event.type() == QEvent.KeyPress and len(event.text()) > 0:
+            if event.type() == QEvent.Type.KeyPress and len(event.text()) > 0:
                 io.add_input_character(ord(event.text()))
 
-        if isinstance(event, (PySide2.QtGui.QMouseEvent, PySide2.QtGui.QWheelEvent)):
-            io.mouse_down[0] = event.buttons() & Qt.LeftButton
-            io.mouse_down[1] = event.buttons() & Qt.MiddleButton
-            io.mouse_down[2] = event.buttons() & Qt.RightButton
+        if isinstance(event, (PySide6.QtGui.QMouseEvent, PySide6.QtGui.QWheelEvent)):
+            io.mouse_down[0] = event.buttons() & Qt.MouseButton.LeftButton != Qt.MouseButton.NoButton
+            io.mouse_down[1] = event.buttons() & Qt.MouseButton.MiddleButton != Qt.MouseButton.NoButton
+            io.mouse_down[2] = event.buttons() & Qt.MouseButton.RightButton != Qt.MouseButton.NoButton
         if do_recache:
             self.resetCachedContent()
 
@@ -1156,14 +1163,14 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     def scene(self) -> QGraphicsImguiSceneWithDataController:  # this function is here just for typing
         return super().scene()
 
-    def mouseDoubleClickEvent(self, event: PySide2.QtGui.QMouseEvent):
+    def mouseDoubleClickEvent(self, event: PySide6.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
             super(NodeEditor, self).mouseDoubleClickEvent(event)
 
-    def mouseMoveEvent(self, event: PySide2.QtGui.QMouseEvent):
+    def mouseMoveEvent(self, event: PySide6.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_mouse:
             event.accept()
@@ -1177,14 +1184,14 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             else:
                 super(NodeEditor, self).mouseMoveEvent(event)
 
-    def mousePressEvent(self, event: PySide2.QtGui.QMouseEvent):
+    def mousePressEvent(self, event: PySide6.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
-            if event.buttons() & Qt.MiddleButton or (event.buttons() & Qt.LeftButton and event.modifiers() & Qt.AltModifier):
+            if event.buttons() & Qt.MouseButton.MiddleButton or (event.buttons() & Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.AltModifier):
                 self.__ui_panning_lastpos = event.screenPos()
-            elif event.buttons() & Qt.RightButton and self.itemAt(event.pos()) is None:
+            elif event.buttons() & Qt.MouseButton.RightButton and self.itemAt(event.pos()) is None:
                 event.accept()
                 self.show_general_menu(event.globalPos())
             else:
@@ -1194,17 +1201,17 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
                 else:
                     super(NodeEditor, self).mousePressEvent(event)
 
-    def mouseReleaseEvent(self, event: PySide2.QtGui.QMouseEvent):
+    def mouseReleaseEvent(self, event: PySide6.QtGui.QMouseEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_mouse:
             event.accept()
         else:
             super(NodeEditor, self).mouseReleaseEvent(event)
-            if not (event.buttons() & Qt.MiddleButton):
+            if not (event.buttons() & Qt.MouseButton.MiddleButton):
                 self.__ui_panning_lastpos = None
-        PySide2.QtCore.QTimer.singleShot(50, self.resetCachedContent)
+        PySide6.QtCore.QTimer.singleShot(50, self.resetCachedContent)
 
-    def wheelEvent(self, event: PySide2.QtGui.QWheelEvent):
+    def wheelEvent(self, event: PySide6.QtGui.QWheelEvent):
         self.imguiProcessEvents(event)
         imgui_io = imgui.get_io()
         if imgui_io.want_capture_mouse:
@@ -1212,31 +1219,32 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         else:
             event.accept()
             self.__view_scale = max(log2(1.0 / imgui_io.font_global_scale), self.__view_scale - event.angleDelta().y()*0.001)
+            #self.__view_scale = max(0.0, self.__view_scale - event.angleDelta().y()*0.001)
 
             iz = 2**(-self.__view_scale)
             self.setTransform(QTransform.fromScale(iz, iz))
             super(NodeEditor, self).wheelEvent(event)
 
-    def keyPressEvent(self, event: PySide2.QtGui.QKeyEvent):
+    def keyPressEvent(self, event: PySide6.QtGui.QKeyEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_keyboard:
             event.accept()
         else:
             super(NodeEditor, self).keyPressEvent(event)
 
-    def keyReleaseEvent(self, event: PySide2.QtGui.QKeyEvent):
+    def keyReleaseEvent(self, event: PySide6.QtGui.QKeyEvent):
         self.imguiProcessEvents(event)
         if imgui.get_io().want_capture_keyboard:
             event.accept()
         else:
             super(NodeEditor, self).keyReleaseEvent(event)
 
-    def closeEvent(self, event: PySide2.QtGui.QCloseEvent) -> None:
+    def closeEvent(self, event: PySide6.QtGui.QCloseEvent) -> None:
         self.stop()
         super(NodeEditor, self).closeEvent(event)
 
     def event(self, event):
-        if event.type() == QEvent.ShortcutOverride:
+        if event.type() == QEvent.Type.ShortcutOverride:
             if imgui.get_io().want_capture_keyboard:
                 event.accept()
                 return True
@@ -1251,23 +1259,23 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
 
 imgui_key_map = {
-    Qt.Key_Tab: imgui.KEY_TAB,
-    Qt.Key_Left: imgui.KEY_LEFT_ARROW,
-    Qt.Key_Right: imgui.KEY_RIGHT_ARROW,
-    Qt.Key_Up: imgui.KEY_UP_ARROW,
-    Qt.Key_Down: imgui.KEY_DOWN_ARROW,
-    Qt.Key_PageUp: imgui.KEY_PAGE_UP,
-    Qt.Key_PageDown: imgui.KEY_PAGE_DOWN,
-    Qt.Key_Home: imgui.KEY_HOME,
-    Qt.Key_End: imgui.KEY_END,
-    Qt.Key_Delete: imgui.KEY_DELETE,
-    Qt.Key_Backspace: imgui.KEY_BACKSPACE,
-    Qt.Key_Return: imgui.KEY_ENTER,
-    Qt.Key_Escape: imgui.KEY_ESCAPE,
-    Qt.Key_A: imgui.KEY_A,
-    Qt.Key_C: imgui.KEY_C,
-    Qt.Key_V: imgui.KEY_V,
-    Qt.Key_X: imgui.KEY_X,
-    Qt.Key_Y: imgui.KEY_Y,
-    Qt.Key_Z: imgui.KEY_Z,
+    Qt.Key.Key_Tab: imgui.KEY_TAB,
+    Qt.Key.Key_Left: imgui.KEY_LEFT_ARROW,
+    Qt.Key.Key_Right: imgui.KEY_RIGHT_ARROW,
+    Qt.Key.Key_Up: imgui.KEY_UP_ARROW,
+    Qt.Key.Key_Down: imgui.KEY_DOWN_ARROW,
+    Qt.Key.Key_PageUp: imgui.KEY_PAGE_UP,
+    Qt.Key.Key_PageDown: imgui.KEY_PAGE_DOWN,
+    Qt.Key.Key_Home: imgui.KEY_HOME,
+    Qt.Key.Key_End: imgui.KEY_END,
+    Qt.Key.Key_Delete: imgui.KEY_DELETE,
+    Qt.Key.Key_Backspace: imgui.KEY_BACKSPACE,
+    Qt.Key.Key_Return: imgui.KEY_ENTER,
+    Qt.Key.Key_Escape: imgui.KEY_ESCAPE,
+    Qt.Key.Key_A: imgui.KEY_A,
+    Qt.Key.Key_C: imgui.KEY_C,
+    Qt.Key.Key_V: imgui.KEY_V,
+    Qt.Key.Key_X: imgui.KEY_X,
+    Qt.Key.Key_Y: imgui.KEY_Y,
+    Qt.Key.Key_Z: imgui.KEY_Z,
 }

@@ -21,6 +21,7 @@ def purge_db(recreate=True):
         testdbpath.touch()
         with sqlite3.connect('test_swc1.db') as con:
             con.executescript(sql_init_script)
+        con.close()
 
 
 class SchedulerTests(IsolatedAsyncioTestCase):
@@ -199,6 +200,7 @@ class SchedulerTests(IsolatedAsyncioTestCase):
                 con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 3, 1, ?)', (InvocationState.FINISHED.value,))
                 con.execute('INSERT INTO invocations (task_id, worker_id, node_id, state) VALUES (1, 1, 1, ?)', (InvocationState.INVOKING.value,))
                 con.commit()
+            con.close()
             try:
 
                 self.assertEqual(InvocationState.IN_PROGRESS, await sched.get_invocation_state(1))

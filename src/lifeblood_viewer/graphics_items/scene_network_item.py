@@ -2,12 +2,12 @@ from .network_item import NetworkItemWithUI, NetworkItem
 from .qextended_graphics_item import QGraphicsItemExtended
 from .graphics_scene_base import GraphicsSceneBase
 
-from PySide2.QtWidgets import QGraphicsItem
+from PySide6.QtWidgets import QGraphicsItem
 
 
 class SceneItemCommon(QGraphicsItemExtended):
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
-        if change == QGraphicsItem.ItemSceneChange:  # just before scene change
+        if change == QGraphicsItem.GraphicsItemChange.ItemSceneChange:  # just before scene change
             if self.scene() is not None and value is not None:
                 raise RuntimeError('changing scenes is not supported')
         return super().itemChange(change, value)

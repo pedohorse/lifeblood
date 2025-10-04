@@ -1,4 +1,4 @@
-from PySide2.QtCore import QAbstractItemModel, QObject, QSortFilterProxyModel
+from PySide6.QtCore import QAbstractItemModel, QObject, QSortFilterProxyModel
 
 from typing import Dict, Iterable, List
 

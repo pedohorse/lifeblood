@@ -221,9 +221,9 @@ def text_to_bytes(text: str) -> bytes:  # TODO: wtd are these? at least add unit
     return b''.join(partlist)
 
 
-from PySide2.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QFileDialog,\
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QFileDialog,\
                               QInputDialog, QMessageBox, QLineEdit
-from PySide2.QtGui import QFont
+from PySide6.QtGui import QFont
 import string
 
 
@@ -395,7 +395,7 @@ class Editor(QWidget):
         self.__index.entries.append(entry)
 
     def _deltab_callback(self):
-        if QMessageBox.warning(self, 'confirm', 'delete current tab?', QMessageBox.Ok | QMessageBox.Cancel) != QMessageBox.Ok:
+        if QMessageBox.warning(self, 'confirm', 'delete current tab?', QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Ok:
             return
         wgt = self.__tabwidget.currentWidget()
         if wgt is None:
@@ -410,7 +410,7 @@ class Editor(QWidget):
 
 if __name__ == '__main__':
     import sys
-    from PySide2.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     qapp = QApplication(sys.argv)
 
     wgt = Editor()

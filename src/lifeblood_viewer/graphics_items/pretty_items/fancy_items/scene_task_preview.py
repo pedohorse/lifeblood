@@ -1,8 +1,8 @@
 from ...graphics_items import Task
 
-from PySide2.QtCore import QPointF, QRectF, QSizeF
-from PySide2.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
-from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
+from PySide6.QtCore import QPointF, QRectF, QSizeF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
 
 from typing import Optional
 

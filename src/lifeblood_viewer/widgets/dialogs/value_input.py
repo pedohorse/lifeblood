@@ -1,7 +1,7 @@
 import re
-from PySide2.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
-from PySide2.QtGui import QValidator
-from PySide2.QtCore import Signal, Slot
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QValidator
+from PySide6.QtCore import Signal, Slot
 
 from typing import Any, Iterable, List, Optional
 
@@ -171,7 +171,7 @@ class MultiInputDialog(QDialog):
 
 def test_widget():
     import sys
-    from PySide2.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     app = QApplication(sys.argv)
 
     wgt = MultiInputDialog()

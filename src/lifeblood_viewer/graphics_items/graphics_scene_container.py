@@ -1,7 +1,7 @@
 from lifeblood import logging
 from .graphics_scene_base import GraphicsSceneBase
 from .graphics_items import Node, Task, NodeConnection
-from PySide2.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from types import MappingProxyType
 from typing import Dict, Tuple, Mapping, Optional, Sequence

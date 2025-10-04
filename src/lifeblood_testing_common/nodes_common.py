@@ -189,12 +189,13 @@ class PseudoContext(PseudoTaskPool):
         return res
 
 def purge_db():
-    testdbpath = Path('test_swc.db')
+    testdbpath = Path('test_nodes_common.db')
     if testdbpath.exists():
         testdbpath.unlink()
     testdbpath.touch()
-    with sqlite3.connect('test_swc.db') as con:
+    with sqlite3.connect('test_nodes_common.db') as con:
         con.executescript(sql_init_script)
+    con.close()
 
 
 class TestCaseBase(IsolatedAsyncioTestCase):
@@ -227,7 +228,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             ppatch.return_value = mock.AsyncMock(Pinger)
             wppatch.return_value = mock.AsyncMock()
 
-            sched = create_default_scheduler('test_swc.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, **kwargs)
+            sched = create_default_scheduler('test_nodes_common.db', do_broadcasting=False, helpers_minimal_idle_to_ensure=0, **kwargs)
             await sched.start()
 
             workers = []

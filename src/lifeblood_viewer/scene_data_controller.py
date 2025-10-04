@@ -6,7 +6,7 @@ from lifeblood.ui_protocol_data import InvocationLogData
 from lifeblood.node_type_metadata import NodeTypeMetadata
 from lifeblood.enums import TaskState, TaskGroupArchivedState
 from lifeblood.taskspawn import NewTask
-from PySide2.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, List, Optional, Set, Union

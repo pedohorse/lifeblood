@@ -15,8 +15,8 @@ from lifeblood_viewer.editor_scene_integration import fetch_and_open_log_viewer
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 
-from PySide2.QtCore import Qt, QPointF
-from PySide2.QtWidgets import QGraphicsItem, QGraphicsSceneMouseEvent
+from PySide6.QtCore import Qt, QPointF
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsSceneMouseEvent
 
 from typing import Optional, Set
 
@@ -82,11 +82,11 @@ class SceneTask(DrawableTask):
                 self.__requested_invocs_while_selected.remove(invoc_id)
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.ItemSelectedHasChanged:
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
             if value and self.node() is not None:   # item was just selected
                 self.refresh_ui()
             elif not value:
-                self.setFlag(QGraphicsItem.ItemIsSelectable, False)  # we are not selectable any more by band selection until directly clicked
+                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)  # we are not selectable any more by band selection until directly clicked
                 pass
         return super().itemChange(change, value)
 
@@ -94,11 +94,11 @@ class SceneTask(DrawableTask):
         if not self._get_selectshapepath().contains(event.pos()):
             event.ignore()
             return
-        self.setFlag(QGraphicsItem.ItemIsSelectable, True)  # if we are clicked - we are now selectable until unselected. This is to avoid band selection
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)  # if we are clicked - we are now selectable until unselected. This is to avoid band selection
         super().mousePressEvent(event)
         self.__press_pos = event.scenePos()
 
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             # context menu time
             view = event.widget().parent()
             assert isinstance(view, GraphicsSceneViewingWidgetBase)
@@ -119,7 +119,7 @@ class SceneTask(DrawableTask):
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if self.__ui_interactor:
             self.__ui_interactor.mouseReleaseEvent(event)
-            nodes = [x for x in self.scene().items(event.scenePos(), Qt.IntersectsItemBoundingRect) if isinstance(x, Node)]  # TODO: dirty, implement such method in one of scene subclasses
+            nodes = [x for x in self.scene().items(event.scenePos(), Qt.ItemSelectionMode.IntersectsItemBoundingRect) if isinstance(x, Node)]  # TODO: dirty, implement such method in one of scene subclasses
             if len(nodes) > 0:
                 logger.debug(f'moving item {self} to node {nodes[0]}')
                 self.__data_controller.request_set_task_node(self.get_id(), nodes[0].get_id())

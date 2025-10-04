@@ -4,9 +4,9 @@ from lifeblood_viewer.graphics_scene_with_data_controller import QGraphicsImguiS
 from lifeblood_viewer.graphics_items import Task
 from lifeblood.enums import InvocationState
 
-from PySide2.QtCore import Qt, QRectF, QPointF
-from PySide2.QtWidgets import QGraphicsView
-from PySide2.QtGui import QPainter, QPainterPath, QPen, QColor
+from PySide6.QtCore import Qt, Slot, Signal, QRectF, QPointF
+from PySide6.QtWidgets import QWidget, QGraphicsView
+from PySide6.QtGui import QPainter, QPainterPath, QPen, QColor, QMouseEvent
 import imgui
 
 from ..editor_scene_integration import fetch_and_open_log_viewer
@@ -22,7 +22,7 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
         super().__init__(scene)
         self.__scene = scene
         self.__pen_line = QPen(QColor(192, 192, 192, 96), 3)
-        self.__pen_line.setStyle(Qt.DashDotLine)
+        self.__pen_line.setStyle(Qt.PenStyle.DashDotLine)
         self.__tangent = QPointF(0, -100)
         self.__pen_mark = QPen(QColor(192, 192, 192, 192), 3)
         self.__node_offset = QPointF(-10, 0)

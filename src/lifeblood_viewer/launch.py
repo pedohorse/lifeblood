@@ -2,8 +2,8 @@ import sys
 import os
 import sqlite3
 
-from PySide2.QtWidgets import QApplication
-from PySide2.QtCore import QRectF, QFile, Qt
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QRectF, QFile, Qt
 
 from .lifeblood_viewer import LifebloodViewer
 from .db_misc import sql_init_script
@@ -23,11 +23,11 @@ def main(argv):  # TODO: parse cmdline (argv)
 def start_viewer(config_path=None):
     qapp = QApplication(sys.argv)
 
-    qapp.setAttribute(Qt.AA_CompressHighFrequencyEvents, False)  # fixes the bug of accumulating wheel events
+    qapp.setAttribute(Qt.ApplicationAttribute.AA_CompressHighFrequencyEvents, False)  # fixes the bug of accumulating wheel events
 
     # set stylesheet
     ssfile = QFile(":/dark.qss")
-    ssfile.open(QFile.ReadOnly | QFile.Text)
+    ssfile.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
     try:
         stylesheet = str(ssfile.readAll(), 'UTF-8')
     finally:
@@ -57,6 +57,7 @@ def start_viewer(config_path=None):
             posy = row['posy']
             if row['scene_x'] is not None:
                 scene_rect = QRectF(row['scene_x'], row['scene_y'], 1, 1)
+    con.close()
 
     widget = LifebloodViewer(config_path)
     if hgt is not None:
@@ -77,7 +78,7 @@ def start_viewer(config_path=None):
                     ('main', *widget.size().toTuple(), *widget.pos().toTuple(),
                      *scene_rect.topLeft().toTuple(), *scene_rect.size().toTuple()))
         con.commit()
-
+    con.close()
 
 def console_entry_point():
     sys.exit(main(sys.argv[1:]))

@@ -1,6 +1,6 @@
 from ..graphics_items import Node, Task
 
-from PySide2.QtCore import QAbstractAnimation, QPointF
+from PySide6.QtCore import QAbstractAnimation, QPointF
 
 
 class TaskAnimation(QAbstractAnimation):

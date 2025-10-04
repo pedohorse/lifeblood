@@ -69,6 +69,7 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
             minimal_idle_to_ensure=self._minimal_idle_to_ensure(),
             minimal_total_to_ensure=self._minimal_total_to_ensure(),
             maximum_total=self._maximum_total(),
+            idle_timeout=self._idle_timeout(),
             config=self._worker_config(),
             message_processor_factory=WorkerPoolMessageProcessor,
         )
@@ -250,6 +251,9 @@ class FullIntegrationTestCase(IsolatedAsyncioTestCaseWithDb):
 
     def _minimal_total_to_ensure(self) -> int:
         return 0
+
+    def _idle_timeout(self) -> float:
+        return 30.0  # increased default idle timeout for slooow test running machines
 
     def _maximum_total(self) -> int:
         return 16

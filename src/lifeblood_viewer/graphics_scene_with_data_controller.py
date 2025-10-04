@@ -35,9 +35,9 @@ from lifeblood.snippets import NodeSnippetData, NodeSnippetDataPlaceholder
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.ui_events import TaskEvent, TasksRemoved, TasksUpdated, TasksChanged, TaskFullState
 
-from PySide2.QtWidgets import *
-from PySide2.QtCore import Slot, Signal, QThread, QRectF, QPointF
-from PySide2.QtGui import QKeyEvent
+from PySide6.QtWidgets import *
+from PySide6.QtCore import Slot, Signal, QThread, QRectF, QPointF, Qt
+from PySide6.QtGui import QKeyEvent
 
 from typing import Callable, Optional, List, Tuple, Dict, Set, Iterable, Union, Any, Sequence
 
@@ -413,8 +413,10 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 con.row_factory = sqlite3.Row
                 cur = con.execute(f'SELECT * FROM "{self.__nodes_table_name}" WHERE "id" = ?', (node_id,))
                 row = cur.fetchone()
-                if row is not None:
-                    return row['posx'], row['posy']
+                cur.close()
+            con.close()
+            if row is not None:
+                return row['posx'], row['posy']
 
         raise ValueError(f'node id {node_id} has no stored position')
 
@@ -426,10 +428,9 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 raise RuntimeError('node positions requested before db uid set')
             with sqlite3.connect(self.__db_path) as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute(f'INSERT INTO "{self.__nodes_table_name}" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
-                row = cur.fetchone()
-                if row is not None:
-                    return row['posx'], row['posy']
+                con.execute(f'INSERT INTO "{self.__nodes_table_name}" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
+                con.commit()
+            con.close()
 
     def node_types(self) -> MappingProxyType[str, NodeTypeMetadata]:
         return MappingProxyType(self.__cached_nodetypes)
@@ -576,9 +577,9 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
             self.__nodes_table_name = f'nodes_{self.__db_uid}'
             with sqlite3.connect(self.__db_path) as con:
                 con.executescript(sql_init_script_nodes.format(db_uid=self.__db_uid))
+            con.close()
             self.reset_undo_stack()
 
-    @timeit(0.05)
     @Slot(object)
     def graph_full_update(self, graph_data: NodeGraphStructureData):
         if self.__db_uid != graph_data.db_uid:
@@ -664,8 +665,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
         if nodes_to_layout:
             self.layout_nodes(nodes_to_layout)
 
-    @timeit(0.05)
-    @Slot(object, bool)
+    @Slot(object)
     def tasks_process_events(self, events: List[TaskEvent]):
         """
 
@@ -705,7 +705,6 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                     self.__tasks_to_try_reparent_during_node_update[task_id] = task_delta.node_id
             task.apply_task_delta(task_delta, self.get_node)
 
-    @timeit(0.05)
     @Slot(object)
     def tasks_full_update(self, tasks_data: TaskBatchData):
         if self.__db_uid != tasks_data.db_uid:
@@ -1117,6 +1116,7 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 con.execute(f'INSERT OR REPLACE INTO "{self.__nodes_table_name}" ("id", "posx", "posy") '
                             f'VALUES (?, ?, ?)', (item.get_id(), *item.pos().toTuple()))
             con.commit()
+        con.close()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         for item in self.selectedItems():

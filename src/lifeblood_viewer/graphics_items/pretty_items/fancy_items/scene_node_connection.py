@@ -10,9 +10,9 @@ from ...graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from lifeblood_viewer.scene_data_controller import SceneDataController
 from lifeblood_viewer.graphics_scene_viewing_widget import GraphicsSceneViewingWidgetBase
 
-from PySide2.QtCore import Qt, Slot, QPointF, QRectF
-from PySide2.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
-from PySide2.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
+from PySide6.QtCore import Qt, Slot, QPointF, QRectF
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent, QWidget
 
 from typing import Optional, Tuple
 
@@ -24,7 +24,7 @@ class SceneNodeConnection(NodeConnection):
         super().__init__(scene, id, nodeout, nodein, outname, inname)
         self.__scene_container = scene
         self.__data_controller: SceneDataController = data_controller
-        self.setFlags(QGraphicsItem.ItemSendsGeometryChanges)  # QGraphicsItem.ItemIsSelectable |
+        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)  # QGraphicsItem.ItemIsSelectable |
         self.setAcceptHoverEvents(True)  # for highlights
 
         self.setZValue(-1)
@@ -163,7 +163,7 @@ class SceneNodeConnection(NodeConnection):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
         event.ignore()
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         line = self.get_painter_path(close_path=True)
         circle = QPainterPath()

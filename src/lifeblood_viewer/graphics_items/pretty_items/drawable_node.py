@@ -5,9 +5,9 @@ from ..graphics_scene_base import GraphicsSceneBase
 from .drawable_task import DrawableTask
 
 
-from PySide2.QtCore import Qt, QPointF, QRectF
-from PySide2.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide2.QtWidgets import QStyleOptionGraphicsItem, QWidget
+from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QStyleOptionGraphicsItem, QWidget
 
 from typing import Iterable, List, Optional, Tuple
 
@@ -407,10 +407,10 @@ class DrawableNode(Node):
         # draw header/text last
         if screen_rect.width() > 50:
             painter.setPen(self.__caption_pen)
-            painter.drawText(headershape.boundingRect(), Qt.AlignHCenter | Qt.AlignTop, self.node_name())
+            painter.drawText(headershape.boundingRect(), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self.node_name())
             painter.setPen(self.__typename_pen)
-            painter.drawText(headershape.boundingRect(), Qt.AlignRight | Qt.AlignBottom, self.node_type())
-            painter.drawText(headershape.boundingRect(), Qt.AlignLeft | Qt.AlignBottom, f'{len(self.tasks())}')
+            painter.drawText(headershape.boundingRect(), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom, self.node_type())
+            painter.drawText(headershape.boundingRect(), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, f'{len(self.tasks())}')
 
     def hoverMoveEvent(self, event):
         self.__hoverover_pos = event.pos()

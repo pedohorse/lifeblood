@@ -1,7 +1,7 @@
 import imgui
 from itertools import chain, repeat
 from lifeblood.text import generate_name
-from PySide2.QtGui import QCursor
+from PySide6.QtGui import QCursor
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewPopup
 

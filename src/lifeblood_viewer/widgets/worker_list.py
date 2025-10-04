@@ -8,9 +8,9 @@ from lifeblood.misc import performance_measurer
 from lifeblood_viewer.connection_worker import SchedulerConnectionWorker
 from lifeblood_viewer.models.multiple_sort_model import MultipleFilterSortProxyModel
 
-from PySide2.QtWidgets import QWidget, QTreeView, QHBoxLayout, QVBoxLayout, QMenu, QLineEdit
-from PySide2.QtCore import Slot, Signal, Qt, QAbstractItemModel, QModelIndex, QPoint
-from PySide2.QtGui import QColor
+from PySide6.QtWidgets import QWidget, QTreeView, QHBoxLayout, QVBoxLayout, QMenu, QLineEdit
+from PySide6.QtCore import Slot, Signal, Qt, QAbstractItemModel, QModelIndex, QPoint
+from PySide6.QtGui import QColor
 
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -20,7 +20,7 @@ _init_column_order_prototype = ('id', 'state', 'progress', 'task_id', 'metadata.
 
 class WorkerListWidget(QWidget):
     def __init__(self, worker: SchedulerConnectionWorker, parent=None):
-        super(WorkerListWidget, self).__init__(parent, Qt.Tool)
+        super(WorkerListWidget, self).__init__(parent, Qt.WindowType.Tool)
         self.__worker_list = QTreeView()
         self.__worker_model = WorkerModel(worker, self)
 
@@ -48,8 +48,8 @@ class WorkerListWidget(QWidget):
         self.__worker_list.header().resizeSection(ico.index('last_seen'), 140)
 
         self.__worker_list.setSortingEnabled(True)
-        self.__worker_list.sortByColumn(0, Qt.AscendingOrder)
-        self.__worker_list.setFocusPolicy(Qt.NoFocus)
+        self.__worker_list.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        self.__worker_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         #
         search_field1 = QLineEdit()
@@ -73,7 +73,7 @@ class WorkerListWidget(QWidget):
         layout.addLayout(search_layout)
         layout.addWidget(self.__worker_list)
 
-        self.__worker_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.__worker_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         # connec
         self.__worker_list.customContextMenuRequested.connect(self.show_context_menu)
@@ -121,7 +121,7 @@ class WorkerModelData:  # almost like WorkerData, but better for display
 
 
 class WorkerModel(QAbstractItemModel):
-    SORT_ROLE = Qt.UserRole + 0
+    SORT_ROLE = Qt.ItemDataRole.UserRole + 0
 
     group_update_requested = Signal(object, list)  # not int, cuz int in PySide is signed 32bit only
     cancel_invocation_for_worker = Signal(object)  # same about not int
@@ -171,7 +171,7 @@ class WorkerModel(QAbstractItemModel):
                                 inter_pointer if parent.isValid() else None,
                                 )
 
-    def parent(self, index: QModelIndex):
+    def parent(self, index: QModelIndex) -> QModelIndex:
         if not index.isValid() or index.internalPointer() is None:
             return QModelIndex()
         hwid, = index.internalPointer()
@@ -208,10 +208,10 @@ class WorkerModel(QAbstractItemModel):
     def column_by_name(self, name) -> int:
         return self.__colname_to_index[name]
 
-    def headerData(self, section: int, orientation, role: int = Qt.DisplayRole):
-        if orientation == Qt.Vertical:
+    def headerData(self, section: int, orientation, role: int = Qt.ItemDataRole.DisplayRole):
+        if orientation == Qt.Orientation.Vertical:
             return None
-        if role != Qt.DisplayRole:
+        if role != Qt.ItemDataRole.DisplayRole:
             return None
         return self.__cols[self.__cols_order[section]]
 
@@ -266,7 +266,7 @@ class WorkerModel(QAbstractItemModel):
             workers[0].metadata if len(workers) else None,
         )
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         def format_display(col_name, raw):
             if col_name.endswith('_mem') or col_name == 'mem':
                 return nice_memory_formatting(raw)
@@ -274,7 +274,7 @@ class WorkerModel(QAbstractItemModel):
 
         if not index.isValid():
             return None
-        if role not in (Qt.DisplayRole, Qt.ToolTipRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
+        if role not in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole, Qt.ItemDataRole.EditRole, Qt.ItemDataRole.BackgroundRole, self.SORT_ROLE):
             return None
         row = index.row()
         col = index.column()
@@ -296,9 +296,9 @@ class WorkerModel(QAbstractItemModel):
             else:
                 state = worker.state
                 extra = None
-            if role == Qt.DisplayRole:
+            if role == Qt.ItemDataRole.DisplayRole:
                 return f'{state.name} {extra}' if extra else state.name
-            elif role == Qt.BackgroundRole:
+            elif role == Qt.ItemDataRole.BackgroundRole:
                 if state in (WorkerState.BUSY, WorkerState.INVOKING):
                     return QColor.fromRgb(255, 255, 0, 64)
                 if state == WorkerState.IDLE:
@@ -356,7 +356,7 @@ class WorkerModel(QAbstractItemModel):
             dev_info_parts = []
             for worker_device in worker_resources.devices:
                 text = f'{worker_device.type_name}: {worker_device.name}[{"idle" if worker_device.available else "busy"}]'
-                if role == Qt.ToolTipRole:
+                if role == Qt.ItemDataRole.ToolTipRole:
                     res_parts = []
                     for dev_res in worker_device.resources:
                         res_parts.append(f'{dev_res.name}={format_display(dev_res.name, dev_res.value)}')
@@ -366,18 +366,18 @@ class WorkerModel(QAbstractItemModel):
 
         return raw_data
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         flags = super(WorkerModel, self).flags(index)
         if self.__cols_order[index.column()] == 'groups':
-            flags |= Qt.ItemIsEditable
+            flags |= Qt.ItemFlag.ItemIsEditable
         return flags
 
-    def setData(self, index: QModelIndex, value: Any, role: int = Qt.DisplayRole) -> bool:
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.DisplayRole) -> bool:
         # FOR NOW THIS ONLY SETS groups
         print(f'!setting {role}')
         if not index.isValid():
             return False
-        if role not in (Qt.DisplayRole, Qt.EditRole, Qt.BackgroundRole, self.SORT_ROLE):
+        if role not in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole, Qt.ItemDataRole.BackgroundRole, self.SORT_ROLE):
             return False
         row = index.row()
         col = index.column()

@@ -21,8 +21,8 @@ from lifeblood.ui_protocol_data import TaskBatchData
 from lifeblood.ui_events import TaskFullState
 from lifeblood.ui_events_tools import collapse_task_event_list
 
-import PySide2
-from PySide2.QtCore import Signal, Slot, QPointF, QThread
+import PySide6
+from PySide6.QtCore import Signal, Slot, QPointF, QThread
 
 from typing import Callable, Optional, Set, List, Union, Iterable
 
@@ -30,7 +30,7 @@ from typing import Callable, Optional, Set, List, Union, Iterable
 logger = logging.get_logger('viewer')
 
 
-class SchedulerConnectionWorker(PySide2.QtCore.QObject):
+class SchedulerConnectionWorker(PySide6.QtCore.QObject):
     full_update = Signal(object)
     db_uid_update = Signal(object)
     graph_full_update = Signal(object)
@@ -122,7 +122,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def __start_tasks_timer(self):
         if self.__timer_tasks is not None:
             return
-        self.__timer_tasks = PySide2.QtCore.QTimer(self)
+        self.__timer_tasks = PySide6.QtCore.QTimer(self)
         self.__timer_tasks.setInterval(self.tasks_update_interval)
         self.__timer_tasks.timeout.connect(self._check_tasks)
         self.__timer_tasks.start()
@@ -130,7 +130,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def __start_graph_timer(self):
         if self.__timer_graph is not None:
             return
-        self.__timer_graph = PySide2.QtCore.QTimer(self)
+        self.__timer_graph = PySide6.QtCore.QTimer(self)
         self.__timer_graph.setInterval(self.graph_update_interval)
         self.__timer_graph.timeout.connect(self._check_graph)
         self.__timer_graph.start()
@@ -161,7 +161,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def __start_workers_timer(self):
         if self.__timer_workers is not None:
             return
-        self.__timer_workers = PySide2.QtCore.QTimer(self)
+        self.__timer_workers = PySide6.QtCore.QTimer(self)
         self.__timer_workers.setInterval(self.workers_update_interval)
         self.__timer_workers.timeout.connect(self._check_workers)
         self.__timer_workers.start()
@@ -184,7 +184,7 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
     def __start_task_groups_timer(self):
         if self.__timer_groups is not None:
             return
-        self.__timer_groups = PySide2.QtCore.QTimer(self)
+        self.__timer_groups = PySide6.QtCore.QTimer(self)
         self.__timer_groups.setInterval(self.groups_update_interval)
         self.__timer_groups.timeout.connect(self._check_task_groups)
         self.__timer_groups.start()
@@ -237,6 +237,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
                     return None
                 await asyncio.sleep(0.5)
 
+        async def _await_coros(*coros):
+            return await asyncio.wait([asyncio.create_task(c) for c in coros], return_when=asyncio.FIRST_COMPLETED)
+
         config = get_config('viewer')
         if config.get_option_noasync('viewer.listen_to_broadcast', True):
             sche_addr, sche_port = None, None
@@ -261,9 +264,9 @@ class SchedulerConnectionWorker(PySide2.QtCore.QObject):
             if sche_addr is None:
                 logger.info('waiting for scheduler broadcast...')
                 while True:
-                    tasks = asyncio.run(asyncio.wait((
+                    tasks = asyncio.run(_await_coros(
                         await_broadcast('lifeblood_scheduler'),
-                        _interrupt_waiter()), return_when=asyncio.FIRST_COMPLETED))
+                        _interrupt_waiter()))
 
                     logger.debug(tasks)
                     message = list(tasks[0])[0].result()

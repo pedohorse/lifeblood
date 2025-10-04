@@ -1,5 +1,5 @@
-from PySide2.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QTextEdit, QPushButton
-from PySide2.QtCore import QSize
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QTextEdit, QPushButton
+from PySide6.QtCore import QSize
 
 
 class MessageWithSelectableText(QDialog):

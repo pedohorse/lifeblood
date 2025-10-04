@@ -3,7 +3,7 @@ from lifeblood.config import get_config
 from .graphics_items.graphics_scene_container import GraphicsSceneWithNodesAndTasks
 from .long_op import LongOperation, LongOperationData, LongOperationProcessor
 from .undo_stack import UndoStack, UndoableOperation
-from PySide2.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot
 
 from typing import Callable, Dict, Generator, List, Optional, Tuple
 
@@ -85,7 +85,7 @@ class GraphicsScene(GraphicsSceneWithNodesAndTasks, LongOperationProcessor):
             self.__start_long_operation(newop)
 
         # just in case - force UI redraw
-        self.invalidate(layers=self.ForegroundLayer)
+        self.invalidate(layers=self.SceneLayer.ForegroundLayer)
 
     def long_operation_statuses(self) -> Tuple[Tuple[Tuple[int, Tuple[Optional[float], str]], ...], Dict[str, int]]:
         def _op_status_list(ops) -> Tuple[Tuple[int, Tuple[Optional[float], str]], ...]:

@@ -1,5 +1,5 @@
-from PySide2.QtCore import Qt, QTimer
-from PySide2.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QWidget
 from .code_editor.editor import StringParameterEditor
 from .scene_data_controller import SceneDataController
 from lifeblood.enums import InvocationState
