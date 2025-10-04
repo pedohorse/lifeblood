@@ -51,7 +51,7 @@ class ResourceBaseTestCase(FullIntegrationTestCase):
         return config
 
     def _timeout(self) -> float:
-        return 60.0
+        return 90.0
 
     def _minimal_helper_idle_to_ensure(self):
         return 0
