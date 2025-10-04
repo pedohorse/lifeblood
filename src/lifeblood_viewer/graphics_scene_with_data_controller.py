@@ -413,9 +413,10 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 con.row_factory = sqlite3.Row
                 cur = con.execute(f'SELECT * FROM "{self.__nodes_table_name}" WHERE "id" = ?', (node_id,))
                 row = cur.fetchone()
-                if row is not None:
-                    return row['posx'], row['posy']
+                cur.close()
             con.close()
+            if row is not None:
+                return row['posx'], row['posy']
 
         raise ValueError(f'node id {node_id} has no stored position')
 
@@ -427,10 +428,8 @@ class QGraphicsImguiSceneWithDataController(GraphicsScene, SceneDataController):
                 raise RuntimeError('node positions requested before db uid set')
             with sqlite3.connect(self.__db_path) as con:
                 con.row_factory = sqlite3.Row
-                cur = con.execute(f'INSERT INTO "{self.__nodes_table_name}" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
-                row = cur.fetchone()
-                if row is not None:
-                    return row['posx'], row['posy']
+                con.execute(f'INSERT INTO "{self.__nodes_table_name}" ("id", "posx", "posy") VALUES (?, ?, ?) ON CONFLICT("id") DO UPDATE SET posx = ?, posy = ?', (node_id, *pos, *pos))
+                con.commit()
             con.close()
 
     def node_types(self) -> MappingProxyType[str, NodeTypeMetadata]:
