@@ -45,7 +45,7 @@ class PingGenericHandler(CommandMessageHandlerBase):
             if myself != asyncio.current_task():
                 self._logger.debug('dropped timeout task reached after sleep point, ignoring')
                 return
-            if global_timestamp_float() < expiry_time:
+            if global_timestamp_datetime() < expiry_time:
                 # somehow we were triggered before expiration time
                 # - this is not good, this should never happen,
                 # in case of new ping new task would have been created, and this cancelled
@@ -105,7 +105,7 @@ class PingGenericHandler(CommandMessageHandlerBase):
                 except Exception:
                     self._logger.exception('error during custom handle_expected_ping_not_coming')
 
-        reply = {
+        reply: dict = {
             'timestamp': global_timestamp_float(),
         }
         if data is not None:
