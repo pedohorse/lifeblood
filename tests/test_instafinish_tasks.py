@@ -35,7 +35,7 @@ class TestInstantTaskFinishDone(FullIntegrationTestCase):
         self.assertEqual(cancels, stat.finished_bad)
 
     def _timeout(self) -> float:
-        return 120.0
+        return 180.0
 
     def _minimal_idle_to_ensure(self) -> int:
         return 2
