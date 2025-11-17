@@ -5,10 +5,15 @@
 python311Packages.buildPythonPackage {
   name = "lifeblood";
   pyproject = true;
-  src = ./pkg_lifeblood;
+  src = ./.;
+
+  patchPhase = ''
+    cp ./pkg_lifeblood/{MANIFEST.in,pyproject.toml,setup.cfg} .
+  '';
+
   build-system = with python311Packages; [ setuptools ];
 
-  pythonImportChecks = [ "lifeblood" ];
+  pythonImportsCheck = [ "lifeblood" ];
   propagatedBuildInputs = with python311Packages; [
     aiofiles
     aiosqlite
