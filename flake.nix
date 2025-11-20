@@ -1,5 +1,5 @@
 {
-  description = "A very basic flake";
+  description = "Lifeblood!";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-25.05";
@@ -10,9 +10,10 @@
     pkgs = nixpkgs.legacyPackages.x86_64-linux;
   in {
 
-    packages.x86_64-linux = {
+    packages.x86_64-linux = rec {
       lifeblood = pkgs.callPackage ./lifeblood.nix {};
-      ass = pkgs.python311Packages.aiorwlock;
+      lifeblood-viewer = pkgs.callPackage ./lifeblood-viewer.nix { inherit lifeblood; };
+      tests = import ./lifeblood-integration-tests.nix { pkgs = nixpkgs.legacyPackages.x86_64-linux.extend (final: prev: { inherit lifeblood; }); };
     };
   };
 }
