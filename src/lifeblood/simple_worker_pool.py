@@ -6,6 +6,7 @@ import tempfile
 import time
 import itertools
 from pathlib import Path
+from subprocess import Popen
 from types import MappingProxyType
 from .config import get_config, Config
 from .defaults import message_proxy_port
@@ -73,6 +74,20 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         self.__scheduler_address = scheduler_address
         self.__worker_config = config or get_config('worker')
         self.__worker_config_dir: Optional[Path] = None
+
+        # need to properly figure out how to run ourselves
+        # and this may be tricky because of all sorts of wrapper scripts possible
+        # including ones that do module injection, so we cannot rely on lifeblood being imporatable from sys.executable
+        # relying on sys.argv[0] is also not correct as we cannot know what exactly was wrapped in that script
+        if full_lifeblood_exe_path := shutil.which('lifeblood'):
+            self.__worker_executable = [full_lifeblood_exe_path]
+        else:
+            self.__worker_executable = [sys.executable, '-m', 'lifeblood.launch']
+
+        # sanity test executable
+        if Popen(self.__worker_executable + ['selftest'], close_fds=True).wait() != 0:
+            self.__logger.error('Failed to locate correct lifeblood executable')
+            raise RuntimeError('Failed to locate correct lifeblood executable')
 
         # workers are not created as singleshot, so lifetime of less then this should be considered a sign of possible error
         self.__suspiciously_short_process_time = worker_suspicious_lifetime
@@ -187,7 +202,7 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         # NOTE: last address is localhost, if localhost is listened to
         # NOTE: worker will re-normalize address (as long as it's reachable), so we don't need to do that
         pool_address = self.__message_proxy.listening_addresses()[-1]
-        args = [sys.executable, '-m', 'lifeblood.launch',
+        args = self.__worker_executable + [
                 '--loglevel', 'DEBUG',
                 'worker',
                 '--type', self.__worker_type.name,
