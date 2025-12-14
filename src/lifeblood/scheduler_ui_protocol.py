@@ -177,6 +177,15 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
             writer.write(struct.pack('>Q', len(data_env)))
             writer.write(data_env)
 
+        async def comm_get_task_state():
+            task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
+            try:
+                data = await self.__scheduler.get_task_fields(task_id)
+            except ValueError:
+                writer.write(struct.pack('>?I', False, 0))
+            else:
+                writer.write(struct.pack('>?I', True, data['state']))
+
         async def comm_get_task_invocation():  # elif command == b'gettaskinvoc':
             task_id = struct.unpack('>Q', await reader.readexactly(8))[0]
             data = await self.__scheduler.get_task_invocation_serialized(task_id)
@@ -691,6 +700,7 @@ class SchedulerUiProtocol(asyncio.StreamReaderProtocol):
                     'getlog': comm_get_log,
                     'getnodeinterface': comm_get_node_interface,
                     'gettaskattribs': comm_get_task_attribs,
+                    'gettaskstate': comm_get_task_state,
                     'gettaskinvoc': comm_get_task_invocation,
                     'listnodetypes': comm_list_node_types,
                     'listnodepresets': comm_list_presets,
@@ -998,6 +1008,16 @@ class UIProtocolSocketClient:
         if rcvsize > 0:
             env_attrs = EnvironmentResolverArguments.deserialize(r.readexactly(rcvsize))
         return attribs, env_attrs
+
+    def get_task_state(self, task_id: int) -> TaskState:
+        r, w = self.__connection.get_rw_pair()
+        w.write_string('gettaskstate')
+        w.write(struct.pack('>Q', task_id))
+        w.flush()
+        good, state_raw = struct.unpack('>?I', r.readexactly(5))
+        if not good:
+            raise ValueError(f'task with id {task_id} does not exist')
+        return TaskState(state_raw)
 
     def get_task_invocation(self, task_id) -> InvocationJob:
         r, w = self.__connection.get_rw_pair()
