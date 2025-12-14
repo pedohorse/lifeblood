@@ -45,7 +45,7 @@ def _populate_resolvers():
                 or v.__module__ != __name__:
             continue
         _resolvers[k] = v
-    logging.get_logger('environment_resolver_registry').info('resolvers found:\n' + '\n'.join(f'\t{k}' for k in _resolvers))
+    logging.get_logger('environment_resolver_registry').debug('resolvers found:\n' + '\n'.join(f'\t{k}' for k in _resolvers))
 
 
 def get_resolver(name: str) -> "BaseEnvironmentResolver":
