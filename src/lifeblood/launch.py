@@ -8,6 +8,7 @@ def main(argv):
     parser.add_argument('--loglevel', help='logging level, like DEBUG, INFO, WARNING, ERROR')
 
     subparsers = parser.add_subparsers(title='command', required=True, dest='command')
+    subparsers.add_parser('selftest', description='run import tests and exit', add_help=False)
     schedparser = subparsers.add_parser('scheduler', description='run main scheduler server', add_help=False)
 
     workerparser = subparsers.add_parser('worker', description='run a worker', add_help=False)
@@ -30,7 +31,21 @@ def main(argv):
     if opts.loglevel is not None:
         logging.set_default_loglevel(opts.loglevel)
 
-    if opts.command == 'scheduler':
+    if opts.command == 'selftest':
+        logger = logging.get_logger('main')
+        logger.info('performing sanity check of the modules availability')
+        logger.debug('trying to import scheduler')
+        from .main_scheduler import main
+        logger.info('scheduler imported successfully')
+        logger.debug('trying to import worker')
+        from .main_worker import main
+        logger.info('worker imported successfully')
+        logger.debug('trying to import worker pool')
+        from .main_workerpool import main
+        logger.info('worker pool imported successfully')
+        logger.info('all checks passed')
+        return 0
+    elif opts.command == 'scheduler':
         from .main_scheduler import main
         return main(cmd_argv)
     elif opts.command == 'worker':
@@ -46,11 +61,12 @@ def main(argv):
             logger = logging.get_logger('main')
             logger.error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
             logger.exception(e)
-            return
+            return 1
         return main(cmd_argv)
     elif opts.command == 'resolver':
         from .environment_resolver import main
         return main(cmd_argv)
+    return 2
 
 
 def console_entry_point():
