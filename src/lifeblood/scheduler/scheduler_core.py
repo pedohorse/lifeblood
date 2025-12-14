@@ -326,6 +326,7 @@ class SchedulerCore(NodeGraphHolderBase):
 
     async def get_task_fields(self, task_id: int) -> Dict[str, Any]:
         """
+        TODO: DEPREATE this, return structured data instead
         returns information about the given task, excluding thicc fields like attributes or env resolver
         for those - use get_task_attributes
 
@@ -338,7 +339,7 @@ class SchedulerCore(NodeGraphHolderBase):
                                    '"node_id", split_level, priority, "dead" FROM tasks WHERE "id" == ?', (task_id,)) as cur:
                 res = await cur.fetchone()
             if res is None:
-                raise RuntimeError('task with specified id was not found')
+                raise ValueError('task with specified id was not found')
             return dict(res)
 
     async def task_name_to_id(self, name: str) -> List[int]:
@@ -372,6 +373,7 @@ class SchedulerCore(NodeGraphHolderBase):
     async def get_worker_state(self, wid: int, con: Optional[aiosqlite.Connection] = None) -> WorkerState:
         if con is None:
             async with self.data_access.data_connection() as con:
+                con.row_factory = aiosqlite.Row
                 async with con.execute('SELECT "state" FROM "workers" WHERE "id" = ?', (wid,)) as cur:
                     res = await cur.fetchone()
         else:
@@ -379,7 +381,7 @@ class SchedulerCore(NodeGraphHolderBase):
                 res = await cur.fetchone()
         if res is None:
             raise ValueError(f'worker with given wid={wid} was not found')
-        return WorkerState(res[0])
+        return WorkerState(res['state'])
 
     async def get_task_invocation(self, task_id: int):
         data = await self.get_task_invocation_serialized(task_id)
