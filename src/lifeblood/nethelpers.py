@@ -104,7 +104,7 @@ def get_broadcast_addr_for(addr: str) -> Optional[str]:
             if ifdata.family != socket.AF_INET:
                 continue
             if ifdata.address == addr:
-                if ifdata.broadcast is not None:
+                if ifdata.broadcast is not None and ifdata.broadcast != addr:
                     return ifdata.broadcast
                 potential_mask = ifdata.netmask
     # ok, no proper broadcast - we can still try inverted mask
