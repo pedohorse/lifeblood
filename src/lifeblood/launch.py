@@ -46,11 +46,12 @@ def main(argv):
             logger = logging.get_logger('main')
             logger.error('Viewer python package not found. In needs be installed separately with smth like "pip install lifeblood_viewer"')
             logger.exception(e)
-            return
+            return 1
         return main(cmd_argv)
     elif opts.command == 'resolver':
         from .environment_resolver import main
         return main(cmd_argv)
+    return 2
 
 
 def console_entry_point():
