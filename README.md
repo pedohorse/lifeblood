@@ -1,8 +1,8 @@
-[Documentation](https://pedohorse.github.io/lifeblood)
+[Documentation](https://permahorse.github.io/lifeblood)
 
 | dev                                                                                                                                                                         |
 |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [![Tests](https://github.com/pedohorse/lifeblood/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/pedohorse/lifeblood/actions/workflows/python-app.yml)|
+| [![Tests](https://github.com/permahorse/lifeblood/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/permahorse/lifeblood/actions/workflows/python-app.yml)|
 
 ![](icon/lifeblood.svg)
 
@@ -38,8 +38,8 @@ processing graph.
 
 This system overview should be very familiar to anyone who interacted with at least one renderfarm.
 
-check [documentation here](https://pedohorse.github.io/lifeblood)  
-and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
+check [documentation here](https://permahorse.github.io/lifeblood)  
+and also [video tutorials](https://permahorse.github.io/lifeblood/tutorials.html)
 
 ### Features:
 - instantly and easily deployable
@@ -60,18 +60,18 @@ and also [video tutorials](https://pedohorse.github.io/lifeblood/tutorials.html)
 
 ## Installation
 
-There are multiple ways to get Lifeblood to try it out, refer to [installation section in the docs](https://pedohorse.github.io/lifeblood/installation.html#simplest-lifeblood-manager)
+There are multiple ways to get Lifeblood to try it out, refer to [installation section in the docs](https://permahorse.github.io/lifeblood/installation.html#simplest-lifeblood-manager)
 
-In short - easiest way is to use [Lifeblood-Manager](https://github.com/pedohorse/lifeblood-manager/releases), as described in the docs
+In short - easiest way is to use [Lifeblood-Manager](https://github.com/permahorse/lifeblood-manager/releases), as described in the docs
 
 ### DCC tools and submitters
 
 Lifeblood-Manager can install houdini tools automatically.
 
-For manual installation - sumbitters for Houdini and Blender are available in [releases](https://github.com/pedohorse/lifeblood/releases).
+For manual installation - sumbitters for Houdini and Blender are available in [releases](https://github.com/permahorse/lifeblood/releases).
 
 ## Links
 
 - [blog + support](https://www.patreon.com/xapkohheh)
 - [telegram support/discussion group](https://t.me/+v9klFGZcKVY2MjYy)
-- [documentation](https://pedohorse.github.io/lifeblood)
+- [documentation](https://permahorse.github.io/lifeblood)
