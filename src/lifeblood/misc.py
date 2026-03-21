@@ -164,7 +164,7 @@ def performance_measurer(threshold_to_report=None, name=None):
         yield tm
     finally:
         tm.stop()
-        if threshold_to_report and tm.elapsed() > threshold_to_report:
+        if threshold_to_report is not None and tm.elapsed() > threshold_to_report:
             logging.debug(f'ran {name} in {tm.elapsed()}s')
 
 
@@ -176,7 +176,7 @@ async def aperformance_measurer(threshold_to_report=None, name=None):
         yield tm
     finally:
         tm.stop()
-        if threshold_to_report and tm.elapsed() > threshold_to_report:
+        if threshold_to_report is not None and tm.elapsed() > threshold_to_report:
             logging.debug(f'ran {name} in {tm.elapsed()}s')
 
 
