@@ -22,7 +22,7 @@ from ..enums import TaskGroupArchivedState
 
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
-SCHEDULER_DB_FORMAT_VERSION = 12
+SCHEDULER_DB_FORMAT_VERSION = 13
 
 
 @dataclass
@@ -581,7 +581,7 @@ class DataAccess:
     def __database_schema_upgrade(self, con: sqlite3.Connection, from_version: int, to_version: int) -> bool:
         if from_version == to_version:
             return False
-        if from_version < 1 or to_version > 12:
+        if from_version < 1 or to_version > 13:
             raise NotImplementedError(f"Don't know how to update db schema from v{from_version} to v{to_version}")
         if to_version < from_version:
             raise ValueError(f'to_version cannot be less than from_version ({to_version}<{from_version})')
@@ -714,6 +714,39 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
                 raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
             cur.close()
             return True
+        if to_version == 13:
+            # need to add new fields to task_group_attributes
+            # and recreate triggers update_invocations_inprog_time update_invocations_finish_time
+            con.execute('PRAGMA legacy_alter_table=ON')
+            con.execute('ALTER TABLE "task_group_attributes" ADD COLUMN "stat_min_invoc_start_time" INTEGER DEFAULT NULL')
+            con.execute('ALTER TABLE "task_group_attributes" ADD COLUMN "stat_max_invoc_end_time" INTEGER DEFAULT NULL')
+            con.execute('PRAGMA legacy_alter_table=OFF')
+            con.execute('DROP TRIGGER update_invocations_inprog_time')
+            con.execute('DROP TRIGGER update_invocations_finish_time')
+            # we need to rerun init script to ensure all triggers are created
+            con.executescript(sql_init_script)
+            cur = con.execute('PRAGMA integrity_check')
+            if (errors := cur.fetchall()) and len(errors) > 0 and errors[0][0] != 'ok':
+                raise RuntimeError(f'database upgrade failed with errors: {[str(x[0]) for x in errors]}')
+            cur.close()
+            # one more thing is to promote all current values
+            con.execute('''
+            UPDATE task_group_attributes SET stat_min_invoc_start_time = 
+                (SELECT MIN(inprog_time) as min_start 
+                    FROM invocations 
+                    JOIN task_groups ON invocations.task_id == task_groups.task_id 
+                    WHERE "group" == task_group_attributes."group");
+		    ''')
+            con.execute('''
+            UPDATE task_group_attributes SET stat_max_invoc_end_time = 
+            	(SELECT MAX(finish_time) as max_finish 
+            		FROM invocations 
+            		JOIN task_groups ON invocations.task_id == task_groups.task_id 
+            		WHERE "group" == task_group_attributes."group");
+            		    ''')
+            return True
+
+        raise AssertionError('unreachable')
 
 
 def resource_definition_to_sql_type_and_default(res_def) -> Tuple[str, Union[float, int, str]]:
