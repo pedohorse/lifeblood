@@ -743,7 +743,7 @@ CREATE TABLE IF NOT EXISTS "task_groups" (
             		FROM invocations 
             		JOIN task_groups ON invocations.task_id == task_groups.task_id 
             		WHERE "group" == task_group_attributes."group");
-            		    ''')
+            ''')
             return True
 
         raise AssertionError('unreachable')
