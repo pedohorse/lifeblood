@@ -1,25 +1,42 @@
-
 {
   lib,
   fetchPypi,
-  python310Packages,
-  python311Packages,
+  buildPythonPackage,
+  buildPythonApplication,
   lifeblood,
+  setuptools,
+  glfw,
+  pyopengl,
+  click,
+  cython_0,
+  pyside6,
+  lz4,
+  grandalf,
+  numpy_1,
+  qt6,
 }:
 let
-  imgui = python311Packages.buildPythonPackage {
+  imgui = buildPythonPackage {
     name = "imgui";
     pythonImportsCheck = [ "imgui" ];
+    pyproject = true;
+    build-system = [ setuptools ];
     src = fetchPypi {
       pname = "imgui";
       version = "2.0.0";
       hash = "sha256-L7247tO429fqmK+eTBxlgrC8TalColjeFjM9jGU9Z+E=";
     };
-    nativeBuildInputs = with python311Packages; [
+    dependencies = [
+      glfw
+      pyopengl
+      click
+    ];
+    nativeBuildInputs = [
       cython_0
     ];
   };
-in python311Packages.buildPythonPackage {
+
+in buildPythonApplication {
   name = "lifeblood-viewer";
   pyproject = true;
   src = ./.;
@@ -28,10 +45,22 @@ in python311Packages.buildPythonPackage {
     cp ./pkg_lifeblood_viewer/{pyproject.toml,setup.cfg} .
   '';
 
-  build-system = with python311Packages; [ setuptools ];
+  build-system = [ setuptools ];
+
+  buildInputs = [
+    qt6.qtbase
+    qt6.qtwayland
+  ];
+  nativeBuildInputs = [
+    qt6.wrapQtAppsHook
+  ];
+  dontWrapQtApps = true;
+  makeWrapperArgs = [
+    "\${qtWrapperArgs[@]}"
+  ];
 
   pythonImportsCheck = [ "lifeblood" ];
-  propagatedBuildInputs = with python311Packages; [
+  propagatedBuildInputs = [
     glfw
     pyopengl
     pyside6
@@ -42,4 +71,10 @@ in python311Packages.buildPythonPackage {
     imgui
     lifeblood
   ];
+
+  meta = {
+    description = "";
+    license = lib.licenses.gpl3;
+    mainProgram = "lifeblood_viewer";
+  };
 }
