@@ -100,6 +100,7 @@ class DataAccess:
                 self.__database_schema_upgrade(con, metadata['version'], SCHEDULER_DB_FORMAT_VERSION)  # returns true if commit needed, but we do update next line anyway
                 con.execute('UPDATE lifeblood_metadata SET "version" = ?', (SCHEDULER_DB_FORMAT_VERSION,))
                 con.commit()
+                self.__logger.warning(f'database schema updated tp version {SCHEDULER_DB_FORMAT_VERSION}')
                 # reget metadata
                 cur = con.execute('SELECT * FROM lifeblood_metadata')
                 metadata = cur.fetchone()  # there should be exactly one single row.
@@ -593,7 +594,7 @@ class DataAccess:
 
         # at this point we are sure that from_version +1 = to_version
         assert from_version + 1 == to_version
-        self.__logger.warning(f'updating database schema from {from_version} to {to_version}')
+        self.__logger.warning(f'updating database schema from {from_version} to {to_version}. this may take time...')
 
         # actual logic
         if to_version == 2:
