@@ -312,7 +312,10 @@ class WorkerModel(QAbstractItemModel):
                 return state.value
         if col_name.startswith('metadata.'):
             metafield = col_name.split('.', 1)[1]
-            return getattr(worker.metadata, metafield)
+            if worker.metadata is not None:
+                return getattr(worker.metadata, metafield)
+            else:
+                return 'unknown'
         if col_name == 'progress':
             data = worker.current_invocation_progress
             if role == self.SORT_ROLE:  # for sorting
