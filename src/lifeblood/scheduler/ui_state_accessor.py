@@ -345,7 +345,7 @@ class UIStateAccessor(SchedulerComponentBase):
             # need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
             # fetch_statistics = fetch_statistics and need_group_totals_update
             if fetch_statistics:
-                sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall, min_start, max_finish FROM task_group_attributes ' \
+                sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall, stat_min_invoc_start_time AS min_start, stat_max_invoc_end_time AS max_finish FROM task_group_attributes ' \
                           'LEFT JOIN ' \
                           f'(SELECT SUM(state=={TaskState.DONE.value}) as tdone, ' \
                           f'       SUM(state=={TaskState.IN_PROGRESS.value}) as tprog, ' \
@@ -359,15 +359,6 @@ class UIStateAccessor(SchedulerComponentBase):
                           '    GROUP BY "group"' \
                           ') ' \
                           'ON "grp"==task_group_attributes."group" ' \
-                          'LEFT JOIN ' \
-                          '(SELECT MIN(inprog_time) as min_start, ' \
-                          '        MAX(finish_time) as max_finish, ' \
-                          '        "group" as grp2 ' \
-                          '    FROM invocations ' \
-                          '    JOIN task_groups ON invocations.task_id == task_groups.task_id ' \
-                          '    GROUP BY "group"' \
-                          ')' \
-                          'ON "grp2"==task_group_attributes."group" ' \
                           + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
             else:
                 sqlexpr = 'SELECT "group", "ctime", "state", "priority" FROM task_group_attributes' + (f' WHERE state == {TaskGroupArchivedState.NOT_ARCHIVED.value}' if skip_archived_groups else '')
