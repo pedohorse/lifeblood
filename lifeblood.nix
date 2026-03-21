@@ -1,8 +1,17 @@
 {
   lib,
-  python311Packages,
+  buildPythonPackage,
+  setuptools,
+  aiofiles,
+  aiosqlite,
+  aiorwlock,
+  lz4,
+  psutil,
+  semantic-version,
+  toml,
+  watchdog,
 }:
-python311Packages.buildPythonPackage {
+buildPythonPackage {
   name = "lifeblood";
   pyproject = true;
   src = ./.;
@@ -11,10 +20,10 @@ python311Packages.buildPythonPackage {
     cp ./pkg_lifeblood/{MANIFEST.in,pyproject.toml,setup.cfg} .
   '';
 
-  build-system = with python311Packages; [ setuptools ];
+  build-system = [ setuptools ];
 
   pythonImportsCheck = [ "lifeblood" ];
-  propagatedBuildInputs = with python311Packages; [
+  propagatedBuildInputs = [
     aiofiles
     aiosqlite
     aiorwlock
@@ -24,4 +33,10 @@ python311Packages.buildPythonPackage {
     toml
     watchdog
   ];
+
+  meta = {
+    description = "";
+    license = lib.licenses.gpl3;
+    mainProgram = "lifeblood";
+  };
 }
