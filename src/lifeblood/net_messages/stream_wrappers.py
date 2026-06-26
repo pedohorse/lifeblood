@@ -123,7 +123,7 @@ class WriterStreamRawMessageWrapper(MessageInterface):
     def message_body(self) -> Union[bytes, memoryview]:
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
-        return self.__buffer.getbuffer()
+        return self.__buffer.getbuffer().tobytes()
 
     def message_destination(self) -> AddressChain:
         if not self.__initialized:
@@ -181,7 +181,7 @@ class ReaderStreamRawMessageWrapper(MessageInterface):
         """
         if not self.__initialized:
             raise RuntimeError('message was not initialized')
-        return self.__buffer.getbuffer()
+        return self.__buffer.getbuffer().tobytes()
 
     def message_destination(self) -> AddressChain:
         if not self.__initialized:
