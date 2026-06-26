@@ -1,3 +1,4 @@
+import sys
 import traceback
 import json
 import itertools
@@ -530,10 +531,16 @@ class TaskProcessor(SchedulerComponentBase):
                 gc_counter = 0
                 self.__logger.debug('========')
                 self.__logger.debug('================================================================')
-                with threading._shutdown_locks_lock:
-                    self.__logger.debug(f'loose threads: {len(threading._shutdown_locks)}')
-                    threading._shutdown_locks.difference_update([lock for lock in threading._shutdown_locks if not lock.locked()])
-                    self.__logger.debug(f'loose threads after cleanup: {len(threading._shutdown_locks)}')
+                if sys.version_info.minor < 13:
+                    # this is a workaround for a bug from 3.7
+                    # it was fixed in ~3.11 and backported to 3.10, 3.9 and maybe even 3.8 at some point
+                    # it's kept here for old python installations, but should be removed in the future.
+                    # and 3.13 has all new rewritten threading module.
+                    # LEGACY
+                    with threading._shutdown_locks_lock:
+                        self.__logger.debug(f'loose threads: {len(threading._shutdown_locks)}')
+                        threading._shutdown_locks.difference_update([lock for lock in threading._shutdown_locks if not lock.locked()])
+                        self.__logger.debug(f'loose threads after cleanup: {len(threading._shutdown_locks)}')
                 self.__logger.debug(f'total tasks: {len(asyncio.all_tasks())}')
 
                 self.__logger.debug(f'size of temp db cache: {data_access.debug_get_cached_data_size()}')
