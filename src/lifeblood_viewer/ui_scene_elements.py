@@ -1,4 +1,4 @@
-import imgui
+from imgui_bundle import imgui
 from .ui_elements_base import ImguiWindow, ImguiPopup
 from .nodeeditor import NodeEditor
 from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
@@ -57,7 +57,7 @@ class FindNodePopup(ImguiViewWindow):
         return 256, 128
 
     def draw_window_elements(self):
-        changed, val = imgui.input_text('find node', self.__val, 128, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
+        changed, val = imgui.input_text('find node', self.__val, flags=imgui.InputTextFlags_.enter_returns_true)
         if self._was_just_opened():
             imgui.set_keyboard_focus_here(-1)
 

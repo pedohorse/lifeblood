@@ -40,8 +40,9 @@ from .nodeeditor_overlays.overlay_base import NodeEditorOverlayBase
 from .undo_stack import OperationCompletionDetails, OperationCompletionStatus
 from .fancy_scene_item_factory import FancySceneItemFactory
 
-import imgui
-from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
+from imgui_bundle import imgui
+from imgui_bundle.python_backends.opengl_backend_programmable import  ProgrammablePipelineRenderer
+#from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
 from typing import Any, Optional, List, Tuple, Dict, Set, Callable, Union
 
@@ -244,7 +245,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         self.__imgui_input_blocked = False
 
         self.__imgui_init = False
-        self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer'))).encode('UTF-8')
+        self.__imgui_config_path = get_config('viewer').get_option_noasync('imgui.ini_file', str(paths.config_path('imgui.ini', 'viewer')))
         self.rescan_presets()
         self.update()
 
@@ -898,10 +899,10 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     def _nodepresets_updated(self, nodepresets):
         self.__scheduler_presets = nodepresets  # TODO: we keep a LIVE copy of scene's cached presets here. that might be a problem later
 
-    def _set_clipboard(self, text: str):
+    def _set_clipboard(self, _ctx, text: str):
         QApplication.clipboard().setText(text)
 
-    def _get_clipboard(self) -> str:
+    def _get_clipboard(self, _ctx) -> str:
         return QApplication.clipboard().text()
 
     @timeit(0.05)
@@ -963,6 +964,8 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
                 imgui.create_context()
                 self.__imimpl = ProgrammablePipelineRenderer()
                 imguio = imgui.get_io()
+                # imguio.backend_flags |= imgui.BackendFlags.RENDERER_HAS_VTX_OFFSET
+                # imguio.backend_flags |= imgui.BackendFlags.RENDERER_HAS_TEXTURES
             except Exception as e:
                 logger.exception(f'Failed to initialized opengl context for imgui: {e}')
                 logger.critical('viewer cannot work without opengl context, shutting down')
@@ -970,11 +973,13 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             # note that as of imgui 1.3.0 ini_file_name seem to have a bug of not increasing refcount,
             # so there HAS to be some other python variable, like self.__imgui_config_path, to ensure
             # that path is not garbage collected
-            imguio.ini_file_name = self.__imgui_config_path
-            imguio.display_size = 400, 400
-            imguio.set_clipboard_text_fn = self._set_clipboard
-            imguio.get_clipboard_text_fn = self._get_clipboard
-            self._map_keys()
+
+            imguio.set_ini_filename(self.__imgui_config_path)
+            imguio.display_size = imgui.ImVec2(400, 400)
+            imgui.get_platform_io().platform_set_clipboard_text_fn = self._set_clipboard
+            imgui.get_platform_io().platform_get_clipboard_text_fn = self._get_clipboard
+
+            # self._map_keys()
 
             style = imgui.get_style()
             style.scrollbar_size = 12
@@ -983,7 +988,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             style.tab_rounding = 4
 
         imgui_io = imgui.get_io()
-        imgui_io.display_size = self.rect().size().toTuple()
+        imgui_io.display_size = imgui.ImVec2(*self.rect().size().toTuple())
         # whether we can or cannot react to screenChange event - depends on system setup
         #  non-native windows are optimized for drawing, but don't have native reference
         #  so why not just check scale on every draw? If this proves to be a bottleneck - need to find a better solution
@@ -991,9 +996,9 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         #  On top of that there is logical DPI for font drawing, and DMs (mostly windows) change THAT one
         #  when you change scale - devicePixelRatio stays same, but logicalDotsPerInch change
         #  Why default 96? dunno, it seem to be the case for x11, wayland, windows, dunno about mac
-        imgui_io.display_fb_scale = (self.devicePixelRatioF(),) * 2
-        imgui_io.font_global_scale = (self.screen().logicalDotsPerInch() / 96.0)
+        imgui_io.display_framebuffer_scale = imgui.ImVec2(self.devicePixelRatioF(), self.devicePixelRatioF())
 
+        imgui.get_style().font_scale_dpi = self.screen().logicalDotsPerInch() / 96.0
         # start new frame context
         imgui.new_frame()
 
@@ -1022,7 +1027,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
                     else:
                         raise RuntimeError(f'unknown menu item type: {item}')
 
-                    clicked, _ = imgui.menu_item(label, shortcut)
+                    clicked, _ = imgui.menu_item(label, shortcut or '', False)
                     if clicked:
                         something()
 
@@ -1031,7 +1036,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         imgui.end_main_menu_bar()
         #
 
-        # imgui.core.show_metrics_window()
+        # imgui.show_metrics_window()
 
         # general window draw
         any_window_focused = False
@@ -1064,27 +1069,26 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             return
         io = imgui.get_io()
         if isinstance(event, PySide6.QtGui.QMouseEvent):
-            io.mouse_pos = event.pos().toTuple()
+            io.add_mouse_pos_event(*event.pos().toTuple())
         elif isinstance(event, PySide6.QtGui.QWheelEvent):
-            io.mouse_wheel = event.angleDelta().y() / 100
+            io.add_mouse_wheel_event(0, event.angleDelta().y() / 100)
         elif isinstance(event, PySide6.QtGui.QKeyEvent):
             #print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
             if event.key() in imgui_key_map:
                 if event.type() == QEvent.Type.KeyPress:
-                    io.keys_down[imgui_key_map[event.key()]] = True  # TODO: figure this out
-                    #io.keys_down[event.key()] = True
+                    io.add_key_event(imgui_key_map[event.key()], True)  # TODO: figure this out
                 elif event.type() == QEvent.Type.KeyRelease:
-                    io.keys_down[imgui_key_map[event.key()]] = False
+                    io.add_key_event(imgui_key_map[event.key()], False)
             elif event.key() == Qt.Key.Key_Control:
-                io.key_ctrl = event.type() == QEvent.Type.KeyPress
+                io.add_key_event(imgui.Key.left_ctrl, event.type() == QEvent.Type.KeyPress)
 
             if event.type() == QEvent.Type.KeyPress and len(event.text()) > 0:
                 io.add_input_character(ord(event.text()))
 
         if isinstance(event, (PySide6.QtGui.QMouseEvent, PySide6.QtGui.QWheelEvent)):
-            io.mouse_down[0] = event.buttons() & Qt.MouseButton.LeftButton != Qt.MouseButton.NoButton
-            io.mouse_down[1] = event.buttons() & Qt.MouseButton.MiddleButton != Qt.MouseButton.NoButton
-            io.mouse_down[2] = event.buttons() & Qt.MouseButton.RightButton != Qt.MouseButton.NoButton
+            io.add_mouse_button_event(imgui.MouseButton_.left, event.buttons() & Qt.MouseButton.LeftButton != Qt.MouseButton.NoButton)
+            io.add_mouse_button_event(imgui.MouseButton_.middle, event.buttons() & Qt.MouseButton.MiddleButton != Qt.MouseButton.NoButton)
+            io.add_mouse_button_event(imgui.MouseButton_.right, event.buttons() & Qt.MouseButton.RightButton != Qt.MouseButton.NoButton)
         if do_recache:
             self.resetCachedContent()
 
@@ -1096,9 +1100,11 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         if not self.__imgui_init:
             return
         io = imgui.get_io()
-        for key in imgui_key_map.values():
-            io.keys_down[key] = False
-        io.key_ctrl = False
+        # for key in imgui_key_map.values():
+        #     io.add_key_event(key, False)
+        # io.add_key_event(imgui.Key.KEY_LEFT_CTRL, False)
+        io.clear_input_keys()
+        io.clear_input_mouse()
 
     # def _map_keys(self):
     #     key_map = imgui.get_io().key_map
@@ -1122,29 +1128,29 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
     #     key_map[imgui.KEY_X] = Qt.Key_X
     #     key_map[imgui.KEY_Y] = Qt.Key_Y
     #     key_map[imgui.KEY_Z] = Qt.Key_Z
-
-    def _map_keys(self):
-        key_map = imgui.get_io().key_map
-
-        key_map[imgui.KEY_TAB] = imgui.KEY_TAB
-        key_map[imgui.KEY_LEFT_ARROW] = imgui.KEY_LEFT_ARROW
-        key_map[imgui.KEY_RIGHT_ARROW] = imgui.KEY_RIGHT_ARROW
-        key_map[imgui.KEY_UP_ARROW] = imgui.KEY_UP_ARROW
-        key_map[imgui.KEY_DOWN_ARROW] = imgui.KEY_DOWN_ARROW
-        key_map[imgui.KEY_PAGE_UP] = imgui.KEY_PAGE_UP
-        key_map[imgui.KEY_PAGE_DOWN] = imgui.KEY_PAGE_DOWN
-        key_map[imgui.KEY_HOME] = imgui.KEY_HOME
-        key_map[imgui.KEY_END] = imgui.KEY_END
-        key_map[imgui.KEY_DELETE] = imgui.KEY_DELETE
-        key_map[imgui.KEY_BACKSPACE] = imgui.KEY_BACKSPACE
-        key_map[imgui.KEY_ENTER] = imgui.KEY_ENTER
-        key_map[imgui.KEY_ESCAPE] = imgui.KEY_ESCAPE
-        key_map[imgui.KEY_A] = imgui.KEY_A
-        key_map[imgui.KEY_C] = imgui.KEY_C
-        key_map[imgui.KEY_V] = imgui.KEY_V
-        key_map[imgui.KEY_X] = imgui.KEY_X
-        key_map[imgui.KEY_Y] = imgui.KEY_Y
-        key_map[imgui.KEY_Z] = imgui.KEY_Z
+    #
+    # def _map_keys(self):
+    #     key_map = imgui.get_io()
+    #
+    #     key_map[imgui.KEY_TAB] = imgui.KEY_TAB
+    #     key_map[imgui.KEY_LEFT_ARROW] = imgui.KEY_LEFT_ARROW
+    #     key_map[imgui.KEY_RIGHT_ARROW] = imgui.KEY_RIGHT_ARROW
+    #     key_map[imgui.KEY_UP_ARROW] = imgui.KEY_UP_ARROW
+    #     key_map[imgui.KEY_DOWN_ARROW] = imgui.KEY_DOWN_ARROW
+    #     key_map[imgui.KEY_PAGE_UP] = imgui.KEY_PAGE_UP
+    #     key_map[imgui.KEY_PAGE_DOWN] = imgui.KEY_PAGE_DOWN
+    #     key_map[imgui.KEY_HOME] = imgui.KEY_HOME
+    #     key_map[imgui.KEY_END] = imgui.KEY_END
+    #     key_map[imgui.KEY_DELETE] = imgui.KEY_DELETE
+    #     key_map[imgui.KEY_BACKSPACE] = imgui.KEY_BACKSPACE
+    #     key_map[imgui.KEY_ENTER] = imgui.KEY_ENTER
+    #     key_map[imgui.KEY_ESCAPE] = imgui.KEY_ESCAPE
+    #     key_map[imgui.KEY_A] = imgui.KEY_A
+    #     key_map[imgui.KEY_C] = imgui.KEY_C
+    #     key_map[imgui.KEY_V] = imgui.KEY_V
+    #     key_map[imgui.KEY_X] = imgui.KEY_X
+    #     key_map[imgui.KEY_Y] = imgui.KEY_Y
+    #     key_map[imgui.KEY_Z] = imgui.KEY_Z
 
     def request_ui_focus(self, item: NetworkItem):
         if self.__ui_focused_item is not None and self.__ui_focused_item.scene() != self.__scene:
@@ -1218,7 +1224,7 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
             event.accept()
         else:
             event.accept()
-            self.__view_scale = max(log2(1.0 / imgui_io.font_global_scale), self.__view_scale - event.angleDelta().y()*0.001)
+            self.__view_scale = max(log2(1.0 / imgui_io.display_framebuffer_scale[0]), self.__view_scale - event.angleDelta().y()*0.001)
             #self.__view_scale = max(0.0, self.__view_scale - event.angleDelta().y()*0.001)
 
             iz = 2**(-self.__view_scale)
@@ -1259,23 +1265,23 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
 
 
 imgui_key_map = {
-    Qt.Key.Key_Tab: imgui.KEY_TAB,
-    Qt.Key.Key_Left: imgui.KEY_LEFT_ARROW,
-    Qt.Key.Key_Right: imgui.KEY_RIGHT_ARROW,
-    Qt.Key.Key_Up: imgui.KEY_UP_ARROW,
-    Qt.Key.Key_Down: imgui.KEY_DOWN_ARROW,
-    Qt.Key.Key_PageUp: imgui.KEY_PAGE_UP,
-    Qt.Key.Key_PageDown: imgui.KEY_PAGE_DOWN,
-    Qt.Key.Key_Home: imgui.KEY_HOME,
-    Qt.Key.Key_End: imgui.KEY_END,
-    Qt.Key.Key_Delete: imgui.KEY_DELETE,
-    Qt.Key.Key_Backspace: imgui.KEY_BACKSPACE,
-    Qt.Key.Key_Return: imgui.KEY_ENTER,
-    Qt.Key.Key_Escape: imgui.KEY_ESCAPE,
-    Qt.Key.Key_A: imgui.KEY_A,
-    Qt.Key.Key_C: imgui.KEY_C,
-    Qt.Key.Key_V: imgui.KEY_V,
-    Qt.Key.Key_X: imgui.KEY_X,
-    Qt.Key.Key_Y: imgui.KEY_Y,
-    Qt.Key.Key_Z: imgui.KEY_Z,
+    Qt.Key.Key_Tab: imgui.Key.tab,
+    Qt.Key.Key_Left: imgui.Key.left_arrow,
+    Qt.Key.Key_Right: imgui.Key.right_arrow,
+    Qt.Key.Key_Up: imgui.Key.up_arrow,
+    Qt.Key.Key_Down: imgui.Key.down_arrow,
+    Qt.Key.Key_PageUp: imgui.Key.page_up,
+    Qt.Key.Key_PageDown: imgui.Key.page_down,
+    Qt.Key.Key_Home: imgui.Key.home,
+    Qt.Key.Key_End: imgui.Key.end,
+    Qt.Key.Key_Delete: imgui.Key.delete,
+    Qt.Key.Key_Backspace: imgui.Key.backspace,
+    Qt.Key.Key_Return: imgui.Key.enter,
+    Qt.Key.Key_Escape: imgui.Key.escape,
+    Qt.Key.Key_A: imgui.Key.a,
+    Qt.Key.Key_C: imgui.Key.c,
+    Qt.Key.Key_V: imgui.Key.v,
+    Qt.Key.Key_X: imgui.Key.x,
+    Qt.Key.Key_Y: imgui.Key.y,
+    Qt.Key.Key_Z: imgui.Key.z,
 }

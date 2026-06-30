@@ -1,4 +1,4 @@
-import imgui
+from imgui_bundle import imgui
 from itertools import chain, repeat
 from lifeblood.text import generate_name
 from PySide6.QtGui import QCursor
@@ -28,8 +28,8 @@ class CreateNodePopup(ImguiViewPopup):
         self.scene().request_node_presets_update()
 
     def draw_window_elements(self):
-        changed, self.__node_type_input = imgui.input_text('', self.__node_type_input, 256)
-        if not imgui.is_item_active() and not imgui.is_mouse_down():
+        changed, self.__node_type_input = imgui.input_text('##create_node_popup', self.__node_type_input)
+        if not imgui.is_item_active() and not imgui.is_mouse_down(imgui.MouseButton_.left):
             # if text input is always focused - selectable items do not work
             imgui.set_keyboard_focus_here(-1)
         if changed:
@@ -51,7 +51,7 @@ class CreateNodePopup(ImguiViewPopup):
                 selected = self.__menu_popup_selection_id == item_number
                 if entity_type_label is not None:
                     label += f' ({entity_type_label})'
-                _, selected = imgui.selectable(f'{label}##popup_selectable', selected=selected, flags=imgui.SELECTABLE_DONT_CLOSE_POPUPS)
+                _, selected = imgui.selectable(f'{label}##popup_selectable', selected, flags=imgui.SelectableFlags_.no_auto_close_popups)
                 if selected:
                     self.__menu_popup_selection_id = item_number
                     self.__menu_popup_selection_name = (package, type_name, label, entity_type)
@@ -59,24 +59,24 @@ class CreateNodePopup(ImguiViewPopup):
                 if item_number > max_items:
                     break
 
-        imguio: imgui.core._IO = imgui.get_io()
-        if imguio.keys_down[imgui.KEY_DOWN_ARROW]:
+        if imgui.is_key_down(imgui.Key.down_arrow):
             if not self.__menu_popup_arrow_down:
                 self.__menu_popup_selection_id += 1
                 self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                 self.__menu_popup_arrow_down = True
-        elif imguio.keys_down[imgui.KEY_UP_ARROW]:
+        elif imgui.is_key_down(imgui.Key.up_arrow):
             if not self.__menu_popup_arrow_down:
                 self.__menu_popup_selection_id -= 1
                 self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                 self.__menu_popup_arrow_down = True
-        if imguio.keys_down[imgui.KEY_ENTER] or imgui.is_mouse_double_clicked():
+        if imgui.is_key_down(imgui.Key.enter) or imgui.is_mouse_double_clicked(imgui.MouseButton_.left):
             self._close()
 
             if self.__menu_popup_selection_name:
                 package, entity_name, label, entity_type = self.__menu_popup_selection_name
                 if entity_type == 'node':
-                    self.scene().create_node(entity_name, f'{label} {generate_name(5, 7)}', self.editor_widget().mapToScene(imguio.mouse_pos.x, imguio.mouse_pos.y))
+                    mouse_pos = imgui.get_mouse_pos()
+                    self.scene().create_node(entity_name, f'{label} {generate_name(5, 7)}', self.editor_widget().mapToScene(int(mouse_pos.x), int(mouse_pos.y)))
                 elif entity_type == 'vpreset':
                     self.editor_widget().create_from_viewer_preset(entity_name, self.editor_widget().mapToScene(self.editor_widget().mapFromGlobal(QCursor.pos())))
                 elif entity_type == 'spreset':
@@ -84,7 +84,7 @@ class CreateNodePopup(ImguiViewPopup):
         elif self.__menu_popup_arrow_down:
             self.__menu_popup_arrow_down = False
 
-        elif imguio.keys_down[imgui.KEY_ESCAPE]:
+        elif imgui.is_key_down(imgui.Key.escape):
             self._close()
             self.__node_type_input = ''
             self.__menu_popup_selection_id = 0

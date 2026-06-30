@@ -1,4 +1,4 @@
-import imgui
+from imgui_bundle import imgui
 from lifeblood_viewer.nodeeditor import NodeEditor
 from lifeblood_viewer.ui_scene_elements import ImguiViewWindow
 

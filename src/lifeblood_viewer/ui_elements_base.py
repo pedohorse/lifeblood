@@ -1,4 +1,4 @@
-import imgui
+from imgui_bundle import imgui
 
 from typing import Dict, Optional, Tuple
 
@@ -87,16 +87,16 @@ class ImguiWindow(ImguiElement):
 
         if self.__just_opened:
             pos = imgui.get_mouse_pos()
-            imgui.set_next_window_position(pos.x, pos.y, imgui.APPEARING)
+            imgui.set_next_window_pos(pos, imgui.Cond_.appearing)
             if init_geo := self.initial_geometry():
                 x, y, w, h =init_geo
-                imgui.set_next_window_size(w, h, imgui.FIRST_USE_EVER)
-                imgui.set_next_window_position(x, y, imgui.FIRST_USE_EVER)
+                imgui.set_next_window_size((w, h), imgui.Cond_.first_use_ever)
+                imgui.set_next_window_pos((x, y), imgui.Cond_.first_use_ever)
             if size := self.default_size():
-                imgui.set_next_window_size(size[0], size[1], imgui.APPEARING)
+                imgui.set_next_window_size(size, imgui.Cond_.appearing)
             imgui.set_next_window_focus()
 
-        (expanded, opened) = imgui.begin(self._imgui_window_name(), closable=self.__closable)
+        (expanded, opened) = imgui.begin(self._imgui_window_name(), self.__closable)
         if not opened:
             self.on_closed()
             imgui.end()

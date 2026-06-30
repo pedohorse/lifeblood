@@ -1,4 +1,4 @@
-import imgui
+from imgui_bundle import imgui
 from lifeblood import logging
 from lifeblood.config import get_config
 from lifeblood.enums import NodeParameterType
@@ -98,8 +98,9 @@ class SceneNode(DecoratedNode):
 
             try:
                 if item.has_expression():
-                    with imgui.colored(imgui.COLOR_FRAME_BACKGROUND, 0.1, 0.4, 0.1):
-                        expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
+                    imgui.push_style_color(imgui.Col_.frame_bg, imgui.color_convert_float4_to_u32((0.1, 0.4, 0.1, 1.0)))
+                    expr_changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.expression(), flags=imgui.InputTextFlags_.enter_returns_true)
+                    imgui.pop_style_color()
                     if expr_changed:
                         new_item_expression = newval
                 elif item.has_menu():
@@ -134,9 +135,9 @@ class SceneNode(DecoratedNode):
                         if slider_limits[0] is not None:
                             changed, newval = imgui.slider_int('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_int('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
-                        if imgui.begin_popup_context_item(f'item context menu##{param_name}', 2):
-                            imgui.selectable('toggle expression')
+                            changed, newval = imgui.input_int('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.InputTextFlags_.enter_returns_true)
+                        if imgui.begin_popup_context_item(f'item context menu##{param_name}', imgui.PopupFlags_.mouse_button_right):
+                            imgui.selectable('toggle expression', False)
                             imgui.end_popup()
                     elif param_type == NodeParameterType.FLOAT:
                         #changed, newval = imgui.slider_float('##'.join((param_label, param_name, idstr)), item.value(), 0, 10)
@@ -144,13 +145,13 @@ class SceneNode(DecoratedNode):
                         if slider_limits[0] is not None and slider_limits[1] is not None:
                             changed, newval = imgui.slider_float('##'.join((param_label, param_name, idstr)), item.value(), *slider_limits)
                         else:
-                            changed, newval = imgui.input_float('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
+                            changed, newval = imgui.input_float('##'.join((param_label, param_name, idstr)), item.value(), flags=imgui.InputTextFlags_.enter_returns_true)
                     elif param_type == NodeParameterType.STRING:
                         if item.is_text_multiline():
                             # TODO: this below is a temporary solution. it only gives 8192 extra symbols for editing, but currently there is no proper way around with current pyimgui version
                             imgui.begin_group()
                             ed_butt_pressed = imgui.small_button(f'open in external window##{param_name}')
-                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), len(item.unexpanded_value()) + 1024*8, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT | imgui.INPUT_TEXT_ENTER_RETURNS_TRUE | imgui.INPUT_TEXT_CTRL_ENTER_FOR_NEW_LINE)
+                            changed, newval = imgui.input_text_multiline('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), flags=imgui.InputTextFlags_.allow_tab_input | imgui.InputTextFlags_.enter_returns_true | imgui.InputTextFlags_.ctrl_enter_for_new_line)
                             imgui.end_group()
                             if ed_butt_pressed:
                                 hl = StringParameterEditor.SyntaxHighlight.NO_HIGHLIGHT
@@ -163,7 +164,7 @@ class SceneNode(DecoratedNode):
                                 wgt.set_title(f'editing parameter "{param_name}"')
                                 wgt.show()
                         else:
-                            changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), 256, flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
+                            changed, newval = imgui.input_text('##'.join((param_label, param_name, idstr)), item.unexpanded_value(), flags=imgui.InputTextFlags_.enter_returns_true)
                     else:
                         raise NotImplementedError()
                     if changed:
@@ -171,9 +172,9 @@ class SceneNode(DecoratedNode):
 
                 # item context menu popup
                 popupid = '##'.join((param_label, param_name, idstr))  # just to make sure no names will collide with full param imgui lables
-                if imgui.begin_popup_context_item(f'Item Context Menu##{popupid}', 2):
+                if imgui.begin_popup_context_item(f'Item Context Menu##{popupid}', imgui.PopupFlags_.mouse_button_right):
                     if item.can_have_expressions() and not item.has_expression():
-                        if imgui.selectable(f'enable expression##{popupid}')[0]:
+                        if imgui.selectable(f'enable expression##{popupid}', False)[0]:
                             expr_changed = True
                             # try to turn backtick expressions into normal one
                             if item.type() == NodeParameterType.STRING:
@@ -181,7 +182,7 @@ class SceneNode(DecoratedNode):
                             else:
                                 new_item_expression = str(item.value())
                     if item.has_expression():
-                        if imgui.selectable(f'delete expression##{popupid}')[0]:
+                        if imgui.selectable(f'delete expression##{popupid}', False)[0]:
                             try:
                                 value = item.value()
                             except ParameterExpressionError as e:
@@ -215,7 +216,7 @@ class SceneNode(DecoratedNode):
                     imgui.same_line()
                 self.__draw_single_item(child, (h*size[0], w*size[1]), drawing_widget=drawing_widget)
         elif isinstance(item, CollapsableVerticalGroup):
-            expanded, _ = imgui.collapsing_header(f'{item.label()}##{item.name()}')
+            expanded = imgui.collapsing_header(f'{item.label()}##{item.name()}')
             if expanded:
                 imgui.indent(5)
                 for child in item.items(recursive=False):
@@ -246,10 +247,10 @@ class SceneNode(DecoratedNode):
     def draw_imgui_elements(self, drawing_widget):
         imgui.text(f'Node {self.get_id()}, type "{self.node_type()}", name {self.node_name()}')
 
-        if imgui.selectable(f'parameters##{self.node_name()}', self.__ui_selected_tab == 0, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+        if imgui.selectable(f'parameters##{self.node_name()}', self.__ui_selected_tab == 0, size=(imgui.get_window_width() * 0.5 * 0.7, 0))[1]:
             self.__ui_selected_tab = 0
         imgui.same_line()
-        if imgui.selectable(f'description##{self.node_name()}', self.__ui_selected_tab == 1, width=imgui.get_window_width() * 0.5 * 0.7)[1]:
+        if imgui.selectable(f'description##{self.node_name()}', self.__ui_selected_tab == 1, size=(imgui.get_window_width() * 0.5 * 0.7, 0))[1]:
             self.__ui_selected_tab = 1
         imgui.separator()
 
