@@ -29,7 +29,7 @@ from lifeblood.environment_resolver import EnvironmentResolverArguments
 import PySide6.QtCore
 import PySide6.QtGui
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QMessageBox, QMenu, QGraphicsView, QDialog, QLineEdit, QInputDialog, QTextEdit, QApplication, QVBoxLayout
+from PySide6.QtWidgets import QMessageBox, QMenu, QGraphicsView, QGraphicsScene, QDialog, QLineEdit, QInputDialog, QTextEdit, QApplication, QVBoxLayout
 from PySide6.QtCore import QObject, Qt, Slot, QRectF, QPoint, QPointF, QEvent, QSize
 from PySide6.QtGui import QSurfaceFormat, QGuiApplication, QPainter, QTransform, QKeySequence, QCursor, QPen, QColor, QClipboard, QShortcut
 
@@ -209,10 +209,12 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         item_producer.set_data_controller(self.__scene)
 
         self.setScene(self.__scene)
-        #self.__update_timer = PySide6.QtCore.QTimer(self)
-        #self.__update_timer.timeout.connect(lambda: self.__scene.invalidate(layers=QGraphicsScene.ForegroundLayer))
-        #self.__update_timer.setInterval(50)
-        #self.__update_timer.start()
+        self.__update_timer_counter = 0
+        self.__next_frame_force_invalidated = False
+        self.__update_timer = PySide6.QtCore.QTimer(self)
+        self.__update_timer.timeout.connect(self._foreground_redraw_timer_callback)
+        self.__update_timer.setInterval(50)
+
         self.__editor_clipboard = Clipboard()
         self.__opened_windows: Set[ImguiWindow] = set()
         self.__overlays: List[NodeEditorOverlayBase] = []
@@ -1055,8 +1057,27 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         # pass all drawing commands to the rendering pipeline
         # and close frame context
         imgui.render()
+        imgui.get_io().delta_time = 0.05
+        if not self.__next_frame_force_invalidated:
+            self._schedule_draw_trailing_imgui_frames()
+        self.__next_frame_force_invalidated = False
         self.__imimpl.render(imgui.get_draw_data())
         painter.endNativePainting()
+
+    def _schedule_draw_trailing_imgui_frames(self):
+        # because of this: https://github.com/ocornut/imgui/issues/1206#issuecomment-311747977
+        self.__update_timer_counter = 5
+        if not self.__update_timer.isActive():
+            self.__update_timer.start()
+
+    def _foreground_redraw_timer_callback(self):
+        # for some reason this does not trigger redraw, only calling invalidate on scene directly
+        #  self.invalidateScene(layers=QGraphicsScene.SceneLayer.ForegroundLayer)
+        self.__scene.invalidate(layers=QGraphicsScene.SceneLayer.ForegroundLayer)
+        self.__next_frame_force_invalidated = True
+        self.__update_timer_counter -= 1
+        if self.__update_timer_counter <= 0:
+            self.__update_timer.stop()
 
     def imguiProcessEvents(self, event: PySide6.QtGui.QInputEvent, do_recache=True):
         if self.__imgui_input_blocked:
@@ -1075,8 +1096,6 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
                     io.add_key_event(imgui_key_map[event.key()], True)  # TODO: figure this out
                 elif event.type() == QEvent.Type.KeyRelease:
                     io.add_key_event(imgui_key_map[event.key()], False)
-            elif event.key() == Qt.Key.Key_Control:
-                io.add_key_event(imgui.Key.left_ctrl, event.type() == QEvent.Type.KeyPress)
 
             if event.type() == QEvent.Type.KeyPress and len(event.text()) > 0:
                 io.add_input_character(ord(event.text()))
@@ -1224,6 +1243,9 @@ imgui_key_map = {
     Qt.Key.Key_Backspace: imgui.Key.backspace,
     Qt.Key.Key_Return: imgui.Key.enter,
     Qt.Key.Key_Escape: imgui.Key.escape,
+    Qt.Key.Key_Shift: imgui.Key.mod_shift,
+    Qt.Key.Key_Control: imgui.Key.mod_ctrl,
+    Qt.Key.Key_Alt: imgui.Key.mod_alt,
     Qt.Key.Key_A: imgui.Key.a,
     Qt.Key.Key_C: imgui.Key.c,
     Qt.Key.Key_V: imgui.Key.v,
