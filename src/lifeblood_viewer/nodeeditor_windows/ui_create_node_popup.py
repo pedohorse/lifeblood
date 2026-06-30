@@ -69,7 +69,7 @@ class CreateNodePopup(ImguiViewPopup):
                 self.__menu_popup_selection_id -= 1
                 self.__menu_popup_selection_id = self.__menu_popup_selection_id % max(1, item_number)
                 self.__menu_popup_arrow_down = True
-        if imgui.is_key_down(imgui.Key.enter) or imgui.is_mouse_double_clicked(imgui.MouseButton_.left):
+        elif imgui.is_key_down(imgui.Key.enter) or imgui.is_mouse_double_clicked(imgui.MouseButton_.left):
             self._close()
 
             if self.__menu_popup_selection_name:
