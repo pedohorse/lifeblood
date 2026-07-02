@@ -1,6 +1,7 @@
 import sys
 import errno
 import asyncio
+import platform
 import shutil
 import tempfile
 import time
@@ -79,7 +80,9 @@ class SimpleWorkerPool:  # TODO: split base class, make this just one of impleme
         # and this may be tricky because of all sorts of wrapper scripts possible
         # including ones that do module injection, so we cannot rely on lifeblood being imporatable from sys.executable
         # relying on sys.argv[0] is also not correct as we cannot know what exactly was wrapped in that script
-        if full_lifeblood_exe_path := shutil.which('lifeblood'):
+        # no windows there is a problem with cmd wrapper and certain possible arguments containing symbols like |
+        #  so we have to use sys.executab
+        if (full_lifeblood_exe_path := shutil.which('lifeblood')) and platform.system().lower() != 'windows':
             self.__worker_executable = [full_lifeblood_exe_path]
         else:
             self.__worker_executable = [sys.executable, '-m', 'lifeblood.launch']
