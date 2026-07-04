@@ -1057,11 +1057,12 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         # and close frame context
         imgui.render()
         imgui.get_io().delta_time = 0.05
+        self.__imimpl.render(imgui.get_draw_data())
+        painter.endNativePainting()
+
         if not self.__next_frame_force_invalidated:
             self._schedule_draw_trailing_imgui_frames()
         self.__next_frame_force_invalidated = False
-        self.__imimpl.render(imgui.get_draw_data())
-        painter.endNativePainting()
 
     def _schedule_draw_trailing_imgui_frames(self):
         # because of this: https://github.com/ocornut/imgui/issues/1206#issuecomment-311747977
@@ -1089,10 +1090,9 @@ class NodeEditor(QGraphicsView, GraphicsSceneViewingWidgetBase, Shortcutable):
         elif isinstance(event, PySide6.QtGui.QWheelEvent):
             io.add_mouse_wheel_event(0, event.angleDelta().y() / 100)
         elif isinstance(event, PySide6.QtGui.QKeyEvent):
-            #print('pressed', event.key(), event.nativeScanCode(), event.nativeVirtualKey(), event.text(), imgui.KEY_A)
-            if event.key() in imgui_key_map:
+            if not event.isAutoRepeat() and event.key() in imgui_key_map:
                 if event.type() == QEvent.Type.KeyPress:
-                    io.add_key_event(imgui_key_map[event.key()], True)  # TODO: figure this out
+                    io.add_key_event(imgui_key_map[event.key()], True)
                 elif event.type() == QEvent.Type.KeyRelease:
                     io.add_key_event(imgui_key_map[event.key()], False)
 
