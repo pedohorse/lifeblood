@@ -41,8 +41,7 @@ from .undo_stack import OperationCompletionDetails, OperationCompletionStatus
 from .fancy_scene_item_factory import FancySceneItemFactory
 
 from imgui_bundle import imgui
-from imgui_bundle.python_backends.opengl_backend_programmable import  ProgrammablePipelineRenderer
-#from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
+from .imgui_opengl_hotfix import AdjustedProgrammablePipelineRenderer as ProgrammablePipelineRenderer
 
 from typing import Any, Optional, List, Tuple, Dict, Set, Callable, Union
 
