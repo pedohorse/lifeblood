@@ -259,7 +259,7 @@ CREATE TRIGGER IF NOT EXISTS update_invocations_finish_time
 AFTER UPDATE OF "state" ON "invocations" WHEN old.state != {invoc_finish_state} AND new.state == {invoc_finish_state} 
 BEGIN
 	UPDATE "invocations" SET finish_time = {unixepoch_func} WHERE "id" == new.id;
-	UPDATE "task_group_attributes" SET "stat_max_invoc_end_time" = MAX("stat_max_invoc_end_time", (SELECT inprog_time FROM "invocations" WHERE "id" == new.id))
+	UPDATE "task_group_attributes" SET "stat_max_invoc_end_time" = MAX("stat_max_invoc_end_time", (SELECT finish_time FROM "invocations" WHERE "id" == new.id))
 	    WHERE "group" IN (SELECT "group" FROM task_groups WHERE task_id == new.task_id);
 END;
 
