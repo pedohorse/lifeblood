@@ -6,8 +6,8 @@ this file overrides render()
  https://github.com/ocornut/imgui/issues/3813#issuecomment-779067870
 """
 
-import imgui
-from imgui.integrations.opengl import ProgrammablePipelineRenderer, get_common_gl_state, restore_common_gl_state
+from imgui_bundle import imgui
+from imgui_bundle.python_backends.opengl_backend_programmable import ProgrammablePipelineRenderer, get_common_gl_state, restore_common_gl_state
 import OpenGL.GL as gl
 import ctypes
 
@@ -18,13 +18,16 @@ class AdjustedProgrammablePipelineRenderer(ProgrammablePipelineRenderer):
         io = self.io
 
         display_width, display_height = io.display_size
-        fb_width = int(display_width * io.display_fb_scale[0])
-        fb_height = int(display_height * io.display_fb_scale[1])
+        fb_width = int(display_width * io.display_framebuffer_scale[0])
+        fb_height = int(display_height * io.display_framebuffer_scale[1])
+
+        # Honor RendererHasTextures
+        self._update_textures()
 
         if fb_width == 0 or fb_height == 0:
             return
 
-        draw_data.scale_clip_rects(*io.display_fb_scale)
+        draw_data.scale_clip_rects(io.display_framebuffer_scale)
 
         # backup GL state
         # todo: provide cleaner version of this backup-restore code
@@ -46,11 +49,23 @@ class AdjustedProgrammablePipelineRenderer(ProgrammablePipelineRenderer):
 
         gl.glViewport(0, 0, int(fb_width), int(fb_height))
 
-        ortho_projection = (ctypes.c_float * 16)(
-             2.0/display_width, 0.0,                   0.0, 0.0,
-             0.0,               2.0/-display_height,   0.0, 0.0,
-             0.0,               0.0,                  -1.0, 0.0,
-            -1.0,               1.0,                   0.0, 1.0
+        ortho_projection = (ctypes.c_float * 16)(  # noqa
+            2.0 / display_width,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.0 / -display_height,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            -1.0,
+            1.0,
+            0.0,
+            1.0,
         )
 
         gl.glUseProgram(self._shader_handle)
@@ -58,20 +73,29 @@ class AdjustedProgrammablePipelineRenderer(ProgrammablePipelineRenderer):
         gl.glUniformMatrix4fv(self._attrib_proj_mtx, 1, gl.GL_FALSE, ortho_projection)
         gl.glBindVertexArray(self._vao_handle)
 
-        for commands in draw_data.commands_lists:
-            idx_buffer_offset = 0
+        for commands in draw_data.cmd_lists:
 
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._vbo_handle)
             # todo: check this (sizes)
-            gl.glBufferData(gl.GL_ARRAY_BUFFER, commands.vtx_buffer_size * imgui.VERTEX_SIZE, ctypes.c_void_p(commands.vtx_buffer_data), gl.GL_STREAM_DRAW)
+            gl.glBufferData(
+                gl.GL_ARRAY_BUFFER,
+                commands.vtx_buffer.size() * imgui.VERTEX_SIZE,
+                ctypes.c_void_p(commands.vtx_buffer.data_address()),
+                gl.GL_STREAM_DRAW,
+            )
 
             gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self._elements_handle)
             # todo: check this (sizes)
-            gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, commands.idx_buffer_size * imgui.INDEX_SIZE, ctypes.c_void_p(commands.idx_buffer_data), gl.GL_STREAM_DRAW)
+            gl.glBufferData(
+                gl.GL_ELEMENT_ARRAY_BUFFER,
+                commands.idx_buffer.size() * imgui.INDEX_SIZE,
+                ctypes.c_void_p(commands.idx_buffer.data_address()),
+                gl.GL_STREAM_DRAW,
+            )
 
             # todo: allow to iterate over _CmdList
-            for command in commands.commands:
-                gl.glBindTexture(gl.GL_TEXTURE_2D, command.texture_id)
+            for command in commands.cmd_buffer:
+                gl.glBindTexture(gl.GL_TEXTURE_2D, command.tex_ref.get_tex_id())
 
                 # todo: use named tuple
                 x, y, z, w = command.clip_rect
@@ -82,9 +106,12 @@ class AdjustedProgrammablePipelineRenderer(ProgrammablePipelineRenderer):
                 else:
                     gltype = gl.GL_UNSIGNED_INT
 
-                gl.glDrawElements(gl.GL_TRIANGLES, command.elem_count, gltype, ctypes.c_void_p(idx_buffer_offset))
-
-                idx_buffer_offset += command.elem_count * imgui.INDEX_SIZE
+                gl.glDrawElements(
+                    gl.GL_TRIANGLES,
+                    command.elem_count,
+                    gltype,
+                    ctypes.c_void_p(command.idx_offset * imgui.INDEX_SIZE),
+                )
 
         # restore modified GL state
         restore_common_gl_state(common_gl_state_tuple)

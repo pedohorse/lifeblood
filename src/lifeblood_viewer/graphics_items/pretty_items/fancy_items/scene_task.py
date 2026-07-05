@@ -1,5 +1,5 @@
 from datetime import timedelta
-import imgui
+from imgui_bundle import imgui
 from lifeblood import logging
 from lifeblood.enums import InvocationState, TaskState
 from lifeblood.ui_protocol_data import TaskData, IncompleteInvocationLogData, InvocationLogData
@@ -173,7 +173,7 @@ class SceneTask(DrawableTask):
             self._draw_dict_table(self.attributes(), 'node_task_attributes')
 
         if env_res_args := self.environment_attributes():
-            tab_expanded, _ = imgui.collapsing_header(f'environment resolver attributes##collapsing_node_task_environment_resolver_attributes')
+            tab_expanded = imgui.collapsing_header(f'environment resolver attributes##collapsing_node_task_environment_resolver_attributes')
             if tab_expanded:
                 imgui.text(f'environment resolver: "{env_res_args.name()}"')
                 if env_res_args.arguments():
@@ -187,13 +187,13 @@ class SceneTask(DrawableTask):
                 logger.warning(f'node for task {self.get_id()} does not exist')
                 continue
             node_name: str = node.node_name()
-            node_expanded, _ = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
+            node_expanded = imgui.collapsing_header(f'node {node_id}' + (f' "{node_name}"' if node_name else ''))
             if not node_expanded:  # or invocs is None:
                 continue
             for invoc_id, invoc_log in invocs.items():
                 # TODO: pyimgui is not covering a bunch of fancy functions... watch when it's done
                 imgui.indent(10)
-                invoc_expanded, _ = imgui.collapsing_header(f'invocation {invoc_id}' +
+                invoc_expanded = imgui.collapsing_header(f'invocation {invoc_id}' +
                                                             (f', worker {invoc_log.worker_id}' if isinstance(invoc_log, InvocationLogData) is not None else '') +
                                                             f', time: {timedelta(seconds=round(invoc_log.invocation_runtime)) if invoc_log.invocation_runtime is not None else "N/A"}' +
                                                             f'###logentry_{invoc_id}')

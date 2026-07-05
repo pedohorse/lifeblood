@@ -7,7 +7,7 @@ from lifeblood.enums import InvocationState
 from PySide6.QtCore import Qt, Slot, Signal, QRectF, QPointF
 from PySide6.QtWidgets import QWidget, QGraphicsView
 from PySide6.QtGui import QPainter, QPainterPath, QPen, QColor, QMouseEvent
-import imgui
+from imgui_bundle import imgui
 
 from ..editor_scene_integration import fetch_and_open_log_viewer
 from .overlay_base import NodeEditorOverlayBase
@@ -107,17 +107,17 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
             screen_height = abs(viewer.mapFromScene(0, height).y() - viewer.mapFromScene(0, 0).y())
             approx_height = len(logs) * text_size_est[1]
 
-            imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (6.0, 6.0))
-            imgui.set_next_window_position(screen_pos.x() - window_width, screen_pos.y() - 15)
+            imgui.push_style_var(imgui.StyleVar_.window_padding, imgui.ImVec2(6.0, 0))
+            imgui.set_next_window_pos((screen_pos.x() - window_width, screen_pos.y() - 15))
             imgui.set_next_window_size_constraints((window_width, 30),
                                                    (window_width, max(30, screen_height)))
-            imgui.set_next_window_size(0, approx_height, imgui.ONCE)
+            imgui.set_next_window_size((0, approx_height), imgui.Cond_.once)
             imgui.begin(f"smth##forground_interface_{node_id}", False,
-                        imgui.WINDOW_NO_MOVE | imgui.WINDOW_NO_TITLE_BAR |
-                        imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_RESIZE |
-                        imgui.WINDOW_NO_SAVED_SETTINGS | imgui.WINDOW_NO_FOCUS_ON_APPEARING |
-                        imgui.WINDOW_NO_NAV_FOCUS | imgui.WINDOW_NO_BRING_TO_FRONT_ON_FOCUS |
-                        imgui.WINDOW_ALWAYS_AUTO_RESIZE)
+                        imgui.WindowFlags_.no_move | imgui.WindowFlags_.no_title_bar |
+                        imgui.WindowFlags_.no_collapse | imgui.WindowFlags_.no_resize |
+                        imgui.WindowFlags_.no_saved_settings | imgui.WindowFlags_.no_focus_on_appearing |
+                        imgui.WindowFlags_.no_nav_focus | imgui.WindowFlags_.no_bring_to_front_on_focus |
+                        imgui.WindowFlags_.always_auto_resize)
 
             something_was_visible = False
             for invoc_id, log_meta in logs:
@@ -138,9 +138,9 @@ class TaskHistoryOverlay(NodeEditorOverlayBase):
                     else:
                         fetch_and_open_log_viewer(self.__scene, invoc_id, viewer)
                 imgui.same_line()
-                clr = (0.8, 0.8, 0.55) if invoc_state != InvocationState.FINISHED else (
-                      (0.55, 0.9, 0.55) if ret_good else (0.9, 0.55, 0.55))
-                imgui.push_style_color(imgui.COLOR_TEXT, *clr)
+                clr = (0.8, 0.8, 0.55, 1.0) if invoc_state != InvocationState.FINISHED else (
+                      (0.55, 0.9, 0.55, 1.0) if ret_good else (0.9, 0.55, 0.55, 1.0))
+                imgui.push_style_color(imgui.Col_.text, imgui.color_convert_float4_to_u32(clr))
                 imgui.text(status_text)
                 imgui.pop_style_color()
 
