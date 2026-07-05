@@ -9,6 +9,7 @@ from lifeblood.enums import TaskGroupArchivedState
 from lifeblood.ui_protocol_data import TaskGroupBatchData, TaskGroupData
 from lifeblood import paths
 from lifeblood.logging import get_logger
+from lifeblood.timestamp import global_timestamp_to_local_datetime
 from .nodeeditor import NodeEditor
 from .graphics_scene_with_data_controller import QGraphicsImguiSceneWithDataController
 from .connection_worker import SchedulerConnectionWorker
@@ -117,19 +118,19 @@ class GroupsModel(QAbstractItemModel):
             return self.__items_order[index.row()]
         elif index.column() == self.CREATION_TIME_COL:  # creation time
             if role == Qt.ItemDataRole.DisplayRole:
-                return datetime.fromtimestamp(self.__items[self.__items_order[index.row()]].creation_timestamp).replace(tzinfo=timezone.utc).astimezone().strftime(r'%H:%M:%S %d %b %y')
+                return global_timestamp_to_local_datetime(self.__items[self.__items_order[index.row()]].creation_timestamp).strftime(r'%H:%M:%S %d %b %y')
             elif role == self.SortRole:
                 return self.__items[self.__items_order[index.row()]].creation_timestamp
         elif index.column() == self.START_TIME_COL:  # start time
             val = self.__items[self.__items_order[index.row()]].statistics.first_start
             if role == Qt.DisplayRole:
-                return datetime.utcfromtimestamp(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
+                return global_timestamp_to_local_datetime(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
             elif role == self.SortRole:
                 return val or 0
         elif index.column() == self.END_TIME_COL:  # end time
             val = self.__items[self.__items_order[index.row()]].statistics.last_finish
             if role == Qt.DisplayRole:
-                return datetime.utcfromtimestamp(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
+                return global_timestamp_to_local_datetime(val).strftime(r'%H:%M:%S %d %b %y') if val is not None else 'N/A'
             elif role == self.SortRole:
                 return val or 0
         elif index.column() == self.TOTAL_RUNTIME_COL:  # total runtime
