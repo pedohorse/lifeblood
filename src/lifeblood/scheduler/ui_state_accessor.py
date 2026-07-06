@@ -227,12 +227,9 @@ class UIStateAccessor(SchedulerComponentBase):
     async def get_task_groups_ui_state(self, fetch_statistics=False, skip_archived_groups=True, offset=0, limit=-1) -> TaskGroupBatchData:
         self.__logger.debug(f'tasks groups update for offset={offset}, limit={"unlim" if limit < 0 else limit}')
         # group_totals_update_interval = 5
-        # now = datetime.now()
         async with self.__data_access.data_connection() as con, \
                 aperformance_measurer(threshold_to_report=0.005, name='get_task_groups_ui_state'):
             con.row_factory = aiosqlite.Row
-            # need_group_totals_update = (now - (self.__ui_cache.get('last_update_time', None) or datetime.fromtimestamp(0))).total_seconds() > group_totals_update_interval
-            # fetch_statistics = fetch_statistics and need_group_totals_update
             if fetch_statistics:
                 sqlexpr = 'SELECT "group", "ctime", "state", "priority", tdone, tprog, terr, tall, stat_min_invoc_start_time AS min_start, stat_max_invoc_end_time AS max_finish FROM task_group_attributes ' \
                           'LEFT JOIN ' \

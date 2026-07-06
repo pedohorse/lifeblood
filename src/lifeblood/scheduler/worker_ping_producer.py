@@ -1,12 +1,11 @@
 import aiosqlite
-import time
 from datetime import datetime
 from .. import logging
 from ..enums import WorkerState, WorkerPingState, WorkerPingReply
 from .ping_producer_base import PingEntity, PingProducerBase, PingEntityIdleness, PingReply
 from ..net_messages.address import AddressChain
 from ..net_messages.exceptions import MessageTransferError, MessageTransferTimeoutError
-from ..timestamp import global_timestamp_int
+from ..timestamp import global_timestamp_int, global_timestamp_to_datetime
 from .data_access import DataAccess
 from .scheduler_core import SchedulerCore
 
@@ -91,7 +90,7 @@ class WorkerPingProducer(PingProducerBase):
                 await self.__check_lastseen_and_drop_invocations(row['id'], row['last_seen'], switch_state_on_reset=WorkerState.ERROR)
                 continue
 
-            entities.append(WorkerPingEntity(addr, row['id'], WorkerState(row['state']), datetime.fromtimestamp(row['last_checked'])))
+            entities.append(WorkerPingEntity(addr, row['id'], WorkerState(row['state']), global_timestamp_to_datetime(row['last_checked'])))
 
         return entities
 
