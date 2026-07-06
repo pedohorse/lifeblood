@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 from typing import Union
@@ -7,7 +8,7 @@ def global_timestamp_int() -> int:
     tz/location independent global timestamp
     with persistent origin point
     """
-    return int(datetime.now(tz=timezone.utc).timestamp())
+    return int(time.time())
 
 
 def global_timestamp_float() -> float:
@@ -15,7 +16,7 @@ def global_timestamp_float() -> float:
     tz/location independent global timestamp
     with persistent origin point
     """
-    return datetime.now(tz=timezone.utc).timestamp()
+    return time.time()
 
 
 def global_timestamp_datetime() -> datetime:
