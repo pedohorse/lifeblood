@@ -44,6 +44,10 @@ class SceneTask(DrawableTask):
         if len(self.item_watchers()) == 1:  # it's a first watcher
             self.refresh_ui()
 
+    def set_task_data(self, raw_data: TaskData):
+        super().set_task_data(raw_data)
+        self.refresh_ui()
+
     def set_name(self, name: str):
         super().set_name(name)
         self.refresh_ui()
