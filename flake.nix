@@ -12,8 +12,8 @@
 
     packages.x86_64-linux = rec {
       default = lifeblood;
-      lifeblood = pkgs.python312Packages.callPackage ./lifeblood.nix { };
-      lifeblood-viewer = pkgs.python312Packages.callPackage ./lifeblood-viewer.nix { inherit lifeblood; };
+      lifeblood = pkgs.python313Packages.callPackage ./lifeblood.nix { };
+      lifeblood-viewer = pkgs.python313Packages.callPackage ./lifeblood-viewer.nix { inherit lifeblood; };
       tests = import ./lifeblood-integration-tests.nix { pkgs = nixpkgs.legacyPackages.x86_64-linux.extend (final: prev: { inherit lifeblood; }); };
     };
   };
