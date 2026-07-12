@@ -1,25 +1,49 @@
-
 {
   lib,
   fetchPypi,
-  python310Packages,
-  python311Packages,
+  buildPythonPackage,
+  buildPythonApplication,
+  autoPatchelfHook,
+  libx11,
+  libxext,
+  libz,
   lifeblood,
+  setuptools,
+  glfw,
+  pyopengl,
+  pyside6,
+  lz4,
+  grandalf,
+  numpy,
+  qt6,
 }:
 let
-  imgui = python311Packages.buildPythonPackage {
-    name = "imgui";
-    pythonImportsCheck = [ "imgui" ];
+  imgui_bundle = buildPythonPackage {
+    name = "imgui_bundle";
+    pythonImportsCheck = [ "imgui_bundle" ];
+    build-system = [ setuptools ];
+    format = "wheel";
     src = fetchPypi {
-      pname = "imgui";
-      version = "2.0.0";
-      hash = "sha256-L7247tO429fqmK+eTBxlgrC8TalColjeFjM9jGU9Z+E=";
+      pname = "imgui_bundle";
+      version = "1.92.801";
+      format = "wheel";
+      dist = "cp313";
+      python = "cp313";
+      abi = "cp313";
+      platform = "manylinux_2_28_x86_64";
+      hash = "sha256-m2wEM0RGy9x7GHXO7LdiSFvEDoNBzRXFQGunA0alxrs=";
     };
-    nativeBuildInputs = with python311Packages; [
-      cython_0
+    buildInputs = [
+      libx11
+      libz
+      libxext
+    ];
+    nativeBuildInputs = [
+      autoPatchelfHook
     ];
   };
-in python311Packages.buildPythonPackage {
+
+in buildPythonApplication {
   name = "lifeblood-viewer";
   pyproject = true;
   src = ./.;
@@ -28,18 +52,36 @@ in python311Packages.buildPythonPackage {
     cp ./pkg_lifeblood_viewer/{pyproject.toml,setup.cfg} .
   '';
 
-  build-system = with python311Packages; [ setuptools ];
+  build-system = [ setuptools ];
+
+  buildInputs = [
+    qt6.qtbase
+    qt6.qtwayland
+  ];
+  nativeBuildInputs = [
+    qt6.wrapQtAppsHook
+  ];
+  dontWrapQtApps = true;
+  makeWrapperArgs = [
+    "\${qtWrapperArgs[@]}"
+  ];
 
   pythonImportsCheck = [ "lifeblood" ];
-  propagatedBuildInputs = with python311Packages; [
+  propagatedBuildInputs = [
     glfw
     pyopengl
     pyside6
     lz4
     grandalf
-    numpy_1
+    numpy
   ] ++ [
-    imgui
+    imgui_bundle
     lifeblood
   ];
+
+  meta = {
+    description = "";
+    license = lib.licenses.gpl3;
+    mainProgram = "lifeblood_viewer";
+  };
 }
