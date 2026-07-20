@@ -24,7 +24,7 @@ jobs:
           dcc_plugins_workspace/build_houdini.sh
       - run: |
           ls -alhR dcc_plugins
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_prefix }}houdini
           path:
@@ -38,7 +38,7 @@ jobs:
         run: |
           export PATH=/opt/houdini/build:$PATH
           dcc_plugins_workspace/build_blender.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_prefix }}blender
           path:
