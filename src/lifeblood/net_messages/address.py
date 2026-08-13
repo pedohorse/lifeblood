@@ -6,9 +6,14 @@ class AddressChain(str):
     _validity_re = re.compile(r'^[^|]+(?:\|[^|]+)*$|^$')  # empty string is a valid invalid address
 
     def __new__(cls, source_str):
+        if source_str is None:
+            source_str = ''  # invalid address
         if not cls._validity_re.match(source_str):
-            raise ValueError(f'"{source_str}" is not a valid {cls.__name__}')
+            raise ValueError(f'"{source_str}" is not a correct {cls.__name__}')
         return str.__new__(cls, source_str)
+
+    def is_valid(self):
+        return len(self) > 0
 
     def split_address(self) -> Tuple["DirectAddress", ...]:  # TODO: move this to special module
         parts = self.strip().split('|')
