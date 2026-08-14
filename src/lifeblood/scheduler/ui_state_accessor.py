@@ -322,6 +322,8 @@ class UIStateAccessor(SchedulerComponentBase):
                                                      } for x in await cur.fetchall())}
                 for worker_data in all_workers.values():
                     worker_data['groups'] = set(worker_data['groups'].split(',')) if worker_data['groups'] else set()
+                    # last_address from DB may be None, but in data it must be a str.
+                    worker_data['last_address'] = worker_data['last_address'] or ''
 
             async with con.execute(
                     'SELECT ' +
