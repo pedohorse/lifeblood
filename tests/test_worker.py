@@ -1,33 +1,34 @@
 import os
 import asyncio
-import logging
 import tempfile
 from unittest import IsolatedAsyncioTestCase, mock
+from lifeblood.enums import WorkerType, WorkerState
+from lifeblood.hardware_resources import HardwareResources
 from lifeblood.worker import Worker
-from lifeblood.logging import set_default_loglevel
 from lifeblood.invocationjob import Invocation, InvocationJob, InvocationEnvironment, InvocationResources
 from lifeblood.environment_resolver import EnvironmentResolverArguments
 from lifeblood.net_messages.address import AddressChain
+from lifeblood.worker_metadata import WorkerMetadata
 from lifeblood_testing_common.common import create_default_scheduler
 
 
 class RunningSchedulerTests(IsolatedAsyncioTestCase):
-    __fd = None
-    __db_path = None
-
     @classmethod
     def setUpClass(cls) -> None:
-        set_default_loglevel(logging.DEBUG)
-        cls.__fd, cls.__db_path = tempfile.mkstemp('_lifeblood.db')
         print('settingup done')
 
     @classmethod
     def tearDownClass(cls) -> None:
-        if cls.__fd is not None:
-            os.close(cls.__fd)
-        if cls.__db_path is not None:
-            os.unlink(cls.__db_path)
         print('tearingdown done')
+
+    def setUp(self):
+        self.__fd, self.__db_path = tempfile.mkstemp('_lifeblood.db')
+
+    def tearDown(self):
+        if self.__fd is not None:
+            os.close(self.__fd)
+        if self.__db_path is not None:
+            os.unlink(self.__db_path)
 
     async def asyncSetUp(self) -> None:
         self.scheduler = create_default_scheduler(self.__db_path, do_broadcasting=False, helpers_minimal_idle_to_ensure=0, server_addr=('127.0.0.1', 12347, 12345), server_ui_addr=('127.0.0.1', 12346))
@@ -125,3 +126,108 @@ class WorkerRunTest(RunningSchedulerTests):
                     break
             else:
                 self.assertEqual(False, True)
+
+    #
+    # sequential/double add worker with same address and hwid
+    async def test_sequential_add_worker(self):
+        # first we need to create incorrect situation
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(1)
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        # worker 1 added fine
+        await self.scheduler.worker_stopped(AddressChain('127.0.0.1:23456'))
+        self.assertEqual(WorkerState.OFF, await self.scheduler.get_worker_state(1))
+        # worker 1 stopped fine
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),  # same address
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),  # same hwid
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        # worker 1 re-added fine
+        # check that there is no worker 2
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(2)
+
+    async def test_double_add_worker(self):
+        # first we need to create incorrect situation
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(1)
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),  # same address
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),  # same hwid
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(2)
+
+    #
+    # sequential/double add worker with same address, different hwid
+    async def test_sequential_add_worker_changed_hwid(self):
+        # first we need to create incorrect situation
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(1)
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        # worker 1 added fine
+        await self.scheduler.worker_stopped(AddressChain('127.0.0.1:23456'))
+        self.assertEqual(WorkerState.OFF, await self.scheduler.get_worker_state(1))
+        # worker 1 stopped fine
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),  # same address
+            WorkerType.STANDARD,
+            HardwareResources(hwid=54321, devices=[], resources={}),  # DIFFERENT hwid
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(2))
+        self.assertEqual(WorkerState.OFF, await self.scheduler.get_worker_state(1))
+        # worker 2 added fine
+        # checked that there is no reuse of worker 1
+
+    async def test_double_add_worker_changed_hwid(self):
+        # first we need to create incorrect situation
+        with self.assertRaises(ValueError):
+            await self.scheduler.get_worker_state(1)
+
+        await self.scheduler.add_worker(
+            AddressChain('127.0.0.1:23456'),
+            WorkerType.STANDARD,
+            HardwareResources(hwid=12345, devices=[], resources={}),
+            worker_metadata=WorkerMetadata('testhost'),
+        )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
+        with self.assertRaises(RuntimeError):
+            await self.scheduler.add_worker(
+                AddressChain('127.0.0.1:23456'),  # same address
+                WorkerType.STANDARD,
+                HardwareResources(hwid=54321, devices=[], resources={}),  # DIFFERENT hwid
+                worker_metadata=WorkerMetadata('testhost'),
+            )
+        self.assertEqual(WorkerState.IDLE, await self.scheduler.get_worker_state(1))
