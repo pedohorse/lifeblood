@@ -812,6 +812,15 @@ class SchedulerCore(NodeGraphHolderBase):
                 worker_row = await worcur.fetchone()
             if worker_row is None:
                 # first ensure that there is no entry with the same address
+                # if so happens that there is a worker with same address but different hwid
+                #  that is currently working - then something is very wrong, better abort
+                async with con.execute('SELECT "id", state FROM "workers" WHERE "last_address" == ?', (addr,)) as cur:
+                    # due to last_address UNIQUE constrain - there is either single entry, or none
+                    test_row = await cur.fetchone()
+                    if test_row is not None and (test_state := WorkerState(test_row['state'])) not in (WorkerState.OFF, WorkerState.UNKNOWN, WorkerState.ERROR):
+                        raise RuntimeError(f'active worker with given address {addr} exists in state {test_state}')
+                #
+                # otherwise all good, proceed to nullify last_address
                 await con.execute('UPDATE "workers" SET "last_address" = ? WHERE "last_address" == ?', (None, addr))
                 async with con.execute('SELECT "id", state FROM "workers" WHERE hwid == ? AND '
                                        '(state == ? OR state == ?)', (worker_resources.hwid,
