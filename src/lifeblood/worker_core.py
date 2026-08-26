@@ -550,7 +550,9 @@ class WorkerCore:
                         if flush_task in done and not done_task.done():
                             flush_task = asyncio.create_task(_flush())
                             tasks_to_wait.add(flush_task)
-                    await stdout.write(datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S] task finished\n').encode('UTF-8'))
+                    assert done_task.done()
+                    exit_code = done_task.result()
+                    await stdout.write((datetime.datetime.now().strftime('[SYS][%d.%m.%y %H:%M:%S]') + f' task finished with code {exit_code}\n').encode('UTF-8'))
                 except asyncio.CancelledError:
                     self.__logger.debug('task awaiter was cancelled')
                     for task in tasks_to_wait:
