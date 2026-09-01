@@ -24,7 +24,7 @@ jobs:
   notify_telegram:
     runs-on: "ubuntu-latest"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: sudo apt install jq
       - name: "post to telegram"
         shell: bash
