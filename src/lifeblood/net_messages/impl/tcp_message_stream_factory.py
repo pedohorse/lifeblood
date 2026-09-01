@@ -3,7 +3,7 @@ import struct
 import logging
 from lifeblood.logging import get_logger
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ..exceptions import MessageTransferError, MessageTransferTimeoutError
 from ..interfaces import MessageStreamFactory
 from ..stream_wrappers import MessageSendStream, MessageSendStreamBase
@@ -30,8 +30,17 @@ class ConnectionPoolEntry:
     writer: asyncio.StreamWriter
     last_used: datetime
     users_count: int
+    last_ping_time: datetime = field(default_factory=lambda: datetime.now())
     close_when_user_count_zero: bool = False
     bad: bool = False
+
+    def check_bad(self) -> bool:
+        """
+        check and update "bad" status of the entry, return updated bad value
+        """
+        if not self.bad and (self.reader.at_eof() or self.writer.is_closing()):
+            self.bad = True
+        return self.bad
 
 
 class ReusableMessageSendStream(MessageSendStream):
@@ -59,7 +68,8 @@ class ReusableMessageSendStream(MessageSendStream):
     async def send_raw_message(self, message: Message, *, message_delivery_timeout_override: Optional[float] = ...):
         try:
             return await super().send_raw_message(message, message_delivery_timeout_override=message_delivery_timeout_override)
-        except MessageTransferTimeoutError:
+        except MessageTransferError:
+            # even for MessageTransferTimeoutError:
             # we cannot be sure some crap won't arrive after timeout,
             # in that case future uses of this connection will be at risk of getting it,
             # so it's safer to mark it for closure
@@ -91,15 +101,21 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
     _logger: Optional[logging.Logger] = None
 
     def __init__(self,
-                 pooled_connection_life: int = 0,
+                 pooled_connection_life: float = 0,
                  connection_open_function: Optional[Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]]] = None,
-                 timeout: float = default_stream_timeout):
+                 timeout: float = default_stream_timeout,
+                 minimal_reping_interval: Optional[float] = None):
         self.__pooled_connection_life = pooled_connection_life
         self.__pool: Dict[Tuple[str, int], List[ConnectionPoolEntry]] = {}
         self.__connection_open_func: Callable[[DirectAddress, DirectAddress], Awaitable[Tuple[asyncio.StreamReader, asyncio.StreamWriter]]] = connection_open_function or _initialize_connection
         self.__open_connection_calls_count = 0
         self.__pool_closed = asyncio.Event()
         self.__timeout = timeout
+        # below is some arbitrary heuristics
+        if minimal_reping_interval is None:
+            self.__minimal_reping_interval = max(1, int(timeout/3))
+        else:
+            self.__minimal_reping_interval = minimal_reping_interval
         if self._logger is None:
             TcpMessageStreamPooledFactory._logger = get_logger('TcpMessageStreamPooledFactory')
 
@@ -115,7 +131,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         for key, entry_list in self.__pool.items():
             new_entries = []
             for entry in entry_list:
-                if not entry.bad \
+                if not entry.check_bad() \
                         and (entry.users_count > 0
                              or ((now - entry.last_used).total_seconds() < older_than_this_seconds
                                  and not entry.close_when_user_count_zero)
@@ -151,9 +167,7 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
         for entry in entry_list:
             if entry.users_count > 0 or entry.close_when_user_count_zero:
                 continue
-            if entry.bad or entry.reader.at_eof() or entry.writer.is_closing():
-                # to_remove.append(entry)
-                entry.bad = True
+            if entry.check_bad():
                 continue
             selected = entry
         # for entry in to_remove:  # not the most optimal way......
@@ -173,7 +187,12 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
                                                stream_timeout=self.__timeout,
                                                confirmation_timeout=self.__timeout)
             try:
-                await stream.send_ping()
+                # this is a heuristics base on connection "freshness"
+                # "fresh" connections will most likely work, so extra ping will only slow things down
+                ping_now = datetime.now()
+                if (ping_now - entry.last_ping_time).total_seconds() >= self.__minimal_reping_interval:
+                    await stream.send_ping()
+                    entry.last_ping_time = ping_now
             except MessageTransferError as e:
                 self._logger.debug('ping failed due to %s', e)
                 entry.bad = True
@@ -187,7 +206,8 @@ class TcpMessageStreamPooledFactory(MessageStreamFactory):
             entry = ConnectionPoolEntry(reader,
                                         writer,
                                         datetime.now(),
-                                        0)
+                                        0,
+                                        datetime.now())
             self.__pool.setdefault(key, []).append(entry)
         assert entry is not None
 

@@ -19,7 +19,7 @@ logger = get_logger('message_test')
 
 
 class TestReceiver(TcpMessageProcessor):
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None, default_client_retry_attempts=None):
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=120, default_client_retry_attempts=None):
         super().__init__((listening_host, listening_port), backlog=backlog, stream_timeout=stream_timeout, default_client_retry_attempts=default_client_retry_attempts)
         self.messages_received: List[Message] = []
         self.__artificial_delay: float = artificial_delay
@@ -54,7 +54,7 @@ class DummyMirrorReceiver(TestReceiver):
 class DummyReceiverWithReply(TestReceiver):
     _counter = 0
 
-    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=None, default_client_retry_attempts=None):
+    def __init__(self, listening_host: str, listening_port: int, *, backlog=None, artificial_delay: float = 0, stream_timeout=120, default_client_retry_attempts=None):
         super().__init__(listening_host=listening_host,
                          listening_port=listening_port,
                          backlog=backlog,

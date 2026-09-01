@@ -120,15 +120,22 @@ class TestConnectionPoolIntegration(IsolatedAsyncioTestCase):
         while srv is None:
             await asyncio.sleep(0.1)
 
+        stream_stash = []
+        timeout = 2
+        pooled_factory = TcpMessageStreamPooledFactory(
+            timeout,
+            _fake_conn_opener_factory(stream_stash, _initialize_connection),
+            timeout=5,
+            minimal_reping_interval=0,
+        )
+
         try:
-            stream_stash = []
-            timeout = 2
-            pooled_factory = TcpMessageStreamPooledFactory(timeout, _fake_conn_opener_factory(stream_stash, _initialize_connection), timeout=5)
 
             addr = DirectAddress(f'{get_localhost()}:29361'), DirectAddress(f'{get_localhost()}:29360')
 
             print('attempting connection')
             for _ in range(3):
+                print('sending message')
                 stream0 = await pooled_factory.open_sending_stream(*addr)
                 stream0.close()
                 await stream0.wait_closed()
@@ -141,6 +148,7 @@ class TestConnectionPoolIntegration(IsolatedAsyncioTestCase):
             await prt.last_writer.wait_closed()
 
             for _ in range(3):
+                print('sending message')
                 stream0 = await pooled_factory.open_sending_stream(*addr)
                 await stream0.send_data_message(b'foo', addr[0], session=uuid.uuid4())
                 stream0.close()

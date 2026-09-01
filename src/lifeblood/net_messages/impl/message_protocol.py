@@ -63,7 +63,21 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
             potentially_pending_tasks = []
             # first what's sent is return address
             try:
-                other_stream_source = await self.read_string(reader)
+                try:
+                    init_message_waiter = asyncio.create_task(self.read_string(reader))
+                    done, _ = await asyncio.wait([init_message_waiter, stop_waiter], return_when=asyncio.FIRST_COMPLETED)
+                    if stop_waiter in done:
+                        self.__logger.debug('explicitly asked to stop')
+                        if init_message_waiter.done():
+                            init_message_waiter.result()  # this will re-raise exceptions if any
+                        init_message_waiter.cancel()
+                        stop_waiter = None
+                        return
+                    # otherwise it must be init_message_waiter that is done
+                    assert init_message_waiter in done
+                    other_stream_source = await init_message_waiter
+                except EOFError as e:
+                    raise MessageReceivingError("failed to initialize message read", wrapped_exception=e) from None
 
                 message_stream = MessageReceiveStream(reader, writer,
                                                       this_address=DirectAddress(':'.join(str(x) for x in self.__listening_address)),
@@ -97,13 +111,15 @@ class MessageProtocol(asyncio.StreamReaderProtocol):
                         await message_stream.acknowledge_received_message(success)
             except MessageTransferError as mre:
                 e = mre.wrapped_exception()
+                msg = mre.args[0] if mre.args else None
+                msg_suffix = (f': ({msg})' if msg else '')
                 if isinstance(e, asyncio.exceptions.IncompleteReadError):
                     if len(e.partial) == 0:
-                        self.__logger.debug('read 0 bytes, connection closed')
+                        self.__logger.debug('read 0 bytes, connection closed %s', msg_suffix)
                     else:
-                        self.__logger.error(f'read incomplete {len(e.partial)} bytes')
+                        self.__logger.error(f'read incomplete {len(e.partial)} bytes %s', msg_suffix)
                 elif isinstance(e, asyncio.exceptions.TimeoutError):
-                    self.__logger.warning(f'connection timeout happened')
+                    self.__logger.warning('connection timeout happened')
                 elif isinstance(e, ConnectionResetError):
                     self.__logger.error('connection was reset. disconnected %s', e)
                 elif isinstance(e, ConnectionError):
