@@ -5,6 +5,7 @@ from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
 from .common import gpu_device_env_common_code
 
+import zlib
 from typing import Iterable, Optional
 
 
@@ -142,7 +143,7 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 '    __checkpoint_frames.add(frame)\n'
                 '    try:\n'
                 "        with open(checkpoint_path, 'w') as f:\n"
-                "            json.dump({'frames': list(__checkpoint_frames)}, f)\n"
+                "            json.dump({'frames': list(__checkpoint_frames), 'checksum': __checkpoint_checksum}, f)\n"
                 "    except OSError as e:\n"
                 "        print('!!WARNING!! Task checkpointing failed!', e)\n"
             )
@@ -229,6 +230,10 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                     '    try:\n'
                     "        with open(checkpoint_path, 'r') as f:\n"
                     "            _d = json.load(f)\n"
+                    "        if __checkpoint_checksum != _d['checksum']:\n"
+                    "            print('task checkpoint has different checksum, discarding')\n"
+                    "            os.unlink(checkpoint_path)\n"
+                    "        else:\n"
                     "            __checkpoint_frames = set(_d['frames'])\n"
                     "            print('task checkpoint: frames already done:', sorted(__checkpoint_frames))\n"
                     '    except OSError as e:\n'
@@ -269,6 +274,9 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 f'{spawnlines}'
         script += \
             f'print("all done!")\n'
+
+        # finally, calc script hash and add as first line
+        script = f'__checkpoint_checksum = {repr(zlib.adler32(script.encode("UTF-8")))}\n' + script
 
         launch_wrapper_code = (
                 gpu_device_env_common_code() +
