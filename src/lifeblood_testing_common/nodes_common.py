@@ -477,12 +477,16 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     # cuz windows does not allow to just run batch/python scripts with no extension...
                     for command in commands_to_replace_with_py_mock:
                         for filename, contents in list(ij.extra_files().items()):
-                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(add_relative_to_PATH) / command))}"))
+                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(add_relative_to_PATH) / command))}"))
 
-                        if ij.args()[0] == command:
-                            ij.args().pop(0)
-                            ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
-                            ij.args().insert(0, 'python')
+                        i = 0
+                        while i < len(ij.args()):
+                            if ij.args()[i] == command:
+                                ij.args().pop(i)
+                                ij.args().insert(i, str(Path(add_relative_to_PATH) / command))
+                                ij.args().insert(i, 'python')
+                                i += 1
+                            i += 1
 
                 invoc = Invocation(
                     ij,
