@@ -27,6 +27,7 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             ui.add_parameter('driver path', 'rop node path', NodeParameterType.STRING, "`task['hipdriver']`")
             ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
             ui.add_parameter('scene file output', 'scene description file path', NodeParameterType.STRING, "")
+            ui.add_parameter('do checkpoint', 'use task checkpoint', NodeParameterType.BOOL, False)
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
                 ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
@@ -112,6 +113,7 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
         matching_attrnames = filter_by_pattern(context.param_value('attrs'), attrs.keys())
         attr_to_trans = tuple((x, attrs[x]) for x in matching_attrnames if x not in ('frames', 'file'))
         attr_to_context = filter_by_pattern(context.param_value('attrs to context'), attrs.keys())
+        do_checkpoint = context.param_value('do checkpoint')
 
         env = InvocationEnvironment()
 
@@ -127,9 +129,34 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             spawnlines = ''
 
         script = \
-            f'import os\n' \
-            f'import hou\n' \
-            f'import lifeblood_connection\n'
+            'import os\n' \
+            'import hou\n' \
+            'import lifeblood_connection\n' \
+            'import json\n'
+
+        if do_checkpoint:
+            script += (
+                '__checkpoint_frames = set()\n'
+                'def _checkpoint_frame(frame):\n'
+                "    print('task checkpointing frame', frame)\n"
+                '    __checkpoint_frames.add(frame)\n'
+                '    try:\n'
+                "        with open(checkpoint_path, 'w') as f:\n"
+                "            json.dump({'frames': list(__checkpoint_frames)}, f)\n"
+                "    except OSError as e:\n"
+                "        print('!!WARNING!! Task checkpointing failed!', e)\n"
+            )
+            script += (
+                'def _is_frame_checkpointed(frame):\n'
+                '    return frame in __checkpoint_frames\n'
+            )
+        else:
+            script += (
+                'def _checkpoint_frame(frame):\n'
+                '    pass\n'
+                'def _is_frame_checkpointed(frame):\n'
+                '    return False\n'
+            )
 
         script += 'def _that_one_image_path_getting_function(node, frame) -> str:\n'
         if image_path_code:
@@ -190,39 +217,85 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             script += \
                 f'node.parm({repr(scene_file_parm_name)}).deleteAllKeyframes()\n' \
                 f'node.parm({repr(scene_file_parm_name)}).set({repr(scene_description_path)})\n'
+            if do_checkpoint:
+                script += \
+                    f'checkpoint_path = os.path.dirname({repr(scene_description_path)})\n' \
+                    f'checkpoint_path = os.path.join(checkpoint_path, {repr(self._checkpoint_filename(context))})\n'
+
+                # and init __checkpoint_frames
+                script += (
+                    'if os.path.exists(checkpoint_path):\n'
+                    "    print('task checkpoint file found', checkpoint_path)\n"
+                    '    try:\n'
+                    "        with open(checkpoint_path, 'r') as f:\n"
+                    "            _d = json.load(f)\n"
+                    "            __checkpoint_frames = set(_d['frames'])\n"
+                    "            print('task checkpoint: frames already done:', sorted(__checkpoint_frames))\n"
+                    '    except OSError as e:\n'
+                    "        print('!!WARNING!! Task checkpoint read error!', e)\n"
+                    "    except json.JSONDecodeError as e:\n"
+                    "        print('!!WARNING!! Task checkpoint integrity error!', e)\n"
+                    "    except KeyError as e:\n"
+                    "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
+                    "    except TypeError as e:\n"
+                    "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
+                )
+
+        elif do_checkpoint:
+            self.logger().warning('task checkpointing only works when "scene file output" parameter is set')
 
         script += \
             f'for i, frame in enumerate({repr(frames)}):\n' \
             f'    print("ALF_PROGRESS {{}}%".format(int(i*100.0/{len(frames)})))\n' \
             f'    hou.setFrame(frame)\n' \
-            f'    skipped = False\n'
+            f'    frame_checkpointed = _is_frame_checkpointed(frame)\n' \
+            f'    already_exists = False\n'
         if context.param_value('skip if exists'):
             script += \
-                f'    skipped = os.path.exists(node.parm({repr(scene_file_parm_name)}).evalAsString())\n'
+                f'    already_exists = os.path.exists(node.parm({repr(scene_file_parm_name)}).evalAsString())\n'
         script += \
-            f'    if skipped:\n' \
+            f'    if frame_checkpointed:\n' \
+            f'        print("skipping frame %d as checkpointed" % frame)\n' \
+            f'    elif already_exists:\n' \
             f'        print("output file already exists, skipping frame %d" % frame)\n' \
             f'    else:\n' \
             f'        print("rendering frame %d" % frame)\n' \
-            f'        node.render(frame_range=(frame, frame), ignore_inputs=True)\n'
+            f'        node.render(frame_range=(frame, frame), ignore_inputs=True)\n' \
+            f'        _checkpoint_frame(frame)\n'
             # TODO: consider input ignoring to be optional
         if spawnlines:
             script += \
-                f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n' \
+                f'    if {repr(context.param_value("gen for skipped"))} or not already_exists:\n' \
                 f'{spawnlines}'
         script += \
             f'print("all done!")\n'
 
         launch_wrapper_code = (
                 gpu_device_env_common_code() +
-                'import sys, subprocess\n'
-                'sys.exit(subprocess.Popen(sys.argv[1:]).wait())')
-
+                'import sys, os, subprocess\n'
+                'exit_code = subprocess.Popen(sys.argv[1:]).wait()\n' +
+                ((
+                     f'checkpoint_path = os.path.dirname({repr(scene_description_path)})\n'
+                     f'checkpoint_path = os.path.join(checkpoint_path, {repr(self._checkpoint_filename(context))})\n'
+                     f'if exit_code == 0:\n'
+                     f'    try:\n'
+                     f"        print('deleting task checkpoint', checkpoint_path)\n"
+                     f'        os.unlink(checkpoint_path)\n'
+                     f'    except Exception as e:\n'
+                     f'        print("unexpected error deleting checkpoint file", e)\n'
+                     f'else:\n'
+                     f"    print('keeping checkpoint file', checkpoint_path)\n"
+                 ) if do_checkpoint else '') +
+                'sys.exit(exit_code)\n'
+        )
         inv = InvocationJob(['python', ':/launch_wrapper.py', 'hython', ':/work_to_do.py'], env=env)
         inv.set_extra_file('work_to_do.py', script)
         inv.set_extra_file('launch_wrapper.py', launch_wrapper_code)
         res = ProcessingResult(job=inv)
         return res
+
+    def _checkpoint_filename(self, context) -> str:
+        return f'task-{self.id()}-{context.task_id()}.chkpt'
 
     def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()
