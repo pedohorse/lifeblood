@@ -3,7 +3,7 @@ from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
-from .common import gpu_device_env_common_code
+from .common import gpu_device_env_common_code, checkpoint_init_functions_code, checkpoint_init_code, checkpoint_cleanup_code
 
 import zlib
 from typing import Iterable, Optional
@@ -135,29 +135,7 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
             'import lifeblood_connection\n' \
             'import json\n'
 
-        if do_checkpoint:
-            script += (
-                '__checkpoint_frames = set()\n'
-                'def _checkpoint_frame(frame):\n'
-                "    print('task checkpointing frame', frame)\n"
-                '    __checkpoint_frames.add(frame)\n'
-                '    try:\n'
-                "        with open(checkpoint_path, 'w') as f:\n"
-                "            json.dump({'frames': list(__checkpoint_frames), 'checksum': __checkpoint_checksum}, f)\n"
-                "    except OSError as e:\n"
-                "        print('!!WARNING!! Task checkpointing failed!', e)\n"
-            )
-            script += (
-                'def _is_frame_checkpointed(frame):\n'
-                '    return frame in __checkpoint_frames\n'
-            )
-        else:
-            script += (
-                'def _checkpoint_frame(frame):\n'
-                '    pass\n'
-                'def _is_frame_checkpointed(frame):\n'
-                '    return False\n'
-            )
+        script += checkpoint_init_functions_code(do_checkpoint)
 
         script += 'def _that_one_image_path_getting_function(node, frame) -> str:\n'
         if image_path_code:
@@ -219,31 +197,8 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 f'node.parm({repr(scene_file_parm_name)}).deleteAllKeyframes()\n' \
                 f'node.parm({repr(scene_file_parm_name)}).set({repr(scene_description_path)})\n'
             if do_checkpoint:
-                script += \
-                    f'checkpoint_path = os.path.dirname({repr(scene_description_path)})\n' \
-                    f'checkpoint_path = os.path.join(checkpoint_path, {repr(self._checkpoint_filename(context))})\n'
-
-                # and init __checkpoint_frames
-                script += (
-                    'if os.path.exists(checkpoint_path):\n'
-                    "    print('task checkpoint file found', checkpoint_path)\n"
-                    '    try:\n'
-                    "        with open(checkpoint_path, 'r') as f:\n"
-                    "            _d = json.load(f)\n"
-                    "        if __checkpoint_checksum != _d['checksum']:\n"
-                    "            print('task checkpoint has different checksum, discarding')\n"
-                    "            os.unlink(checkpoint_path)\n"
-                    "        else:\n"
-                    "            __checkpoint_frames = set(_d['frames'])\n"
-                    "            print('task checkpoint: frames already done:', sorted(__checkpoint_frames))\n"
-                    '    except OSError as e:\n'
-                    "        print('!!WARNING!! Task checkpoint read error!', e)\n"
-                    "    except json.JSONDecodeError as e:\n"
-                    "        print('!!WARNING!! Task checkpoint integrity error!', e)\n"
-                    "    except KeyError as e:\n"
-                    "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
-                    "    except TypeError as e:\n"
-                    "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
+                script += checkpoint_init_code(
+                    f'os.path.join(os.path.dirname({repr(scene_description_path)}), {repr(self._checkpoint_filename(context))})'
                 )
 
         elif do_checkpoint:
@@ -282,18 +237,10 @@ class RopBaseNode(BaseNodeWithTaskRequirements):
                 gpu_device_env_common_code() +
                 'import sys, os, subprocess\n'
                 'exit_code = subprocess.Popen(sys.argv[1:]).wait()\n' +
-                ((
-                     f'checkpoint_path = os.path.dirname({repr(scene_description_path)})\n'
-                     f'checkpoint_path = os.path.join(checkpoint_path, {repr(self._checkpoint_filename(context))})\n'
-                     f'if exit_code == 0:\n'
-                     f'    try:\n'
-                     f"        print('deleting task checkpoint', checkpoint_path)\n"
-                     f'        os.unlink(checkpoint_path)\n'
-                     f'    except Exception as e:\n'
-                     f'        print("unexpected error deleting checkpoint file", e)\n'
-                     f'else:\n'
-                     f"    print('keeping checkpoint file', checkpoint_path)\n"
-                 ) if do_checkpoint else '') +
+                (checkpoint_cleanup_code(
+                    f'os.path.join(os.path.dirname({repr(scene_description_path)}), {repr(self._checkpoint_filename(context))})'
+                )
+                 if do_checkpoint else '') +
                 'sys.exit(exit_code)\n'
         )
         inv = InvocationJob(['python', ':/launch_wrapper.py', 'hython', ':/work_to_do.py'], env=env)
