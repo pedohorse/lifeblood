@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 _frame = 1
 _bad_frames = set()
 _default_output = None
-
+_nodes = {}
 
 class NodeError(RuntimeError):
     pass
@@ -36,6 +36,16 @@ class _NodeMock:
             self.__render_log(frame)
             frame += inc
 
+    def evalParm(self, parm_name: str):
+        return self.parm(parm_name).eval()
+
+    def parm(self, parm_name: str):
+        if self.__parms is None:
+            return MagicMock()
+        if data := self.__parms.get(parm_name):
+            return _ParmMock(data)
+        raise NodeError()  # TODO: check, i think another error is raised in real hou
+
     def __render_log(self, frame):
         if _default_output is None:
             return
@@ -46,6 +56,19 @@ class _NodeMock:
         print(f'[MOCK-HOU] called Node.{item}')
         return MagicMock()
 
+class _ParmMock:
+    def __init__(self, value):
+        self.__val = value
+
+    def eval(self):
+        return self.__val
+
+    def evalAsString(self):
+        return self.__val
+
+    def evalAsStringAtFrame(self, frame: float):
+        return self.__val
+
 
 class hipFile:
     @staticmethod
@@ -54,11 +77,13 @@ class hipFile:
         print('[MOCK-HOU] load file:', path, args, kwargs)
         with open(path, 'r') as f:
             data = json.load(f)
-        global _bad_frames, _default_output
+        global _bad_frames, _default_output, _nodes
         if bad_frames := data.get('bad_frames'):
             _bad_frames = set(bad_frames)
         if path := data.get('default_output'):
             _default_output = Path(path)
+        if nodes := data.get('nodes'):
+            _nodes = nodes
 
     @staticmethod
     def setName(*args, **kwargs):
@@ -87,6 +112,8 @@ class takes:
 
 def node(path):
     print('[MOCK-HOU] get node:', path)
+    if data := _nodes.get(path):
+        return _NodeMock(path, parms=data.get('parms'))
     return _NodeMock(path)
 
 
