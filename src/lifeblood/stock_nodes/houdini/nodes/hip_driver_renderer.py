@@ -4,8 +4,9 @@ from lifeblood.enums import NodeParameterType
 from lifeblood.nodethings import ProcessingResult, ProcessingError
 from lifeblood.invocationjob import InvocationJob, InvocationEnvironment
 from lifeblood.text import filter_by_pattern
-from lifeblood_stock_houdini_helpers.common import gpu_device_env_common_code
+from lifeblood_stock_houdini_helpers.common import gpu_device_env_common_code, checkpoint_init_functions_code, checkpoint_init_code, checkpoint_cleanup_code
 
+import zlib
 from typing import Iterable
 
 
@@ -53,6 +54,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
             ui.add_parameter('ignore inputs', 'ignore rop inputs', NodeParameterType.BOOL, True)
             ui.add_parameter('attrs to context', 'set these attribs as context', NodeParameterType.STRING, '')
             ui.add_parameter('whole range', 'render whole range (needed for alembics)', NodeParameterType.BOOL, False)
+            ui.add_parameter('do checkpoint', 'use task checkpoint', NodeParameterType.BOOL, False)
             with ui.parameters_on_same_line_block():
                 skipparam = ui.add_parameter('skip if exists', 'skip if result already exists', NodeParameterType.BOOL, False)
                 ui.add_parameter('gen for skipped', 'generate children for skipped', NodeParameterType.BOOL, True).append_visibility_condition(skipparam, '==', True)
@@ -78,8 +80,6 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         """
         this node expects to find the following attributes:
         frames
-        hipfile
-        hipdriver
         :param context:
         :return:
         """
@@ -94,6 +94,7 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         attr_to_promote_mask = context.param_value('attrs to extract').strip()
         intr_to_promote_mask = context.param_value('intrinsics to extract').strip()
         attr_to_context = filter_by_pattern(context.param_value('attrs to context'), attrs.keys())
+        do_checkpoint = context.param_value('do checkpoint')
 
         env = InvocationEnvironment()
 
@@ -145,7 +146,10 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
         script = \
             f'import os\n' \
             f'import hou\n' \
-            f'import lifeblood_connection\n'
+            f'import lifeblood_connection\n' \
+            f'import json\n'
+
+        script += checkpoint_init_functions_code(do_checkpoint)
 
         if context.param_value('mask as different hip'):
             mask_path = context.param_value('mask hip path')
@@ -189,6 +193,8 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                 script += f'node.parm(output_parm_name).set({repr(override_path)})\n'  # TODO: implement readonly-workaround through takes!
 
         if context.param_value('whole range'):
+            if do_checkpoint:
+                script += "print('task checkpoint is enabled, but cannot be done for whole range render, ignoring')\n"
             script += \
                 f'frame = {frames[0]}\n' \
                 f'hou.setFrame(frame)\n' \
@@ -214,20 +220,36 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
                       f'    raise RuntimeError("not whole range rendering for alembics is not implemented yet")\n'
             ##
 
+            if do_checkpoint:
+                script += checkpoint_init_code(
+                    f'os.path.join(os.path.dirname(node.parm(output_parm_name).evalAsStringAtFrame({frames[0]})), {repr(self._checkpoint_filename(context))})'
+                )
+                script += (
+                    "try:\n"
+                    "    with open(os.path.join(os.environ['LB_EF_ROOT'], '_checkpoint_path.txt'), 'w') as f:\n"
+                    "        f.write(checkpoint_path)\n"
+                    "except Exception as e:\n"
+                    "    print('failed to store task checkpoint path', e)\n"
+                )
+
             script += \
                 f'all_out_files = []\n' \
                 f'for i, frame in enumerate({repr(frames)}):\n' \
                 f'    hou.setFrame(frame)\n' \
-                f'    skipped = False\n' \
+                f'    frame_checkpointed = _is_frame_checkpointed(frame)\n' \
+                f'    already_exists = False\n' \
                 f'    print("ALF_PROGRESS {{}}%".format(int(i*100.0/{len(frames)})))\n'
             if context.param_value('skip if exists'):
-                script += '    skipped = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
+                script += '    already_exists = os.path.exists(node.parm(output_parm_name).evalAsString())\n'
 
-            script += f'    if skipped:\n' \
+            script += f'    if frame_checkpointed:\n' \
+                      f'        print("skipping frame %d as checkpointed" % frame)\n' \
+                      f'    elif already_exists:\n' \
                       f'        print("output file already exists, skipping frame {{}}".format(frame))\n' \
                       f'    else:\n' \
                       f'        print("rendering frame {{}}".format(frame))\n' \
                       f'        node.render(frame_range=(frame, frame), ignore_inputs={context.param_value("ignore inputs")})\n' \
+                      f'        _checkpoint_frame(frame)\n' \
                       f'    all_out_files.append(node.evalParm(output_parm_name))\n'
             if spawnlines is not None:
                 script += f'    if {repr(context.param_value("gen for skipped"))} or not skipped:\n'
@@ -238,10 +260,24 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
         script += f'print("all done!")\n'
 
+        # finally, calc script hash and add as first line
+        script = f'__checkpoint_checksum = {repr(zlib.adler32(script.encode("UTF-8")))}\n' + script
+
         launch_wrapper_code = (
                 gpu_device_env_common_code() +
                 'import sys, subprocess\n'
-                'sys.exit(subprocess.Popen(sys.argv[1:]).wait())')
+                'exit_code = subprocess.Popen(sys.argv[1:]).wait()\n' +
+                (
+                    "try:\n"
+                    "    with open(os.path.join(os.environ['LB_EF_ROOT'], '_checkpoint_path.txt'), 'r') as f:\n"
+                    "        chkpt_path = f.read()\n"
+                    "except Exception as e:\n"
+                    "    print('failed to cleanup task checkpoint file', e)\n"
+                    "else:\n" +
+                    ''.join(f'    {l}' for l in checkpoint_cleanup_code('chkpt_path').splitlines(keepends=True))
+                 if do_checkpoint else '') +
+                'sys.exit(exit_code)\n'
+        )
 
         inv = InvocationJob(['python', ':/launch_wrapper.py', 'hython', ':/work_to_do.py'], env=env)
         inv.set_extra_file('work_to_do.py', script)
@@ -251,3 +287,6 @@ class HipDriverRenderer(BaseNodeWithTaskRequirements):
 
     def postprocess_task(self, context) -> ProcessingResult:
         return ProcessingResult()
+
+    def _checkpoint_filename(self, context) -> str:
+        return f'task-{self.id()}-{context.task_id()}.chkpt'
