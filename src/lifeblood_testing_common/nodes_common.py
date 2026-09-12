@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import tempfile
@@ -437,6 +438,7 @@ class TestCaseBase(IsolatedAsyncioTestCase):
             *,
             add_relative_to_PATH: Optional[Union[str, Path]] = None,
             commands_to_replace_with_py_mock: List[str] = None,
+            expected_task_exit_code: int = 0,
     ):
         """
         helper for most general node testing:
@@ -461,7 +463,8 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     for param, val in params.items():
                         node.set_param_value(param, val)
 
-                res = node.process_task(ProcessingContext(node.name(), node.label(), node.get_ui(), {'attributes': serialize_attributes_core(task_attrs)}, {}))
+                pool = ThreadPoolExecutor(max_workers=1)
+                res = await asyncio.get_event_loop().run_in_executor(pool, node.process_task, ProcessingContext(node.name(), node.label(), node.get_ui(), {'id': 1, 'attributes': serialize_attributes_core(task_attrs)}, {}))
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
@@ -474,12 +477,16 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                     # cuz windows does not allow to just run batch/python scripts with no extension...
                     for command in commands_to_replace_with_py_mock:
                         for filename, contents in list(ij.extra_files().items()):
-                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(__file__).parent / Path(add_relative_to_PATH) / command))}"))
+                            ij.set_extra_file(filename, contents.replace(f"'{command}'", f"'python', {repr(str(Path(add_relative_to_PATH) / command))}"))
 
-                        if ij.args()[0] == command:
-                            ij.args().pop(0)
-                            ij.args().insert(0, str(Path(__file__).parent / Path(add_relative_to_PATH) / command))
-                            ij.args().insert(0, 'python')
+                        i = 0
+                        while i < len(ij.args()):
+                            if ij.args()[i] == command:
+                                ij.args().pop(i)
+                                ij.args().insert(i, str(Path(add_relative_to_PATH) / command))
+                                ij.args().insert(i, 'python')
+                                i += 1
+                            i += 1
 
                 invoc = Invocation(
                     ij,
@@ -505,6 +512,6 @@ class TestCaseBase(IsolatedAsyncioTestCase):
                 if res.attributes_to_set:
                     updated_attrs.update(res.attributes_to_set)
 
-        await self._helper_test_worker_node(_logic)
+        await self._helper_test_worker_node(_logic, expected_task_exit_code=expected_task_exit_code)
 
         return updated_attrs

@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+from pathlib import Path
+
+env = dict(os.environ)
+env['PYTHONPATH'] = os.pathsep.join((str(Path(__file__).parent / 'hou_modules'), os.environ.get('PYTHONPATH', '')))
+
+sys.exit(subprocess.Popen([sys.executable, *sys.argv[1:]], env=env).wait())

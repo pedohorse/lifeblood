@@ -49,3 +49,69 @@ def gpu_device_env_common_code():
            '\n').format(
                 gpu_dev_type="gpu",
            )
+
+def checkpoint_init_functions_code(do_checkpoint: bool):
+    if do_checkpoint:
+        return (
+            '__checkpoint_frames = set()\n'
+            'def _checkpoint_frame(frame):\n'
+            "    print('task checkpointing frame', frame)\n"
+            '    __checkpoint_frames.add(frame)\n'
+            '    try:\n'
+            "        with open(checkpoint_path, 'w') as f:\n"
+            "            json.dump({'frames': list(__checkpoint_frames), 'checksum': __checkpoint_checksum}, f)\n"
+            "    except OSError as e:\n"
+            "        print('!!WARNING!! Task checkpointing failed!', e)\n"
+
+            'def _is_frame_checkpointed(frame):\n'
+            '    return frame in __checkpoint_frames\n'
+        )
+    else:
+        return (
+            'def _checkpoint_frame(frame):\n'
+            '    pass\n'
+            'def _is_frame_checkpointed(frame):\n'
+            '    return False\n'
+        )
+
+def checkpoint_init_code(checkpoint_file_path: str):
+    return (
+        f'checkpoint_path = {checkpoint_file_path}\n'
+
+    # and init __checkpoint_frames
+        'if os.path.exists(checkpoint_path):\n'
+        "    print('task checkpoint file found', checkpoint_path)\n"
+        '    try:\n'
+        "        with open(checkpoint_path, 'r') as f:\n"
+        "            _d = json.load(f)\n"
+        "        if __checkpoint_checksum != _d['checksum']:\n"
+        "            print('task checkpoint has different checksum, discarding')\n"
+        "            os.unlink(checkpoint_path)\n"
+        "        else:\n"
+        "            __checkpoint_frames = set(_d['frames'])\n"
+        "            print('task checkpoint: frames already done:', sorted(__checkpoint_frames))\n"
+        '    except OSError as e:\n'
+        "        print('!!WARNING!! Task checkpoint read error!', e)\n"
+        "    except json.JSONDecodeError as e:\n"
+        "        print('!!WARNING!! Task checkpoint integrity error!', e)\n"
+        "    except KeyError as e:\n"
+        "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
+        "    except TypeError as e:\n"
+        "        print('!!WARNING!! Task checkpoint unexpected data error', e)\n"
+    )
+
+def checkpoint_cleanup_code(checkpoint_file_path: str):
+    """
+    TODO: pass just one path, not two parts when path mapping between OSes is fixed
+    """
+    return (
+        f'checkpoint_path = {checkpoint_file_path}\n'
+        f'if exit_code == 0:\n'
+        f'    try:\n'
+        f"        print('deleting task checkpoint', checkpoint_path)\n"
+        f'        os.unlink(checkpoint_path)\n'
+        f'    except Exception as e:\n'
+        f'        print("unexpected error deleting checkpoint file", e)\n'
+        f'else:\n'
+        f"    print('keeping checkpoint file', checkpoint_path)\n"
+    )
